@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>La Rockola del Carpincho 🦦🧉</title>
+
+	<!-- Materialize CSS -->
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+	<!-- Google Material Icons -->
+	<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+
+	<style>
+		/* Custom Dark Theme Variables & Adjustments - Modo Noche Chill
+		:root {
+			--bg-color: #1e1e2e;
+			--panel-bg: #181825;
+			--text-color: #cdd6f4;
+			--primary: #89b4fa;
+			--secondary: #f38ba8;
+			--warning: #f9e2af;
+			--success: #a6e3a1;
+			--border: #313244;
+		} */
+
+		:root {
+			--bg-color: #2b2622;
+			/* Barro seco / Tierra profunda */
+			--panel-bg: #1f1a17;
+			/* Sombra de sauce */
+			--text-color: #e8d5c4;
+			/* Pelo de carpincho clarito */
+			--primary: #a67c52;
+			/* Marrón carpincho clásico */
+			--secondary: #d4a373;
+			/* Arena de río */
+			--warning: #e9c46a;
+			/* Mate dulce / Sol de tarde */
+			--success: #588157;
+			/* Pastito tierno (donde duerme el carpincho) */
+			--border: #4a3f35;
+			/* Madera de muelle */
+		}
+
+		body {
+			background-color: var(--bg-color);
+			color: var(--text-color);
+			display: flex;
+			flex-direction: column;
+			height: 100vh;
+			margin: 0;
+		}
+
+		/* Status Bar Override */
+		nav.top-nav {
+			background-color: var(--panel-bg);
+			box-shadow: none;
+			border-bottom: 2px solid var(--primary);
+			height: auto;
+			padding: 10px 20px;
+			line-height: 1.5;
+		}
+
+		.status-container {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			font-weight: bold;
+			width: 100%;
+		}
+
+		#now-playing {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			flex-grow: 1;
+			overflow: hidden;
+			padding: 0 10px;
+			color: var(--text-color);
+			gap: 8px;
+		}
+
+		#status-text {
+			flex-shrink: 1;
+			min-width: 0;
+		}
+
+		#volume-label {
+			color: var(--warning);
+			text-align: right;
+			min-width: 90px;
+		}
+
+		/* App Control */
+		#app-control {
+			background-color: var(--panel-bg);
+			padding: 15px;
+			display: flex;
+			justify-content: center;
+			flex-wrap: wrap;
+			gap: 15px;
+			border-top: 1px solid var(--border);
+		}
+
+		#app-control button {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			gap: 8px;
+			border-radius: 20px;
+		}
+
+		#app-control button i {
+			margin: 0 !important;
+			/* Override Materialize default icon margins */
+		}
+
+		/* Custom Tabs Bridging Materialize */
+		.custom-tabs {
+			display: flex;
+			background-color: var(--panel-bg);
+			border-bottom: 1px solid var(--border);
+		}
+
+		.custom-tab {
+			flex: 1;
+			text-align: center;
+			padding: 15px;
+			cursor: pointer;
+			color: #a6adc8;
+			text-transform: uppercase;
+			letter-spacing: 0.5px;
+			transition: background-color 0.4s;
+			border-bottom: 2px solid transparent;
+			font-weight: 500;
+			display: flex;
+			justify-content: center;
+			align-items: center;
+			gap: 6px;
+		}
+
+		.custom-tab:hover {
+			background-color: var(--border);
+		}
+
+		.custom-tab.active {
+			color: var(--primary);
+			border-bottom: 2px solid var(--primary);
+		}
+
+		.tab-content {
+			display: none;
+			flex-grow: 1;
+			overflow-y: auto;
+			background-color: var(--bg-color);
+		}
+
+		.tab-content.active {
+			display: flex;
+			flex-direction: column;
+		}
+
+		/* Inputs & Search Wrapper */
+		.search-wrapper {
+			position: sticky;
+			top: 0;
+			background-color: var(--bg-color);
+			padding: 10px 15px 0 15px;
+			z-index: 10;
+			height: 64px;
+			box-shadow: 0 4px 6px -4px rgba(0, 0, 0, 0.3);
+		}
+
+		#search-input,
+		#url-input {
+			color: var(--text-color) !important;
+			border-bottom: 1px solid var(--primary) !important;
+			box-shadow: none !important;
+			margin-bottom: 0 !important;
+		}
+
+		#search-input:focus,
+		#url-input:focus {
+			border-bottom: 1px solid var(--secondary) !important;
+			box-shadow: 0 1px 0 0 var(--secondary) !important;
+		}
+
+		/* Tables */
+		table {
+			width: 100%;
+			border-collapse: collapse;
+		}
+
+		th {
+			position: sticky;
+			top: 64px;
+			/* Offset to sit right below the 64px tall search bar */
+			background-color: var(--panel-bg) !important;
+			color: var(--primary);
+			z-index: 5;
+			border-radius: 0 !important;
+			padding: 15px 10px;
+		}
+
+		tbody tr {
+			border-bottom: 1px solid var(--border);
+			transition: background-color 0.4s;
+		}
+
+		tbody tr:hover {
+			background-color: var(--border) !important;
+			cursor: pointer;
+		}
+
+		td {
+			padding: 12px 10px;
+			color: var(--text-color);
+		}
+
+		/* Controls Section */
+		.section-label {
+			text-align: center;
+			font-weight: bold;
+			color: var(--secondary);
+			margin: 30px 0 15px 0;
+			text-transform: uppercase;
+			letter-spacing: 1px;
+		}
+
+		.btn-row {
+			display: flex;
+			justify-content: center;
+			gap: 15px;
+			margin-bottom: 15px;
+			flex-wrap: wrap;
+		}
+	</style>
+</head>
+
+<body>
+
+	<!-- Status Bar -->
+	<nav class="top-nav z-depth-1">
+		<div class="status-container">
+			<div id="now-playing">
+				<i class="material-icons" id="status-icon">music_note</i>
+				<span id="status-text" class="truncate">[Cheto] Preparando el mate y la música... 🧉</span>
+			</div>
+		</div>
+	</nav>
+
+	<!-- Global App Footer -->
+	<section id="app-control" class="z-depth-2">
+		<button class="btn waves-effect waves-light blue darken-2" onclick="sendCmd('prev')">
+			<i class="material-icons">skip_previous</i>
+			<span class="hide-on-small-only">Un paso atrá'</span>
+		</button>
+		<button id="btn-play-pause" class="btn waves-effect waves-light green darken-1" style="min-width: 170px;"
+			onclick="sendCmd('pause')">
+			<i class="material-icons" id="icon-play-pause">play_circle_filled</i>
+			<span class="hide-on-small-only" id="text-play-pause">Mandale Mecha</span>
+		</button>
+		<button class="btn waves-effect waves-light blue darken-2" onclick="sendCmd('skip')">
+			<span class="hide-on-small-only">Pasala, fiera</span>
+			<i class="material-icons">skip_next</i>
+		</button>
+	</section>
+
+	<div id="scan-progress-bar" class="progress" style="margin: 0; background-color: var(--panel-bg); display: none;">
+		<div class="indeterminate" style="background-color: var(--primary);"></div>
+	</div>
+
+	<!-- Tabs -->
+	<div class="custom-tabs z-depth-1">
+		<div class="custom-tab active" onclick="switchTab('library')">
+			<i class="material-icons">library_music</i>
+			<span class="hide-on-small-only">Los Temazos</span>
+		</div>
+		<div class="custom-tab" onclick="switchTab('queue')">
+			<i class="material-icons">queue_music</i>
+			<span class="hide-on-small-only">La Fila</span>
+		</div>
+		<div class="custom-tab" onclick="switchTab('controls')">
+			<i class="material-icons">settings</i>
+			<span class="hide-on-small-only">Lo Controle</span>
+		</div>
+	</div>
+
+	<!-- Library Tab -->
+	<section id="tab-library" class="tab-content active">
+		<div class="search-wrapper">
+			<div class="input-field" style="margin-top: 0; position: relative;">
+				<i class="material-icons prefix" style="color: var(--primary);">search</i>
+				<input type="text" id="search-input" placeholder="Buscá un buen tema pa' acompañar los amargos..."
+					oninput="debounceSearch()" style="padding-right: 35px; box-sizing: border-box;" />
+				<i class="material-icons" id="clear-search" onclick="clearSearch()"
+					style="position: absolute; right: 10px; top: 12px; cursor: pointer; color: var(--secondary); display: none;">close</i>
+			</div>
+		</div>
+		<table class="highlight">
+			<thead>
+				<tr>
+					<th style="width: 60px; text-align: center;">Orden</th>
+					<th>El Temón</th>
+					<th>El Chabón/La Mina</th>
+				</tr>
+			</thead>
+			<tbody id="library-body"></tbody>
+		</table>
+	</section>
+
+	<!-- Queue Tab -->
+	<section id="tab-queue" class="tab-content">
+		<div class="search-wrapper" style="display: flex; gap: 10px; align-items: center;">
+			<div class="input-field" style="margin-top: 0; flex-grow: 1;">
+				<i class="material-icons prefix" style="color: var(--success);">link</i>
+				<input type="text" id="url-input" placeholder="Pegá el link de YouTube acá, máquina..." />
+			</div>
+			<button class="btn waves-effect waves-light green darken-2" onclick="addUrl()" style="margin-bottom: 8px;">
+				<i class="material-icons">add</i>
+			</button>
+		</div>
+		<table class="highlight">
+			<thead>
+				<tr>
+					<th style="width: 120px;">Acciones</th>
+					<th>El Temón</th>
+					<th>De quién es</th>
+				</tr>
+			</thead>
+			<tbody id="queue-body"></tbody>
+		</table>
+	</section>
+
+	<!-- Controls Tab -->
+	<section id="tab-controls" class="tab-content" style="padding: 20px;">
+		<div style="display: flex; align-items: center; color: var(--warning); margin: 15px;">
+			<i class="material-icons" id="vol-icon" style="margin-right: 8px;">volume_up</i>
+			<p class="range-field" style="margin: 0; width: 100%;">
+				<input type="range" id="volume-slider" min="0" max="110" value="100" onchange="setVolume(this.value)"
+					style="border: none;" />
+			</p>
+		</div>
+		<div class="section-label">
+			<i class="material-icons" style="vertical-align: middle; margin-right: 5px;">sort</i>- Acomodando la gilada
+			-
+		</div>
+		<div class="btn-row">
+			<button class="btn waves-effect waves-light grey darken-3" onclick="sortLibrary('time')">
+				<i class="material-icons left">access_time</i>Como llegaron
+			</button>
+			<button class="btn waves-effect waves-light grey darken-3" onclick="sortLibrary('artist')">
+				<i class="material-icons left">person</i>Por el que canta
+			</button>
+			<button class="btn waves-effect waves-light grey darken-3" onclick="sortLibrary('shuffle')">
+				<i class="material-icons left">shuffle</i>Mezcladito (A lo loco)
+			</button>
+		</div>
+
+		<div class="section-label">
+			<i class="material-icons" style="vertical-align: middle; margin-right: 5px;">celebration</i>- La Joda -
+		</div>
+		<div class="btn-row">
+			<button class="btn waves-effect waves-light red darken-2" onclick="sendCmd('stop')">
+				<i class="material-icons left">stop</i>Cortala de una
+			</button>
+			<button class="btn waves-effect waves-light light-blue darken-3" onclick="sendCmd('fullscreen')">
+				<i class="material-icons left">fullscreen</i>Todo pantalla, ñeri
+			</button>
+		</div>
+		<div class="btn-row">
+			<!--<button class="btn waves-effect waves-light red darken-4" onclick="sendCmd('clear_queue')">
+				<i class="material-icons left">delete_sweep</i>Limpiá todo, no seas sucio
+			</button>-->
+			<button class="btn waves-effect waves-light green darken-2" onclick="requestScan()">
+				<i class="material-icons left">refresh</i>Pegale otra escaneada
+			</button>
+		</div>
+	</section>
+
+	<!-- Materialize JS -->
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+
+	<script>
+		// --- State Variables ---
+		let originalTracks = [];
+		let currentTracks = [];
+		let filteredTracks = [];
+		let trackMap = {};
+
+		let queueState = [];
+		let historyState = [];
+		let currentTrackPath = null;
+		let isPaused = false;
+		let volume = 100;
+		let urlMetadata = {};
+
+		let searchTimeout = null;
+		let ws = null;
+
+		// Automatically run this when the page loads
+		window.onload = () => {
+			requestScan();
+			connectWebSocket();
+		};
+
+		// --- Networking ---
+		async function apiRequest(endpoint, method = "GET", body = null) {
+			const options = { method, headers: { "Content-Type": "application/json" } };
+			if (body) options.body = JSON.stringify(body);
+
+			try {
+				const res = await fetch(endpoint, options);
+				return await res.json();
+			} catch (err) {
+				console.error(`Pifió la API en ${endpoint}:`, err);
+				// Deploying a visual notification for the user
+				M.toast({
+					html: `<i class="material-icons left">error_outline</i> ¡Uy! Se volcó el mate conectando con ${endpoint}`,
+					classes: 'red darken-2 rounded',
+					displayLength: 4000
+				});
+			}
+		}
+
+		function connectWebSocket() {
+			const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+			ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+
+			ws.onmessage = (event) => {
+				const data = JSON.parse(event.data);
+				if (data.type === 'state_update') {
+					queueState = data.queue || [];
+					historyState = data.history || [];
+					currentTrackPath = data.current_track || null;
+					urlMetadata = data.url_metadata || {};
+
+					if (typeof data.paused !== 'undefined') {
+						isPaused = data.paused;
+					}
+
+					// Mostrar/Ocultar barra de carga cuando escanea (evitando undefined por compatibilidad)
+					const progressBar = document.getElementById("scan-progress-bar");
+					if (data.is_scanning === true) {
+						progressBar.style.display = "block";
+						document.getElementById("status-text").innerText = "Chusmeando temas, aguantá fiera... 🧉";
+						document.getElementById("status-icon").innerText = "sync";
+					} else {
+						progressBar.style.display = "none";
+					}
+
+					if (data.volume !== undefined) volume = data.volume;
+
+					// Solo llamamos updateUI si no está escaneando, para no sobreescribir el mensaje de carga en la barra de estado superior
+					if (!data.is_scanning) {
+						updateUI();
+					}
+				}
+			};
+
+			ws.onclose = () => {
+				console.log("Se cortó el WebSocket. Armando otro mate y reconectando...");
+				M.toast({
+					html: `<i class="material-icons left">wifi_off</i> Se cortó la señal. Reconectando...`,
+					classes: 'orange darken-3 rounded',
+					displayLength: 2000
+				});
+				setTimeout(connectWebSocket, 1000);
+			};
+
+			ws.onopen = () => {
+				console.log("¡WebSocket enganchado! Todo piola.");
+			};
+		}
+
+		async function sendCmd(cmd, data = {}) {
+			await apiRequest("/command", "POST", { cmd: cmd, ...data });
+		}
+
+		async function requestScan() {
+			document.getElementById("status-icon").innerText = "sync";
+			document.getElementById("status-text").innerText = "[Avisando] Chusmeando qué temas hay, aguantá un cacho, rey...";
+
+			const res = await apiRequest("/scan");
+			if (res && res.data) {
+				originalTracks = [...res.data];
+				currentTracks = [...res.data];
+				trackMap = {};
+				res.data.forEach(t => trackMap[t.path] = t);
+				applyFilter();
+			}
+		}
+
+		// --- Helper para sacar info ---
+		function getTrackInfo(path) {
+			if (trackMap[path]) return trackMap[path];
+			if (urlMetadata[path]) return urlMetadata[path];
+
+			const isUrl = path.startsWith("http://") || path.startsWith("https://");
+			return {
+				display_title: isUrl ? path : "Audio Misterioso",
+				display_artist: isUrl ? "🌐 De la Internet" : "Vaya uno a saber",
+				duration_str: "--:--"
+			};
+		}
+
+		function addUrl() {
+			const input = document.getElementById("url-input");
+			const url = input.value.trim();
+			if (url) {
+				sendCmd("add_url", { path: url });
+				input.value = "";
+				M.toast({
+					html: '<i class="material-icons left">check_circle</i> ¡Adentro! Temita a la fila.',
+					classes: 'green darken-2 rounded',
+					displayLength: 3000
+				});
+			}
+		}
+
+		// --- UI Updating ---
+		function updateUI() {
+			const isPlaying = currentTrackPath && !isPaused;
+			const statusIcon = isPlaying ? "nightlife" : "pause"; // isPlaying ? "play_arrow" : "pause";
+
+			let title = "Silencio estampa. Poné algo, fiera.";
+			let tabTitle = "La Rockola del Carpincho 🦦🧉";
+
+			if (currentTrackPath) {
+				const t = getTrackInfo(currentTrackPath);
+				title = `${t.display_artist} - ${t.display_title}`;
+
+				if (isPlaying) tabTitle = `${t.display_title} 🦦🧉`;
+			}
+
+			document.title = tabTitle;
+
+			if (title.length > 50) title = title.substring(0, 49) + "…";
+
+			// Update Status Bar
+			document.getElementById("status-icon").innerText = statusIcon;
+			document.getElementById("status-text").innerText = title;
+
+			let roundedVol = Math.round(volume);
+
+			// Update the slider position
+			const slider = document.getElementById("volume-slider");
+			if (slider) slider.value = roundedVol;
+
+			// Determine the correct icon based on the volume level
+			let volIcon = "volume_mute";
+			if (roundedVol === 0) {
+				volIcon = "volume_off";
+			} else if (roundedVol > 0 && roundedVol <= 40) {
+				volIcon = "volume_down";
+			} else if (roundedVol > 40 && roundedVol <= 100) {
+				volIcon = "volume_up";
+			} else {
+				volIcon = "surround_sound";
+			}
+
+			document.getElementById("vol-icon").innerText = volIcon;
+
+			// Update Main Play/Pause Button State
+			const playPauseIcon = isPlaying ? "pause_circle_filled" : "play_circle_filled";
+			const playPauseText = isPlaying ? "Pará loco" : "Mandale Mecha";
+			document.getElementById("icon-play-pause").innerText = playPauseIcon;
+			document.getElementById("text-play-pause").innerText = playPauseText;
+
+			// Change button color to indicate state visually
+			const btnPlayPause = document.getElementById("btn-play-pause");
+			if (isPlaying) {
+				btnPlayPause.className = "btn waves-effect waves-light orange darken-2";
+			} else {
+				btnPlayPause.className = "btn waves-effect waves-light green darken-1";
+			}
+
+			renderLibrary();
+			renderQueue();
+		}
+
+		function renderLibrary() {
+			const tbody = document.getElementById("library-body");
+			tbody.innerHTML = "";
+
+			filteredTracks.forEach(track => {
+				let qSym = "";
+				const tr = document.createElement("tr");
+
+				if (currentTrackPath === track.path) {
+					tr.id = "current-library-row";
+					qSym = '<i class="material-icons" style="color: var(--success);">play_arrow</i>';
+				} else if (queueState.includes(track.path)) {
+					qSym = `<span style="color: var(--warning); font-weight: bold;">${queueState.indexOf(track.path) + 1}</span>`;
+				}
+
+				tr.onclick = () => {
+					if (currentTrackPath === track.path) sendCmd("pause");
+					else sendCmd("toggle_queue", { path: track.path });
+				};
+
+				tr.innerHTML = `
+					<td style="text-align: center;">${qSym}</td>
+					<td style="font-weight: 500;">${track.display_title || track.title}</td>
+					<td style="color: #a6adc8;">${track.display_artist || track.artist}</td>
+				`; // <td>${track.duration_str}</td>
+				tbody.appendChild(tr);
+			});
+		}
+
+		function renderQueue() {
+			const tbody = document.getElementById("queue-body");
+			tbody.innerHTML = "";
+
+			historyState.forEach((path, i) => {
+				const track = getTrackInfo(path);
+				const tr = document.createElement("tr");
+				tr.onclick = () => sendCmd("jump", { type: "history", index: i });
+				tr.innerHTML = `
+					<td style="color: var(--success);"><i class="material-icons tiny">check</i> Ya sonó</td>
+					<td style="font-weight: 500;">${track.display_title}</td>
+					<td style="color: #a6adc8;">${track.display_artist}</td>
+				`;
+				tbody.appendChild(tr);
+			});
+
+			if (currentTrackPath) {
+				const track = getTrackInfo(currentTrackPath);
+				const tr = document.createElement("tr");
+				tr.onclick = () => sendCmd("pause");
+				tr.innerHTML = `
+					<td style="color: var(--primary); font-weight: bold;"><i class="material-icons tiny">play_arrow</i> Sonando piola</td>
+					<td style="font-weight: 500; color: var(--primary); max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${track.display_title}</td>
+					<td style="color: var(--primary);">${track.display_artist}</td>
+				`;
+				tbody.appendChild(tr);
+			}
+
+			queueState.forEach((path, i) => {
+				const track = getTrackInfo(path);
+				const tr = document.createElement("tr");
+				tr.innerHTML = `
+					<td style="text-align: center; white-space: nowrap;">
+						<i class="material-icons" style="cursor: pointer; color: var(--primary); font-size: 1.2rem; margin-right: 5px;" onclick="moveQueueItem(event, ${i}, 'first')" title="Mandar arriba de todo">vertical_align_top</i>
+						<i class="material-icons" style="cursor: pointer; color: var(--primary); font-size: 1.2rem; margin-right: 10px;" onclick="moveQueueItem(event, ${i}, 'last')" title="Mandar al fondo">vertical_align_bottom</i>
+						<i class="material-icons" style="cursor: pointer; color: var(--secondary); font-size: 1.2rem;" onclick="removeQueueItem(event, ${i})" title="Sacar a la bosta">delete</i>
+					</td>
+					<td style="font-weight: 500; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer;" onclick="sendCmd('jump', { type: 'queue', index: ${i} })" title="Saltar directo a este tema">${track.display_title}</td>
+					<td style="color: #a6adc8;" onclick="sendCmd('jump', { type: 'queue', index: ${i} })">${track.display_artist}</td>
+				`;
+				tbody.appendChild(tr);
+			});
+		}
+
+		// --- Interactions & Filtering ---
+		function scrollToCurrentTrack() {
+			// Nos fijamos qué pestaña está abierta
+			const activeTabId = document.querySelector('.tab-content.active').id;
+
+			let rowId = null;
+			if (activeTabId === 'tab-library') rowId = 'current-library-row';
+			if (activeTabId === 'tab-queue') rowId = 'current-queue-row';
+
+			if (rowId) {
+				const currentRow = document.getElementById(rowId);
+				if (currentRow) {
+					currentRow.scrollIntoView({ behavior: "smooth", block: "center" });
+				}
+			}
+		}
+
+		function switchTab(tabId) {
+			// Find all custom tabs and contents, remove active class
+			document.querySelectorAll('.custom-tab').forEach(btn => btn.classList.remove('active'));
+			document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+			// Target the exact tab based on the onclick attribute to avoid bubbling bugs with icons
+			document.querySelector(`[onclick="switchTab('${tabId}')"]`).classList.add('active');
+			document.getElementById(`tab-${tabId}`).classList.add('active');
+
+			if (tabId === 'queue') { // || tabId === 'library'
+				setTimeout(scrollToCurrentTrack, 50); // El setTimeout le da tiempo a la pestaña para hacerse visible
+			}
+		}
+
+		function removeQueueItem(event, index) {
+			event.stopPropagation();
+			sendCmd("remove_queue_item", { index: index });
+		}
+
+		function moveQueueItem(event, index, target) {
+			event.stopPropagation();
+
+			let newIndex;
+			if (target === 'first') {
+				newIndex = 0;
+			} else if (target === 'last') {
+				newIndex = queueState.length - 1;
+			}
+
+			// Solo mandamos el comando si no está ya en ese lugar
+			if (newIndex !== undefined && newIndex !== index && newIndex >= 0 && newIndex < queueState.length) {
+				sendCmd("move_queue_item", { index: index, new_index: newIndex });
+			}
+		}
+
+		function normalizeString(s) {
+			if (!s) return "";
+			return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+		}
+
+		function debounceSearch() {
+			clearTimeout(searchTimeout);
+			searchTimeout = setTimeout(applyFilter, 300);
+		}
+
+		function clearSearch() {
+			document.getElementById("search-input").value = "";
+			applyFilter();
+		}
+
+		function applyFilter() {
+			const input = document.getElementById("search-input");
+			const query = input.value;
+			const clearBtn = document.getElementById("clear-search");
+
+			// Mostrar u ocultar el botón de limpiar
+			if (query.length > 0) {
+				clearBtn.style.display = "block";
+			} else {
+				clearBtn.style.display = "none";
+			}
+
+			if (!query) {
+				filteredTracks = [...currentTracks];
+			} else {
+				const normQuery = normalizeString(query);
+
+				let exactMatches = [];
+				let fuzzyMatches = [];
+
+				currentTracks.forEach(t => {
+					const normTarget = normalizeString(t.search_string || `${t.artist} ${t.title}`);
+					if (normTarget.includes(normQuery)) {
+						exactMatches.push(t);
+					} else {
+						let qIdx = 0;
+						for (let char of normTarget) {
+							if (char === normQuery[qIdx]) qIdx++;
+							if (qIdx === normQuery.length) {
+								fuzzyMatches.push(t);
+								break;
+							}
+						}
+					}
+				});
+				filteredTracks = exactMatches.concat(fuzzyMatches);
+			}
+			updateUI();
+		}
+
+		function setVolume(val) {
+			volume = parseInt(val);
+			// Send the absolute volume value to the backend
+			sendCmd('set_volume', { vollevel: volume });
+
+			// Update the UI immediately so it feels responsive
+			updateUI();
+		}
+
+		function sortLibrary(type) {
+			if (type === 'time') {
+				currentTracks = [...originalTracks];
+			} else if (type === 'artist') {
+				currentTracks.sort((a, b) => {
+					const cmp = a.artist.toLowerCase().localeCompare(b.artist.toLowerCase());
+					return cmp === 0 ? a.title.toLowerCase().localeCompare(b.title.toLowerCase()) : cmp;
+				});
+			} else if (type === 'shuffle') {
+				let array = [...originalTracks];
+				for (let i = array.length - 1; i > 0; i--) {
+					const j = Math.floor(Math.random() * (i + 1));
+					[array[i], array[j]] = [array[j], array[i]];
+				}
+				currentTracks = array;
+			}
+			applyFilter();
+			switchTab('library');
+		}
+	</script>
+</body>
+
+</html>
