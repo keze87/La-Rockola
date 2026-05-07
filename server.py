@@ -79,6 +79,7 @@ check_dependencies()
 # --- 2. AHORA SÍ, IMPORTAMOS TRANQUIS ---
 import argparse
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -102,6 +103,43 @@ logger = logging.getLogger("RockolaCarpincho")
 def truncate_text(text: str, max_len: int) -> str:
 	text = str(text)
 	return text[: max_len - 1] + "…" if len(text) > max_len else text
+
+
+def generate_smart_hash(filepath, chunk_size=1024*1024):
+	"""
+	Lee 1MB cerca del principio y 1MB cerca del final (esquivando metadatos).
+	Genera un Hash único basado puramente en las ondas de audio.
+	"""
+	try:
+		file_size = os.path.getsize(filepath)
+
+		# Si el archivo es ridículamente chico (menos de 3MB), leemos un pedacito del medio
+		if file_size < chunk_size * 3:
+			with open(filepath, 'rb') as f:
+				f.seek(file_size // 2)
+				data = f.read(file_size // 4)
+				return hashlib.md5(data).hexdigest()
+
+		with open(filepath, 'rb') as f:
+			# Leer 1MB al 15% del archivo (pasando de largo cualquier tapa o tag gigante)
+			f.seek(int(file_size * 0.15))
+			chunk1 = f.read(chunk_size)
+
+			# Leer 1MB al 85% del archivo (antes de los tags finales)
+			f.seek(int(file_size * 0.85))
+			chunk2 = f.read(chunk_size)
+
+			# Armamos el Hash con los dos pedazos + el tamaño total para evitar colisiones
+			hasher = hashlib.md5()
+			hasher.update(chunk1)
+			hasher.update(chunk2)
+			hasher.update(str(file_size).encode('utf-8'))
+
+			return hasher.hexdigest()
+	except Exception as e:
+		logger.debug(f"Pifió el hash inteligente para {filepath}: {e}")
+		# Fallback por si el archivo está corrupto o bloqueado
+		return hashlib.md5(str(filepath).encode('utf-8')).hexdigest()
 
 
 class Track:
@@ -143,6 +181,7 @@ class Track:
 		self.display_title = truncate_text(self.title, 30)
 		self.display_artist = truncate_text(self.artist, 20)
 		self.search_string = f"{self.artist} {self.title}".lower()
+		self.track_hash = str(generate_smart_hash(self.path))
 
 	def to_dict(self):
 		return {
@@ -404,6 +443,8 @@ class APIState:
 		self.is_scanning = False
 		self.stats_file = ".carpincho_stats.json"
 		self.play_history = self._load_stats()
+		self.id_to_current_path = {}
+		self.path_to_id = {}
 
 		self.mpv = AsyncMpvController(
 			{
@@ -450,10 +491,19 @@ class APIState:
 		raw_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
 
 		tracks = []
+		self.id_to_current_path.clear()
+		self.path_to_id.clear()
+
 		for i, f in enumerate(raw_files):
 			if i > 0 and i % 100 == 0:
 				logger.info(f"Ya leí la data de {i}/{len(raw_files)} temazos...")
-			tracks.append(Track(f).to_dict())
+
+			track_obj = Track(f)
+			track_dict = track_obj.to_dict()
+			tracks.append(track_dict)
+
+			self.id_to_current_path[track_obj.track_hash] = track_dict["path"]
+			self.path_to_id[track_dict["path"]] = track_obj.track_hash
 
 		logger.info("¡Listo el escaneo, maestro!")
 		return tracks
@@ -494,6 +544,10 @@ class APIState:
 					"title": title,
 					"artist": artist,
 				}
+
+				self.id_to_current_path[url] = url
+				self.path_to_id[url] = url
+
 				logger.info(f"Data fresquita conseguida: {artist} - {title}")
 				await broadcast_state()
 		except Exception as e:
@@ -529,11 +583,11 @@ class APIState:
 		self.mpv_paused = False
 		self.last_track_change = time.time()
 
-		if (
-			str(path) not in self.play_history
-		):  # Anotamos cuándo sonó y guardamos en disco
-			self.play_history[str(path)] = []
-		self.play_history[str(path)].append(time.time())
+		track_id = self.path_to_id.get(str(path), str(path))
+
+		if track_id not in self.play_history:
+			self.play_history[track_id] = []
+		self.play_history[track_id].append(time.time())
 		self._save_stats()
 
 		await self.mpv._send('{"command": ["set_property", "force-window", "yes"]}')
@@ -598,10 +652,17 @@ class APIState:
 		one_month_ago = now - (30 * 24 * 3600)
 		monthly_counts = {}
 
-		for path, timestamps in self.play_history.items():
+		for track_id, timestamps in self.play_history.items():
 			recent_plays = [ts for ts in timestamps if ts >= one_month_ago]
 			if recent_plays:
-				monthly_counts[path] = len(recent_plays)
+				# Mantenemos compatibilidad con el historial viejo (rutas) o URLs
+				if "\\" in track_id or "/" in track_id or track_id.startswith("http"):
+					current_path = track_id
+				else:
+					current_path = self.id_to_current_path.get(track_id)
+
+				if current_path:
+					monthly_counts[current_path] = len(recent_plays)
 
 		return sorted(
 			[{"path": k, "count": v} for k, v in monthly_counts.items()],
