@@ -265,30 +265,16 @@
 		}
 
 		/* CONTROLES FLOTANTES & UP NEXT */
-		body {
-			padding-bottom: 140px;
-			/* Dejamos espacio para el reproductor flotante */
-		}
-
 		#app-control {
-			position: fixed;
-			bottom: 0;
-			left: 0;
-			right: 0;
-			background-color: var(--panel-bg);
-			padding: 10px 15px 25px 15px;
 			display: flex;
 			justify-content: space-around;
 			align-items: center;
 			z-index: 1000;
-			border-top: 1px solid var(--border);
-			box-shadow: 0 -4px 15px rgba(0, 0, 0, 0.5);
-			border-radius: 20px 20px 0 0;
 		}
 
 		.up-next-card {
 			position: fixed;
-			bottom: 85px;
+			bottom: 5px;
 			/* Justo arriba de los controles */
 			left: 15px;
 			right: 15px;
@@ -345,7 +331,10 @@
 	</nav>
 
 	<div id="up-next-card" class="up-next-card" style="display: none;" onclick="switchTab('queue'); haptic();">
-		<i class="material-icons" style="margin-right: 15px; color: var(--warning); font-size: 2rem;">album</i>
+		<div style="position: relative; width: 40px; height: 40px; margin-right: 15px; flex-shrink: 0;">
+			<i id="up-next-icon" class="material-icons" style="color: var(--warning); font-size: 2.5rem; line-height: 40px; text-align: center; width: 100%;">album</i>
+			<img id="up-next-cover" src="" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 6px; display: none;" onerror="this.style.display='none'; document.getElementById('up-next-icon').style.display='block';">
+		</div>
 		<div class="up-next-info">
 			<div class="up-next-label">Próximo Temazo</div>
 			<div id="up-next-title" class="up-next-title">Cargando...</div>
@@ -715,6 +704,20 @@
 			if (queueState.length > 0) {
 				const nextTrack = getTrackInfo(queueState[0]);
 				document.getElementById("up-next-title").innerText = `${nextTrack.display_title} - ${nextTrack.display_artist}`;
+
+				const coverImg = document.getElementById("up-next-cover");
+				const iconImg = document.getElementById("up-next-icon");
+
+				// Si no es un link de YouTube, le pedimos la tapa al servidor
+				if (!queueState[0].startsWith("http")) {
+					coverImg.src = `/cover?path=${encodeURIComponent(queueState[0])}`;
+					coverImg.style.display = "block";
+					iconImg.style.display = "none";
+				} else {
+					coverImg.style.display = "none";
+					iconImg.style.display = "block";
+				}
+
 				upNextCard.style.display = "flex";
 			} else {
 				upNextCard.style.display = "none";
@@ -727,9 +730,17 @@
 				topPlayedState.forEach((t, i) => {
 					const track = getTrackInfo(t.path);
 					const escapedPath = t.path.replace(/\\/g, '\\\\').replace(/'/g, "\\'"); // Escapamos rutas de Windows
+
+					// Armamos el HTML de la tapa. Si la imagen falla (404), cae en el "onerror" y se transforma de vuelta en un ícono
+					let coverHtml = `<i class="material-icons" style="color: var(--primary); font-size: 2.5rem; margin-right: 15px;">album</i>`;
+					if (!t.path.startsWith("http")) {
+						coverHtml = `<img src="/cover?path=${encodeURIComponent(t.path)}" style="width: 45px; height: 45px; object-fit: cover; border-radius: 6px; margin-right: 15px;" onerror="this.outerHTML='<i class=\\'material-icons\\' style=\\'color: var(--primary); font-size: 2.5rem; margin-right: 15px;\\'>album</i>'">`;
+					}
+
 					topList.innerHTML += `
 						<li style="padding: 15px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; cursor: pointer;" onclick="sendCmd('toggle_queue', { path: '${escapedPath}' })">
 							<div style="font-weight: bold; color: var(--warning); font-size: 1.2rem; margin-right: 15px; width: 30px; text-align: center;">#${i + 1}</div>
+							${coverHtml}
 							<div style="flex-grow: 1; overflow: hidden;">
 								<div style="font-weight: bold; color: var(--text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${track.display_title}</div>
 								<div style="font-size: 0.85rem; color: #a6adc8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${track.display_artist} • Sonó ${t.count} veces</div>

@@ -85,9 +85,9 @@ import os
 import time
 import uvicorn
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
+from fastapi.responses import FileResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 from mutagen import File as MutagenFile
 from pathlib import Path
 from pydantic import BaseModel
@@ -529,7 +529,9 @@ class APIState:
 		self.mpv_paused = False
 		self.last_track_change = time.time()
 
-		if str(path) not in self.play_history: # Anotamos cuándo sonó y guardamos en disco
+		if (
+			str(path) not in self.play_history
+		):  # Anotamos cuándo sonó y guardamos en disco
 			self.play_history[str(path)] = []
 		self.play_history[str(path)].append(time.time())
 		self._save_stats()
@@ -591,6 +593,22 @@ class APIState:
 			self.history = self.history[:index]
 			await self.play_track(target)
 
+	def get_top_played(self):
+		now = time.time()
+		one_month_ago = now - (30 * 24 * 3600)
+		monthly_counts = {}
+
+		for path, timestamps in self.play_history.items():
+			recent_plays = [ts for ts in timestamps if ts >= one_month_ago]
+			if recent_plays:
+				monthly_counts[path] = len(recent_plays)
+
+		return sorted(
+			[{"path": k, "count": v} for k, v in monthly_counts.items()],
+			key=lambda x: x["count"],
+			reverse=True,
+		)[:20]
+
 
 # --- FastAPI Setup ---
 state = APIState()
@@ -598,22 +616,6 @@ state = APIState()
 
 async def broadcast_state():
 	"""Helper to broadcast the latest state to all connected websocket clients."""
-	now = time.time()
-	one_month_ago = now - (30 * 24 * 3600)
-	monthly_counts = {}
-
-	for path, timestamps in state.play_history.items():
-		# Nos quedamos solo con las reproducciones de los últimos 30 días
-		recent_plays = [ts for ts in timestamps if ts >= one_month_ago]
-		if recent_plays:
-			monthly_counts[path] = len(recent_plays)
-
-	top_played = sorted(
-		[{"path": k, "count": v} for k, v in monthly_counts.items()],
-		key=lambda x: x["count"],
-		reverse=True
-	)[:10]
-
 	await manager.broadcast(
 		{
 			"current_track": state.current_track,
@@ -621,7 +623,7 @@ async def broadcast_state():
 			"is_scanning": state.is_scanning,
 			"paused": state.mpv_paused,
 			"queue": state.queue,
-			"top_played": top_played,
+			"top_played": state.get_top_played(),
 			"type": "state_update",
 			"url_metadata": state.url_metadata,
 			"volume": state.volume,
@@ -730,6 +732,38 @@ async def scan_library(dir: str = None):
 
 	return {"data": state.tracks_cache}
 
+@app.get("/cover")
+async def serve_cover(path: str = Query(...)):
+	try:
+		# Extraemos los metadatos completos con Mutagen
+		audio = MutagenFile(path)
+		if not audio:
+			return Response(status_code=404)
+
+		cover_data = None
+		mime_type = "image/jpeg"
+
+		# Magia negra para sacar la tapa según el formato (FLAC, MP3 o M4A)
+		if hasattr(audio, "pictures") and audio.pictures:
+			cover_data = audio.pictures[0].data
+			mime_type = audio.pictures[0].mime
+		elif hasattr(audio, "tags") and audio.tags:
+			for key, tag in audio.tags.items():
+				if key.startswith("APIC"): # MP3 ID3 Tag
+					cover_data = tag.data
+					mime_type = tag.mime
+					break
+			if not cover_data and "covr" in audio.tags: # M4A Tag
+				cover_data = audio.tags["covr"][0]
+				mime_type = "image/jpeg" if cover_data.startswith(b'\xff\xd8') else "image/png"
+
+		if cover_data:
+			return Response(content=cover_data, media_type=mime_type)
+	except Exception as e:
+		logger.debug(f"Pifió sacando la tapa de {path}: {e}")
+
+	return Response(status_code=404)
+
 
 class CommandRequest(BaseModel):
 	cmd: str
@@ -823,13 +857,14 @@ async def websocket_endpoint(websocket: WebSocket):
 		# Send initial state immediately
 		await websocket.send_json(
 			{
-				"type": "state_update",
-				"queue": state.queue,
-				"history": state.history,
 				"current_track": state.current_track,
+				"history": state.history,
 				"paused": state.mpv_paused,
-				"volume": state.volume,
+				"queue": state.queue,
+				"top_played": state.get_top_played(),
+				"type": "state_update",
 				"url_metadata": state.url_metadata,
+				"volume": state.volume,
 			}
 		)
 		while True:
