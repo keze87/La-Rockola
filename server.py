@@ -402,6 +402,8 @@ class APIState:
 		self.url_metadata = {}
 		self.volume = 100
 		self.is_scanning = False
+		self.stats_file = ".carpincho_stats.json"
+		self.play_history = self._load_stats()
 
 		self.mpv = AsyncMpvController(
 			{
@@ -411,6 +413,22 @@ class APIState:
 				"pause_update": self.handle_pause_update,
 			}
 		)
+
+	def _load_stats(self):
+		try:
+			if os.path.exists(self.stats_file):
+				with open(self.stats_file, "r", encoding="utf-8") as f:
+					return json.load(f)
+		except Exception as e:
+			logger.error(f"Error cargando la memoria del carpincho: {e}")
+		return {}
+
+	def _save_stats(self):
+		try:
+			with open(self.stats_file, "w", encoding="utf-8") as f:
+				json.dump(self.play_history, f)
+		except Exception as e:
+			logger.error(f"Error guardando los stats: {e}")
 
 	def scan_directory(self, target_dir):
 		logger.info(f"Pegando una ojeada por acá: {target_dir}")
@@ -510,6 +528,12 @@ class APIState:
 		self.current_track = path
 		self.mpv_paused = False
 		self.last_track_change = time.time()
+
+		if str(path) not in self.play_history: # Anotamos cuándo sonó y guardamos en disco
+			self.play_history[str(path)] = []
+		self.play_history[str(path)].append(time.time())
+		self._save_stats()
+
 		await self.mpv._send('{"command": ["set_property", "force-window", "yes"]}')
 
 		# Usamos json.dumps() para que formatee y escape correctamente las barras invertidas (\)
@@ -574,16 +598,33 @@ state = APIState()
 
 async def broadcast_state():
 	"""Helper to broadcast the latest state to all connected websocket clients."""
+	now = time.time()
+	one_month_ago = now - (30 * 24 * 3600)
+	monthly_counts = {}
+
+	for path, timestamps in state.play_history.items():
+		# Nos quedamos solo con las reproducciones de los últimos 30 días
+		recent_plays = [ts for ts in timestamps if ts >= one_month_ago]
+		if recent_plays:
+			monthly_counts[path] = len(recent_plays)
+
+	top_played = sorted(
+		[{"path": k, "count": v} for k, v in monthly_counts.items()],
+		key=lambda x: x["count"],
+		reverse=True
+	)[:10]
+
 	await manager.broadcast(
 		{
-			"type": "state_update",
-			"queue": state.queue,
-			"history": state.history,
 			"current_track": state.current_track,
-			"paused": state.mpv_paused,
-			"volume": state.volume,
-			"url_metadata": state.url_metadata,
+			"history": state.history,
 			"is_scanning": state.is_scanning,
+			"paused": state.mpv_paused,
+			"queue": state.queue,
+			"top_played": top_played,
+			"type": "state_update",
+			"url_metadata": state.url_metadata,
+			"volume": state.volume,
 		}
 	)
 
