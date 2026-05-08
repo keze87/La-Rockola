@@ -310,6 +310,10 @@ class AsyncMpvController:
 			await self._send(json.dumps({"command": ["observe_property", 1, "volume"]}))
 			await self._send(json.dumps({"command": ["observe_property", 2, "pause"]}))
 
+		# Si hay un callback de reinicio, avisamos que ya estamos listos para recibir los datos de nuevo
+		if "mpv_restarted" in self.callbacks:
+			asyncio.create_task(self.callbacks["mpv_restarted"]())
+
 	async def _read_ipc_events_windows(self):
 		"""Threaded reader for Windows Named Pipes to prevent blocking."""
 
@@ -401,6 +405,20 @@ class AsyncMpvController:
 			logger.error(f"Se cortó la conexión con MPV ({e}). Reiniciando el motor...")
 			await self.start()
 
+			# ¡REINTENTO! Para no perder el comando que estábamos por mandar
+			try:
+				if self.is_windows:
+					def write_pipe_retry():
+						with open(self.socket_path, "a+b") as pipe:
+							pipe.write(cmd_bytes)
+					await asyncio.to_thread(write_pipe_retry)
+				else:
+					if self.writer:
+						self.writer.write(cmd_bytes)
+						await self.writer.drain()
+			except Exception as retry_e:
+				logger.error(f"Pifió fiero. No quiso agarrar viaje ni reiniciando: {retry_e}")
+
 
 # --- Websocket Connection Manager ---
 class ConnectionManager:
@@ -452,6 +470,7 @@ class APIState:
 				"track_stopped": self.handle_track_stopped,
 				"volume_update": self.handle_volume_update,
 				"pause_update": self.handle_pause_update,
+				"mpv_restarted": self.handle_mpv_restarted,
 			}
 		)
 
@@ -558,6 +577,17 @@ class APIState:
 		await self.play_next()
 		await broadcast_state()
 
+	async def handle_mpv_restarted(self):
+		"""Si MPV se muere y revive, le devolvemos la memoria de lo que estaba sonando."""
+		if self.current_track:
+			logger.info("El MPV revivió. Volviéndole a cargar el temita que estaba sonando...")
+
+			# Volvemos a cargar la pista sin tocar el historial
+			await self.mpv._send(json.dumps({"command": ["loadfile", str(self.current_track)]}))
+			# Le devolvemos su estado de pausa y volumen
+			await self.mpv._send(json.dumps({"command": ["set_property", "pause", self.mpv_paused]}))
+			await self.mpv._send(json.dumps({"command": ["set_property", "volume", self.volume]}))
+
 	async def handle_track_stopped(self):
 		# Si cambiamos de tema hace menos de medio segundo,
 		# este "stop" es del tema viejo muriendo. Lo ignoramos.
@@ -583,12 +613,14 @@ class APIState:
 		self.mpv_paused = False
 		self.last_track_change = time.time()
 
-		track_id = self.path_to_id.get(str(path), str(path))
+		str_path = str(path)
+		if not (str_path.startswith("http://") or str_path.startswith("https://")):
+			track_id = self.path_to_id.get(str_path, str_path)
 
-		if track_id not in self.play_history:
-			self.play_history[track_id] = []
-		self.play_history[track_id].append(time.time())
-		self._save_stats()
+			if track_id not in self.play_history:
+				self.play_history[track_id] = []
+			self.play_history[track_id].append(time.time())
+			self._save_stats()
 
 		await self.mpv._send('{"command": ["set_property", "force-window", "yes"]}')
 
@@ -846,11 +878,16 @@ async def handle_command(req: CommandRequest):
 			state.history.append(state.current_track)
 		await state.play_track(req.path)
 	elif cmd == "pause":
-		state.mpv_paused = not state.mpv_paused
-		cmd_payload = json.dumps(
-			{"command": ["set_property", "pause", state.mpv_paused]}
-		)
-		await state.mpv._send(cmd_payload)
+		if not state.current_track and state.queue:
+			# Si no hay tema sonando pero hay fila, arranca la joda
+			await state.play_next()
+		else:
+			# Comportamiento normal: pausa o despausa el tema actual
+			state.mpv_paused = not state.mpv_paused
+			cmd_payload = json.dumps(
+				{"command": ["set_property", "pause", state.mpv_paused]}
+			)
+			await state.mpv._send(cmd_payload)
 	elif cmd == "skip":
 		await state.play_next()
 	elif cmd == "prev":
