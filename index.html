@@ -69,6 +69,15 @@
 			gap: 8px;
 		}
 
+		#toast-container {
+			top: 15px !important;
+			bottom: auto !important;
+			left: 50% !important;
+			right: auto !important;
+			transform: translateX(-50%) !important;
+			z-index: 9999;
+		}
+
 		#status-text {
 			flex-shrink: 1;
 			min-width: 0;
@@ -327,6 +336,8 @@
 	<nav class="top-nav z-depth-1">
 		<div class="status-container">
 			<div id="now-playing">
+				<img id="status-cover" src="" style="display: none; width: 48px; height: 48px; border-radius: 4px; object-fit: cover; flex-shrink: 0;" onerror="this.style.display='none'; document.getElementById('status-icon').style.display='block';">
+
 				<i class="material-icons" id="status-icon">music_note</i>
 				<span id="status-text" class="truncate">[Cheto] Preparando el mate y la música... 🧉</span>
 			</div>
@@ -555,7 +566,11 @@
 					if (data.is_scanning === true) {
 						progressBar.style.display = "block";
 						document.getElementById("status-text").innerText = "Chusmeando temas, aguantá fiera... 🧉";
+
+						// Nos aseguramos de mostrar el ícono de sincronización y ocultar la tapa
 						document.getElementById("status-icon").innerText = "sync";
+						document.getElementById("status-icon").style.display = "block";
+						document.getElementById("status-cover").style.display = "none";
 					} else {
 						progressBar.style.display = "none";
 					}
@@ -687,8 +702,22 @@
 
 			if (title.length > 50) title = title.substring(0, 49) + "…";
 
-			// Update Status Bar
-			document.getElementById("status-icon").innerText = statusIcon;
+			// Update Status Bar (Tapa vs Ícono)
+			const statusIconEl = document.getElementById("status-icon");
+			const statusCoverEl = document.getElementById("status-cover");
+
+			if (currentTrackPath && !currentTrackPath.startsWith("http")) {
+				// Si es un tema local, mostramos la tapa
+				statusCoverEl.src = `/cover?path=${encodeURIComponent(currentTrackPath)}`;
+				statusCoverEl.style.display = "block";
+				statusIconEl.style.display = "none";
+			} else {
+				// Si no hay tema o es un link de internet, mostramos el ícono
+				statusCoverEl.style.display = "none";
+				statusIconEl.style.display = "block";
+				statusIconEl.innerText = currentTrackPath ? statusIcon : "music_note";
+			}
+
 			document.getElementById("status-text").innerText = title;
 
 			let roundedVol = Math.round(volume);
