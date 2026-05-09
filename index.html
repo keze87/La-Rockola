@@ -585,7 +585,38 @@
 		}
 
 		async function sendCmd(cmd, data = {}) {
-			await apiRequest("/command", "POST", { cmd: cmd, ...data });
+			return await apiRequest("/command", "POST", { cmd: cmd, ...data });
+		}
+
+		// Agrega/Saca de la fila y tira el toast con el estado
+		async function toggleQueueWithToast(path) {
+			const wasInQueue = queueState.includes(path);
+			const track = getTrackInfo(path);
+			const title = track.display_title || "El temita";
+
+			const res = await sendCmd("toggle_queue", { path: path });
+
+			if (res && res.status === "ok") {
+				if (!wasInQueue) {
+					M.toast({
+						html: `<i class="material-icons left">playlist_add_check</i> ¡Adentro! <b>${title}</b> a la fila.`,
+						classes: 'green darken-2 rounded',
+						displayLength: 2500
+					});
+				} else {
+					M.toast({
+						html: `<i class="material-icons left">remove_circle_outline</i> Sacamos <b>${title}</b> de la fila.`,
+						classes: 'orange darken-3 rounded',
+						displayLength: 2500
+					});
+				}
+			} else {
+				M.toast({
+					html: `<i class="material-icons left">error_outline</i> Uy, no se pudo agregar <b>${title}</b>. Fijate la conexión.`,
+					classes: 'red darken-2 rounded',
+					displayLength: 3000
+				});
+			}
 		}
 
 		async function requestScan() {
@@ -615,17 +646,25 @@
 			};
 		}
 
-		function addUrl() {
+		async function addUrl() {
 			const input = document.getElementById("url-input");
 			const url = input.value.trim();
 			if (url) {
-				sendCmd("add_url", { path: url });
-				input.value = "";
-				M.toast({
-					html: '<i class="material-icons left">check_circle</i> ¡Adentro! Temita a la fila.',
-					classes: 'green darken-2 rounded',
-					displayLength: 3000
-				});
+				const res = await sendCmd("add_url", { path: url });
+				if (res && res.status === "ok") {
+					input.value = "";
+					M.toast({
+						html: '<i class="material-icons left">check_circle</i> ¡Adentro! Temita de internet a la fila.',
+						classes: 'green darken-2 rounded',
+						displayLength: 3000
+					});
+				} else {
+					M.toast({
+						html: '<i class="material-icons left">error_outline</i> Pifió agregando el link. ¿Estás sin WiFi?',
+						classes: 'red darken-2 rounded',
+						displayLength: 3000
+					});
+				}
 			}
 		}
 
@@ -727,7 +766,7 @@
 					}
 
 					topList.innerHTML += `
-						<li style="padding: 15px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; cursor: pointer;" onclick="sendCmd('toggle_queue', { path: '${escapedPath}' })">
+						<li style="padding: 15px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; cursor: pointer;" onclick="toggleQueueWithToast('${escapedPath}')">
 							<div style="font-weight: bold; color: var(--warning); font-size: 1.2rem; margin-right: 15px; width: 30px; text-align: center;">#${i + 1}</div>
 							${coverHtml}
 							<div style="flex-grow: 1; overflow: hidden;">

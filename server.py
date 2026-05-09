@@ -459,7 +459,8 @@ class APIState:
 		self.url_metadata = {}
 		self.volume = 100
 		self.is_scanning = False
-		self.stats_file = ".carpincho_stats.json"
+		self.stats_file = Path.home() / ".carpincho_stats.json"
+		self.url_log_file = Path.home() / ".carpincho_urls.json"
 		self.play_history = self._load_stats()
 		self.id_to_current_path = {}
 		self.path_to_id = {}
@@ -489,6 +490,34 @@ class APIState:
 				json.dump(self.play_history, f)
 		except Exception as e:
 			logger.error(f"Error guardando los stats: {e}")
+
+	def _log_url(self, url):
+		"""Guarda un registro de los links que sonaron, con su metadata si existe."""
+		try:
+			logs = []
+			if self.url_log_file.exists():
+				with open(self.url_log_file, "r", encoding="utf-8") as f:
+					try:
+						logs = json.load(f)
+					except json.JSONDecodeError:
+						pass
+
+			# Rescatamos la metadata que haya sacado yt-dlp
+			meta = self.url_metadata.get(url, {"path": url, "display_title": "Link directo", "artist": "Desconocido"})
+
+			log_entry = {
+				"played_at": time.time(),
+				"url": url,
+				"title": meta.get("title", meta.get("display_title")),
+				"artist": meta.get("artist", meta.get("display_artist"))
+			}
+
+			logs.append(log_entry)
+
+			with open(self.url_log_file, "w", encoding="utf-8") as f:
+				json.dump(logs, f, indent=4, ensure_ascii=False)
+		except Exception as e:
+			logger.error(f"Error guardando el log de URLs: {e}")
 
 	def scan_directory(self, target_dir):
 		logger.info(f"Pegando una ojeada por acá: {target_dir}")
@@ -621,6 +650,9 @@ class APIState:
 				self.play_history[track_id] = []
 			self.play_history[track_id].append(time.time())
 			self._save_stats()
+		else:
+			# Si es un link de YouTube o internet, lo mandamos al log especial
+			self._log_url(str_path)
 
 		await self.mpv._send('{"command": ["set_property", "force-window", "yes"]}')
 
