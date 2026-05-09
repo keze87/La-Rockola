@@ -447,12 +447,11 @@ manager = ConnectionManager()
 
 # --- App State & Server Logic ---
 class APIState:
-	def __init__(self, initial_dir=None):
+	def __init__(self, initial_dir=None, secondary_dir=None):
 		self.current_track = None
 		self.history = []
 		self.initial_dir = initial_dir
-		self.last_scan_time = 0
-		self.last_scanned_dir = None
+		self.secondary_dir = secondary_dir
 		self.mpv_paused = False
 		self.queue = []
 		self.tracks_cache = []
@@ -464,6 +463,7 @@ class APIState:
 		self.play_history = self._load_stats()
 		self.id_to_current_path = {}
 		self.path_to_id = {}
+		self.track_cache_by_path = {}
 
 		self.mpv = AsyncMpvController(
 			{
@@ -502,11 +502,15 @@ class APIState:
 					except json.JSONDecodeError:
 						pass
 
+			# Filtramos la lista para sacar el link si ya estaba guardado antes
+			# (así evitamos duplicados y la nueva entrada queda al final con fecha fresca)
+			logs = [log for log in logs if log.get("url") != url]
+
 			# Rescatamos la metadata que haya sacado yt-dlp
 			meta = self.url_metadata.get(url, {"path": url, "display_title": "Link directo", "artist": "Desconocido"})
 
 			log_entry = {
-				"played_at": time.time(),
+				"played_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
 				"url": url,
 				"title": meta.get("title", meta.get("display_title")),
 				"artist": meta.get("artist", meta.get("display_artist"))
@@ -519,39 +523,59 @@ class APIState:
 		except Exception as e:
 			logger.error(f"Error guardando el log de URLs: {e}")
 
-	def scan_directory(self, target_dir):
-		logger.info(f"Pegando una ojeada por acá: {target_dir}")
-		music_dir = Path(target_dir).expanduser()
-		if not music_dir.exists():
-			logger.warning(
-				f"Che, este lugar está más pelado que la nada misma: {music_dir}"
-			)
-			return []
-
-		extensions = ["*.flac", "*.m4a", "*.mp3", "*.ogg", "*.wav"]
+	def scan_directory(self, target_dirs: list):
+		logger.info(f"Pegando una ojeada por estas carpetas: {target_dirs}")
+		extensions = ["*.flac", "*.m4a", "*.mp3", "*.ogg", "*.wav", "*.mp4", "*.mkv", "*.avi", "*.webm"]
 		raw_files = []
-		for ext in extensions:
-			raw_files.extend(list(music_dir.rglob(ext)))
+
+		for target_dir in target_dirs:
+			if not target_dir:
+				continue
+
+			music_dir = Path(target_dir).expanduser()
+			if not music_dir.exists():
+				logger.warning(f"Che, este lugar está más pelado que la nada misma: {music_dir}")
+				continue
+
+			for ext in extensions:
+				raw_files.extend(list(music_dir.rglob(ext)))
 
 		logger.info(
-			f"Encontré {len(raw_files)} archivos. Acomodando la lista y leyendo los tags..."
+			f"Encontré {len(raw_files)} archivos en total. Revisando cuáles son nuevos o cambiaron..."
 		)
 		raw_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
 
 		tracks = []
 		self.id_to_current_path.clear()
 		self.path_to_id.clear()
+		new_cache = {}
 
 		for i, f in enumerate(raw_files):
 			if i > 0 and i % 100 == 0:
-				logger.info(f"Ya leí la data de {i}/{len(raw_files)} temazos...")
+				logger.info(f"Ya procesé la data de {i}/{len(raw_files)} joyitas...")
 
-			track_obj = Track(f)
-			track_dict = track_obj.to_dict()
+			file_str = str(f)
+			try:
+				current_mtime = f.stat().st_mtime
+			except Exception:
+				continue
+
+			if file_str in self.track_cache_by_path and self.track_cache_by_path[file_str]["mtime"] == current_mtime:
+				track_dict = self.track_cache_by_path[file_str]["data"]
+				track_hash = track_dict.get("track_hash")
+			else:
+				track_obj = Track(f)
+				track_dict = track_obj.to_dict()
+				track_hash = track_obj.track_hash
+				track_dict["track_hash"] = track_hash
+
+			new_cache[file_str] = {"mtime": current_mtime, "data": track_dict}
 			tracks.append(track_dict)
 
-			self.id_to_current_path[track_obj.track_hash] = track_dict["path"]
-			self.path_to_id[track_dict["path"]] = track_obj.track_hash
+			self.id_to_current_path[track_hash] = track_dict["path"]
+			self.path_to_id[track_dict["path"]] = track_hash
+
+		self.track_cache_by_path = new_cache
 
 		logger.info("¡Listo el escaneo, maestro!")
 		return tracks
@@ -725,7 +749,7 @@ class APIState:
 				else:
 					current_path = self.id_to_current_path.get(track_id)
 
-				if current_path:
+				if current_path and os.path.exists(current_path):
 					monthly_counts[current_path] = len(recent_plays)
 
 		return sorted(
@@ -820,36 +844,28 @@ async def get_state():
 
 
 @app.get("/scan")
-async def scan_library(dir: str = None):
+async def scan_library(dir: str = None, dir2: str = None):
 	while state.is_scanning:
 		logger.info(
 			"Alguien pidió escanear pero ya hay un escaneo en curso, esperando un toque..."
 		)
 		await asyncio.sleep(0.5)
 
-	target_raw = dir or state.initial_dir or "~/Music"
-	target = str(Path(target_raw).expanduser().resolve())
+	target1_raw = dir or state.initial_dir or "~/Music"
+	target2_raw = dir2 or state.secondary_dir
 
-	now = time.time()
-	# Check if we scanned this exact directory in the last 10 minutes (600 seconds)
-	if state.last_scanned_dir == target and (now - state.last_scan_time) < 600:
-		elapsed = int(now - state.last_scan_time)
-		logger.info(
-			f"CACHE HIT: Un cliente quiere {target}. Le pasamos lo que guardamos hace {elapsed}s (alta vagancia)."
-		)
-		return {"data": state.tracks_cache}
+	target_dirs = [str(Path(target1_raw).expanduser().resolve())]
+	if target2_raw:
+		target_dirs.append(str(Path(target2_raw).expanduser().resolve()))
 
-	logger.info(f"CACHE MISS: Hay que laburar. Escaneando {target} desde cero...")
+	logger.info(f"Escaneando {target_dirs} (Aprovechando el caché inteligente por archivo)...")
 
 	# Prendemos el "Cargando" y le avisamos al front
 	state.is_scanning = True
 	await broadcast_state()
 
 	# Hacemos el trabajo pesado
-	state.tracks_cache = await asyncio.to_thread(state.scan_directory, target)
-
-	state.last_scan_time = now
-	state.last_scanned_dir = target
+	state.tracks_cache = await asyncio.to_thread(state.scan_directory, target_dirs)
 
 	# Apagamos el "Cargando" y le avisamos al front
 	state.is_scanning = False
@@ -1013,9 +1029,12 @@ if __name__ == "__main__":
 	parser.add_argument("--host", type=str, default="0.0.0.0")
 	parser.add_argument("--port", type=int, default=9696)
 	parser.add_argument("--dir", type=str, default=None)
+	parser.add_argument("--dir2", type=str, default=None)
 	args = parser.parse_args()
 
 	if args.dir:
 		state.initial_dir = args.dir
+	if args.dir2:
+		state.secondary_dir = args.dir2
 
 	uvicorn.run(app, host=args.host, port=args.port)
