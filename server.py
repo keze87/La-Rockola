@@ -843,6 +843,14 @@ async def get_state():
 	}
 
 
+@app.get("/library")
+async def get_library():
+	"""Returns the already cached library without triggering a new disk scan."""
+	while state.is_scanning:
+		await asyncio.sleep(0.5)
+	return {"data": state.tracks_cache}
+
+
 @app.get("/scan")
 async def scan_library(dir: str = None, dir2: str = None):
 	while state.is_scanning:

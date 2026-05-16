@@ -370,8 +370,12 @@
 
 	<!-- Library Tab -->
 	<section id="tab-library" class="tab-content active">
-		<div class="search-wrapper">
-			<div class="input-field" style="margin-top: 0; position: relative;">
+		<div class="search-wrapper" style="display: flex; gap: 10px; align-items: center;">
+			<button class="btn-floating waves-effect waves-light grey darken-3" onclick="clearSearch(); setTimeout(scrollToCurrentTrack, 50); haptic();" style="flex-shrink: 0;" title="Ir al tema que está sonando">
+				<i class="material-icons">my_location</i>
+			</button>
+
+			<div class="input-field" style="margin-top: 0; flex-grow: 1; position: relative;">
 				<i class="material-icons prefix" style="color: var(--primary);">search</i>
 				<input type="text" id="search-input" placeholder="Buscá un buen tema pa' acompañar los amargos..."
 					oninput="debounceSearch()" style="padding-right: 35px; box-sizing: border-box;" />
@@ -461,7 +465,7 @@
 			<!--<button class="btn waves-effect waves-light red darken-4" onclick="sendCmd('clear_queue')">
 				<i class="material-icons left">delete_sweep</i>Limpiá todo, no seas sucio
 			</button>-->
-			<button class="btn waves-effect waves-light green darken-2" onclick="requestScan()">
+			<button class="btn waves-effect waves-light green darken-2" onclick="loadLibrary(true)">
 				<i class="material-icons left">refresh</i>Pegale otra escaneada
 			</button>
 		</div>
@@ -519,10 +523,30 @@
 
 		// Automatically run this when the page loads
 		window.onload = () => {
-			requestScan();
+			loadLibrary(false); // Fetch cached library without rescanning
 			connectWebSocket();
 			setTimeout(generateQR, 500); // Le damos medio segundo para que asiente la UI
 		};
+
+		async function loadLibrary(forceScan = false) {
+			let endpoint = "/library";
+
+			// Si nos piden forzar el escaneo, cambiamos la ruta y avisamos en la UI
+			if (forceScan) {
+				endpoint = "/scan";
+				document.getElementById("status-icon").innerText = "sync";
+				document.getElementById("status-text").innerText = "[Avisando] Chusmeando qué temas hay, aguantá un cacho, rey...";
+			}
+
+			const res = await apiRequest(endpoint);
+			if (res && res.data) {
+				originalTracks = [...res.data];
+				currentTracks = [...res.data];
+				trackMap = {};
+				res.data.forEach(t => trackMap[t.path] = t);
+				applyFilter();
+			}
+		}
 
 		// --- Networking ---
 		async function apiRequest(endpoint, method = "GET", body = null) {
@@ -631,20 +655,6 @@
 					classes: 'red darken-2 rounded',
 					displayLength: 3000
 				});
-			}
-		}
-
-		async function requestScan() {
-			document.getElementById("status-icon").innerText = "sync";
-			document.getElementById("status-text").innerText = "[Avisando] Chusmeando qué temas hay, aguantá un cacho, rey...";
-
-			const res = await apiRequest("/scan");
-			if (res && res.data) {
-				originalTracks = [...res.data];
-				currentTracks = [...res.data];
-				trackMap = {};
-				res.data.forEach(t => trackMap[t.path] = t);
-				applyFilter();
 			}
 		}
 
@@ -859,6 +869,7 @@
 			if (currentTrackPath) {
 				const track = getTrackInfo(currentTrackPath);
 				const tr = document.createElement("tr");
+				tr.id = "current-queue-row";
 				tr.onclick = () => sendCmd("pause");
 				tr.innerHTML = `
 					<td style="color: var(--primary); font-weight: bold;"><i class="material-icons tiny">play_arrow</i> Sonando piola</td>
