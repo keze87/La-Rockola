@@ -178,16 +178,14 @@ class Track:
 		except Exception as e:
 			logger.warning(f"No le pude leer la mente (metadata) a {self.path}: {e}")
 
-		self.display_title = truncate_text(self.title, 30)
-		self.display_artist = truncate_text(self.artist, 20)
 		self.search_string = f"{self.artist} {self.title}".lower()
 		self.track_hash = str(generate_smart_hash(self.path))
 
 	def to_dict(self):
 		return {
 			"path": str(self.path),
-			"display_title": self.display_title,
-			"display_artist": self.display_artist,
+			"display_title": self.title,
+			"display_artist": self.artist,
 			"duration_str": self.duration_str,
 			"search_string": self.search_string,
 			"title": self.title,
@@ -609,8 +607,8 @@ class APIState:
 
 				self.url_metadata[url] = {
 					"path": url,
-					"display_title": truncate_text(title, 40),
-					"display_artist": truncate_text(artist, 20),
+					"display_title": title,
+					"display_artist": artist,
 					"duration_str": f"{mins}:{secs:02d}",
 					"search_string": f"{artist} {title}".lower(),
 					"title": title,

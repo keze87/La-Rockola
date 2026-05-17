@@ -3,7 +3,8 @@
 
 <head>
 	<meta charset="UTF-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<meta name="viewport"
+		content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 	<title>La Rockola del Carpincho 🦦🧉</title>
 
 	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
@@ -37,7 +38,12 @@
 			display: flex;
 			flex-direction: column;
 			height: 100vh;
+			/* Fallback para navegadores viejos */
+			height: 100dvh;
+			/* Alto dinámico real: evita que la pantalla completa te coma el borde inferior */
 			margin: 0;
+			overflow: hidden;
+			/* Evita scrolleos fantasma del fondo */
 		}
 
 		/* Status Bar Override */
@@ -46,7 +52,8 @@
 			box-shadow: none;
 			border-bottom: 2px solid var(--primary);
 			height: auto;
-			padding: 10px 20px;
+			/* max() asegura que haya un mínimo de 10px, o el tamaño del notch si es más grande */
+			padding: max(10px, env(safe-area-inset-top)) 20px 10px 20px;
 			line-height: 1.5;
 		}
 
@@ -127,7 +134,8 @@
 			flex-grow: 1;
 			overflow-y: auto;
 			background-color: var(--bg-color);
-			padding-bottom: 100px !important;
+			/* Le sumamos la barrita de gestos al colchón del final */
+			padding-bottom: calc(100px + env(safe-area-inset-bottom)) !important;
 		}
 
 		.tab-content.active {
@@ -168,7 +176,7 @@
 
 		th {
 			position: sticky;
-			top: 64px;
+			/* top: 64px; */
 			/* Offset to sit right below the 64px tall search bar */
 			background-color: var(--panel-bg) !important;
 			color: var(--primary);
@@ -188,7 +196,8 @@
 		}
 
 		td {
-			padding: 16px 10px !important; /* Más espacio para dedos gordos */
+			padding: 16px 10px !important;
+			/* Más espacio para dedos gordos */
 			color: var(--text-color);
 		}
 
@@ -234,19 +243,11 @@
 
 		/* UNIFIED BOTTOM PLAYER BAR */
 		#app-control {
-			/*background-color: var(--panel-bg);
-			border-top: 1px solid var(--border);
-			display: flex;
-			justify-content: space-between;
-			align-items: center;
-			padding: 12px 15px;
-			z-index: 1000;
-			flex-shrink: 0; /* Ensures it stays fixed at bottom of flex body */
-
 			position: fixed;
-			bottom: 5px;
-			left: 15px;
-			right: 15px;
+			/* El carpincho esquiva elegantemente el borde inferior físico del teléfono */
+			bottom: calc(5px + env(safe-area-inset-bottom));
+			left: max(15px, env(safe-area-inset-left));
+			right: max(15px, env(safe-area-inset-right));
 			background: linear-gradient(145deg, var(--panel-bg), #2a2420);
 			border: 1px solid var(--border);
 			border-radius: 12px;
@@ -331,12 +332,13 @@
 </head>
 
 <body>
-
 	<!-- Status Bar -->
 	<nav class="top-nav z-depth-1">
 		<div class="status-container">
 			<div id="now-playing">
-				<img id="status-cover" src="" style="display: none; width: 48px; height: 48px; border-radius: 4px; object-fit: cover; flex-shrink: 0;" onerror="this.style.display='none'; document.getElementById('status-icon').style.display='block';">
+				<img id="status-cover" src=""
+					style="display: none; width: 48px; height: 48px; border-radius: 4px; object-fit: cover; flex-shrink: 0;"
+					onerror="this.style.display='none'; document.getElementById('status-icon').style.display='block';">
 
 				<i class="material-icons" id="status-icon">music_note</i>
 				<span id="status-text" class="truncate">[Cheto] Preparando el mate y la música... 🧉</span>
@@ -371,12 +373,14 @@
 	<!-- Library Tab -->
 	<section id="tab-library" class="tab-content active">
 		<div class="search-wrapper" style="display: flex; gap: 10px; align-items: center;">
-			<button class="btn-floating waves-effect waves-light grey darken-3" onclick="clearSearch(); setTimeout(scrollToCurrentTrack, 50); haptic();" style="flex-shrink: 0;" title="Ir al tema que está sonando">
+			<button class="btn-floating waves-effect waves-light grey darken-3"
+				onclick="clearSearch(); setTimeout(scrollToCurrentTrack, 50); haptic();" style="flex-shrink: 0;"
+				title="Ir al tema que está sonando">
 				<i class="material-icons">my_location</i>
 			</button>
 
 			<div class="input-field" style="margin-top: 0; flex-grow: 1; position: relative;">
-				<i class="material-icons prefix" style="color: var(--primary);">search</i>
+				<!-- <i class="material-icons prefix" style="color: var(--primary);">search</i> -->
 				<input type="text" id="search-input" placeholder="Buscá un buen tema pa' acompañar los amargos..."
 					oninput="debounceSearch()" style="padding-right: 35px; box-sizing: border-box;" />
 				<i class="material-icons" id="clear-search" onclick="clearSearch()"
@@ -468,6 +472,9 @@
 			<button class="btn waves-effect waves-light green darken-2" onclick="loadLibrary(true)">
 				<i class="material-icons left">refresh</i>Pegale otra escaneada
 			</button>
+			<button class="btn waves-effect waves-light purple darken-3" onclick="toggleWebFullscreen(); haptic();">
+				<i class="material-icons left">open_in_full</i>Full Rockola
+			</button>
 		</div>
 
 		<div class="section-label">
@@ -484,7 +491,8 @@
 		<div class="player-info" onclick="switchTab('queue'); haptic();">
 			<div class="cover-wrapper">
 				<i id="up-next-icon" class="material-icons" style="color: var(--warning); font-size: 2rem;">album</i>
-				<img id="up-next-cover" src="" style="display: none;" onerror="this.style.display='none'; document.getElementById('up-next-icon').style.display='block';">
+				<img id="up-next-cover" src="" style="display: none;"
+					onerror="this.style.display='none'; document.getElementById('up-next-icon').style.display='block';">
 			</div>
 			<div class="track-info">
 				<div class="up-next-label" id="up-next-label">Fila vacía</div>
@@ -493,7 +501,8 @@
 		</div>
 
 		<div class="player-controls">
-			<button id="btn-play-pause" class="btn-floating btn-large waves-effect waves-light green darken-1" onclick="sendCmd('pause'); haptic(true);">
+			<button id="btn-play-pause" class="btn-floating btn-large waves-effect waves-light green darken-1"
+				onclick="sendCmd('pause'); haptic(true);">
 				<i class="material-icons" id="icon-play-pause" style="font-size: 2.2rem;">play_arrow</i>
 			</button>
 			<button class="btn-floating waves-effect waves-light grey darken-3" onclick="sendCmd('skip'); haptic();">
@@ -510,14 +519,12 @@
 		let currentTracks = [];
 		let filteredTracks = [];
 		let trackMap = {};
-
 		let queueState = [];
 		let historyState = [];
 		let currentTrackPath = null;
 		let isPaused = false;
 		let volume = 100;
 		let urlMetadata = {};
-
 		let searchTimeout = null;
 		let ws = null;
 
@@ -550,7 +557,12 @@
 
 		// --- Networking ---
 		async function apiRequest(endpoint, method = "GET", body = null) {
-			const options = { method, headers: { "Content-Type": "application/json" } };
+			const options = {
+				method,
+				headers: {
+					"Content-Type": "application/json"
+				}
+			};
 			if (body) options.body = JSON.stringify(body);
 
 			try {
@@ -624,7 +636,10 @@
 		}
 
 		async function sendCmd(cmd, data = {}) {
-			return await apiRequest("/command", "POST", { cmd: cmd, ...data });
+			return await apiRequest("/command", "POST", {
+				cmd: cmd,
+				...data
+			});
 		}
 
 		// Agrega/Saca de la fila y tira el toast con el estado
@@ -632,9 +647,9 @@
 			const wasInQueue = queueState.includes(path);
 			const track = getTrackInfo(path);
 			const title = track.display_title || "El temita";
-
-			const res = await sendCmd("toggle_queue", { path: path });
-
+			const res = await sendCmd("toggle_queue", {
+				path: path
+			});
 			if (res && res.status === "ok") {
 				if (!wasInQueue) {
 					M.toast({
@@ -675,7 +690,9 @@
 			const input = document.getElementById("url-input");
 			const url = input.value.trim();
 			if (url) {
-				const res = await sendCmd("add_url", { path: url });
+				const res = await sendCmd("add_url", {
+					path: url
+				});
 				if (res && res.status === "ok") {
 					input.value = "";
 					M.toast({
@@ -709,8 +726,6 @@
 			}
 
 			document.title = tabTitle;
-
-			if (title.length > 50) title = title.substring(0, 49) + "…";
 
 			// Update Status Bar (Tapa vs Ícono)
 			const statusIconEl = document.getElementById("status-icon");
@@ -838,9 +853,10 @@
 
 				tr.onclick = () => {
 					if (currentTrackPath === track.path) sendCmd("pause");
-					else sendCmd("toggle_queue", { path: track.path });
+					else sendCmd("toggle_queue", {
+						path: track.path
+					});
 				};
-
 				tr.innerHTML = `
 					<td style="text-align: center;">${qSym}</td>
 					<td style="font-weight: 500;">${track.display_title || track.title}</td>
@@ -857,7 +873,10 @@
 			historyState.forEach((path, i) => {
 				const track = getTrackInfo(path);
 				const tr = document.createElement("tr");
-				tr.onclick = () => sendCmd("jump", { type: "history", index: i });
+				tr.onclick = () => sendCmd("jump", {
+					type: "history",
+					index: i
+				});
 				tr.innerHTML = `
 					<td style="color: var(--success);"><i class="material-icons tiny">check</i> Ya sonó</td>
 					<td style="font-weight: 500;">${track.display_title}</td>
@@ -883,8 +902,9 @@
 				const track = getTrackInfo(path);
 				const tr = document.createElement("tr");
 				tr.className = "swipe-row";
-
-				tr.addEventListener('touchstart', handleTouchStart, { passive: true });
+				tr.addEventListener('touchstart', handleTouchStart, {
+					passive: true
+				});
 				tr.addEventListener('touchend', (e) => handleTouchEnd(e, i, tr));
 				tr.innerHTML = `
 					<td style="text-align: center; white-space: nowrap;">
@@ -911,7 +931,10 @@
 			if (rowId) {
 				const currentRow = document.getElementById(rowId);
 				if (currentRow) {
-					currentRow.scrollIntoView({ behavior: "smooth", block: "center" });
+					currentRow.scrollIntoView({
+						behavior: "smooth",
+						block: "center"
+					});
 				}
 			}
 		}
@@ -932,7 +955,9 @@
 
 		function removeQueueItem(event, index) {
 			event.stopPropagation();
-			sendCmd("remove_queue_item", { index: index });
+			sendCmd("remove_queue_item", {
+				index: index
+			});
 		}
 
 		function moveQueueItem(event, index, target) {
@@ -947,7 +972,10 @@
 
 			// Solo mandamos el comando si no está ya en ese lugar
 			if (newIndex !== undefined && newIndex !== index && newIndex >= 0 && newIndex < queueState.length) {
-				sendCmd("move_queue_item", { index: index, new_index: newIndex });
+				sendCmd("move_queue_item", {
+					index: index,
+					new_index: newIndex
+				});
 			}
 		}
 
@@ -977,12 +1005,10 @@
 			} else {
 				clearBtn.style.display = "none";
 			}
-
 			if (!query) {
 				filteredTracks = [...currentTracks];
 			} else {
 				const normQuery = normalizeString(query);
-
 				let exactMatches = [];
 				let fuzzyMatches = [];
 
@@ -1009,8 +1035,9 @@
 		function setVolume(val) {
 			volume = parseInt(val);
 			// Send the absolute volume value to the backend
-			sendCmd('set_volume', { vollevel: volume });
-
+			sendCmd('set_volume', {
+				vollevel: volume
+			});
 			// Update the UI immediately so it feels responsive
 			updateUI();
 		}
@@ -1033,6 +1060,7 @@
 
 		// Generador de QR
 		let qrCreado = false;
+
 		function generateQR() {
 			const qrContainer = document.getElementById("qrcode");
 			if (!qrCreado && qrContainer) {
@@ -1108,6 +1136,24 @@
 			}
 			applyFilter();
 			switchTab('library');
+		}
+
+		function toggleWebFullscreen() {
+			if (!document.fullscreenElement) {
+				// Si no está en pantalla completa, la agrandamos
+				document.documentElement.requestFullscreen().catch((err) => {
+					M.toast({
+						html: `<i class="material-icons left">error</i> El navegador se puso la gorra: ${err.message}`,
+						classes: 'red darken-2 rounded',
+						displayLength: 3000
+					});
+				});
+			} else {
+				// Si ya está en pantalla completa, la achicamos
+				if (document.exitFullscreen) {
+					document.exitFullscreen();
+				}
+			}
 		}
 	</script>
 </body>
