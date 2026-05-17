@@ -43,16 +43,38 @@
 	<style>
 		/* Fixes para Mobile y Scrollbars */
 		body {
-			height: 100dvh;
+			height: 100vh;
+			height: 100dvh; /* Fallback dinámico */
+			margin: 0;
 			display: flex;
 			flex-direction: column;
 			overflow: hidden;
+			background-color: #2b2622;
+		}
+
+		#app {
+			display: flex;
+			flex-direction: column;
+			height: 100%;
+			width: 100%;
+			position: relative;
 		}
 
 		.tab-content {
 			overflow-y: auto;
 			padding-bottom: calc(100px + env(safe-area-inset-bottom));
 			flex-grow: 1;
+			/* El !important es vital (estaba en tu código original) para que otras clases no lo pisen */
+			padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px)) !important;
+		}
+
+		/* Barra del reproductor flotante idéntica a tu archivo original */
+		.floating-player {
+			position: fixed;
+			z-index: 50;
+			bottom: calc(5px + env(safe-area-inset-bottom, 0px));
+			left: max(15px, env(safe-area-inset-left, 0px));
+			right: max(15px, env(safe-area-inset-right, 0px));
 		}
 
 		/* Para los swipes de la fila */
@@ -77,8 +99,8 @@
 	</style>
 </head>
 
-<body class="bg-carpincho-bg text-carpincho-text font-sans antialiased">
-	<div id="app" class="flex flex-col h-full relative">
+<body class="text-carpincho-text font-sans antialiased">
+	<div id="app">
 
 		<div
 			class="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2 w-[90%] max-w-sm pointer-events-none">
@@ -122,14 +144,14 @@
 		<section v-show="activeTab === 'library'" class="tab-content bg-carpincho-bg relative">
 			<div class="sticky top-0 bg-carpincho-bg px-4 pt-3 pb-2 z-10 shadow-md flex gap-2 items-center">
 				<button @click="scrollToCurrent(); haptic()"
-					class="bg-gray-800 p-2 rounded-full text-white active:scale-90 transition shadow"
+					class="bg-gray-800 w-10 h-10 shrink-0 flex justify-center items-center rounded-full text-white active:scale-90 transition shadow"
 					title="Ir al tema actual">
 					<i class="material-icons">my_location</i>
 				</button>
 				<div class="relative flex-grow">
 					<input v-model="searchQuery" type="text" placeholder="Buscá un buen tema pa' acompañar..."
 						class="w-full bg-transparent border-b border-carpincho-primary focus:border-carpincho-secondary outline-none py-2 text-carpincho-text pr-8 placeholder-gray-500 transition-colors">
-					<i v-show="searchInput" @click="searchInput = ''; setTimeout(scrollToCurrent, 50)" ...>
+					<i v-show="searchQuery" @click="searchQuery = ''; setTimeout(scrollToCurrent, 50)"
 						class="material-icons absolute right-2 top-2 cursor-pointer text-carpincho-secondary">close</i>
 				</div>
 			</div>
@@ -168,7 +190,7 @@
 				<input v-model="newUrl" type="text" placeholder="Pegá el link de YouTube acá, máquina..."
 					class="w-full bg-transparent border-b border-carpincho-primary focus:border-carpincho-secondary outline-none py-2 text-carpincho-text">
 				<button @click="addUrl"
-					class="bg-green-700 p-2 rounded-full text-white active:scale-90 transition shadow shrink-0">
+					class="bg-green-700 w-10 h-10 shrink-0 flex justify-center items-center rounded-full text-white active:scale-90 transition shadow">
 					<i class="material-icons">add</i>
 				</button>
 			</div>
@@ -220,7 +242,8 @@
 			</table>
 		</section>
 
-		<section v-show="activeTab === 'top'" class="tab-content p-4">
+		<!-- CORREGIDO EL PADDING (px-4 pt-4) PARA DEJAR LUGAR ABAJO -->
+		<section v-show="activeTab === 'top'" class="tab-content px-4 pt-4">
 			<ul v-if="topPlayedState.length > 0" class="flex flex-col">
 				<li v-for="(t, i) in topPlayedState" :key="t.path" @click="toggleQueue(t.path)"
 					class="p-4 border-b border-carpincho-border flex items-center cursor-pointer active:scale-[0.98] transition hover:bg-carpincho-panel rounded-lg">
@@ -243,7 +266,7 @@
 			<div v-else class="text-center p-8 text-carpincho-primary font-medium">Todavía no sonó nada, maestro.</div>
 		</section>
 
-		<section v-show="activeTab === 'controls'" class="tab-content p-6">
+		<section v-show="activeTab === 'controls'" class="tab-content px-6 pt-6">
 			<div class="flex items-center text-carpincho-warning mb-8 bg-carpincho-panel p-4 rounded-xl shadow">
 				<i class="material-icons mr-3">{{ volIcon }}</i>
 				<input v-model="volume" @change="setVolume" type="range" min="0" max="110"
@@ -292,7 +315,7 @@
 		</section>
 
 		<section
-			class="fixed bottom-[calc(5px+env(safe-area-inset-bottom))] left-[max(15px,env(safe-area-inset-left))] right-[max(15px,env(safe-area-inset-right))] bg-gradient-to-br from-carpincho-panel to-[#2a2420] border border-carpincho-border rounded-xl p-3 z-50 flex justify-between items-center shadow-[0_4px_15px_rgba(0,0,0,0.5)]">
+			class="floating-player bg-gradient-to-br from-carpincho-panel to-[#2a2420] border border-carpincho-border rounded-xl p-3 flex justify-between items-center shadow-[0_4px_15px_rgba(0,0,0,0.5)]">
 			<div class="flex items-center grow overflow-hidden cursor-pointer" @click="switchTab('queue'); haptic()">
 				<div
 					class="w-12 h-12 mr-3 shrink-0 bg-carpincho-bg rounded-lg flex justify-center items-center overflow-hidden relative">
@@ -574,8 +597,8 @@
 				},
 				switchTab(tabId) {
 					this.activeTab = tabId;
-					if (tabId === 'queue' || tabId === 'library') {
-						setTimeout(this.scrollToCurrent, 50);
+					if (tabId === 'queue') { //|| tabId === 'library') {
+						setTimeout(this.scrollToCurrent, 200);
 					}
 				},
 				scrollToCurrent() {
