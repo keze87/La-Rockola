@@ -9,7 +9,7 @@
 
 	<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-	<script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+	<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 	<script src="https://cdn.tailwindcss.com"></script>
 
 	<script>
@@ -44,7 +44,8 @@
 		/* Fixes para Mobile y Scrollbars */
 		body {
 			height: 100vh;
-			height: 100dvh; /* Fallback dinámico */
+			height: 100dvh;
+			/* Fallback dinámico */
 			margin: 0;
 			display: flex;
 			flex-direction: column;
@@ -459,6 +460,14 @@
 				}
 			},
 			methods: {
+				updateDocumentTitle() {
+					if (this.isPlaying && this.currentTrackPath) {
+						const t = this.getTrackInfo(this.currentTrackPath);
+						document.title = `${t.display_title} 🦦🧉`;
+					} else {
+						document.title = "La Rockola del Carpincho 🦦🧉";
+					}
+				},
 				async loadLibrary(forceScan = false) {
 					let endpoint = forceScan ? "/scan" : "/library";
 					if (forceScan) this.isScanning = true;
@@ -481,16 +490,21 @@
 					const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 					this.ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
 					this.ws.onmessage = (event) => {
-						const data = JSON.parse(event.data);
-						if (data.type === 'state_update') {
-							if (data.queue) this.queueState = data.queue;
-							if (data.history) this.historyState = data.history;
-							if (data.current_track !== undefined) this.currentTrackPath = data.current_track;
-							if (data.url_metadata) this.urlMetadata = data.url_metadata;
-							if (data.top_played) this.topPlayedState = data.top_played;
-							if (data.paused !== undefined) this.isPaused = data.paused;
-							if (data.is_scanning !== undefined) this.isScanning = data.is_scanning;
-							if (data.volume !== undefined) this.volume = data.volume;
+						try {
+							const data = JSON.parse(event.data);
+
+							if (data.type === 'state_update') {
+								if (data.queue) this.queueState = data.queue;
+								if (data.history) this.historyState = data.history;
+								if (data.current_track !== undefined) this.currentTrackPath = data.current_track;
+								if (data.url_metadata) this.urlMetadata = data.url_metadata;
+								if (data.top_played) this.topPlayedState = data.top_played;
+								if (data.paused !== undefined) this.isPaused = data.paused;
+								if (data.is_scanning !== undefined) this.isScanning = data.is_scanning;
+								if (data.volume !== undefined) this.volume = data.volume;
+							}
+						} catch (e) {
+							console.error("¡Se rompió el JSON que mandó el server, fiera!", e, event.data);
 						}
 					};
 					this.ws.onclose = () => {
@@ -699,14 +713,6 @@
 					navigator.mediaSession.setActionHandler('nexttrack', () => this.sendCmd('skip'));
 				}
 			},
-			updateDocumentTitle() {
-				if (this.isPlaying && this.currentTrackPath) {
-					const t = this.getTrackInfo(this.currentTrackPath);
-					document.title = `${t.display_title} 🦦🧉`;
-				} else {
-					document.title = 'La Rockola del Carpincho 🦦🧉';
-				}
-			}
 		}).mount('#app');
 	</script>
 </body>

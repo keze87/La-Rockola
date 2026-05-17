@@ -1011,6 +1011,7 @@ async def websocket_endpoint(websocket: WebSocket):
 			{
 				"current_track": state.current_track,
 				"history": state.history,
+				"is_scanning": state.is_scanning,
 				"paused": state.mpv_paused,
 				"queue": state.queue,
 				"top_played": state.get_top_played(),
