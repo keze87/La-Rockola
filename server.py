@@ -432,7 +432,7 @@ class ConnectionManager:
 			self.active_connections.remove(websocket)
 
 	async def broadcast(self, message: dict):
-		logger.debug(f"AVISANDO A LA MUCHACHADA: {json.dumps(message, indent=2)}")
+		logger.debug(f"AVISANDO A LA MUCHACHADA: {message}") #{json.dumps(message, indent=2)}")
 		for connection in self.active_connections.copy():
 			try:
 				await connection.send_json(message)
