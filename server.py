@@ -919,6 +919,7 @@ class CommandRequest(BaseModel):
 	index: int = None
 	vollevel: int = None
 	new_index: int = None
+	amount: int = None
 
 
 @app.post("/command")
@@ -992,6 +993,10 @@ async def handle_command(req: CommandRequest):
 				state.queue.insert(req.new_index, item)
 	elif cmd == "jump":
 		await state.jump(req.type, req.index)
+	elif cmd == "seek":
+		if req.amount is not None:
+			cmd_payload = json.dumps({"command": ["seek", req.amount]})
+			await state.mpv._send(cmd_payload)
 
 	# Notify clients of state change
 	await broadcast_state()

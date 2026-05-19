@@ -160,8 +160,7 @@
 			<table class="w-full text-left border-collapse">
 				<thead>
 					<tr>
-						<th
-							class="p-3 text-carpincho-primary bg-carpincho-panel sticky z-100 w-16 text-center">
+						<th class="p-3 text-carpincho-primary bg-carpincho-panel sticky z-100 w-16 text-center">
 							Orden</th>
 						<th class="p-3 text-carpincho-primary bg-carpincho-panel sticky z-100">El Temón</th>
 						<th class="p-3 text-carpincho-primary bg-carpincho-panel sticky z-100">Artista</th>
@@ -272,6 +271,19 @@
 				<i class="material-icons mr-3">{{ volIcon }}</i>
 				<input v-model="volume" @change="setVolume" type="range" min="0" max="110"
 					class="w-full accent-carpincho-warning">
+			</div>
+
+			<div class="text-center font-bold text-carpincho-secondary mb-4 uppercase tracking-wider text-sm"><i
+					class="material-icons align-middle mr-1">elderly_woman</i> Rosalía</div>
+			<div class="flex justify-center gap-3 mb-8 flex-wrap">
+				<button @click="sendCmd('seek', { amount: -60 }); haptic()"
+					class="bg-gray-800 hover:bg-gray-700 text-white px-5 py-2 rounded-full font-medium active:scale-95 transition flex items-center gap-2"><i
+						class="material-icons">fast_rewind</i> Un pasito para atrás</button>
+				</button>
+				<button @click="sendCmd('seek', { amount: 60 }); haptic()"
+					class="bg-gray-800 hover:bg-gray-700 text-white px-5 py-2 rounded-full font-medium active:scale-95 transition flex items-center gap-2">Un
+					pasito para adelante <i class="material-icons">fast_forward</i></button>
+				</button>
 			</div>
 
 			<div class="text-center font-bold text-carpincho-secondary mb-4 uppercase tracking-wider text-sm"><i
