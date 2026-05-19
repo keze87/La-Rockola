@@ -125,10 +125,30 @@
 					<h1 class="text-3xl font-bold mb-2 truncate w-full px-4">{{ currentTrackInfo.title }}</h1>
 					<h2 class="text-xl text-carpincho-secondary truncate w-full px-4">{{ currentTrackInfo.artist }}</h2>
 
-					<button @click="sendCmd('pause'); haptic(true)"
-						class="mt-12 bg-carpincho-primary hover:bg-carpincho-secondary text-white w-20 h-20 rounded-full flex items-center justify-center shadow-lg active:scale-90 transition">
-						<i class="material-icons text-5xl">{{ isPlaying ? 'pause' : 'play_arrow' }}</i>
-					</button>
+					<div class="mt-12 flex items-center justify-center gap-6 w-full px-8">
+						<button @click="sendCmd('prev'); haptic()"
+							class="text-white hover:text-carpincho-warning transition active:scale-90">
+							<i class="material-icons text-5xl">skip_previous</i>
+						</button>
+
+						<button @click="sendCmd('pause'); haptic(true)"
+							class="bg-carpincho-primary hover:bg-carpincho-secondary text-white w-20 h-20 shrink-0 rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(166,124,82,0.4)] active:scale-90 transition">
+							<i class="material-icons text-5xl">{{ isPlaying ? 'pause' : 'play_arrow' }}</i>
+						</button>
+
+						<button @click="sendCmd('skip'); haptic()"
+							class="text-white hover:text-carpincho-warning transition active:scale-90">
+							<i class="material-icons text-5xl">skip_next</i>
+						</button>
+					</div>
+
+					<div
+						class="mt-10 flex items-center text-gray-300 w-full px-8 gap-4 opacity-80 hover:opacity-100 transition">
+						<i class="material-icons text-sm">{{ volume == 0 ? 'volume_off' : 'volume_down' }}</i>
+						<input v-model="volume" @change="setVolume" type="range" min="0" max="110"
+							class="w-full accent-carpincho-warning h-1 bg-gray-600 rounded-lg appearance-none outline-none">
+						<i class="material-icons text-sm">volume_up</i>
+					</div>
 				</div>
 			</div>
 		</transition>
@@ -144,8 +164,8 @@
 			</transition-group>
 		</div>
 
-		<nav
-			class="bg-carpincho-panel border-b-2 border-carpincho-primary px-5 pb-2 pt-[max(10px,env(safe-area-inset-top))] shrink-0">
+		<nav class="bg-carpincho-panel border-b-2 border-carpincho-primary px-5 pb-2 pt-[max(10px,env(safe-area-inset-top))] shrink-0"
+			@click="isFogonMode = true; haptic()">
 			<div class="flex items-center justify-center font-bold gap-2 text-carpincho-text">
 				<img v-if="currentTrackPath && !currentTrackPath.startsWith('http') && !isScanning"
 					:src="'/cover?path=' + encodeURIComponent(currentTrackPath)"
@@ -274,10 +294,11 @@
 							<i class="material-icons text-carpincho-warning"
 								:class="{'animate-pulse': queueState.length === 0}">auto_awesome</i>
 						</td>
-						<td class="p-4 italic" :class="queueState.length === 0 ? 'text-carpincho-warning font-bold' : 'text-[#a6adc8]'">
+						<td class="p-4 italic"
+							:class="queueState.length === 0 ? 'text-carpincho-warning font-bold' : 'text-[#a6adc8]'">
 							{{ queueState.length === 0 ? 'DJ Carpincho está eligiendo un temazo...' : 'Al vaciarse la fila, entra el DJ' }}
 						</td>
-						<td class="p-4 text-[#a6adc8] italic">Automático 🦦</td>
+						<td class="p-4 text-[#a6adc8] italic">🦦</td>
 					</tr>
 				</tbody>
 			</table>
@@ -342,9 +363,8 @@
 			</div>
 
 			<div class="text-center font-bold text-carpincho-secondary mb-4 uppercase tracking-wider text-sm"><i
-					class="material-icons align-middle mr-1">auto_awesome</i> Automatización</div>
-
-			<div class="flex flex-col gap-3 mb-8">
+					class="material-icons align-middle mr-1">celebration</i> La Joda</div>
+			<div class="flex justify-center gap-3 mb-4 flex-wrap">
 				<div
 					class="flex items-center justify-between bg-carpincho-bg p-4 rounded-xl border border-carpincho-border shadow-sm">
 					<div class="text-left">
@@ -359,16 +379,6 @@
 						</div>
 					</label>
 				</div>
-
-				<button @click="isFogonMode = true; haptic()"
-					class="bg-carpincho-panel hover:bg-carpincho-border text-white p-4 rounded-xl border border-carpincho-border shadow-sm font-medium active:scale-95 transition flex items-center justify-center gap-2">
-					<i class="material-icons text-carpincho-warning">local_fire_department</i> Entrar al Modo Fogón
-				</button>
-			</div>
-
-			<div class="text-center font-bold text-carpincho-secondary mb-4 uppercase tracking-wider text-sm"><i
-					class="material-icons align-middle mr-1">celebration</i> La Joda</div>
-			<div class="flex justify-center gap-3 mb-4 flex-wrap">
 				<button @click="sendCmd('stop')"
 					class="bg-red-700 hover:bg-red-600 text-white px-5 py-2 rounded-full font-medium active:scale-95 transition flex items-center gap-2"><i
 						class="material-icons">stop</i> Cortala de una</button>
