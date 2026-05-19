@@ -102,6 +102,36 @@
 
 <body class="text-carpincho-text font-sans antialiased">
 	<div id="app">
+		<transition enter-active-class="transition-opacity duration-500"
+			leave-active-class="transition-opacity duration-500" enter-from-class="opacity-0"
+			leave-to-class="opacity-0">
+			<div v-if="isFogonMode"
+				class="fixed inset-0 z-[10000] bg-black text-white flex flex-col items-center justify-center p-6 bg-cover bg-center"
+				:style="fogonBackgroundStyle">
+				<div class="absolute inset-0 bg-black/80 backdrop-blur-xl"></div>
+
+				<div class="relative z-10 flex flex-col items-center text-center w-full max-w-md">
+					<button @click="isFogonMode = false; haptic()"
+						class="absolute -top-16 right-0 p-2 text-gray-400 hover:text-white transition">
+						<i class="material-icons text-4xl">keyboard_arrow_down</i>
+					</button>
+
+					<div
+						class="w-64 h-64 md:w-80 md:h-80 bg-carpincho-bg rounded-2xl shadow-[0_10px_50px_rgba(0,0,0,0.8)] mb-8 flex items-center justify-center overflow-hidden">
+						<img v-if="currentCoverUrl" :src="currentCoverUrl" class="w-full h-full object-cover">
+						<i v-else class="material-icons text-[8rem] text-carpincho-warning">album</i>
+					</div>
+
+					<h1 class="text-3xl font-bold mb-2 truncate w-full px-4">{{ currentTrackInfo.title }}</h1>
+					<h2 class="text-xl text-carpincho-secondary truncate w-full px-4">{{ currentTrackInfo.artist }}</h2>
+
+					<button @click="sendCmd('pause'); haptic(true)"
+						class="mt-12 bg-carpincho-primary hover:bg-carpincho-secondary text-white w-20 h-20 rounded-full flex items-center justify-center shadow-lg active:scale-90 transition">
+						<i class="material-icons text-5xl">{{ isPlaying ? 'pause' : 'play_arrow' }}</i>
+					</button>
+				</div>
+			</div>
+		</transition>
 
 		<div
 			class="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2 w-[90%] max-w-sm pointer-events-none">
@@ -238,6 +268,17 @@
 						<td class="p-4 text-[#a6adc8]" @click="sendCmd('jump', { type: 'queue', index: i })">{{
 							getTrackInfo(path).display_artist }}</td>
 					</tr>
+
+					<tr v-if="djCarpinchoEnabled" class="border-b border-carpincho-border bg-carpincho-panel/50">
+						<td class="p-4 flex justify-center">
+							<i class="material-icons text-carpincho-warning"
+								:class="{'animate-pulse': queueState.length === 0}">auto_awesome</i>
+						</td>
+						<td class="p-4 italic" :class="queueState.length === 0 ? 'text-carpincho-warning font-bold' : 'text-[#a6adc8]'">
+							{{ queueState.length === 0 ? 'DJ Carpincho está eligiendo un temazo...' : 'Al vaciarse la fila, entra el DJ' }}
+						</td>
+						<td class="p-4 text-[#a6adc8] italic">Automático 🦦</td>
+					</tr>
 				</tbody>
 			</table>
 		</section>
@@ -301,6 +342,31 @@
 			</div>
 
 			<div class="text-center font-bold text-carpincho-secondary mb-4 uppercase tracking-wider text-sm"><i
+					class="material-icons align-middle mr-1">auto_awesome</i> Automatización</div>
+
+			<div class="flex flex-col gap-3 mb-8">
+				<div
+					class="flex items-center justify-between bg-carpincho-bg p-4 rounded-xl border border-carpincho-border shadow-sm">
+					<div class="text-left">
+						<div class="font-bold text-carpincho-text">DJ Carpincho</div>
+						<div class="text-xs text-[#a6adc8]">Tira un tema random nuevo si se vacía la fila</div>
+					</div>
+					<label class="relative inline-flex items-center cursor-pointer">
+						<input type="checkbox" :checked="djCarpinchoEnabled" @change="toggleDjCarpincho"
+							class="sr-only peer">
+						<div
+							class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-carpincho-success">
+						</div>
+					</label>
+				</div>
+
+				<button @click="isFogonMode = true; haptic()"
+					class="bg-carpincho-panel hover:bg-carpincho-border text-white p-4 rounded-xl border border-carpincho-border shadow-sm font-medium active:scale-95 transition flex items-center justify-center gap-2">
+					<i class="material-icons text-carpincho-warning">local_fire_department</i> Entrar al Modo Fogón
+				</button>
+			</div>
+
+			<div class="text-center font-bold text-carpincho-secondary mb-4 uppercase tracking-wider text-sm"><i
 					class="material-icons align-middle mr-1">celebration</i> La Joda</div>
 			<div class="flex justify-center gap-3 mb-4 flex-wrap">
 				<button @click="sendCmd('stop')"
@@ -334,11 +400,14 @@
 					class="w-12 h-12 mr-3 shrink-0 bg-carpincho-bg rounded-lg flex justify-center items-center overflow-hidden relative">
 					<img v-if="upNextCoverUrl" :src="upNextCoverUrl" class="absolute w-full h-full object-cover"
 						@error="upNextCoverUrl = null">
+					<i v-else-if="djCarpinchoEnabled && queueState.length === 0"
+						class="material-icons text-carpincho-warning text-[2rem] animate-pulse">auto_awesome</i>
 					<i v-else class="material-icons text-carpincho-warning text-[2rem]">album</i>
 				</div>
 				<div class="grow overflow-hidden flex flex-col justify-center">
-					<div class="text-[0.7rem] text-carpincho-primary uppercase tracking-wider font-bold">{{
-						queueState.length > 0 ? 'Próximo Temazo' : 'Fin de la fila' }}</div>
+					<div class="text-[0.7rem] text-carpincho-primary uppercase tracking-wider font-bold">
+						{{ queueState.length > 0 ? 'Próximo Temazo' : (djCarpinchoEnabled ? 'Al rescate' : 'Fin de la fila') }}
+					</div>
 					<div class="text-[0.95rem] font-bold truncate text-carpincho-text">{{ upNextTitle }}</div>
 				</div>
 			</div>
@@ -364,10 +433,13 @@
 			data() {
 				return {
 					activeTab: 'library',
+					autoDjTimer: null,
 					brokenCovers: new Set(),
 					currentTrackPath: null,
 					currentTracks: [],
+					djCarpinchoEnabled: false,
 					historyState: [],
+					isFogonMode: false,
 					isPaused: false,
 					isScanning: false,
 					newUrl: '',
@@ -406,7 +478,28 @@
 					]
 				}
 			},
+
 			computed: {
+				currentCoverUrl() {
+					if (this.currentTrackPath && !this.currentTrackPath.startsWith('http')) {
+						return '/cover?path=' + encodeURIComponent(this.currentTrackPath);
+					}
+					return null;
+				},
+
+				fogonBackgroundStyle() {
+					if (this.currentCoverUrl) {
+						return { backgroundImage: `url('${this.currentCoverUrl}')` };
+					}
+					return { backgroundColor: '#1f1a17' };
+				},
+
+				currentTrackInfo() {
+					if (!this.currentTrackPath) return { title: "Silencio estampa", artist: "Nadie" };
+					const t = this.getTrackInfo(this.currentTrackPath);
+					return { title: t.display_title, artist: t.display_artist };
+				},
+
 				filteredTracks() {
 					if (!this.searchQuery) return this.currentTracks;
 					const q = this.normalizeString(this.searchQuery);
@@ -429,27 +522,38 @@
 					});
 					return exact.concat(fuzzy);
 				},
+
 				isPlaying() {
 					return this.currentTrackPath && !this.isPaused;
 				},
+
 				currentTrackTitle() {
 					if (!this.currentTrackPath) return "Silencio estampa. Poné algo, fiera.";
 					const t = this.getTrackInfo(this.currentTrackPath);
 					return `${t.display_artist} - ${t.display_title}`;
 				},
+
 				volIcon() {
 					if (this.volume == 0) return "volume_off";
 					if (this.volume <= 40) return "volume_down";
 					if (this.volume <= 100) return "volume_up";
 					return "surround_sound";
 				},
+
 				upNextTitle() {
+					// 1. Si hay fila normal, mostramos eso.
 					if (this.queueState.length > 0) {
 						const t = this.getTrackInfo(this.queueState[0]);
 						return `${t.display_title} - ${t.display_artist}`;
 					}
+					// 2. Si NO hay fila, pero el DJ está prendido...
+					if (this.djCarpinchoEnabled) {
+						return "DJ Carpincho activado...";
+					}
+					// 3. Si no hay fila y el DJ está apagado.
 					return this.currentTrackPath ? "Termina este y nos re vimos" : "Agregá algo pa' escuchar";
 				},
+
 				upNextCoverUrl() {
 					if (this.queueState.length > 0 && !this.queueState[0].startsWith('http')) {
 						return '/cover?path=' + encodeURIComponent(this.queueState[0]);
@@ -457,20 +561,26 @@
 					return null;
 				}
 			},
+
 			watch: {
 				searchQuery() { },
+
 				activeTab(newTab) {
 					if (newTab === 'controls' && !this.qrCreado) {
 						setTimeout(this.generateQR, 300);
 					}
 				},
+
 				currentTrackPath() {
 					this.updateDocumentTitle();
 				},
+
 				isPlaying() {
 					this.updateDocumentTitle();
-				}
+				},
+
 			},
+
 			methods: {
 				updateDocumentTitle() {
 					if (this.isPlaying && this.currentTrackPath) {
@@ -480,6 +590,7 @@
 						document.title = "La Rockola del Carpincho 🦦🧉";
 					}
 				},
+
 				async loadLibrary(forceScan = false) {
 					let endpoint = forceScan ? "/scan" : "/library";
 					if (forceScan) this.isScanning = true;
@@ -498,6 +609,7 @@
 						if (forceScan) this.isScanning = false;
 					}
 				},
+
 				connectWebSocket() {
 					const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 					this.ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
@@ -506,13 +618,14 @@
 							const data = JSON.parse(event.data);
 
 							if (data.type === 'state_update') {
-								if (data.queue) this.queueState = data.queue;
-								if (data.history) this.historyState = data.history;
 								if (data.current_track !== undefined) this.currentTrackPath = data.current_track;
-								if (data.url_metadata) this.urlMetadata = data.url_metadata;
-								if (data.top_played) this.topPlayedState = data.top_played;
-								if (data.paused !== undefined) this.isPaused = data.paused;
+								if (data.dj_carpincho_enabled !== undefined) this.djCarpinchoEnabled = data.dj_carpincho_enabled;
+								if (data.history) this.historyState = data.history;
 								if (data.is_scanning !== undefined) this.isScanning = data.is_scanning;
+								if (data.paused !== undefined) this.isPaused = data.paused;
+								if (data.queue) this.queueState = data.queue;
+								if (data.top_played) this.topPlayedState = data.top_played;
+								if (data.url_metadata) this.urlMetadata = data.url_metadata;
 								if (data.volume !== undefined) this.volume = data.volume;
 							}
 						} catch (e) {
@@ -524,6 +637,7 @@
 						setTimeout(this.connectWebSocket, 1000);
 					};
 				},
+
 				async sendCmd(cmd, data = {}) {
 					try {
 						const res = await fetch("/command", {
@@ -531,6 +645,7 @@
 							headers: {
 								"Content-Type": "application/json"
 							},
+
 							body: JSON.stringify({
 								cmd,
 								...data
@@ -541,6 +656,7 @@
 						this.showToast("Error mandando comando fiera.", "error");
 					}
 				},
+
 				getTrackInfo(path) {
 					if (this.trackMap[path]) return this.trackMap[path];
 					if (this.urlMetadata[path]) return this.urlMetadata[path];
@@ -550,9 +666,11 @@
 						display_artist: isUrl ? "🌐 De la Internet" : "Vaya uno a saber"
 					};
 				},
+
 				queueIndex(path) {
 					return this.queueState.indexOf(path);
 				},
+
 				async toggleQueue(path, mostrarToast = true) {
 					const wasInQueue = this.queueState.includes(path);
 					const title = this.getTrackInfo(path).display_title;
@@ -568,10 +686,12 @@
 						this.showToast("Uy, no se pudo agregar el tema.", "error");
 					}
 				},
+
 				handleLibraryClick(track) {
 					if (this.currentTrackPath === track.path) this.sendCmd("pause");
 					else this.toggleQueue(track.path, false); // Pasamos 'false' para que no muestre el toast
 				},
+
 				async addUrl() {
 					if (!this.newUrl.trim()) return;
 					const res = await this.sendCmd("add_url", {
@@ -584,11 +704,13 @@
 						this.showToast("Pifió agregando el link. ¿Estás sin WiFi?", "error");
 					}
 				},
+
 				removeQueueItem(index) {
 					this.sendCmd("remove_queue_item", {
 						index
 					});
 				},
+
 				moveQueueItem(index, target) {
 					let newIndex = target === 'first' ? 0 : this.queueState.length - 1;
 					if (newIndex !== index) {
@@ -598,11 +720,13 @@
 						});
 					}
 				},
+
 				setVolume() {
 					this.sendCmd('set_volume', {
 						vollevel: parseInt(this.volume)
 					});
 				},
+
 				sortLibrary(type) {
 					if (type === 'time') {
 						this.currentTracks = [...this.originalTracks];
@@ -621,12 +745,14 @@
 					}
 					this.activeTab = 'library';
 				},
+
 				switchTab(tabId) {
 					this.activeTab = tabId;
 					if (tabId === 'queue') { //|| tabId === 'library') {
 						setTimeout(this.scrollToCurrent, 200);
 					}
 				},
+
 				scrollToCurrent() {
 					let elId = this.activeTab === 'library' ? 'current-library-row' : 'current-queue-row';
 					const el = document.getElementById(elId);
@@ -635,15 +761,19 @@
 						block: "center"
 					});
 				},
+
 				normalizeString(s) {
 					return s ? s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() : "";
 				},
+
 				haptic(heavy = false) {
 					if (navigator.vibrate) navigator.vibrate(heavy ? [30, 50, 30] : 40);
 				},
+
 				handleTouchStart(e) {
 					this.touchStartX = e.changedTouches[0].screenX;
 				},
+
 				handleTouchEnd(e, index) {
 					let diff = this.touchStartX - e.changedTouches[0].screenX;
 					let row = e.currentTarget;
@@ -665,10 +795,12 @@
 						row.style.transform = "translateX(0)";
 					}
 				},
+
 				toggleWebFullscreen() {
 					if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => this.showToast("Error de pantalla completa", "error"));
 					else if (document.exitFullscreen) document.exitFullscreen();
 				},
+
 				generateQR() {
 					const el = document.getElementById("qrcode");
 					if (!this.qrCreado && el) {
@@ -688,6 +820,7 @@
 						this.qrCreado = true;
 					}
 				},
+
 				showToast(msg, type = 'info') {
 					const id = this.toastIdCounter++;
 					let icon = "info",
@@ -713,8 +846,14 @@
 					setTimeout(() => {
 						this.toasts = this.toasts.filter(t => t.id !== id);
 					}, 3000);
-				}
+				},
+
+				toggleDjCarpincho() {
+					this.sendCmd("toggle_dj_carpincho");
+					this.haptic();
+				},
 			},
+
 			mounted() {
 				this.loadLibrary(false);
 				this.connectWebSocket();

@@ -447,22 +447,23 @@ manager = ConnectionManager()
 class APIState:
 	def __init__(self, initial_dir=None, secondary_dir=None):
 		self.current_track = None
+		self.dj_carpincho_enabled = False
 		self.history = []
+		self.id_to_current_path = {}
 		self.initial_dir = initial_dir
-		self.secondary_dir = secondary_dir
+		self.is_scanning = False
 		self.mpv_paused = False
+		self.path_to_id = {}
 		self.queue = []
+		self.secondary_dir = secondary_dir
+		self.stats_file = Path.home() / ".carpincho_stats.json"
+		self.track_cache_by_path = {}
 		self.tracks_cache = []
+		self.url_log_file = Path.home() / ".carpincho_urls.json"
 		self.url_metadata = {}
 		self.volume = 100
-		self.is_scanning = False
-		self.stats_file = Path.home() / ".carpincho_stats.json"
-		self.url_log_file = Path.home() / ".carpincho_urls.json"
-		self.play_history = self._load_stats()
-		self.id_to_current_path = {}
-		self.path_to_id = {}
-		self.track_cache_by_path = {}
 
+		self.play_history = self._load_stats()
 		self.mpv = AsyncMpvController(
 			{
 				"song_ended": self.handle_song_ended,
@@ -690,6 +691,28 @@ class APIState:
 			next_path = self.queue.pop(0)
 			await self.play_track(next_path)
 		else:
+			# --- AUTOMATIZACIÓN DEL DJ CARPINCHO ---
+			if self.dj_carpincho_enabled and state.tracks_cache:
+				import random
+
+				# 1. Armamos un set con todo lo que ya sonó esta sesión
+				played_paths = set(self.history)
+				if self.current_track:
+					played_paths.add(self.current_track)
+
+				# 2. Filtramos la biblioteca quedándonos solo con temas invictos
+				unplayed = [t for t in state.tracks_cache if t["path"] not in played_paths]
+
+				if unplayed:
+					chosen = random.choice(unplayed)
+					logger.info(f"🦦 DJ Carpincho salvó las papas con un clásico: {chosen['display_title']}")
+					await self.play_track(chosen["path"])
+					return # Salimos temprano porque ya pusimos a sonar música
+				else:
+					logger.info("DJ Carpincho se quedó sin temas nuevos esta sesión.")
+					self.dj_carpincho_enabled = False
+
+			# Si el DJ está apagado o no hay más temas, frena el reproductor de forma normal
 			self.current_track = None
 			await self.mpv._send('{"command": ["stop"]}')
 			await self.mpv._send('{"command": ["set_property", "force-window", "no"]}')
@@ -766,6 +789,7 @@ async def broadcast_state():
 	await manager.broadcast(
 		{
 			"current_track": state.current_track,
+			"dj_carpincho_enabled": state.dj_carpincho_enabled,
 			"history": state.history,
 			"is_scanning": state.is_scanning,
 			"paused": state.mpv_paused,
@@ -832,12 +856,14 @@ async def serve_favicon():
 async def get_state():
 	"""Client polls this to get the current player state."""
 	return {
-		"queue": state.queue,
-		"history": state.history,
 		"current_track": state.current_track,
+		"dj_carpincho_enabled": state.dj_carpincho_enabled,
+		"history": state.history,
+		"is_scanning": state.is_scanning,
 		"paused": state.mpv_paused,
-		"volume": state.volume,
+		"queue": state.queue,
 		"url_metadata": state.url_metadata,
+		"volume": state.volume,
 	}
 
 
@@ -997,6 +1023,12 @@ async def handle_command(req: CommandRequest):
 		if req.amount is not None:
 			cmd_payload = json.dumps({"command": ["seek", req.amount]})
 			await state.mpv._send(cmd_payload)
+	elif cmd == "toggle_dj_carpincho":
+		state.dj_carpincho_enabled = not state.dj_carpincho_enabled
+		logger.info(f"DJ Carpincho cambiado a: {state.dj_carpincho_enabled}")
+		if state.dj_carpincho_enabled and not state.current_track:
+			logger.info("DJ Carpincho se activó y no hay tema sonando, arrancando la música...")
+			await state.play_next()
 
 	# Notify clients of state change
 	await broadcast_state()
@@ -1015,6 +1047,7 @@ async def websocket_endpoint(websocket: WebSocket):
 		await websocket.send_json(
 			{
 				"current_track": state.current_track,
+				"dj_carpincho_enabled": state.dj_carpincho_enabled,
 				"history": state.history,
 				"is_scanning": state.is_scanning,
 				"paused": state.mpv_paused,
