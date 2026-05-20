@@ -626,8 +626,20 @@ class APIState:
 
 	# Event handlers update the state, which clients will see on their next poll
 	async def handle_song_ended(self):
+		if self.current_track:
+			self._register_play_stat(self.current_track)
 		await self.play_next()
 		await broadcast_state()
+
+	def _register_play_stat(self, path):
+		str_path = str(path)
+		if not (str_path.startswith("http://") or str_path.startswith("https://")):
+			track_id = self.path_to_id.get(str_path, str_path)
+			if track_id not in self.play_history:
+				self.play_history[track_id] = []
+			self.play_history[track_id].append(time.time())
+			self._save_stats()
+			logger.debug(f"Tema completado, sumando +1 al top: {str_path}")
 
 	async def handle_mpv_restarted(self):
 		"""Si MPV se muere y revive, le devolvemos la memoria de lo que estaba sonando."""
@@ -666,15 +678,8 @@ class APIState:
 		self.last_track_change = time.time()
 
 		str_path = str(path)
-		if not (str_path.startswith("http://") or str_path.startswith("https://")):
-			track_id = self.path_to_id.get(str_path, str_path)
-
-			if track_id not in self.play_history:
-				self.play_history[track_id] = []
-			self.play_history[track_id].append(time.time())
-			self._save_stats()
-		else:
-			# Si es un link de YouTube o internet, lo mandamos al log especial
+		if str_path.startswith("http://") or str_path.startswith("https://"):
+			# Si es un link de YouTube o internet, lo mandamos al log especial apenas arranca
 			self._log_url(str_path)
 
 		await self.mpv._send('{"command": ["set_property", "force-window", "yes"]}')

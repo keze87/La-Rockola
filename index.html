@@ -69,6 +69,13 @@
 			padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px)) !important;
 		}
 
+		/* Centrado absoluto para los elementos de las tablas (Horizontal y Vertical) */
+		th,
+		td {
+			/* text-align: center !important; */
+			vertical-align: middle !important;
+		}
+
 		/* Barra del reproductor flotante idéntica a tu archivo original */
 		.floating-player {
 			position: fixed;
@@ -275,13 +282,15 @@
 					<tr v-for="(path, i) in queueState" :key="'queue-'+i" @touchstart="handleTouchStart"
 						@touchend="handleTouchEnd($event, i)"
 						class="swipe-row border-b border-carpincho-border hover:bg-carpincho-border cursor-pointer">
-						<td class="p-4 flex justify-center gap-2" @click.stop>
-							<i @click="moveQueueItem(i, 'first')"
-								class="material-icons text-carpincho-primary hover:text-carpincho-secondary transition">vertical_align_top</i>
-							<i @click="moveQueueItem(i, 'last')"
-								class="material-icons text-carpincho-primary hover:text-carpincho-secondary transition">vertical_align_bottom</i>
-							<i @click="removeQueueItem(i)"
-								class="material-icons text-carpincho-secondary hidden sm:block hover:text-red-400 transition">delete</i>
+						<td class="p-4" @click.stop>
+							<div class="flex items-center justify-center gap-2">
+								<i @click="moveQueueItem(i, 'first')"
+									class="material-icons text-carpincho-primary hover:text-carpincho-secondary transition">vertical_align_top</i>
+								<i @click="moveQueueItem(i, 'last')"
+									class="material-icons text-carpincho-primary hover:text-carpincho-secondary transition">vertical_align_bottom</i>
+								<i @click="removeQueueItem(i)"
+									class="material-icons text-carpincho-secondary hidden sm:block hover:text-red-400 transition">delete</i>
+							</div>
 						</td>
 						<td class="p-4 max-w-[200px] truncate" @click="sendCmd('jump', { type: 'queue', index: i })">{{
 							getTrackInfo(path).display_title }}</td>
@@ -294,8 +303,7 @@
 							<i class="material-icons text-carpincho-warning"
 								:class="{'animate-pulse': queueState.length === 0}">auto_awesome</i>
 						</td>
-						<td class="p-4 italic"
-							:class="queueState.length === 0 ? 'text-carpincho-warning font-bold' : 'text-[#a6adc8]'">
+						<td class="p-4 italic" :class="queueState.length === 0 ? 'text-[#a6adc8]' : 'text-[#a6adc8]'">
 							{{ queueState.length === 0 ? 'DJ Carpincho está eligiendo un temazo...' : 'Al vaciarse la fila, entra el DJ' }}
 						</td>
 						<td class="p-4 text-[#a6adc8] italic">🦦</td>
@@ -362,16 +370,17 @@
 						class="material-icons">shuffle</i> Mezcladito (A lo loco)</button>
 			</div>
 
-			<div class="text-center font-bold text-carpincho-secondary mb-4 uppercase tracking-wider text-sm"><i
-					class="material-icons align-middle mr-1">celebration</i> La Joda</div>
-			<div class="flex justify-center gap-3 mb-4 flex-wrap">
+			<div class="text-center font-bold text-carpincho-secondary mb-4 uppercase tracking-wider text-sm">
+				<i class="material-icons align-middle mr-1">celebration</i> La Joda</div>
+			<div class="flex flex-col items-center gap-4 mb-4">
+				<!-- DJ Carpincho Box-->
 				<div
-					class="flex items-center justify-between bg-carpincho-bg p-4 rounded-xl border border-carpincho-border shadow-sm">
+					class="w-full max-w-lg flex items-center justify-between bg-carpincho-bg p-4 rounded-xl border border-carpincho-border shadow-sm">
 					<div class="text-left">
 						<div class="font-bold text-carpincho-text">DJ Carpincho</div>
 						<div class="text-xs text-[#a6adc8]">Tira un tema random nuevo si se vacía la fila</div>
 					</div>
-					<label class="relative inline-flex items-center cursor-pointer">
+					<label class="relative inline-flex items-center cursor-pointer ml-4">
 						<input type="checkbox" :checked="djCarpinchoEnabled" @change="toggleDjCarpincho"
 							class="sr-only peer">
 						<div
@@ -379,12 +388,15 @@
 						</div>
 					</label>
 				</div>
-				<button @click="sendCmd('stop')"
-					class="bg-red-700 hover:bg-red-600 text-white px-5 py-2 rounded-full font-medium active:scale-95 transition flex items-center gap-2"><i
-						class="material-icons">stop</i> Cortala de una</button>
-				<button @click="sendCmd('fullscreen')"
-					class="bg-blue-700 hover:bg-blue-600 text-white px-5 py-2 rounded-full font-medium active:scale-95 transition flex items-center gap-2"><i
-						class="material-icons">fullscreen</i> Todo pantalla, ñeri</button>
+				<!-- Buttons Container (Keeps the buttons side-by-side) -->
+				<div class="flex justify-center gap-3 flex-wrap">
+					<button @click="sendCmd('stop')"
+						class="bg-red-700 hover:bg-red-600 text-white px-5 py-2 rounded-full font-medium active:scale-95 transition flex items-center gap-2">
+						<i class="material-icons">stop</i> Cortala de una</button>
+					<button @click="sendCmd('fullscreen')"
+						class="bg-blue-700 hover:bg-blue-600 text-white px-5 py-2 rounded-full font-medium active:scale-95 transition flex items-center gap-2">
+						<i class="material-icons">fullscreen</i> Todo pantalla, ñeri</button>
+				</div>
 			</div>
 			<div class="flex justify-center gap-3 mb-8 flex-wrap">
 				<button @click="loadLibrary(true)"
