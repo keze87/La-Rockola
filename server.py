@@ -411,6 +411,13 @@ class AsyncMpvController:
 				logger.debug(f"Pifió algo leyendo IPC de MPV: {e}")
 				break
 
+		# Si llegamos acá es porque se cerró el socket (MPV murió o se cerró)
+		logger.debug("El socket Unix de MPV se cerró. Limpiando conexión para forzar reinicio...")
+		self.reader = None
+		if self.writer:
+			self.writer.close()
+			self.writer = None
+
 	async def _process_event_line(self, line: bytes):
 		try:
 			event_data = json.loads(line.decode("utf-8").strip())
@@ -746,7 +753,7 @@ class APIState:
 
 			# Volvemos a cargar la pista sin tocar el historial
 			await self.mpv._send(
-				json.dumps({"command": ["loadfile", str(self.current_track)]})
+				json.dumps({"command": ["loadfile", str(self.current_track)]}, ensure_ascii=False)
 			)
 			# Le devolvemos su estado de pausa y volumen
 			await self.mpv._send(
@@ -788,8 +795,8 @@ class APIState:
 
 		await self.mpv._send('{"command": ["set_property", "force-window", "yes"]}')
 
-		# Usamos json.dumps() para que formatee y escape correctamente las barras invertidas (\)
-		cmd_payload = json.dumps({"command": ["loadfile", str_path]})
+		# Usamos json.dumps() con ensure_ascii=False para mandar acentos (ñ, tildes) en crudo y evitar marear a MPV
+		cmd_payload = json.dumps({"command": ["loadfile", str_path]}, ensure_ascii=False)
 		await self.mpv._send(cmd_payload)
 		await self.mpv._send(json.dumps({"command": ["set_property", "pause", False]}))
 
