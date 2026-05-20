@@ -122,12 +122,12 @@ def highlight_json(json_data):
 
 	# ANSI color codes for the terminal
 	colors = {
-		'key': '\033[94m',      # Blue
-		'string': '\033[92m',   # Green
-		'number': '\033[93m',   # Yellow
-		'boolean': '\033[95m',  # Magenta
-		'null': '\033[91m',     # Red
-		'reset': '\033[0m'      # Reset to default
+		"key": "\033[94m",  # Blue
+		"string": "\033[92m",  # Green
+		"number": "\033[93m",  # Yellow
+		"boolean": "\033[95m",  # Magenta
+		"null": "\033[91m",  # Red
+		"reset": "\033[0m",  # Reset to default
 	}
 
 	# Regex pattern to identify distinct JSON data types
@@ -141,17 +141,22 @@ def highlight_json(json_data):
 	def replacer(match):
 		if match.group(1):  # Key
 			key_str = match.group(1)
-			colon_idx = key_str.rfind(':')
+			colon_idx = key_str.rfind(":")
 			# Color the key, but leave the colon default
-			return colors['key'] + key_str[:colon_idx] + colors['reset'] + key_str[colon_idx:]
+			return (
+				colors["key"]
+				+ key_str[:colon_idx]
+				+ colors["reset"]
+				+ key_str[colon_idx:]
+			)
 		elif match.group(2):  # String value
-			return colors['string'] + match.group(2) + colors['reset']
+			return colors["string"] + match.group(2) + colors["reset"]
 		elif match.group(3):  # Number
-			return colors['number'] + match.group(3) + colors['reset']
+			return colors["number"] + match.group(3) + colors["reset"]
 		elif match.group(4):  # Boolean
-			return colors['boolean'] + match.group(4) + colors['reset']
+			return colors["boolean"] + match.group(4) + colors["reset"]
 		elif match.group(5):  # Null
-			return colors['null'] + match.group(5) + colors['reset']
+			return colors["null"] + match.group(5) + colors["reset"]
 
 		return match.group(0)
 
@@ -490,9 +495,7 @@ class ConnectionManager:
 			self.active_connections.remove(websocket)
 
 	async def broadcast(self, message: dict):
-		logger.debug(
-			f"AVISANDO A LA MUCHACHADA:\n{highlight_json(message)}"
-		)
+		logger.debug(f"AVISANDO A LA MUCHACHADA:\n{highlight_json(message)}")
 		for connection in self.active_connections.copy():
 			try:
 				await connection.send_json(message)
@@ -1073,6 +1076,8 @@ async def handle_command(req: CommandRequest):
 	elif cmd == "prev":
 		await state.play_prev()
 	elif cmd == "stop":
+		if state.current_track:
+			state.history.append(state.current_track)
 		state.current_track = None
 		state.mpv_paused = False
 		await state.mpv._send('{"command": ["stop"]}')
