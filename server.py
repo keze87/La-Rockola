@@ -83,6 +83,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import time
 import uvicorn
 from contextlib import asynccontextmanager
@@ -105,7 +106,60 @@ def truncate_text(text: str, max_len: int) -> str:
 	return text[: max_len - 1] + "…" if len(text) > max_len else text
 
 
-def generate_smart_hash(filepath, chunk_size=1024*1024):
+def highlight_json(json_data):
+	"""Formats and applies ANSI syntax highlighting to a JSON string or dict."""
+
+	# Parse to ensure valid JSON and apply standard indentation
+	if isinstance(json_data, str):
+		try:
+			parsed = json.loads(json_data)
+		except json.JSONDecodeError as e:
+			return f"Invalid JSON: {e}"
+	else:
+		parsed = json_data
+
+	formatted_json = json.dumps(parsed, indent=2)
+
+	# ANSI color codes for the terminal
+	colors = {
+		'key': '\033[94m',      # Blue
+		'string': '\033[92m',   # Green
+		'number': '\033[93m',   # Yellow
+		'boolean': '\033[95m',  # Magenta
+		'null': '\033[91m',     # Red
+		'reset': '\033[0m'      # Reset to default
+	}
+
+	# Regex pattern to identify distinct JSON data types
+	# Group 1: Keys (string followed by a colon)
+	# Group 2: String values
+	# Group 3: Numbers (integers, floats, scientific notation)
+	# Group 4: Booleans (true/false)
+	# Group 5: Null
+	pattern = r'("(?:\\.|[^"\\])*"\s*:)|("(?:\\.|[^"\\])*")|(\b-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b)|(\btrue\b|\bfalse\b)|(\bnull\b)'
+
+	def replacer(match):
+		if match.group(1):  # Key
+			key_str = match.group(1)
+			colon_idx = key_str.rfind(':')
+			# Color the key, but leave the colon default
+			return colors['key'] + key_str[:colon_idx] + colors['reset'] + key_str[colon_idx:]
+		elif match.group(2):  # String value
+			return colors['string'] + match.group(2) + colors['reset']
+		elif match.group(3):  # Number
+			return colors['number'] + match.group(3) + colors['reset']
+		elif match.group(4):  # Boolean
+			return colors['boolean'] + match.group(4) + colors['reset']
+		elif match.group(5):  # Null
+			return colors['null'] + match.group(5) + colors['reset']
+
+		return match.group(0)
+
+	# Apply the regex substitution
+	return re.sub(pattern, replacer, formatted_json)
+
+
+def generate_smart_hash(filepath, chunk_size=1024 * 1024):
 	"""
 	Lee 1MB cerca del principio y 1MB cerca del final (esquivando metadatos).
 	Genera un Hash único basado puramente en las ondas de audio.
@@ -115,12 +169,12 @@ def generate_smart_hash(filepath, chunk_size=1024*1024):
 
 		# Si el archivo es ridículamente chico (menos de 3MB), leemos un pedacito del medio
 		if file_size < chunk_size * 3:
-			with open(filepath, 'rb') as f:
+			with open(filepath, "rb") as f:
 				f.seek(file_size // 2)
 				data = f.read(file_size // 4)
 				return hashlib.md5(data).hexdigest()
 
-		with open(filepath, 'rb') as f:
+		with open(filepath, "rb") as f:
 			# Leer 1MB al 15% del archivo (pasando de largo cualquier tapa o tag gigante)
 			f.seek(int(file_size * 0.15))
 			chunk1 = f.read(chunk_size)
@@ -133,13 +187,13 @@ def generate_smart_hash(filepath, chunk_size=1024*1024):
 			hasher = hashlib.md5()
 			hasher.update(chunk1)
 			hasher.update(chunk2)
-			hasher.update(str(file_size).encode('utf-8'))
+			hasher.update(str(file_size).encode("utf-8"))
 
 			return hasher.hexdigest()
 	except Exception as e:
 		logger.debug(f"Pifió el hash inteligente para {filepath}: {e}")
 		# Fallback por si el archivo está corrupto o bloqueado
-		return hashlib.md5(str(filepath).encode('utf-8')).hexdigest()
+		return hashlib.md5(str(filepath).encode("utf-8")).hexdigest()
 
 
 class Track:
@@ -383,7 +437,7 @@ class AsyncMpvController:
 			pass
 
 	async def _send(self, cmd_payload: str):
-		logger.debug(f"Tirándole comando al MPV: {cmd_payload}")
+		logger.debug(f"Tirándole comando al MPV: \n {highlight_json(cmd_payload)}")
 		cmd_bytes = (cmd_payload + "\n").encode("utf-8")
 
 		try:
@@ -406,16 +460,20 @@ class AsyncMpvController:
 			# ¡REINTENTO! Para no perder el comando que estábamos por mandar
 			try:
 				if self.is_windows:
+
 					def write_pipe_retry():
 						with open(self.socket_path, "a+b") as pipe:
 							pipe.write(cmd_bytes)
+
 					await asyncio.to_thread(write_pipe_retry)
 				else:
 					if self.writer:
 						self.writer.write(cmd_bytes)
 						await self.writer.drain()
 			except Exception as retry_e:
-				logger.error(f"Pifió fiero. No quiso agarrar viaje ni reiniciando: {retry_e}")
+				logger.error(
+					f"Pifió fiero. No quiso agarrar viaje ni reiniciando: {retry_e}"
+				)
 
 
 # --- Websocket Connection Manager ---
@@ -432,7 +490,9 @@ class ConnectionManager:
 			self.active_connections.remove(websocket)
 
 	async def broadcast(self, message: dict):
-		logger.debug(f"AVISANDO A LA MUCHACHADA: {message}") #{json.dumps(message, indent=2)}")
+		logger.debug(
+			f"AVISANDO A LA MUCHACHADA:\n{highlight_json(message)}"
+		)
 		for connection in self.active_connections.copy():
 			try:
 				await connection.send_json(message)
@@ -452,6 +512,7 @@ class APIState:
 		self.id_to_current_path = {}
 		self.initial_dir = initial_dir
 		self.is_scanning = False
+		self.last_broadcast = {}
 		self.mpv_paused = False
 		self.path_to_id = {}
 		self.queue = []
@@ -473,6 +534,20 @@ class APIState:
 				"mpv_restarted": self.handle_mpv_restarted,
 			}
 		)
+
+	def get_full_state_dict(self):
+		"""Genera un diccionario con el estado completo actual (creando copias listas/diccionarios)"""
+		return {
+			"current_track": self.current_track,
+			"dj_carpincho_enabled": self.dj_carpincho_enabled,
+			"history": list(self.history),
+			"is_scanning": self.is_scanning,
+			"paused": self.mpv_paused,
+			"queue": list(self.queue),
+			"top_played": self.get_top_played(),
+			"url_metadata": dict(self.url_metadata),
+			"volume": self.volume,
+		}
 
 	def _load_stats(self):
 		try:
@@ -506,13 +581,16 @@ class APIState:
 			logs = [log for log in logs if log.get("url") != url]
 
 			# Rescatamos la metadata que haya sacado yt-dlp
-			meta = self.url_metadata.get(url, {"path": url, "display_title": "Link directo", "artist": "Desconocido"})
+			meta = self.url_metadata.get(
+				url,
+				{"path": url, "display_title": "Link directo", "artist": "Desconocido"},
+			)
 
 			log_entry = {
 				"played_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
 				"url": url,
 				"title": meta.get("title", meta.get("display_title")),
-				"artist": meta.get("artist", meta.get("display_artist"))
+				"artist": meta.get("artist", meta.get("display_artist")),
 			}
 
 			logs.append(log_entry)
@@ -524,7 +602,17 @@ class APIState:
 
 	def scan_directory(self, target_dirs: list):
 		logger.info(f"Pegando una ojeada por estas carpetas: {target_dirs}")
-		extensions = ["*.flac", "*.m4a", "*.mp3", "*.ogg", "*.wav", "*.mp4", "*.mkv", "*.avi", "*.webm"]
+		extensions = [
+			"*.flac",
+			"*.m4a",
+			"*.mp3",
+			"*.ogg",
+			"*.wav",
+			"*.mp4",
+			"*.mkv",
+			"*.avi",
+			"*.webm",
+		]
 		raw_files = []
 
 		for target_dir in target_dirs:
@@ -533,7 +621,9 @@ class APIState:
 
 			music_dir = Path(target_dir).expanduser()
 			if not music_dir.exists():
-				logger.warning(f"Che, este lugar está más pelado que la nada misma: {music_dir}")
+				logger.warning(
+					f"Che, este lugar está más pelado que la nada misma: {music_dir}"
+				)
 				continue
 
 			for ext in extensions:
@@ -559,7 +649,10 @@ class APIState:
 			except Exception:
 				continue
 
-			if file_str in self.track_cache_by_path and self.track_cache_by_path[file_str]["mtime"] == current_mtime:
+			if (
+				file_str in self.track_cache_by_path
+				and self.track_cache_by_path[file_str]["mtime"] == current_mtime
+			):
 				track_dict = self.track_cache_by_path[file_str]["data"]
 				track_hash = track_dict.get("track_hash")
 			else:
@@ -644,13 +737,21 @@ class APIState:
 	async def handle_mpv_restarted(self):
 		"""Si MPV se muere y revive, le devolvemos la memoria de lo que estaba sonando."""
 		if self.current_track:
-			logger.info("El MPV revivió. Volviéndole a cargar el temita que estaba sonando...")
+			logger.info(
+				"El MPV revivió. Volviéndole a cargar el temita que estaba sonando..."
+			)
 
 			# Volvemos a cargar la pista sin tocar el historial
-			await self.mpv._send(json.dumps({"command": ["loadfile", str(self.current_track)]}))
+			await self.mpv._send(
+				json.dumps({"command": ["loadfile", str(self.current_track)]})
+			)
 			# Le devolvemos su estado de pausa y volumen
-			await self.mpv._send(json.dumps({"command": ["set_property", "pause", self.mpv_paused]}))
-			await self.mpv._send(json.dumps({"command": ["set_property", "volume", self.volume]}))
+			await self.mpv._send(
+				json.dumps({"command": ["set_property", "pause", self.mpv_paused]})
+			)
+			await self.mpv._send(
+				json.dumps({"command": ["set_property", "volume", self.volume]})
+			)
 
 	async def handle_track_stopped(self):
 		# Si cambiamos de tema hace menos de medio segundo,
@@ -685,7 +786,7 @@ class APIState:
 		await self.mpv._send('{"command": ["set_property", "force-window", "yes"]}')
 
 		# Usamos json.dumps() para que formatee y escape correctamente las barras invertidas (\)
-		cmd_payload = json.dumps({"command": ["loadfile", str(path)]})
+		cmd_payload = json.dumps({"command": ["loadfile", str_path]})
 		await self.mpv._send(cmd_payload)
 		await self.mpv._send(json.dumps({"command": ["set_property", "pause", False]}))
 
@@ -706,13 +807,17 @@ class APIState:
 					played_paths.add(self.current_track)
 
 				# 2. Filtramos la biblioteca quedándonos solo con temas invictos
-				unplayed = [t for t in state.tracks_cache if t["path"] not in played_paths]
+				unplayed = [
+					t for t in state.tracks_cache if t["path"] not in played_paths
+				]
 
 				if unplayed:
 					chosen = random.choice(unplayed)
-					logger.info(f"🦦 DJ Carpincho salvó las papas con un clásico: {chosen['display_title']}")
+					logger.info(
+						f"🦦 DJ Carpincho salvó las papas con un clásico: {chosen['display_title']}"
+					)
 					await self.play_track(chosen["path"])
-					return # Salimos temprano porque ya pusimos a sonar música
+					return  # Salimos temprano porque ya pusimos a sonar música
 				else:
 					logger.info("DJ Carpincho se quedó sin temas nuevos esta sesión.")
 					self.dj_carpincho_enabled = False
@@ -790,21 +895,20 @@ state = APIState()
 
 
 async def broadcast_state():
-	"""Helper to broadcast the latest state to all connected websocket clients."""
-	await manager.broadcast(
-		{
-			"current_track": state.current_track,
-			"dj_carpincho_enabled": state.dj_carpincho_enabled,
-			"history": state.history,
-			"is_scanning": state.is_scanning,
-			"paused": state.mpv_paused,
-			"queue": state.queue,
-			"top_played": state.get_top_played(),
-			"type": "state_update",
-			"url_metadata": state.url_metadata,
-			"volume": state.volume,
-		}
-	)
+	"""Helper que manda POR WEBSOCKET SOLAMENTE LOS DATOS QUE CAMBIARON"""
+	new_state = state.get_full_state_dict()
+
+	# Preparamos un diccionario 'diff' con los cambios
+	diff = {"type": "state_update"}
+
+	for key, value in new_state.items():
+		if state.last_broadcast.get(key) != value:
+			diff[key] = value
+
+	# Si diff tiene más cosas que solo "type", mandamos la actualización
+	if len(diff) > 1:
+		state.last_broadcast = new_state
+		await manager.broadcast(diff)
 
 
 @asynccontextmanager
@@ -857,21 +961,6 @@ async def serve_favicon():
 
 
 # --- API Routes ---
-@app.get("/state")
-async def get_state():
-	"""Client polls this to get the current player state."""
-	return {
-		"current_track": state.current_track,
-		"dj_carpincho_enabled": state.dj_carpincho_enabled,
-		"history": state.history,
-		"is_scanning": state.is_scanning,
-		"paused": state.mpv_paused,
-		"queue": state.queue,
-		"url_metadata": state.url_metadata,
-		"volume": state.volume,
-	}
-
-
 @app.get("/library")
 async def get_library():
 	"""Returns the already cached library without triggering a new disk scan."""
@@ -895,7 +984,9 @@ async def scan_library(dir: str = None, dir2: str = None):
 	if target2_raw:
 		target_dirs.append(str(Path(target2_raw).expanduser().resolve()))
 
-	logger.info(f"Escaneando {target_dirs} (Aprovechando el caché inteligente por archivo)...")
+	logger.info(
+		f"Escaneando {target_dirs} (Aprovechando el caché inteligente por archivo)..."
+	)
 
 	# Prendemos el "Cargando" y le avisamos al front
 	state.is_scanning = True
@@ -909,6 +1000,7 @@ async def scan_library(dir: str = None, dir2: str = None):
 	await broadcast_state()
 
 	return {"data": state.tracks_cache}
+
 
 @app.get("/cover")
 async def serve_cover(path: str = Query(...)):
@@ -927,13 +1019,15 @@ async def serve_cover(path: str = Query(...)):
 			mime_type = audio.pictures[0].mime
 		elif hasattr(audio, "tags") and audio.tags:
 			for key, tag in audio.tags.items():
-				if key.startswith("APIC"): # MP3 ID3 Tag
+				if key.startswith("APIC"):  # MP3 ID3 Tag
 					cover_data = tag.data
 					mime_type = tag.mime
 					break
-			if not cover_data and "covr" in audio.tags: # M4A Tag
+			if not cover_data and "covr" in audio.tags:  # M4A Tag
 				cover_data = audio.tags["covr"][0]
-				mime_type = "image/jpeg" if cover_data.startswith(b'\xff\xd8') else "image/png"
+				mime_type = (
+					"image/jpeg" if cover_data.startswith(b"\xff\xd8") else "image/png"
+				)
 
 		if cover_data:
 			return Response(content=cover_data, media_type=mime_type)
@@ -1032,7 +1126,9 @@ async def handle_command(req: CommandRequest):
 		state.dj_carpincho_enabled = not state.dj_carpincho_enabled
 		logger.info(f"DJ Carpincho cambiado a: {state.dj_carpincho_enabled}")
 		if state.dj_carpincho_enabled and not state.current_track:
-			logger.info("DJ Carpincho se activó y no hay tema sonando, arrancando la música...")
+			logger.info(
+				"DJ Carpincho se activó y no hay tema sonando, arrancando la música..."
+			)
 			await state.play_next()
 
 	# Notify clients of state change
@@ -1048,21 +1144,11 @@ async def websocket_endpoint(websocket: WebSocket):
 
 	await manager.connect(websocket)
 	try:
-		# Send initial state immediately
-		await websocket.send_json(
-			{
-				"current_track": state.current_track,
-				"dj_carpincho_enabled": state.dj_carpincho_enabled,
-				"history": state.history,
-				"is_scanning": state.is_scanning,
-				"paused": state.mpv_paused,
-				"queue": state.queue,
-				"top_played": state.get_top_played(),
-				"type": "state_update",
-				"url_metadata": state.url_metadata,
-				"volume": state.volume,
-			}
-		)
+		# Send initial state immediately (full state needed for fresh clients)
+		full_state = state.get_full_state_dict()
+		full_state["type"] = "state_update"
+		await websocket.send_json(full_state)
+
 		while True:
 			# Keep connection alive, listen for text but we don't process incoming WS cmds currently
 			data = await websocket.receive_text()
