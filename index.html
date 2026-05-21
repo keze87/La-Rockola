@@ -151,6 +151,89 @@
 			opacity: 0.4;
 		}
 
+		/* Visual feedback when queue item is deleted */
+		@keyframes delete-flash {
+			0% {
+				background-color: transparent;
+			}
+
+			20% {
+				background-color: rgba(239, 68, 68, 0.45);
+			}
+
+			60% {
+				background-color: rgba(239, 68, 68, 0.2);
+			}
+
+			100% {
+				background-color: transparent;
+				opacity: 0;
+				transform: scaleY(0);
+			}
+		}
+
+		tr.deleting {
+			animation: delete-flash 0.45s ease forwards;
+			pointer-events: none;
+			overflow: hidden;
+		}
+
+		/* Context menu */
+		.ctx-menu {
+			position: fixed;
+			z-index: 99999;
+			min-width: 220px;
+			background: #1f1a17;
+			border: 1px solid #4a3f35;
+			border-radius: 12px;
+			box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7);
+			overflow: hidden;
+			animation: ctx-appear 0.15s ease;
+		}
+
+		@keyframes ctx-appear {
+			from {
+				opacity: 0;
+				transform: scale(0.92);
+			}
+
+			to {
+				opacity: 1;
+				transform: scale(1);
+			}
+		}
+
+		.ctx-menu-header {
+			padding: 10px 16px 8px;
+			border-bottom: 1px solid #4a3f35;
+			font-size: 0.72rem;
+			font-weight: 700;
+			text-transform: uppercase;
+			letter-spacing: 0.08em;
+			color: #a67c52;
+		}
+
+		.ctx-menu-item {
+			display: flex;
+			align-items: center;
+			gap: 10px;
+			padding: 12px 16px;
+			cursor: pointer;
+			color: #e8d5c4;
+			font-size: 0.92rem;
+			transition: background 0.12s;
+		}
+
+		.ctx-menu-item:hover,
+		.ctx-menu-item:active {
+			background: #2b2622;
+		}
+
+		.ctx-menu-item i {
+			color: #a67c52;
+			font-size: 1.1rem;
+		}
+
 		/* Badge de etiqueta/favorito */
 		.tag-star {
 			cursor: pointer;
@@ -301,6 +384,8 @@
 				</thead>
 				<tbody>
 					<tr v-for="track in filteredTracks" :key="track.path" @click="handleLibraryClick(track)"
+						@contextmenu.prevent="openCtxMenu($event, track)" @touchstart="ctxTouchStart($event, track)"
+						@touchend="ctxTouchEnd" @touchmove="ctxTouchEnd"
 						:id="currentTrackPath === track.path ? 'current-library-row' : ''"
 						class="border-b border-carpincho-border hover:bg-carpincho-border cursor-pointer transition-colors active:scale-[0.98]">
 
@@ -374,7 +459,7 @@
 									class="material-icons text-carpincho-primary hover:text-carpincho-secondary transition">vertical_align_top</i>
 								<i @click="moveQueueItem(i, 'last')"
 									class="material-icons text-carpincho-primary hover:text-carpincho-secondary transition">vertical_align_bottom</i>
-								<i @click="removeQueueItem(i)"
+								<i @click="removeQueueItem(i, $event.currentTarget.closest('tr'))"
 									class="material-icons text-carpincho-secondary hidden sm:block hover:text-red-400 transition">delete</i>
 							</div>
 						</td>
@@ -391,6 +476,7 @@
 						</td>
 						<td class="p-4 italic" :class="queueState.length === 0 ? 'text-[#a6adc8]' : 'text-[#a6adc8]'">
 							{{ queueState.length === 0 ? 'DJ Carpincho está eligiendo un temazo...' : 'Al vaciarse la fila, entra el DJ' }}
+							<!-- NO CORTAR -->
 						</td>
 						<td class="p-4 text-[#a6adc8] italic">🦦</td>
 					</tr>
@@ -500,6 +586,36 @@
 			</div>
 		</section>
 
+		<!-- Context Menu -->
+		<div v-if="ctxMenu.visible" class="fixed inset-0 z-[9998]" @click.self="closeCtxMenu"
+			@contextmenu.prevent="closeCtxMenu">
+			<div class="ctx-menu" :style="{ top: ctxMenu.y + 'px', left: ctxMenu.x + 'px' }">
+				<div class="ctx-menu-header truncate" style="max-width:200px">
+					{{ ctxMenu.track ? (ctxMenu.track.title || ctxMenu.track.display_title) : '' }}
+				</div>
+				<div class="ctx-menu-item" @click="ctxPlayNow">
+					<i class="material-icons">play_arrow</i>
+					Reproducir ahora
+				</div>
+				<div class="ctx-menu-item" @click="ctxAddToQueue">
+					<i class="material-icons">playlist_add</i>
+					Agregar a la fila
+				</div>
+				<div class="ctx-menu-item" @click="ctxPlayNext">
+					<i class="material-icons">queue_play_next</i>
+					Poner de próximo
+				</div>
+				<div class="ctx-menu-item" @click="ctxFilterByArtist">
+					<i class="material-icons">person_search</i>
+					Ver más de este artista
+				</div>
+				<div class="ctx-menu-item" @click="ctxPauseAfter">
+					<i class="material-icons">timer</i>
+					Pausar después de este tema
+				</div>
+			</div>
+		</div>
+
 		<section
 			class="floating-player bg-gradient-to-br from-carpincho-panel to-[#2a2420] border border-carpincho-border rounded-xl p-3 flex justify-between items-center shadow-[0_4px_15px_rgba(0,0,0,0.5)]">
 			<div class="flex items-center grow overflow-hidden cursor-pointer" @click="switchTab('queue'); haptic()">
@@ -514,6 +630,7 @@
 				<div class="grow overflow-hidden flex flex-col justify-center">
 					<div class="text-[0.7rem] text-carpincho-primary uppercase tracking-wider font-bold">
 						{{ queueState.length > 0 ? 'Próximo Temazo' : (djCarpinchoEnabled ? 'Al rescate' : 'Fin de la fila') }}
+						<!-- NO CORTAR -->
 					</div>
 					<div class="text-[0.95rem] font-bold truncate text-carpincho-text">{{ upNextTitle }}</div>
 				</div>
@@ -543,7 +660,11 @@
 					autoDjTimer: null,
 					brokenCovers: [],
 					brokenNextCover: false,
+					ctxMenu: { visible: false, x: 0, y: 0, track: null },
+					ctxLongPressTimer: null,
+					deletingQueueIndex: null,
 					dragFromIndex: null,
+					pauseAfterPath: null,
 					currentTrackPath: null,
 					currentTracks: [],
 					djCarpinchoEnabled: false,
@@ -685,7 +806,7 @@
 					}
 				},
 
-				currentTrackPath() {
+				currentTrackPath(newPath, oldPath) {
 					this.updateDocumentTitle();
 				},
 
@@ -821,10 +942,15 @@
 					}
 				},
 
-				removeQueueItem(index) {
-					this.sendCmd("remove_queue_item", {
-						index
-					});
+				removeQueueItem(index, rowEl) {
+					// Visual delete feedback
+					const el = rowEl || document.querySelector(`[data-queue-index="${index}"]`);
+					if (el) {
+						el.classList.add('deleting');
+						setTimeout(() => this.sendCmd("remove_queue_item", { index }), 380);
+					} else {
+						this.sendCmd("remove_queue_item", { index });
+					}
 				},
 
 				moveQueueItem(index, target) {
@@ -897,7 +1023,7 @@
 						this.haptic(true);
 						row.style.transform = "translateX(-100vw)";
 						setTimeout(() => {
-							this.removeQueueItem(index);
+							this.removeQueueItem(index, row);
 							row.style.transform = "translateX(0)";
 						}, 250);
 					} else if (diff < -80) {
@@ -969,6 +1095,123 @@
 					this.haptic();
 				},
 
+				// --- CONTEXT MENU (long press / right click in library) ---
+				openCtxMenu(event, track) {
+					this.haptic();
+					const margin = 12;
+					let x = event.clientX || (event.touches && event.touches[0].clientX) || 0;
+					let y = event.clientY || (event.touches && event.touches[0].clientY) || 0;
+					// Keep menu on screen
+					this.$nextTick(() => {
+						const menu = document.querySelector('.ctx-menu');
+						if (menu) {
+							const w = menu.offsetWidth || 220;
+							const h = menu.offsetHeight || 160;
+							if (x + w + margin > window.innerWidth) x = window.innerWidth - w - margin;
+							if (y + h + margin > window.innerHeight) y = window.innerHeight - h - margin;
+						}
+						this.ctxMenu = { visible: true, x, y, track };
+					});
+					this.ctxMenu = { visible: true, x, y, track };
+				},
+
+				closeCtxMenu() {
+					this.ctxMenu = { ...this.ctxMenu, visible: false };
+				},
+
+				ctxTouchStart(event, track) {
+					this.ctxLongPressTimer = setTimeout(() => {
+						this.openCtxMenu(event.touches[0], track);
+					}, 550);
+				},
+
+				ctxTouchEnd() {
+					clearTimeout(this.ctxLongPressTimer);
+				},
+
+				async ctxPlayNext() {
+					const track = this.ctxMenu.track;
+					this.closeCtxMenu();
+					// Remove from queue if already in it, then add at position 0
+					const inQueue = this.queueState.indexOf(track.path);
+					if (inQueue !== -1) {
+						await this.sendCmd("remove_queue_item", { index: inQueue });
+					}
+					// Add to queue then move to top
+					const res = await this.sendCmd("toggle_queue", { path: track.path });
+					if (res && res.status === "ok") {
+						// Move to first position (sendCmd move_queue_item to index 0)
+						const newIndex = this.queueState.indexOf(track.path);
+						if (newIndex > 0) {
+							await this.sendCmd("move_queue_item", { index: newIndex, new_index: 0 });
+						}
+						// this.showToast(`<b>${track.title || track.display_title}</b> va de próximo 🎯`, "success");
+					}
+					this.haptic();
+				},
+
+				ctxFilterByArtist() {
+					const track = this.ctxMenu.track;
+					this.closeCtxMenu();
+					const artist = track.artist || track.display_artist || '';
+					this.searchQuery = artist;
+					this.activeTab = 'library';
+					this.haptic();
+					this.showToast(`Filtrando por <b>${artist}</b>`, "info");
+				},
+
+				async ctxPauseAfter() {
+					const track = this.ctxMenu.track;
+					this.closeCtxMenu();
+					// Add track to queue if not already there
+					const inQueue = this.queueState.includes(track.path);
+					if (!inQueue) {
+						await this.sendCmd("toggle_queue", { path: track.path });
+					}
+					// Send pause_after command — server should handle this;
+					// if not supported, we store it locally and watch for track change
+					const res = await this.sendCmd("pause_after", { path: track.path });
+					if (res && res.status === "ok") {
+						this.showToast(`Se pausa después de <b>${track.title || track.display_title}</b> ⏸`, "warning");
+					} else {
+						// Fallback: watch locally
+						this.pauseAfterPath = track.path;
+						this.showToast(`Se pausa después de <b>${track.title || track.display_title}</b> ⏸`, "warning");
+					}
+					this.haptic();
+				},
+
+				async ctxPlayNow() {
+					const track = this.ctxMenu.track;
+					this.closeCtxMenu();
+					await this.sendCmd("play", { path: track.path });
+					this.haptic();
+				},
+
+				async ctxAddToQueue() {
+					const track = this.ctxMenu.track;
+					this.closeCtxMenu();
+					const inQueue = this.queueState.includes(track.path);
+					if (!inQueue) {
+						await this.sendCmd("toggle_queue", { path: track.path });
+					}
+					this.haptic();
+				},
+
+				async ctxPauseAfter() {
+					const track = this.ctxMenu.track;
+					this.closeCtxMenu();
+					const inQueue = this.queueState.includes(track.path);
+					// Si no está en la fila y no está sonando ahora, lo mandamos a la fila
+					if (!inQueue && this.currentTrackPath !== track.path) {
+						await this.sendCmd("toggle_queue", { path: track.path });
+					}
+					await this.sendCmd("pause_after", { path: track.path });
+					this.showToast(`Se pausa después de <b>${track.title || track.display_title}</b> ⏸`, "warning");
+					this.haptic();
+				},
+
+				// --- FUNCIONES PARA ARRASTRE NATIVO EN PC (HTML5 Drag & Drop) ---
 				dragStart(e, index) {
 					this.dragFromIndex = index;
 					e.currentTarget.classList.add('dragging');

@@ -532,6 +532,8 @@ class APIState:
 		self.last_broadcast = {}
 		self.mpv_paused = False
 		self.path_to_id = {}
+		self.pause_after_path = None
+		self.processing_eof = False
 		self.queue = []
 		self.secondary_dir = secondary_dir
 		self.stats_file = Path.home() / ".carpincho_stats.json"
@@ -540,7 +542,6 @@ class APIState:
 		self.url_log_file = Path.home() / ".carpincho_urls.json"
 		self.url_metadata = {}
 		self.volume = 100
-		self.processing_eof = False
 
 		self.play_history = self._load_stats()
 		self.mpv = AsyncMpvController(
@@ -823,13 +824,22 @@ class APIState:
 		await self.mpv._send(json.dumps({"command": ["set_property", "pause", False]}))
 
 	async def play_next(self):
+		just_finished = self.current_track
 		if self.current_track:
 			self.history.append(self.current_track)
 			self.current_track = None
 
+		# Verificamos si tocaba pausar después del track que acaba de terminar
+		should_pause = (just_finished == self.pause_after_path)
+		if should_pause:
+			self.pause_after_path = None
+
 		if self.queue:
 			next_path = self.queue.pop(0)
 			await self.play_track(next_path)
+			if should_pause:
+				self.mpv_paused = True
+				await self.mpv._send(json.dumps({"command": ["set_property", "pause", True]}))
 		else:
 			# --- AUTOMATIZACIÓN DEL DJ CARPINCHO ---
 			if self.dj_carpincho_enabled and state.tracks_cache:
@@ -847,6 +857,9 @@ class APIState:
 						f"🦦 DJ Carpincho salvó las papas con un clásico: {chosen['display_title']}"
 					)
 					await self.play_track(chosen["path"])
+					if should_pause:
+						self.mpv_paused = True
+						await self.mpv._send(json.dumps({"command": ["set_property", "pause", True]}))
 					return  # Salimos temprano porque ya pusimos a sonar música
 				else:
 					logger.info("DJ Carpincho se quedó sin temas nuevos esta sesión.")
@@ -1165,6 +1178,11 @@ async def handle_command(req: CommandRequest):
 				"DJ Carpincho se activó y no hay tema sonando, arrancando la música..."
 			)
 			await state.play_next()
+	elif cmd == "pause_after":
+		state.pause_after_path = req.path
+	elif cmd == "remove_history_item":
+		if req.index is not None and 0 <= req.index < len(state.history):
+			state.history.pop(req.index)
 
 	# Notify clients of state change
 	await broadcast_state()
