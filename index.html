@@ -63,7 +63,6 @@
 
 		.tab-content {
 			overflow-y: auto;
-			padding-bottom: calc(100px + env(safe-area-inset-bottom));
 			flex-grow: 1;
 			/* El !important es vital (estaba en tu código original) para que otras clases no lo pisen */
 			padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px)) !important;
@@ -217,10 +216,10 @@
 			<table class="w-full text-left border-collapse">
 				<thead>
 					<tr>
-						<th class="p-3 text-carpincho-primary bg-carpincho-panel sticky z-100 w-16 text-center">
+						<th class="p-3 text-carpincho-primary bg-carpincho-panel sticky top-0 z-100 w-16 text-center">
 							Orden</th>
-						<th class="p-3 text-carpincho-primary bg-carpincho-panel sticky z-100">El Temón</th>
-						<th class="p-3 text-carpincho-primary bg-carpincho-panel sticky z-100">Artista</th>
+						<th class="p-3 text-carpincho-primary bg-carpincho-panel sticky top-0 z-100">El Temón</th>
+						<th class="p-3 text-carpincho-primary bg-carpincho-panel sticky top-0 z-100">Artista</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -319,9 +318,9 @@
 					class="p-4 border-b border-carpincho-border flex items-center cursor-pointer active:scale-[0.98] transition hover:bg-carpincho-panel rounded-lg">
 					<div class="font-bold text-carpincho-warning text-xl w-8 text-center mr-4">#{{ i + 1 }}</div>
 
-					<img v-if="!t.path.startsWith('http') && !brokenCovers.has(t.path)"
+					<img v-if="!t.path.startsWith('http') && !brokenCovers.includes(t.path)"
 						:src="'/cover?path=' + encodeURIComponent(t.path)"
-						class="w-12 h-12 object-cover rounded-md mr-4 shrink-0" @error="brokenCovers.add(t.path)">
+						class="w-12 h-12 object-cover rounded-md mr-4 shrink-0" @error="brokenCovers.push(t.path)">
 					<i v-else class="material-icons text-carpincho-primary text-4xl mr-4 shrink-0">album</i>
 
 					<div class="flex-grow overflow-hidden">
@@ -349,11 +348,9 @@
 				<button @click="sendCmd('seek', { amount: -60 }); haptic()"
 					class="bg-gray-800 hover:bg-gray-700 text-white px-5 py-2 rounded-full font-medium active:scale-95 transition flex items-center gap-2"><i
 						class="material-icons">fast_rewind</i> Un pasito para atrás</button>
-				</button>
 				<button @click="sendCmd('seek', { amount: 60 }); haptic()"
 					class="bg-gray-800 hover:bg-gray-700 text-white px-5 py-2 rounded-full font-medium active:scale-95 transition flex items-center gap-2">Un
 					pasito para adelante <i class="material-icons">fast_forward</i></button>
-				</button>
 			</div>
 
 			<div class="text-center font-bold text-carpincho-secondary mb-4 uppercase tracking-wider text-sm"><i
@@ -371,7 +368,8 @@
 			</div>
 
 			<div class="text-center font-bold text-carpincho-secondary mb-4 uppercase tracking-wider text-sm">
-				<i class="material-icons align-middle mr-1">celebration</i> La Joda</div>
+				<i class="material-icons align-middle mr-1">celebration</i> La Joda
+			</div>
 			<div class="flex flex-col items-center gap-4 mb-4">
 				<!-- DJ Carpincho Box-->
 				<div
@@ -421,7 +419,7 @@
 				<div
 					class="w-12 h-12 mr-3 shrink-0 bg-carpincho-bg rounded-lg flex justify-center items-center overflow-hidden relative">
 					<img v-if="upNextCoverUrl" :src="upNextCoverUrl" class="absolute w-full h-full object-cover"
-						@error="upNextCoverUrl = null">
+						@error="brokenNextCover = true">
 					<i v-else-if="djCarpinchoEnabled && queueState.length === 0"
 						class="material-icons text-carpincho-warning text-[2rem] animate-pulse">auto_awesome</i>
 					<i v-else class="material-icons text-carpincho-warning text-[2rem]">album</i>
@@ -456,7 +454,8 @@
 				return {
 					activeTab: 'library',
 					autoDjTimer: null,
-					brokenCovers: new Set(),
+					brokenCovers: [],
+					brokenNextCover: false,
 					currentTrackPath: null,
 					currentTracks: [],
 					djCarpinchoEnabled: false,
@@ -577,6 +576,7 @@
 				},
 
 				upNextCoverUrl() {
+					if (this.brokenNextCover) return null;
 					if (this.queueState.length > 0 && !this.queueState[0].startsWith('http')) {
 						return '/cover?path=' + encodeURIComponent(this.queueState[0]);
 					}
@@ -586,6 +586,10 @@
 
 			watch: {
 				searchQuery() { },
+
+				queueState() {
+					this.brokenNextCover = false;
+				},
 
 				activeTab(newTab) {
 					if (newTab === 'controls' && !this.qrCreado) {
@@ -632,7 +636,7 @@
 					}
 				},
 
-				connectWebSocket() {
+				connectWebSocket(delay = 1000) {
 					const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 					this.ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
 					this.ws.onmessage = (event) => {
@@ -654,9 +658,11 @@
 							console.error("¡Se rompió el JSON que mandó el server, fiera!", e, event.data);
 						}
 					};
+					this.ws.onopen = () => { delay = 1000; }; // reset backoff al conectar
 					this.ws.onclose = () => {
 						this.showToast("Se cortó la señal. Reconectando...", "warning");
-						setTimeout(this.connectWebSocket, 1000);
+						const nextDelay = Math.min(delay * 2, 30000);
+						setTimeout(() => this.connectWebSocket(nextDelay), delay);
 					};
 				},
 
@@ -883,6 +889,7 @@
 				if ('mediaSession' in navigator) {
 					navigator.mediaSession.setActionHandler('play', () => this.sendCmd('pause'));
 					navigator.mediaSession.setActionHandler('pause', () => this.sendCmd('pause'));
+					navigator.mediaSession.setActionHandler('previoustrack', () => this.sendCmd('prev'));
 					navigator.mediaSession.setActionHandler('nexttrack', () => this.sendCmd('skip'));
 				}
 			},

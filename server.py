@@ -262,6 +262,7 @@ class AsyncMpvController:
 		self.writer = None
 		self.is_windows = sys.platform == "win32"
 		self.callbacks = callbacks  # Dict mapping event names to async handlers
+		self._start_lock = asyncio.Lock()
 
 	async def stop(self):
 		"""Mata el proceso de MPV cuando cerramos el servidor."""
@@ -274,102 +275,108 @@ class AsyncMpvController:
 				pass
 
 	async def start(self):
-		# Cleanup any zombie process if it exists
-		await self.stop()
+		# Si ya hay otro proceso reiniciando MPV, nos quedamos en el molde y salimos
+		if self._start_lock.locked():
+			async with self._start_lock:
+				return
 
-		env = os.environ.copy()
+		async with self._start_lock:
+			# Cleanup any zombie process if it exists
+			await self.stop()
 
-		# 1. Handle OS-Specific IPC Socket Paths
-		if self.is_windows:
-			self.socket_path = rf"\\.\pipe\mpv_server_{id(self)}"
-		else:
-			if "WAYLAND_DISPLAY" not in env:
-				env["WAYLAND_DISPLAY"] = "wayland-0"
-			tmp_dir = os.environ.get("TMPDIR", "/tmp")
-			self.socket_path = os.path.join(tmp_dir, f"mpv_server_{id(self)}.sock")
+			env = os.environ.copy()
 
-			if os.path.exists(self.socket_path):
-				try:
-					os.remove(self.socket_path)
-				except OSError:
-					pass
-
-		logger.info(f"Armando el socket de MPV en {self.socket_path}...")
-
-		mpv_args = [
-			"mpv",
-			"--autofit=33%x33%",
-			"--fs",
-			"--geometry=-20-40",
-			"--hwdec=auto",
-			"--idle",
-			"--no-border",
-			"--ontop",
-			"--quiet",
-			"--script-opts=osc-visibility=always,osc-layout=topbar",
-			"--sub-color=#FF00FF",
-			"--sub-font-size=100",
-			"--sub-font=Pacifico",
-			"--sub-scale-by-window=no",
-			"--sub-scale-with-window=no",
-			"--ytdl-raw-options=no-playlist=",
-			f"--input-ipc-server={self.socket_path}",
-		]
-
-		if not self.is_windows:
-			mpv_args.extend(["--wayland-app-id=mpvpip", "--x11-name=mpvpip"])
-
-		logger.info("Despertando al carpincho reproductor (MPV)...")
-		try:
-			self.process = await asyncio.create_subprocess_exec(
-				*mpv_args,
-				stdin=asyncio.subprocess.DEVNULL,
-				stdout=asyncio.subprocess.DEVNULL,
-				stderr=asyncio.subprocess.DEVNULL,
-				env=env,
-			)
-		except Exception:
-			logger.error(
-				"¡Uy! No se encontró a MPV instalado. El carpincho está triste."
-			)
-			sys.exit(1)
-
-		for i in range(20):
+			# 1. Handle OS-Specific IPC Socket Paths
 			if self.is_windows:
-				# Named pipes appear instantly in the OS namespace if MPV created it successfully
-				try:
-					with open(self.socket_path, "r+b"):
-						break
-				except FileNotFoundError:
-					pass
-			elif os.path.exists(self.socket_path):
-				break
-			await asyncio.sleep(0.3)
+				self.socket_path = rf"\\.\pipe\mpv_server_{id(self)}"
+			else:
+				if "WAYLAND_DISPLAY" not in env:
+					env["WAYLAND_DISPLAY"] = "wayland-0"
+				tmp_dir = os.environ.get("TMPDIR", "/tmp")
+				self.socket_path = os.path.join(tmp_dir, f"mpv_server_{id(self)}.sock")
 
-		if not self.is_windows and not os.path.exists(self.socket_path):
-			raise RuntimeError("MPV se quedó dormido y no armó el socket a tiempo.")
+				if os.path.exists(self.socket_path):
+					try:
+						os.remove(self.socket_path)
+					except OSError:
+						pass
 
-		# 2. Handle OS-Specific Socket Connections
-		if self.is_windows:
-			logger.info("Conectados al Named Pipe de Windows (pipa lista).")
-			asyncio.create_task(self._read_ipc_events_windows())
-		else:
-			self.reader, self.writer = await asyncio.open_unix_connection(
-				self.socket_path
-			)
-			logger.info("Conectados al socket Unix de MPV (todo legal).")
-			asyncio.create_task(self._read_ipc_events())
+			logger.info(f"Armando el socket de MPV en {self.socket_path}...")
 
-		if (
-			not self.is_windows
-		):  # En Unix mandamos la suscripción por acá porque la conexión es única y no se cierra.
-			# Request MPV to broadcast volume and pause changes
-			await self._send(json.dumps({"command": ["observe_property", 1, "volume"]}))
-			await self._send(json.dumps({"command": ["observe_property", 2, "pause"]}))
+			mpv_args = [
+				"mpv",
+				"--autofit=33%x33%",
+				"--fs",
+				"--geometry=-20-40",
+				"--hwdec=auto",
+				"--idle",
+				"--no-border",
+				"--ontop",
+				"--quiet",
+				"--script-opts=osc-visibility=always,osc-layout=topbar",
+				"--sub-color=#FF00FF",
+				"--sub-font-size=100",
+				"--sub-font=Pacifico",
+				"--sub-scale-by-window=no",
+				"--sub-scale-with-window=no",
+				"--ytdl-raw-options=no-playlist=",
+				f"--input-ipc-server={self.socket_path}",
+			]
 
-		# Si hay un callback de reinicio, avisamos que ya estamos listos para recibir los datos de nuevo
-		if "mpv_restarted" in self.callbacks:
-			asyncio.create_task(self.callbacks["mpv_restarted"]())
+			if not self.is_windows:
+				mpv_args.extend(["--wayland-app-id=mpvpip", "--x11-name=mpvpip"])
+
+			logger.info("Despertando al carpincho reproductor (MPV)...")
+			try:
+				self.process = await asyncio.create_subprocess_exec(
+					*mpv_args,
+					stdin=asyncio.subprocess.DEVNULL,
+					stdout=asyncio.subprocess.DEVNULL,
+					stderr=asyncio.subprocess.DEVNULL,
+					env=env,
+				)
+			except Exception:
+				logger.error(
+					"¡Uy! No se encontró a MPV instalado. El carpincho está triste."
+				)
+				sys.exit(1)
+
+			for i in range(20):
+				if self.is_windows:
+					# Named pipes appear instantly in the OS namespace if MPV created it successfully
+					try:
+						with open(self.socket_path, "r+b"):
+							break
+					except FileNotFoundError:
+						pass
+				elif os.path.exists(self.socket_path):
+					break
+				await asyncio.sleep(0.3)
+
+			if not self.is_windows and not os.path.exists(self.socket_path):
+				raise RuntimeError("MPV se quedó dormido y no armó el socket a tiempo.")
+
+			# 2. Handle OS-Specific Socket Connections
+			if self.is_windows:
+				logger.info("Conectados al Named Pipe de Windows (pipa lista).")
+				asyncio.create_task(self._read_ipc_events_windows())
+			else:
+				self.reader, self.writer = await asyncio.open_unix_connection(
+					self.socket_path
+				)
+				logger.info("Conectados al socket Unix de MPV (todo legal).")
+				asyncio.create_task(self._read_ipc_events())
+
+			if (
+				not self.is_windows
+			):  # En Unix mandamos la suscripción por acá porque la conexión es única y no se cierra.
+				# Request MPV to broadcast volume and pause changes
+				await self._send(json.dumps({"command": ["observe_property", 1, "volume"]}))
+				await self._send(json.dumps({"command": ["observe_property", 2, "pause"]}))
+
+			# Si hay un callback de reinicio, avisamos que ya estamos listos para recibir los datos de nuevo
+			if "mpv_restarted" in self.callbacks:
+				asyncio.create_task(self.callbacks["mpv_restarted"]())
 
 	async def _read_ipc_events_windows(self):
 		"""Threaded reader for Windows Named Pipes to prevent blocking."""
@@ -533,6 +540,7 @@ class APIState:
 		self.url_log_file = Path.home() / ".carpincho_urls.json"
 		self.url_metadata = {}
 		self.volume = 100
+		self.processing_eof = False
 
 		self.play_history = self._load_stats()
 		self.mpv = AsyncMpvController(
@@ -729,10 +737,19 @@ class APIState:
 
 	# Event handlers update the state, which clients will see on their next poll
 	async def handle_song_ended(self):
-		if self.current_track:
-			self._register_play_stat(self.current_track)
-		await self.play_next()
-		await broadcast_state()
+		# Si MPV nos mandó múltiples "canción terminada" al mismo tiempo, los ignoramos
+		if getattr(self, "processing_eof", False):
+			logger.debug("Ignorando evento EOF concurrente para no sumar puntos doble.")
+			return
+
+		self.processing_eof = True
+		try:
+			if self.current_track:
+				self._register_play_stat(self.current_track)
+			await self.play_next()
+			await broadcast_state()
+		finally:
+			self.processing_eof = False
 
 	def _register_play_stat(self, path):
 		str_path = str(path)
@@ -786,7 +803,7 @@ class APIState:
 	async def play_track(self, path):
 		# Si MPV está cerrado o en coma, lo forzamos a arrancar ANTES de tocar el estado (current_track)
 		# Así evitamos que handle_mpv_restarted se maree y mande doble loadfile.
-		if not self.mpv.writer:
+		if not self.mpv.writer and not self.mpv.is_windows:
 			await self.mpv.start()
 
 		self.current_track = path
@@ -808,6 +825,8 @@ class APIState:
 	async def play_next(self):
 		if self.current_track:
 			self.history.append(self.current_track)
+			self.current_track = None
+
 		if self.queue:
 			next_path = self.queue.pop(0)
 			await self.play_track(next_path)
@@ -816,12 +835,8 @@ class APIState:
 			if self.dj_carpincho_enabled and state.tracks_cache:
 				import random
 
-				# 1. Armamos un set con todo lo que ya sonó esta sesión
+				# Filtramos la biblioteca quedándonos solo con temas invictos
 				played_paths = set(self.history)
-				if self.current_track:
-					played_paths.add(self.current_track)
-
-				# 2. Filtramos la biblioteca quedándonos solo con temas invictos
 				unplayed = [
 					t for t in state.tracks_cache if t["path"] not in played_paths
 				]
@@ -847,6 +862,7 @@ class APIState:
 			prev_path = self.history.pop()
 			if self.current_track:
 				self.queue.insert(0, self.current_track)
+				self.current_track = None
 			await self.play_track(prev_path)
 		elif self.current_track:
 			# Restart the current track from the beginning if there's no history
@@ -866,7 +882,7 @@ class APIState:
 			skipped = self.queue[:index]
 			if self.current_track:
 				self.history.append(self.current_track)
-			self.current_track = None
+				self.current_track = None
 			self.history.extend(skipped)
 			self.queue = self.queue[index:]
 			await self.play_next()
@@ -875,8 +891,8 @@ class APIState:
 			rewound = self.history[index + 1 :]
 			if self.current_track:
 				rewound.append(self.current_track)
+				self.current_track = None
 			self.queue = rewound + self.queue
-			self.current_track = None
 			target = self.history[index]
 			self.history = self.history[:index]
 			await self.play_track(target)
@@ -1071,6 +1087,7 @@ async def handle_command(req: CommandRequest):
 	if cmd == "play":
 		if state.current_track:
 			state.history.append(state.current_track)
+			state.current_track = None
 		await state.play_track(req.path)
 	elif cmd == "pause":
 		if not state.current_track and state.queue:
