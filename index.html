@@ -453,8 +453,9 @@
 					</tr>
 
 					<tr v-for="(path, i) in queueState" :key="'queue-'+i"
-						@touchstart="handleTouchStart($event); ctxTouchStart($event, getTrackInfo(path), 'queue', i)"
-						@touchend="handleTouchEnd($event, i); ctxTouchEnd()" @touchmove="ctxTouchEnd()"
+						@touchstart="queueTouchStart($event, i)"
+						@touchend="queueTouchEnd($event, i)"
+						@touchmove="queueTouchMove($event)"
 						@contextmenu.prevent="openCtxMenu($event, getTrackInfo(path), 'queue', i)" draggable="true"
 						@dragstart="dragStart($event, i)" @dragover.prevent="dragOver($event, i)"
 						@dragleave="dragLeave($event)" @drop.prevent="dragDrop($event, i)" @dragend="dragEnd($event)"
@@ -604,7 +605,7 @@
 		<div v-if="ctxMenu.visible" class="fixed inset-0 z-[9998]" @click.self="closeCtxMenu"
 			@contextmenu.prevent="closeCtxMenu">
 			<div class="ctx-menu" :style="{ top: ctxMenu.y + 'px', left: ctxMenu.x + 'px' }">
-				<div class="ctx-menu-header truncate" style="max-width:200px">
+				<div class="ctx-menu-header truncate" style="max-width:300px">
 					🦦 {{ ctxMenu.track ? (ctxMenu.track.title || ctxMenu.track.display_title) : '' }}
 				</div>
 
@@ -839,6 +840,8 @@
 
 				currentTrackPath(newPath, oldPath) {
 					this.updateDocumentTitle();
+					this.updateMediaSession();
+
 					// Si el tema que acaba de terminar era el marcado, borramos la marca visual
 					if (oldPath && oldPath === this.pauseAfterPath) {
 						this.pauseAfterPath = null;
@@ -847,6 +850,11 @@
 
 				isPlaying() {
 					this.updateDocumentTitle();
+				},
+
+				isPaused() {
+					if (!('mediaSession' in navigator)) return;
+					navigator.mediaSession.playbackState = this.isPaused ? "paused" : "playing";
 				},
 
 			},
@@ -1052,7 +1060,29 @@
 					this.touchStartX = e.changedTouches[0].screenX;
 				},
 
-				handleTouchEnd(e, index) {
+				// --- Unified touch for queue rows (swipe + long-press, no conflict) ---
+				queueTouchStart(e, index) {
+					this.touchStartX = e.changedTouches[0].screenX;
+					this._queueLongPressIndex = index;
+					this._queueLongPressFired = false;
+					const touch = e.touches[0];
+					this.ctxLongPressTimer = setTimeout(() => {
+						this._queueLongPressFired = true;
+						this.openCtxMenu(touch, this.getTrackInfo(this.queueState[index]), 'queue', index);
+					}, 550);
+				},
+
+				queueTouchMove(e) {
+					// If finger moved significantly, cancel long-press (user is swiping)
+					const dx = Math.abs(e.touches[0].screenX - this.touchStartX);
+					if (dx > 10) clearTimeout(this.ctxLongPressTimer);
+				},
+
+				queueTouchEnd(e, index) {
+					clearTimeout(this.ctxLongPressTimer);
+					// If long-press already opened the menu, don't also run swipe logic
+					if (this._queueLongPressFired) return;
+					// Normal swipe handling
 					let diff = this.touchStartX - e.changedTouches[0].screenX;
 					let row = e.currentTarget;
 					if (diff > 80) {
@@ -1299,6 +1329,33 @@
 					e.currentTarget.classList.remove('dragging', 'drag-over-top', 'drag-over-bottom');
 					this.dragFromIndex = null;
 				},
+
+				updateMediaSession() {
+					if (!('mediaSession' in navigator)) return;
+					if (!this.currentTrackPath) {
+						navigator.mediaSession.metadata = null;
+						navigator.mediaSession.playbackState = "none";
+						return;
+					}
+
+					const info = this.getTrackInfo(this.currentTrackPath);
+					// Only set artwork for local files; URL tracks have no cover endpoint
+					const artworkSrc = (!this.currentTrackPath.startsWith('http') && this.currentCoverUrl)
+						? (window.location.origin + this.currentCoverUrl)
+						: null;
+
+					navigator.mediaSession.metadata = new MediaMetadata({
+						title: info.display_title || 'Desconocido',
+						artist: info.display_artist || 'Desconocido',
+						album: 'La Rockola del Carpincho',
+						artwork: artworkSrc ? [
+							{ src: artworkSrc, sizes: '96x96',   type: 'image/jpeg' },
+							{ src: artworkSrc, sizes: '512x512', type: 'image/jpeg' },
+						] : []
+					});
+
+					navigator.mediaSession.playbackState = this.isPaused ? "paused" : "playing";
+				},
 			},
 
 			mounted() {
@@ -1306,10 +1363,13 @@
 				this.connectWebSocket();
 				// Reaccionar a metadatos de medios si el celu lo soporta
 				if ('mediaSession' in navigator) {
-					navigator.mediaSession.setActionHandler('play', () => this.sendCmd('pause'));
-					navigator.mediaSession.setActionHandler('pause', () => this.sendCmd('pause'));
+					navigator.mediaSession.setActionHandler('play',          () => this.sendCmd('pause'));
+					navigator.mediaSession.setActionHandler('pause',         () => this.sendCmd('pause'));
 					navigator.mediaSession.setActionHandler('previoustrack', () => this.sendCmd('prev'));
-					navigator.mediaSession.setActionHandler('nexttrack', () => this.sendCmd('skip'));
+					navigator.mediaSession.setActionHandler('nexttrack',     () => this.sendCmd('skip'));
+					// Seek backward/forward (hardware buttons on some headphones / lock screen)
+					navigator.mediaSession.setActionHandler('seekbackward',  (d) => this.sendCmd('seek', { amount: -(d.seekOffset ?? 10) }));
+					navigator.mediaSession.setActionHandler('seekforward',   (d) => this.sendCmd('seek', { amount:  (d.seekOffset ?? 10) }));
 				}
 			},
 		}).mount('#app');

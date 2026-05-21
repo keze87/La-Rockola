@@ -831,7 +831,7 @@ class APIState:
 			self.current_track = None
 
 		# Verificamos si tocaba pausar después del track que acaba de terminar
-		should_pause = (just_finished == self.pause_after_path)
+		should_pause = (self.pause_after_path is not None) and (just_finished == self.pause_after_path)
 		if should_pause:
 			self.pause_after_path = None
 
