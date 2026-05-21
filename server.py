@@ -118,7 +118,7 @@ def highlight_json(json_data):
 	else:
 		parsed = json_data
 
-	formatted_json = json.dumps(parsed, indent=2)
+	formatted_json = json.dumps(parsed, indent=2, ensure_ascii=False)
 
 	# ANSI color codes for the terminal
 	colors = {
@@ -784,6 +784,11 @@ class APIState:
 		await broadcast_state()
 
 	async def play_track(self, path):
+		# Si MPV está cerrado o en coma, lo forzamos a arrancar ANTES de tocar el estado (current_track)
+		# Así evitamos que handle_mpv_restarted se maree y mande doble loadfile.
+		if not self.mpv.writer:
+			await self.mpv.start()
+
 		self.current_track = path
 		self.mpv_paused = False
 		self.last_track_change = time.time()
@@ -1085,8 +1090,9 @@ async def handle_command(req: CommandRequest):
 	elif cmd == "stop":
 		if state.current_track:
 			state.history.append(state.current_track)
-		state.current_track = None
+			state.current_track = None
 		state.mpv_paused = False
+		state.dj_carpincho_enabled = False
 		await state.mpv._send('{"command": ["stop"]}')
 		await state.mpv._send('{"command": ["set_property", "force-window", "no"]}')
 	elif cmd == "clear_queue":
