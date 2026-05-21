@@ -90,6 +90,77 @@
 			touch-action: manipulation;
 		}
 
+		/* Animación de ecualizador para el tema que está sonando */
+		.equalizer {
+			display: inline-flex;
+			align-items: flex-end;
+			gap: 2px;
+			height: 18px;
+			width: 18px;
+		}
+
+		.equalizer span {
+			display: block;
+			width: 3px;
+			border-radius: 2px 2px 0 0;
+			background-color: #588157;
+			animation: eq-bounce 0.8s ease-in-out infinite;
+		}
+
+		.equalizer span:nth-child(1) {
+			animation-delay: 0s;
+			animation-duration: 0.7s;
+		}
+
+		.equalizer span:nth-child(2) {
+			animation-delay: 0.15s;
+			animation-duration: 0.9s;
+		}
+
+		.equalizer span:nth-child(3) {
+			animation-delay: 0.3s;
+			animation-duration: 0.75s;
+		}
+
+		.equalizer.paused span {
+			animation-play-state: paused;
+		}
+
+		@keyframes eq-bounce {
+
+			0%,
+			100% {
+				height: 4px;
+			}
+
+			50% {
+				height: 16px;
+			}
+		}
+
+		/* Drag & Drop en la fila */
+		.drag-over-top {
+			border-top: 2px solid #a67c52 !important;
+		}
+
+		.drag-over-bottom {
+			border-bottom: 2px solid #a67c52 !important;
+		}
+
+		tr.dragging {
+			opacity: 0.4;
+		}
+
+		/* Badge de etiqueta/favorito */
+		.tag-star {
+			cursor: pointer;
+			transition: transform 0.15s;
+		}
+
+		.tag-star:active {
+			transform: scale(1.3);
+		}
+
 		/* Estilizar scrollbar para que no sea fea en PC */
 		::-webkit-scrollbar {
 			width: 6px;
@@ -193,7 +264,13 @@
 			<div v-for="tab in tabs" :key="tab.id" @click="switchTab(tab.id)"
 				:class="['flex-1 text-center py-3 cursor-pointer uppercase tracking-wide text-sm font-medium transition-colors flex justify-center items-center gap-1 active:scale-95 touch-manipulation',
 						 activeTab === tab.id ? 'text-carpincho-primary border-b-2 border-carpincho-primary' : 'text-[#a6adc8] hover:bg-carpincho-border/50 border-b-2 border-transparent']">
-				<i class="material-icons">{{ tab.icon }}</i>
+				<div class="relative">
+					<i class="material-icons">{{ tab.icon }}</i>
+					<span v-if="tab.id === 'queue' && queueState.length > 0"
+						class="absolute -top-1.5 -right-3 bg-carpincho-primary text-white text-[0.55rem] font-bold rounded-full min-w-[14px] h-[14px] flex items-center justify-center px-[3px] leading-none">
+						{{ queueState.length > 99 ? '99+' : queueState.length }}
+					</span>
+				</div>
 				<span class="hidden sm:inline">{{ tab.name }}</span>
 			</div>
 		</div>
@@ -228,8 +305,11 @@
 						class="border-b border-carpincho-border hover:bg-carpincho-border cursor-pointer transition-colors active:scale-[0.98]">
 
 						<td class="p-4 text-center">
-							<i v-if="currentTrackPath === track.path"
-								class="material-icons text-carpincho-success">play_arrow</i>
+							<div v-if="currentTrackPath === track.path" class="flex justify-center items-center">
+								<div :class="['equalizer', isPaused ? 'paused' : '']">
+									<span></span><span></span><span></span>
+								</div>
+							</div>
 							<span v-else-if="queueIndex(track.path) !== -1" class="text-carpincho-warning font-bold">{{
 								queueIndex(track.path) + 1 }}</span>
 						</td>
@@ -271,18 +351,25 @@
 
 					<tr v-if="currentTrackPath" id="current-queue-row" @click="sendCmd('pause')"
 						class="border-b border-carpincho-border bg-carpincho-panel cursor-pointer">
-						<td class="p-4 text-carpincho-primary font-bold text-center"><i
-								class="material-icons">play_arrow</i></td>
+						<td class="p-4 text-carpincho-primary font-bold text-center">
+							<div :class="['equalizer', isPaused ? 'paused' : '']">
+								<span></span><span></span><span></span>
+							</div>
+						</td>
 						<td class="p-4 text-carpincho-primary font-bold max-w-[200px] truncate">{{
 							getTrackInfo(currentTrackPath).display_title }}</td>
 						<td class="p-4 text-carpincho-primary">{{ getTrackInfo(currentTrackPath).display_artist }}</td>
 					</tr>
 
 					<tr v-for="(path, i) in queueState" :key="'queue-'+i" @touchstart="handleTouchStart"
-						@touchend="handleTouchEnd($event, i)"
+						@touchend="handleTouchEnd($event, i)" draggable="true" @dragstart="dragStart($event, i)"
+						@dragover.prevent="dragOver($event, i)" @dragleave="dragLeave($event)"
+						@drop.prevent="dragDrop($event, i)" @dragend="dragEnd($event)"
 						class="swipe-row border-b border-carpincho-border hover:bg-carpincho-border cursor-pointer">
 						<td class="p-4" @click.stop>
 							<div class="flex items-center justify-center gap-2">
+								<i
+									class="material-icons text-gray-500 cursor-grab active:cursor-grabbing hidden sm:block select-none">drag_indicator</i>
 								<i @click="moveQueueItem(i, 'first')"
 									class="material-icons text-carpincho-primary hover:text-carpincho-secondary transition">vertical_align_top</i>
 								<i @click="moveQueueItem(i, 'last')"
@@ -456,6 +543,7 @@
 					autoDjTimer: null,
 					brokenCovers: [],
 					brokenNextCover: false,
+					dragFromIndex: null,
 					currentTrackPath: null,
 					currentTracks: [],
 					djCarpinchoEnabled: false,
@@ -879,6 +967,46 @@
 				toggleDjCarpincho() {
 					this.sendCmd("toggle_dj_carpincho");
 					this.haptic();
+				},
+
+				dragStart(e, index) {
+					this.dragFromIndex = index;
+					e.currentTarget.classList.add('dragging');
+					e.dataTransfer.effectAllowed = 'move';
+				},
+
+				dragOver(e, index) {
+					if (this.dragFromIndex === null || this.dragFromIndex === index) return;
+					const rect = e.currentTarget.getBoundingClientRect();
+					const midY = rect.top + rect.height / 2;
+					e.currentTarget.classList.remove('drag-over-top', 'drag-over-bottom');
+					if (e.clientY < midY) {
+						e.currentTarget.classList.add('drag-over-top');
+					} else {
+						e.currentTarget.classList.add('drag-over-bottom');
+					}
+				},
+
+				dragLeave(e) {
+					e.currentTarget.classList.remove('drag-over-top', 'drag-over-bottom');
+				},
+
+				dragDrop(e, toIndex) {
+					e.currentTarget.classList.remove('drag-over-top', 'drag-over-bottom');
+					if (this.dragFromIndex === null || this.dragFromIndex === toIndex) return;
+					const rect = e.currentTarget.getBoundingClientRect();
+					const midY = rect.top + rect.height / 2;
+					let finalIndex = e.clientY < midY ? toIndex : toIndex + 1;
+					if (finalIndex > this.dragFromIndex) finalIndex--;
+					if (finalIndex !== this.dragFromIndex) {
+						this.sendCmd('move_queue_item', { index: this.dragFromIndex, new_index: finalIndex });
+					}
+					this.dragFromIndex = null;
+				},
+
+				dragEnd(e) {
+					e.currentTarget.classList.remove('dragging', 'drag-over-top', 'drag-over-bottom');
+					this.dragFromIndex = null;
 				},
 			},
 
