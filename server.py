@@ -562,6 +562,7 @@ class APIState:
 			"history": list(self.history),
 			"is_scanning": self.is_scanning,
 			"paused": self.mpv_paused,
+			"pause_after_path": self.pause_after_path,
 			"queue": list(self.queue),
 			"top_played": self.get_top_played(),
 			"url_metadata": dict(self.url_metadata),
