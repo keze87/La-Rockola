@@ -543,6 +543,7 @@ class APIState:
 		self.url_metadata = {}
 		self.volume = 100
 
+		self.dj_next_track = None  # El tema que el DJ eligió para sonar después
 		self.play_history = self._load_stats()
 		self.mpv = AsyncMpvController(
 			{
@@ -559,6 +560,7 @@ class APIState:
 		return {
 			"current_track": self.current_track,
 			"dj_carpincho_enabled": self.dj_carpincho_enabled,
+			"dj_next_track": self.dj_next_track,
 			"history": list(self.history),
 			"is_scanning": self.is_scanning,
 			"paused": self.mpv_paused,
@@ -837,39 +839,46 @@ class APIState:
 
 		if self.queue:
 			next_path = self.queue.pop(0)
+			self.dj_next_track = None  # Limpiamos (si la fila tenía temas, el DJ no pre-eligió)
 			await self.play_track(next_path)
 			if should_pause:
 				self.mpv_paused = True
 				await self.mpv._send(json.dumps({"command": ["set_property", "pause", True]}))
-		else:
-			# --- AUTOMATIZACIÓN DEL DJ CARPINCHO ---
-			if self.dj_carpincho_enabled and state.tracks_cache:
-				import random
-
-				# Filtramos la biblioteca quedándonos solo con temas invictos
+		elif self.dj_carpincho_enabled and self.tracks_cache:
+			# Usamos la pre-elección del DJ si existe; sino elegimos ahora
+			import random
+			if self.dj_next_track:
+				chosen = self.dj_next_track
+			else:
 				played_paths = set(self.history)
-				unplayed = [
-					t for t in state.tracks_cache if t["path"] not in played_paths
-				]
+				unplayed = [t for t in self.tracks_cache if t["path"] not in played_paths]
+				chosen = random.choice(unplayed) if unplayed else None
 
-				if unplayed:
-					chosen = random.choice(unplayed)
-					logger.info(
-						f"🦦 DJ Carpincho salvó las papas con un clásico: {chosen['display_title']}"
-					)
-					await self.play_track(chosen["path"])
-					if should_pause:
-						self.mpv_paused = True
-						await self.mpv._send(json.dumps({"command": ["set_property", "pause", True]}))
-					return  # Salimos temprano porque ya pusimos a sonar música
-				else:
-					logger.info("DJ Carpincho se quedó sin temas nuevos esta sesión.")
-					self.dj_carpincho_enabled = False
+			self.dj_next_track = None  # Consumimos la pre-elección
 
-			# Si el DJ está apagado o no hay más temas, frena el reproductor de forma normal
+			if chosen:
+				logger.info(f"🦦 DJ Carpincho salvó las papas con un clásico: {chosen['display_title']}")
+				await self.play_track(chosen["path"])
+				if should_pause:
+					self.mpv_paused = True
+					await self.mpv._send(json.dumps({"command": ["set_property", "pause", True]}))
+				# Pre-elegimos el siguiente para el front
+				self._pick_dj_next()
+				return
+			else:
+				logger.info("DJ Carpincho se quedó sin temas nuevos esta sesión.")
+				self.dj_carpincho_enabled = False
+				self.dj_next_track = None
+				self.current_track = None
+				await self.mpv._send('{"command": ["stop"]}')
+				await self.mpv._send('{"command": ["set_property", "force-window", "no"]}')
+		else:
+			# Sin fila ni DJ: frena
+			self.dj_next_track = None
 			self.current_track = None
 			await self.mpv._send('{"command": ["stop"]}')
 			await self.mpv._send('{"command": ["set_property", "force-window", "no"]}')
+		self._pick_dj_next()  # Actualiza la preview después de tocar la fila
 
 	async def play_prev(self):
 		if self.history:
@@ -882,6 +891,21 @@ class APIState:
 			# Restart the current track from the beginning if there's no history
 			await self.play_track(self.current_track)
 
+	def _pick_dj_next(self):
+		"""Elige (o limpia) el próximo tema del DJ Carpincho según el estado actual."""
+		if self.dj_carpincho_enabled and not self.queue and self.tracks_cache:
+			import random
+			played_paths = set(self.history)
+			if self.current_track:
+				played_paths.add(self.current_track)
+			unplayed = [t for t in self.tracks_cache if t["path"] not in played_paths]
+			if unplayed:
+				chosen = random.choice(unplayed)
+				self.dj_next_track = chosen
+				logger.info(f"🦦 DJ Carpincho pre-eligió: {chosen['display_title']}")
+				return
+		self.dj_next_track = None
+
 	async def toggle_queue(self, path):
 		if path in self.queue:
 			self.queue.remove(path)
@@ -889,6 +913,8 @@ class APIState:
 			self.queue.append(path)
 			if not self.current_track:
 				await self.play_next()
+				return
+		self._pick_dj_next()  # Actualiza la pre-elección del DJ cuando cambia la fila
 
 	async def jump(self, target_type, index):
 		if target_type == "queue":
@@ -1151,20 +1177,10 @@ async def handle_command(req: CommandRequest):
 	elif cmd == "add_url":
 		if req.path:
 			state.queue.append(req.path)
+			state._pick_dj_next()
 			if not state.current_track:
 				await state.play_next()
 			asyncio.create_task(state.fetch_yt_dlp_metadata(req.path))
-	elif cmd == "remove_queue_item":
-		if req.index is not None and 0 <= req.index < len(state.queue):
-			state.queue.pop(req.index)
-	elif cmd == "move_queue_item":
-		if req.index is not None and req.new_index is not None:
-			if 0 <= req.index < len(state.queue) and 0 <= req.new_index < len(
-				state.queue
-			):
-				# Saca el tema de su lugar viejo y lo mete en el nuevo
-				item = state.queue.pop(req.index)
-				state.queue.insert(req.new_index, item)
 	elif cmd == "jump":
 		await state.jump(req.type, req.index)
 	elif cmd == "seek":
@@ -1179,11 +1195,25 @@ async def handle_command(req: CommandRequest):
 				"DJ Carpincho se activó y no hay tema sonando, arrancando la música..."
 			)
 			await state.play_next()
+		else:
+			state._pick_dj_next()  # Actualiza (o limpia) la pre-elección inmediatamente
 	elif cmd == "pause_after":
 		state.pause_after_path = req.path
 	elif cmd == "remove_history_item":
 		if req.index is not None and 0 <= req.index < len(state.history):
 			state.history.pop(req.index)
+	elif cmd == "remove_queue_item":
+		if req.index is not None and 0 <= req.index < len(state.queue):
+			state.queue.pop(req.index)
+			state._pick_dj_next()
+	elif cmd == "move_queue_item":
+		if req.index is not None and req.new_index is not None:
+			if 0 <= req.index < len(state.queue) and 0 <= req.new_index < len(
+				state.queue
+			):
+				item = state.queue.pop(req.index)
+				state.queue.insert(req.new_index, item)
+			state._pick_dj_next()
 
 	# Notify clients of state change
 	await broadcast_state()

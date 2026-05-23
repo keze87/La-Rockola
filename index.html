@@ -452,10 +452,8 @@
 						<td class="p-4 text-carpincho-primary">{{ getTrackInfo(currentTrackPath).display_artist }}</td>
 					</tr>
 
-					<tr v-for="(path, i) in queueState" :key="'queue-'+i"
-						@touchstart="queueTouchStart($event, i)"
-						@touchend="queueTouchEnd($event, i)"
-						@touchmove="queueTouchMove($event)"
+					<tr v-for="(path, i) in queueState" :key="'queue-'+i" @touchstart="queueTouchStart($event, i)"
+						@touchend="queueTouchEnd($event, i)" @touchmove="queueTouchMove($event)"
 						@contextmenu.prevent="openCtxMenu($event, getTrackInfo(path), 'queue', i)" draggable="true"
 						@dragstart="dragStart($event, i)" @dragover.prevent="dragOver($event, i)"
 						@dragleave="dragLeave($event)" @drop.prevent="dragDrop($event, i)" @dragend="dragEnd($event)"
@@ -490,8 +488,8 @@
 								:class="{'animate-pulse': queueState.length === 0}">auto_awesome</i>
 						</td>
 						<td class="p-4 italic" :class="queueState.length === 0 ? 'text-[#a6adc8]' : 'text-[#a6adc8]'">
-							{{ queueState.length === 0 ? 'DJ Carpincho está eligiendo un temazo...' : 'Al vaciarse la fila, entra el DJ' }}
-							<!-- NO CORTAR -->
+							{{ queueState.length === 0 ? (djNextTrack ? 'DJ Carpincho eligió: ' +
+							djNextTrack.display_title : 'Eligiendo...') : 'Al vaciarse la fila, entra el DJ' }}
 						</td>
 						<td class="p-4 text-[#a6adc8] italic">🦦</td>
 					</tr>
@@ -661,7 +659,7 @@
 				</div>
 				<div class="grow overflow-hidden flex flex-col justify-center">
 					<div class="text-[0.7rem] text-carpincho-primary uppercase tracking-wider font-bold">
-						{{ queueState.length > 0 ? 'Próximo Temazo' : (djCarpinchoEnabled ? 'Al rescate' : 'Fin de la fila') }}
+						{{ queueState.length > 0 ? 'Próximo Temazo' : (djCarpinchoEnabled ? (djNextTrack ? '🦦 DJ Carpincho activado' : 'Eligiendo...') : 'Fin de la fila') }}
 						<!-- NO CORTAR -->
 					</div>
 					<div class="text-[0.95rem] font-bold truncate text-carpincho-text">{{ upNextTitle }}</div>
@@ -698,6 +696,7 @@
 					currentTracks: [],
 					deletingQueueIndex: null,
 					djCarpinchoEnabled: false,
+					djNextTrack: null,
 					dragFromIndex: null,
 					historyState: [],
 					isFogonMode: false,
@@ -803,23 +802,34 @@
 				},
 
 				upNextTitle() {
-					// 1. Si hay fila normal, mostramos eso.
+					// 1. Si hay fila normal, mostramos el primero de la fila
 					if (this.queueState.length > 0) {
 						const t = this.getTrackInfo(this.queueState[0]);
 						return `${t.display_title} - ${t.display_artist}`;
 					}
-					// 2. Si NO hay fila, pero el DJ está prendido...
-					if (this.djCarpinchoEnabled) {
-						return "DJ Carpincho activado...";
+					// 2. Fila vacía pero el DJ ya eligió el próximo tema
+					if (this.djCarpinchoEnabled && this.djNextTrack) {
+						const t = this.djNextTrack;
+						return `${t.display_title || t.title} - ${t.display_artist || t.artist}`;
 					}
-					// 3. Si no hay fila y el DJ está apagado.
+					// 3. Fila vacía y DJ activo pero aún eligiendo
+					if (this.djCarpinchoEnabled) {
+						return "DJ Carpincho eligiendo...";
+					}
+					// 4. Si no hay fila y el DJ está apagado.
 					return this.currentTrackPath ? "Termina este y nos re vimos" : "Agregá algo pa' escuchar";
 				},
 
 				upNextCoverUrl() {
 					if (this.brokenNextCover) return null;
+					// Fila normal
 					if (this.queueState.length > 0 && !this.queueState[0].startsWith('http')) {
 						return '/cover?path=' + encodeURIComponent(this.queueState[0]);
+					}
+					// Pre-elección del DJ
+					if (this.djCarpinchoEnabled && this.djNextTrack) {
+						const p = this.djNextTrack.path;
+						if (p && !p.startsWith('http')) return '/cover?path=' + encodeURIComponent(p);
 					}
 					return null;
 				}
@@ -898,11 +908,12 @@
 							if (data.type === 'state_update') {
 								if (data.current_track !== undefined) this.currentTrackPath = data.current_track;
 								if (data.dj_carpincho_enabled !== undefined) this.djCarpinchoEnabled = data.dj_carpincho_enabled;
+								if (data.dj_next_track !== undefined) this.djNextTrack = data.dj_next_track;
 								if (data.history) this.historyState = data.history;
 								if (data.is_scanning !== undefined) this.isScanning = data.is_scanning;
 								if (data.pause_after_path !== undefined) this.pauseAfterPath = data.pause_after_path;
 								if (data.paused !== undefined) this.isPaused = data.paused;
-								if (data.queue) this.queueState = data.queue;
+								if (data.queue !== undefined) this.queueState = data.queue;  // fix: [] is falsy
 								if (data.top_played) this.topPlayedState = data.top_played;
 								if (data.url_metadata) this.urlMetadata = data.url_metadata;
 								if (data.volume !== undefined) this.volume = data.volume;
@@ -1349,7 +1360,7 @@
 						artist: info.display_artist || 'Desconocido',
 						album: 'La Rockola del Carpincho',
 						artwork: artworkSrc ? [
-							{ src: artworkSrc, sizes: '96x96',   type: 'image/jpeg' },
+							{ src: artworkSrc, sizes: '96x96', type: 'image/jpeg' },
 							{ src: artworkSrc, sizes: '512x512', type: 'image/jpeg' },
 						] : []
 					});
@@ -1363,13 +1374,13 @@
 				this.connectWebSocket();
 				// Reaccionar a metadatos de medios si el celu lo soporta
 				if ('mediaSession' in navigator) {
-					navigator.mediaSession.setActionHandler('play',          () => this.sendCmd('pause'));
-					navigator.mediaSession.setActionHandler('pause',         () => this.sendCmd('pause'));
+					navigator.mediaSession.setActionHandler('play', () => this.sendCmd('pause'));
+					navigator.mediaSession.setActionHandler('pause', () => this.sendCmd('pause'));
 					navigator.mediaSession.setActionHandler('previoustrack', () => this.sendCmd('prev'));
-					navigator.mediaSession.setActionHandler('nexttrack',     () => this.sendCmd('skip'));
+					navigator.mediaSession.setActionHandler('nexttrack', () => this.sendCmd('skip'));
 					// Seek backward/forward (hardware buttons on some headphones / lock screen)
-					navigator.mediaSession.setActionHandler('seekbackward',  (d) => this.sendCmd('seek', { amount: -(d.seekOffset ?? 10) }));
-					navigator.mediaSession.setActionHandler('seekforward',   (d) => this.sendCmd('seek', { amount:  (d.seekOffset ?? 10) }));
+					navigator.mediaSession.setActionHandler('seekbackward', (d) => this.sendCmd('seek', { amount: -(d.seekOffset ?? 10) }));
+					navigator.mediaSession.setActionHandler('seekforward', (d) => this.sendCmd('seek', { amount: (d.seekOffset ?? 10) }));
 				}
 			},
 		}).mount('#app');
