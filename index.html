@@ -366,7 +366,7 @@
 					<i class="material-icons">my_location</i>
 				</button>
 				<div class="relative flex-grow">
-					<input v-model="searchQuery" type="text" placeholder="Buscá un buen tema pa' acompañar..."
+					<input v-model="searchQuery" type="text" placeholder="Buscá un buen tema pa' acompañar los mates..."
 						class="w-full bg-transparent border-b border-carpincho-primary focus:border-carpincho-secondary outline-none py-2 text-carpincho-text pr-8 placeholder-gray-500 transition-colors">
 					<i v-show="searchQuery" @click="searchQuery = ''; setTimeout(scrollToCurrent, 50)"
 						class="material-icons absolute right-2 top-2 cursor-pointer text-carpincho-secondary">close</i>
@@ -1178,18 +1178,34 @@
 					const margin = 12;
 					let x = event.clientX || (event.touches && event.touches[0].clientX) || 0;
 					let y = event.clientY || (event.touches && event.touches[0].clientY) || 0;
-					// Keep menu on screen
+
+					// 1. Mostrar el menú en la posición del toque/clic inicial
+					this.ctxMenu = { visible: true, x, y, track, source, index };
+
+					// 2. Esperamos que Vue lo dibuje para poder medir su altura y anchura reales
 					this.$nextTick(() => {
 						const menu = document.querySelector('.ctx-menu');
 						if (menu) {
-							const w = menu.offsetWidth || 220;
-							const h = menu.offsetHeight || 160;
-							if (x + w + margin > window.innerWidth) x = window.innerWidth - w - margin;
-							if (y + h + margin > window.innerHeight) y = window.innerHeight - h - margin;
+							const w = menu.offsetWidth;
+							const h = menu.offsetHeight;
+
+							// Medidas seguras para celulares y PC
+							const winW = window.innerWidth || document.documentElement.clientWidth;
+							const winH = window.innerHeight || document.documentElement.clientHeight;
+
+							// Si se cae por la derecha o por abajo, lo empujamos para adentro
+							if (x + w + margin > winW) x = winW - w - margin;
+							if (y + h + margin > winH) y = winH - h - margin;
+
+							// Por las dudas (pantallas muy chicas), que no se esconda arriba o a la izquierda
+							if (x < margin) x = margin;
+							if (y < margin) y = margin;
+
+							// IMPORTANTE: Actualizamos solo la posición, sin recrear el objeto entero
+							this.ctxMenu.x = x;
+							this.ctxMenu.y = y;
 						}
-						this.ctxMenu = { visible: true, x, y, track, source, index };
 					});
-					this.ctxMenu = { visible: true, x, y, track, source, index };
 				},
 
 				closeCtxMenu() {
