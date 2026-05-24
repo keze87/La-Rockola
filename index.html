@@ -425,8 +425,11 @@
 					</tr>
 				</thead>
 				<tbody class="overflow-hidden">
-					<tr v-for="(path, i) in historyState" :key="'hist-'+i"
+					<tr v-for="(path, i) in historyState" :key="'hist-'+path" :data-history-path="path"
 						@click="sendCmd('jump', { type: 'history', index: i })"
+						@contextmenu.prevent="openCtxMenu($event, getTrackInfo(path), 'history', i)"
+						@touchstart="ctxTouchStart($event, getTrackInfo(path), 'history', i)"
+						@touchend="ctxTouchEnd" @touchmove="ctxTouchEnd"
 						class="border-b border-carpincho-border hover:bg-carpincho-border cursor-pointer opacity-70">
 						<td class="p-4 text-carpincho-success text-center"><i class="material-icons text-sm">check</i>
 						</td>
@@ -452,7 +455,7 @@
 						<td class="p-4 text-carpincho-primary">{{ getTrackInfo(currentTrackPath).display_artist }}</td>
 					</tr>
 
-					<tr v-for="(path, i) in queueState" :key="'queue-'+i" @touchstart="queueTouchStart($event, i)"
+					<tr v-for="(path, i) in queueState" :key="path" :data-queue-path="path" @touchstart="queueTouchStart($event, i)"
 						@touchend="queueTouchEnd($event, i)" @touchmove="queueTouchMove($event)"
 						@contextmenu.prevent="openCtxMenu($event, getTrackInfo(path), 'queue', i)" draggable="true"
 						@dragstart="dragStart($event, i)" @dragover.prevent="dragOver($event, i)"
@@ -641,6 +644,18 @@
 					<div class="ctx-menu-item hover:!bg-red-900/30 transition-colors" @click="ctxRemoveFromQueue">
 						<i class="material-icons text-red-400">delete</i> <span class="text-red-400">Pegarle un
 							voleo</span>
+					</div>
+				</template>
+
+				<template v-if="ctxMenu.source === 'history'">
+					<div class="ctx-menu-item" @click="ctxHistoryPlayAgain">
+						<i class="material-icons">add_circle_outline</i> Agregar a la fila
+					</div>
+					<div class="ctx-menu-item" @click="ctxFilterByArtist">
+						<i class="material-icons">person_search</i> Buscar en la librería
+					</div>
+					<div class="ctx-menu-item hover:!bg-red-900/30 transition-colors" @click="ctxRemoveFromHistory">
+						<i class="material-icons text-red-400">delete</i> <span class="text-red-400">Borrar del historial</span>
 					</div>
 				</template>
 			</div>
@@ -1300,9 +1315,43 @@
 					const index = this.ctxMenu.index;
 					this.closeCtxMenu();
 					if (index !== null) {
-						// Aprovecha la función que ya hiciste antes con el timeout y destello visual
-						this.removeQueueItem(index);
+						// Find the row by its path key so the delete animation plays
+						const rows = document.querySelectorAll('tr[data-queue-path]');
+						const path = this.queueState[index];
+						const rowEl = [...rows].find(r => r.dataset.queuePath === path) || null;
+						this.removeQueueItem(index, rowEl);
 						this.showToast("¡Voleo en el orto! Afuera de la fila", "warning");
+						this.haptic();
+					}
+				},
+
+				// --- FUNCIONES PARA EL MENÚ DEL HISTORIAL ---
+				ctxHistoryPlayAgain() {
+					const track = this.ctxMenu.track;
+					this.closeCtxMenu();
+					this.sendCmd('toggle_queue', { path: track.path || this.historyState[this.ctxMenu.index] });
+					// this.showToast(`De vuelta en la fila: <b>${track.display_title}</b> 🔁`, "success");
+					this.haptic();
+				},
+
+				ctxRemoveFromHistory() {
+					const index = this.ctxMenu.index;
+					const track = this.ctxMenu.track;
+					this.closeCtxMenu();
+					if (index !== null) {
+						// Animate the row out before sending the command
+						const rows = document.querySelectorAll('tr[data-history-path]');
+						const path = this.historyState[index];
+						const rowEl = [...rows].find(r => r.dataset.historyPath === path) || null;
+						if (rowEl) {
+							rowEl.classList.add('deleting');
+							rowEl.addEventListener('animationend', () => {
+								this.sendCmd('remove_history_item', { index });
+							}, { once: true });
+						} else {
+							this.sendCmd('remove_history_item', { index });
+						}
+						this.showToast(`Borrado del historial: <b>${track.display_title}</b>`, "warning");
 						this.haptic();
 					}
 				},
