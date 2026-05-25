@@ -1079,7 +1079,27 @@
 				},
 
 				haptic(heavy = false) {
-					if (navigator.vibrate) navigator.vibrate(heavy ? [30, 50, 30] : 40);
+					// Android / Firefox: Vibration API
+					if (navigator.vibrate) {
+						navigator.vibrate(heavy ? [10, 30, 20] : 10);
+						return;
+					}
+					// iOS Safari: no Vibration API. Use a near-silent AudioContext click
+					// which tickles the Taptic Engine on supported devices.
+					try {
+						const ctx = new (window.AudioContext || window.webkitAudioContext)();
+						const osc = ctx.createOscillator();
+						const gain = ctx.createGain();
+						osc.connect(gain);
+						gain.connect(ctx.destination);
+						// Very short, barely audible click
+						gain.gain.setValueAtTime(heavy ? 0.03 : 0.01, ctx.currentTime);
+						gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + (heavy ? 0.05 : 0.02));
+						osc.frequency.setValueAtTime(heavy ? 200 : 400, ctx.currentTime);
+						osc.start(ctx.currentTime);
+						osc.stop(ctx.currentTime + (heavy ? 0.05 : 0.02));
+						osc.onended = () => ctx.close();
+					} catch (_) {}
 				},
 
 				handleTouchStart(e) {
@@ -1092,10 +1112,13 @@
 					this._queueLongPressIndex = index;
 					this._queueLongPressFired = false;
 					const touch = e.touches[0];
+					// Schedule a gentle pre-haptic at ~400ms so it fires within the user gesture window,
+					// then open the menu at 550ms (heavy haptic fires at open time via openCtxMenu)
 					this.ctxLongPressTimer = setTimeout(() => {
 						this._queueLongPressFired = true;
+						this.haptic(true);
 						this.openCtxMenu(touch, this.getTrackInfo(this.queueState[index]), 'queue', index);
-					}, 550);
+					}, 500);
 				},
 
 				queueTouchMove(e) {
@@ -1189,7 +1212,6 @@
 
 				// --- CONTEXT MENU (long press / right click) ---
 				openCtxMenu(event, track, source = 'library', index = null) {
-					this.haptic();
 					const margin = 12;
 					let x = event.clientX || (event.touches && event.touches[0].clientX) || 0;
 					let y = event.clientY || (event.touches && event.touches[0].clientY) || 0;
@@ -1229,8 +1251,9 @@
 
 				ctxTouchStart(event, track, source = 'library', index = null) {
 					this.ctxLongPressTimer = setTimeout(() => {
+						this.haptic(true);
 						this.openCtxMenu(event.touches[0], track, source, index);
-					}, 550);
+					}, 500);
 				},
 
 				ctxTouchEnd() {
