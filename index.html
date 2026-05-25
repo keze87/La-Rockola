@@ -428,8 +428,8 @@
 					<tr v-for="(path, i) in historyState" :key="'hist-'+path" :data-history-path="path"
 						@click="sendCmd('jump', { type: 'history', index: i })"
 						@contextmenu.prevent="openCtxMenu($event, getTrackInfo(path), 'history', i)"
-						@touchstart="ctxTouchStart($event, getTrackInfo(path), 'history', i)"
-						@touchend="ctxTouchEnd" @touchmove="ctxTouchEnd"
+						@touchstart="ctxTouchStart($event, getTrackInfo(path), 'history', i)" @touchend="ctxTouchEnd"
+						@touchmove="ctxTouchEnd"
 						class="border-b border-carpincho-border hover:bg-carpincho-border cursor-pointer opacity-70">
 						<td class="p-4 text-carpincho-success text-center"><i class="material-icons text-sm">check</i>
 						</td>
@@ -437,7 +437,7 @@
 						<td class="p-4 text-[#a6adc8]">{{ getTrackInfo(path).display_artist }}</td>
 					</tr>
 
-					<tr v-if="currentTrackPath" id="current-queue-row" @click="sendCmd('pause')"
+					<tr v-if="currentTrackPath" id="current-queue-row" ref="currentQueueRow" @click="sendCmd('pause')"
 						class="border-b border-carpincho-border bg-carpincho-panel cursor-pointer">
 						<td class="p-4 text-carpincho-primary font-bold text-center">
 							<div :class="['equalizer', isPaused ? 'paused' : '']">
@@ -455,8 +455,9 @@
 						<td class="p-4 text-carpincho-primary">{{ getTrackInfo(currentTrackPath).display_artist }}</td>
 					</tr>
 
-					<tr v-for="(path, i) in queueState" :key="path" :data-queue-path="path" @touchstart="queueTouchStart($event, i)"
-						@touchend="queueTouchEnd($event, i)" @touchmove="queueTouchMove($event)"
+					<tr v-for="(path, i) in queueState" :key="path" :data-queue-path="path"
+						@touchstart="queueTouchStart($event, i)" @touchend="queueTouchEnd($event, i)"
+						@touchmove="queueTouchMove($event)"
 						@contextmenu.prevent="openCtxMenu($event, getTrackInfo(path), 'queue', i)" draggable="true"
 						@dragstart="dragStart($event, i)" @dragover.prevent="dragOver($event, i)"
 						@dragleave="dragLeave($event)" @drop.prevent="dragDrop($event, i)" @dragend="dragEnd($event)"
@@ -597,7 +598,7 @@
 			<div class="text-center font-bold text-carpincho-secondary mb-4 uppercase tracking-wider text-sm"><i
 					class="material-icons align-middle mr-1">qr_code_2</i> Sumate a la joda</div>
 			<div class="flex flex-col items-center">
-				<div id="qrcode" class="bg-white p-4 rounded-xl shadow-lg relative"></div>
+				<div id="qrcode" ref="qrcode" class="bg-white p-4 rounded-xl shadow-lg relative"></div>
 				<p class="text-[#a6adc8] text-sm mt-3">Escaneá para entrar desde tu celu</p>
 			</div>
 		</section>
@@ -655,7 +656,8 @@
 						<i class="material-icons">person_search</i> Buscar en la librería
 					</div>
 					<div class="ctx-menu-item hover:!bg-red-900/30 transition-colors" @click="ctxRemoveFromHistory">
-						<i class="material-icons text-red-400">delete</i> <span class="text-red-400">Borrar del historial</span>
+						<i class="material-icons text-red-400">delete</i> <span class="text-red-400">Borrar del
+							historial</span>
 					</div>
 				</template>
 			</div>
@@ -698,6 +700,15 @@
 		const {
 			createApp
 		} = Vue;
+
+		// Configuración estática de pestañas — no necesita ser reactiva
+		const TABS = [
+			{ id: 'library', name: 'Los Temazos', icon: 'library_music' },
+			{ id: 'queue', name: 'La Fila', icon: 'queue_music' },
+			{ id: 'top', name: 'Más Picados', icon: 'local_fire_department' },
+			{ id: 'controls', name: 'Lo Controle', icon: 'settings' },
+		];
+
 		createApp({
 			data() {
 				return {
@@ -731,31 +742,12 @@
 					urlMetadata: {},
 					volume: 100,
 					ws: null,
-					tabs: [{
-						id: 'library',
-						name: 'Los Temazos',
-						icon: 'library_music'
-					},
-					{
-						id: 'queue',
-						name: 'La Fila',
-						icon: 'queue_music'
-					},
-					{
-						id: 'top',
-						name: 'Más Picados',
-						icon: 'local_fire_department'
-					},
-					{
-						id: 'controls',
-						name: 'Lo Controle',
-						icon: 'settings'
-					}
-					]
 				}
 			},
 
 			computed: {
+				tabs() { return TABS; },
+
 				currentCoverUrl() {
 					if (this.currentTrackPath && !this.currentTrackPath.startsWith('http')) {
 						return '/cover?path=' + encodeURIComponent(this.currentTrackPath);
@@ -851,8 +843,6 @@
 			},
 
 			watch: {
-				searchQuery() { },
-
 				queueState() {
 					this.brokenNextCover = false;
 				},
@@ -881,7 +871,6 @@
 					if (!('mediaSession' in navigator)) return;
 					navigator.mediaSession.playbackState = this.isPaused ? "paused" : "playing";
 				},
-
 			},
 
 			methods: {
@@ -914,6 +903,13 @@
 				},
 
 				connectWebSocket(delay = 1000) {
+					// Limpiar el socket viejo para que no queden handlers zombies
+					if (this.ws) {
+						this.ws.onclose = null;
+						this.ws.onmessage = null;
+						this.ws.onopen = null;
+						if (this.ws.readyState < WebSocket.CLOSING) this.ws.close();
+					}
 					const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 					this.ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
 					this.ws.onmessage = (event) => {
@@ -1066,8 +1062,12 @@
 				},
 
 				scrollToCurrent() {
-					let elId = this.activeTab === 'library' ? 'current-library-row' : 'current-queue-row';
-					const el = document.getElementById(elId);
+					// currentLibraryRow vive dentro de un v-for, así que $refs devuelve un array
+					// en Vue 3 — usamos el :id que ya tiene el <tr> para ese caso.
+					// currentQueueRow es un elemento único, $refs funciona perfecto ahí.
+					const el = this.activeTab === 'library'
+						? document.getElementById('current-library-row')
+						: this.$refs.currentQueueRow;
 					if (el) el.scrollIntoView({
 						behavior: "smooth",
 						block: "center"
@@ -1099,7 +1099,7 @@
 						osc.start(ctx.currentTime);
 						osc.stop(ctx.currentTime + (heavy ? 0.05 : 0.02));
 						osc.onended = () => ctx.close();
-					} catch (_) {}
+					} catch (_) { }
 				},
 
 				handleTouchStart(e) {
@@ -1159,7 +1159,7 @@
 				},
 
 				generateQR() {
-					const el = document.getElementById("qrcode");
+					const el = this.$refs.qrcode;
 					if (!this.qrCreado && el) {
 						el.innerHTML = "";
 						new QRCode(el, {
