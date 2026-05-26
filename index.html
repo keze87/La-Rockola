@@ -302,6 +302,15 @@
 						</button>
 					</div>
 
+					<div class="mt-6 flex justify-center">
+						<button @click="togglePauseAfterCurrent(); haptic()"
+							:class="['flex items-center gap-2 px-5 py-2 rounded-full text-sm font-medium active:scale-95 transition', pauseAfterPath === currentTrackPath && currentTrackPath ? 'bg-carpincho-warning text-carpincho-panel shadow-[0_0_15px_rgba(233,196,106,0.4)]' : 'bg-gray-800 text-white hover:bg-gray-700']">
+							<i class="material-icons text-base">timer</i>
+							{{ pauseAfterPath === currentTrackPath && currentTrackPath ? 'Cancelar pausa al terminar' :
+							'Frenar tras este tema' }}
+						</button>
+					</div>
+
 					<div
 						class="mt-10 flex items-center text-gray-300 w-full px-8 gap-4 opacity-80 hover:opacity-100 transition">
 						<i class="material-icons text-sm">{{ volume == 0 ? 'volume_off' : 'volume_down' }}</i>
@@ -345,8 +354,7 @@
 
 		<div class="flex bg-carpincho-panel border-b border-carpincho-border shrink-0 shadow-md">
 			<div v-for="tab in tabs" :key="tab.id" @click="switchTab(tab.id)"
-				:class="['flex-1 text-center py-3 cursor-pointer uppercase tracking-wide text-sm font-medium transition-colors flex justify-center items-center gap-1 active:scale-95 touch-manipulation',
-						 activeTab === tab.id ? 'text-carpincho-primary border-b-2 border-carpincho-primary' : 'text-[#a6adc8] hover:bg-carpincho-border/50 border-b-2 border-transparent']">
+				:class="['flex-1 text-center py-3 cursor-pointer uppercase tracking-wide text-sm font-medium transition-colors flex justify-center items-center gap-1 active:scale-95 touch-manipulation', activeTab === tab.id ? 'text-carpincho-primary border-b-2 border-carpincho-primary' : 'text-[#a6adc8] hover:bg-carpincho-border/50 border-b-2 border-transparent']">
 				<div class="relative">
 					<i class="material-icons">{{ tab.icon }}</i>
 					<span v-if="tab.id === 'queue' && queueState.length > 0"
@@ -439,17 +447,24 @@
 
 					<tr v-if="currentTrackPath" id="current-queue-row" ref="currentQueueRow" @click="sendCmd('pause')"
 						class="border-b border-carpincho-border bg-carpincho-panel cursor-pointer">
-						<td class="p-4 text-carpincho-primary font-bold text-center">
-							<div :class="['equalizer', isPaused ? 'paused' : '']">
-								<span></span><span></span><span></span>
+						<td class="p-4 text-carpincho-primary font-bold text-center" @click.stop>
+							<div class="items-center gap-1">
+								<div :class="['equalizer', isPaused ? 'paused' : '']">
+									<span></span><span></span><span></span>
+								</div>
+								<button @click="togglePauseAfterCurrent(); haptic()"
+									:title="pauseAfterPath === currentTrackPath ? 'Cancelar pausa al terminar' : 'Frenar tras este tema'"
+									:class="['transition active:scale-90',
+									pauseAfterPath === currentTrackPath
+									? 'text-carpincho-warning'
+									: 'text-gray-500 hover:text-carpincho-warning']">
+									<i class="material-icons text-lg">timer</i>
+								</button>
 							</div>
 						</td>
 						<td class="p-4 text-carpincho-primary font-bold max-w-[200px]">
 							<div class="flex items-center gap-2 truncate">
 								<span class="truncate">{{ getTrackInfo(currentTrackPath).display_title }}</span>
-								<i v-if="currentTrackPath === pauseAfterPath"
-									class="material-icons text-carpincho-warning text-sm shrink-0"
-									title="Se frena acá">timer</i>
 							</div>
 						</td>
 						<td class="p-4 text-carpincho-primary">{{ getTrackInfo(currentTrackPath).display_artist }}</td>
@@ -1315,7 +1330,7 @@
 					// Si ya estaba marcado, lo desmarcamos (efecto toggle)
 					if (this.pauseAfterPath === track.path) {
 						this.pauseAfterPath = null;
-						await this.sendCmd("pause_after", { path: null });
+						await this.sendCmd("pause_after", { path: "" });
 						this.showToast(`Cancelamos la pausa al terminar 🦦`, "info");
 						this.haptic();
 						return;
@@ -1331,6 +1346,24 @@
 					await this.sendCmd("pause_after", { path: track.path });
 					this.showToast(`Frenamos la joda después de <b>${track.title || track.display_title}</b> ⏸`, "warning");
 					this.haptic();
+				},
+
+				// --- TOGGLE PAUSE-AFTER sobre la canción que está sonando ahora ---
+				async togglePauseAfterCurrent() {
+					if (!this.currentTrackPath) return;
+
+					if (this.pauseAfterPath === this.currentTrackPath) {
+						// Ya estaba marcada: desmarcar
+						this.pauseAfterPath = null;
+						await this.sendCmd("pause_after", { path: "" });
+						this.showToast(`Cancelamos la pausa al terminar 🦦`, "info");
+					} else {
+						// Marcar la canción actual
+						this.pauseAfterPath = this.currentTrackPath;
+						await this.sendCmd("pause_after", { path: this.currentTrackPath });
+						const title = this.getTrackInfo(this.currentTrackPath).display_title;
+						this.showToast(`Frenamos la joda después de <b>${title}</b> ⏸`, "warning");
+					}
 				},
 
 				// --- FUNCIONES EXCLUSIVAS PARA EL MENÚ DE LA COLA ---
