@@ -234,16 +234,6 @@
 			font-size: 1.1rem;
 		}
 
-		/* Badge de etiqueta/favorito */
-		.tag-star {
-			cursor: pointer;
-			transition: transform 0.15s;
-		}
-
-		.tag-star:active {
-			transform: scale(1.3);
-		}
-
 		/* Estilizar scrollbar para que no sea fea en PC */
 		::-webkit-scrollbar {
 			width: 6px;
@@ -262,6 +252,10 @@
 
 <body class="text-carpincho-text font-sans antialiased">
 	<div id="app">
+		<!-- Reproductor interno para escuchar en el cliente -->
+		<audio ref="localPlayer" style="display:none;"></audio>
+
+		<!-- MODO FOGÓN -->
 		<transition enter-active-class="transition-opacity duration-500"
 			leave-active-class="transition-opacity duration-500" enter-from-class="opacity-0"
 			leave-to-class="opacity-0">
@@ -285,7 +279,18 @@
 					<h1 class="text-3xl font-bold mb-2 truncate w-full px-4">{{ currentTrackInfo.title }}</h1>
 					<h2 class="text-xl text-carpincho-secondary truncate w-full px-4">{{ currentTrackInfo.artist }}</h2>
 
-					<div class="mt-12 flex items-center justify-center gap-6 w-full px-8">
+					<!-- Barra de progreso / Seek Fogon -->
+					<div class="w-full px-6 mt-6 flex items-center gap-4 text-xs text-carpincho-secondary font-medium">
+						<span class="w-10 text-right shrink-0">{{ formattedTimePos }}</span>
+						<input type="range"
+							class="w-full accent-carpincho-warning h-1.5 bg-gray-600/50 rounded-lg appearance-none cursor-pointer"
+							min="0" :max="duration || 100" step="0.1" v-model="localTimePos" @change="onSeekAbsolute"
+							@mousedown="isDraggingSeek = true" @mouseup="isDraggingSeek = false; onSeekAbsolute()"
+							@touchstart="isDraggingSeek = true" @touchend="isDraggingSeek = false; onSeekAbsolute()">
+						<span class="w-10 shrink-0">{{ formattedDuration }}</span>
+					</div>
+
+					<div class="mt-8 flex items-center justify-center gap-6 w-full px-8">
 						<button @click="sendCmd('prev'); haptic()"
 							class="text-white hover:text-carpincho-warning transition active:scale-90">
 							<i class="material-icons text-5xl">skip_previous</i>
@@ -312,16 +317,20 @@
 					</div>
 
 					<div
-						class="mt-10 flex items-center text-gray-300 w-full px-8 gap-4 opacity-80 hover:opacity-100 transition">
-						<i class="material-icons text-sm">{{ volume == 0 ? 'volume_off' : 'volume_down' }}</i>
-						<input v-model="volume" @change="setVolume" type="range" min="0" max="110"
-							class="w-full accent-carpincho-warning h-1 bg-gray-600 rounded-lg appearance-none outline-none">
-						<i class="material-icons text-sm">volume_up</i>
-					</div>
+							class="mt-8 flex items-center text-gray-300 w-full px-8 gap-4 opacity-80 hover:opacity-100 transition">
+							<i class="material-icons text-sm cursor-pointer"
+								@click="sendCmd('set_mute', {state: !serverMuted})">{{ serverMuted || volume == 0 ?
+								'volume_off' : 'volume_down' }}</i>
+							<input v-model="volume" @change="setVolume" type="range" min="0" max="110"
+								class="w-full accent-carpincho-warning h-1 bg-gray-600 rounded-lg appearance-none outline-none"
+								:class="{'opacity-50': serverMuted}">
+							<i class="material-icons text-sm">volume_up</i>
+						</div>
 				</div>
 			</div>
 		</transition>
 
+		<!-- TOASTS -->
 		<div
 			class="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2 w-[90%] max-w-sm pointer-events-none">
 			<transition-group name="toast">
@@ -333,7 +342,8 @@
 			</transition-group>
 		</div>
 
-		<nav class="bg-carpincho-panel border-b-2 border-carpincho-primary px-5 pb-2 pt-[max(10px,env(safe-area-inset-top))] shrink-0"
+		<!-- HEADER NAV -->
+		<nav class="bg-carpincho-panel border-b border-carpincho-primary px-5 pb-2 pt-[max(10px,env(safe-area-inset-top))] shrink-0 cursor-pointer"
 			@click="isFogonMode = true; haptic()">
 			<div class="flex items-center justify-center font-bold gap-2 text-carpincho-text">
 				<img v-if="currentTrackPath && !currentTrackPath.startsWith('http') && !isScanning"
@@ -341,17 +351,24 @@
 					class="w-10 h-10 rounded object-cover shrink-0" @error="$event.target.style.display='none'">
 				<i v-else class="material-icons">{{ isScanning ? 'sync' : (isPlaying ? 'nightlife' : 'music_note')
 					}}</i>
-
 				<span class="truncate">
 					{{ isScanning ? '[Avisando] Chusmeando temas, aguantá fiera... 🧉' : currentTrackTitle }}
 				</span>
 			</div>
 		</nav>
 
-		<div v-show="isScanning" class="h-1 bg-carpincho-panel w-full overflow-hidden">
+		<!-- BARRA DE PROGRESO INFERIOR NAV -->
+		<div v-show="isScanning" class="h-1 bg-carpincho-panel w-full overflow-hidden shrink-0">
 			<div class="h-full bg-carpincho-primary w-1/3 animate-[pulse_1s_ease-in-out_infinite]"></div>
 		</div>
+		<div v-show="!isScanning && currentTrackPath"
+			class="h-2 w-full bg-[#1a1614] cursor-pointer relative shrink-0 group flex items-start"
+			@click="seekFromBar">
+			<div class="h-1 group-hover:h-2 bg-carpincho-warning transition-all duration-100 ease-out"
+				:style="{ width: progressPercent + '%' }"></div>
+		</div>
 
+		<!-- PESTAÑAS -->
 		<div class="flex bg-carpincho-panel border-b border-carpincho-border shrink-0 shadow-md">
 			<div v-for="tab in tabs" :key="tab.id" @click="switchTab(tab.id)"
 				:class="['flex-1 text-center py-3 cursor-pointer uppercase tracking-wide text-sm font-medium transition-colors flex justify-center items-center gap-1 active:scale-95 touch-manipulation', activeTab === tab.id ? 'text-carpincho-primary border-b-2 border-carpincho-primary' : 'text-[#a6adc8] hover:bg-carpincho-border/50 border-b-2 border-transparent']">
@@ -366,12 +383,18 @@
 			</div>
 		</div>
 
+		<!-- TABS CONTENT -->
 		<section v-show="activeTab === 'library'" class="tab-content bg-carpincho-bg relative">
 			<div class="sticky top-0 bg-carpincho-bg px-4 pt-3 pb-2 z-10 shadow-md flex gap-2 items-center">
 				<button @click="scrollToCurrent(); haptic()"
 					class="bg-gray-800 w-10 h-10 shrink-0 flex justify-center items-center rounded-full text-white active:scale-90 transition shadow"
 					title="Ir al tema actual">
 					<i class="material-icons">my_location</i>
+				</button>
+				<button @click="showFavoritesOnly = !showFavoritesOnly; haptic()"
+					:class="['w-10 h-10 shrink-0 flex justify-center items-center rounded-full transition shadow', showFavoritesOnly ? 'bg-carpincho-warning text-carpincho-panel' : 'bg-gray-800 text-white hover:text-carpincho-warning']"
+					title="Mostrar sólo favoritos">
+					<i class="material-icons">{{ showFavoritesOnly ? 'star' : 'star_border' }}</i>
 				</button>
 				<div class="relative flex-grow">
 					<input v-model="searchQuery" type="text" placeholder="Buscá un buen tema pa' acompañar los mates..."
@@ -396,7 +419,6 @@
 						@touchend="ctxTouchEnd" @touchmove="ctxTouchEnd"
 						:id="currentTrackPath === track.path ? 'current-library-row' : ''"
 						class="border-b border-carpincho-border hover:bg-carpincho-border cursor-pointer transition-colors active:scale-[0.98]">
-
 						<td class="p-4 text-center">
 							<div v-if="currentTrackPath === track.path" class="flex justify-center items-center">
 								<div :class="['equalizer', isPaused ? 'paused' : '']">
@@ -406,8 +428,22 @@
 							<span v-else-if="queueIndex(track.path) !== -1" class="text-carpincho-warning font-bold">{{
 								queueIndex(track.path) + 1 }}</span>
 						</td>
-						<td class="p-4 font-medium">{{ track.title || track.display_title }}</td>
+						<td class="p-4 font-medium max-w-[200px]">
+							<div class="flex items-center justify-between gap-2">
+								<span class="truncate">{{ track.title || track.display_title }}</span>
+								<!-- BOTÓN FAVORITO -->
+								<i @click.stop="toggleFavorite(track.path); haptic()"
+									class="material-icons text-[1.1rem] shrink-0 transition-colors cursor-pointer"
+									:class="favorites.includes(track.path) ? 'text-carpincho-warning drop-shadow-md scale-110' : 'text-gray-600 hover:text-gray-400'">
+									{{ favorites.includes(track.path) ? 'star' : 'star_border' }}
+								</i>
+							</div>
+						</td>
 						<td class="p-4 text-[#a6adc8]">{{ track.artist || track.display_artist }}</td>
+					</tr>
+					<tr v-if="filteredTracks.length === 0">
+						<td colspan="3" class="p-8 text-center text-carpincho-primary italic">No hay nada por acá con
+							ese nombre, fiera.</td>
 					</tr>
 				</tbody>
 			</table>
@@ -454,10 +490,7 @@
 								</div>
 								<button @click="togglePauseAfterCurrent(); haptic()"
 									:title="pauseAfterPath === currentTrackPath ? 'Cancelar pausa al terminar' : 'Frenar tras este tema'"
-									:class="['transition active:scale-90',
-									pauseAfterPath === currentTrackPath
-									? 'text-carpincho-warning'
-									: 'text-gray-500 hover:text-carpincho-warning']">
+									:class="['transition active:scale-90', pauseAfterPath === currentTrackPath ? 'text-carpincho-warning' : 'text-gray-500 hover:text-carpincho-warning']">
 									<i class="material-icons text-lg">timer</i>
 								</button>
 							</div>
@@ -516,7 +549,6 @@
 			</table>
 		</section>
 
-		<!-- CORREGIDO EL PADDING (px-4 pt-4) PARA DEJAR LUGAR ABAJO -->
 		<section v-show="activeTab === 'top'" class="tab-content px-4 pt-4">
 			<ul v-if="topPlayedState.length > 0" class="flex flex-col">
 				<li v-for="(t, i) in topPlayedState" :key="t.path" @click="toggleQueue(t.path)"
@@ -548,17 +580,6 @@
 			</div>
 
 			<div class="text-center font-bold text-carpincho-secondary mb-4 uppercase tracking-wider text-sm"><i
-					class="material-icons align-middle mr-1">elderly_woman</i> Rosalía</div>
-			<div class="flex justify-center gap-3 mb-8 flex-wrap">
-				<button @click="sendCmd('seek', { amount: -60 }); haptic()"
-					class="bg-gray-800 hover:bg-gray-700 text-white px-5 py-2 rounded-full font-medium active:scale-95 transition flex items-center gap-2"><i
-						class="material-icons">fast_rewind</i> Un pasito para atrás</button>
-				<button @click="sendCmd('seek', { amount: 60 }); haptic()"
-					class="bg-gray-800 hover:bg-gray-700 text-white px-5 py-2 rounded-full font-medium active:scale-95 transition flex items-center gap-2">Un
-					pasito para adelante <i class="material-icons">fast_forward</i></button>
-			</div>
-
-			<div class="text-center font-bold text-carpincho-secondary mb-4 uppercase tracking-wider text-sm"><i
 					class="material-icons align-middle mr-1">sort</i> Acomodando la gilada</div>
 			<div class="flex justify-center gap-3 mb-8 flex-wrap">
 				<button @click="sortLibrary('time')"
@@ -575,23 +596,38 @@
 			<div class="text-center font-bold text-carpincho-secondary mb-4 uppercase tracking-wider text-sm">
 				<i class="material-icons align-middle mr-1">celebration</i> La Joda
 			</div>
-			<div class="flex flex-col items-center gap-4 mb-4">
-				<!-- DJ Carpincho Box-->
-				<div
-					class="w-full max-w-lg flex items-center justify-between bg-carpincho-bg p-4 rounded-xl border border-carpincho-border shadow-sm">
-					<div class="text-left">
-						<div class="font-bold text-carpincho-text">DJ Carpincho</div>
-						<div class="text-xs text-[#a6adc8]">Tira un tema random nuevo si se vacía la fila</div>
+			<div
+				class="w-full max-w-lg mx-auto flex items-center justify-between bg-carpincho-panel p-4 rounded-xl border-l-4 border-carpincho-warning shadow-md mb-8">
+				<div class="text-left">
+					<div class="font-bold text-carpincho-text flex items-center gap-2">
+						<i class="material-icons text-carpincho-warning">headphones</i> Escuchar acá
 					</div>
-					<label class="relative inline-flex items-center cursor-pointer ml-4">
-						<input type="checkbox" :checked="djCarpinchoEnabled" @change="toggleDjCarpincho"
-							class="sr-only peer">
-						<div
-							class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-carpincho-success">
-						</div>
-					</label>
+					<div class="text-xs text-[#a6adc8] mt-1">Stremea la música directo a tu celular o PC.</div>
 				</div>
-				<!-- Buttons Container (Keeps the buttons side-by-side) -->
+				<label class="relative inline-flex items-center cursor-pointer ml-4">
+					<input type="checkbox" v-model="listenLocally" class="sr-only peer">
+					<div
+						class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-carpincho-warning">
+					</div>
+				</label>
+			</div>
+			<!-- DJ Carpincho Box-->
+			<div
+				class="w-full max-w-lg mx-auto flex items-center justify-between bg-carpincho-panel p-4 rounded-xl border-l-4 border-carpincho-warning shadow-md mb-8">
+				<div class="text-left">
+					<div class="font-bold text-carpincho-text">DJ Carpincho</div>
+					<div class="text-xs text-[#a6adc8]">Tira un tema random nuevo si se vacía la fila</div>
+				</div>
+				<label class="relative inline-flex items-center cursor-pointer ml-4">
+					<input type="checkbox" :checked="djCarpinchoEnabled" @change="toggleDjCarpincho"
+						class="sr-only peer">
+					<div
+						class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-carpincho-success">
+					</div>
+				</label>
+			</div>
+			<!-- Buttons Container (Keeps the buttons side-by-side) -->
+			<div class="flex flex-col items-center gap-4 mb-4">
 				<div class="flex justify-center gap-3 flex-wrap">
 					<button @click="sendCmd('stop')"
 						class="bg-red-700 hover:bg-red-600 text-white px-5 py-2 rounded-full font-medium active:scale-95 transition flex items-center gap-2">
@@ -627,35 +663,37 @@
 				</div>
 
 				<template v-if="ctxMenu.source === 'library'">
-					<div class="ctx-menu-item" @click="ctxPlayNow">
-						<i class="material-icons">play_arrow</i> Mandale play de una
+					<div class="ctx-menu-item" @click="ctxPlayNow"><i class="material-icons">play_arrow</i> Mandale play
+						de una</div>
+					<div class="ctx-menu-item" @click="ctxAddToQueue"><i class="material-icons">playlist_add</i> Al
+						fondo de la fila</div>
+					<div class="ctx-menu-item" @click="ctxPlayNext"><i class="material-icons">queue_play_next</i> Que
+						suene de próximo</div>
+					<div class="ctx-menu-item" @click="ctxToggleFavorite">
+						<i class="material-icons">{{ favorites.includes(ctxMenu.track?.path) ? 'star_border' : 'star'
+							}}</i>
+						{{ favorites.includes(ctxMenu.track?.path) ? 'Sacar de favoritos' : 'A los favoritos' }}
 					</div>
-					<div class="ctx-menu-item" @click="ctxAddToQueue">
-						<i class="material-icons">playlist_add</i> Al fondo de la fila
-					</div>
-					<div class="ctx-menu-item" @click="ctxPlayNext">
-						<i class="material-icons">queue_play_next</i> Que suene de próximo
-					</div>
-					<div class="ctx-menu-item" @click="ctxFilterByArtist">
-						<i class="material-icons">person_search</i> Chusmear más del artista
-					</div>
-					<div class="ctx-menu-item" @click="ctxPauseAfter">
-						<i class="material-icons">timer</i> Frenar la chata tras este tema
-					</div>
+					<div class="ctx-menu-item" @click="ctxFilterByArtist"><i class="material-icons">person_search</i>
+						Chusmear más del artista</div>
+					<div class="ctx-menu-item" @click="ctxPauseAfter"><i class="material-icons">timer</i> Frenar la
+						chata tras este tema</div>
 				</template>
 
 				<template v-if="ctxMenu.source === 'queue'">
-					<div class="ctx-menu-item" @click="ctxPlayNow">
-						<i class="material-icons">play_arrow</i> Mandale play de una
+					<div class="ctx-menu-item" @click="ctxPlayNow"><i class="material-icons">play_arrow</i> Mandale play
+						de una</div>
+					<div class="ctx-menu-item" @click="ctxPlayNextQueue"><i
+							class="material-icons">vertical_align_top</i> Subir a próximo</div>
+					<div class="ctx-menu-item" @click="ctxToggleFavorite">
+						<i class="material-icons">{{ favorites.includes(ctxMenu.track?.path) ? 'star_border' : 'star'
+							}}</i>
+						{{ favorites.includes(ctxMenu.track?.path) ? 'Sacar de favoritos' : 'A los favoritos' }}
 					</div>
-					<div class="ctx-menu-item" @click="ctxPlayNextQueue">
-						<i class="material-icons">vertical_align_top</i> Subir a próximo
-					</div>
+					<div class="ctx-menu-item" @click="ctxPauseAfter"><i class="material-icons">timer</i> Frenar la
+						chata tras este tema</div>
 					<div class="ctx-menu-item" @click="ctxFilterByArtist">
 						<i class="material-icons">person_search</i> Buscar en la librería
-					</div>
-					<div class="ctx-menu-item" @click="ctxPauseAfter">
-						<i class="material-icons">timer</i> Frenar la chata tras este tema
 					</div>
 					<div class="ctx-menu-item hover:!bg-red-900/30 transition-colors" @click="ctxRemoveFromQueue">
 						<i class="material-icons text-red-400">delete</i> <span class="text-red-400">Pegarle un
@@ -664,16 +702,19 @@
 				</template>
 
 				<template v-if="ctxMenu.source === 'history'">
-					<div class="ctx-menu-item" @click="ctxHistoryPlayAgain">
-						<i class="material-icons">add_circle_outline</i> Agregar a la fila
-					</div>
-					<div class="ctx-menu-item" @click="ctxFilterByArtist">
-						<i class="material-icons">person_search</i> Buscar en la librería
-					</div>
-					<div class="ctx-menu-item hover:!bg-red-900/30 transition-colors" @click="ctxRemoveFromHistory">
-						<i class="material-icons text-red-400">delete</i> <span class="text-red-400">Borrar del
-							historial</span>
-					</div>
+					<div class="ctx-menu-item" @click="ctxHistoryPlayAgain"><i
+							class="material-icons">add_circle_outline</i> Agregar a la fila</div>
+					<div class="ctx-menu-item" @click="ctxToggleFavorite">
+						<i class="material-icons">{{ favorites.includes(ctxMenu.track?.path) ? 'star_border' : 'star'
+							}}</i>
+						{{ favorites.includes(ctxMenu.track?.path) ? 'Sacar de favoritos' : 'A los favoritos' }}
+						<div class="ctx-menu-item" @click="ctxFilterByArtist">
+							<i class="material-icons">person_search</i> Buscar en la librería
+						</div>
+						<div class="ctx-menu-item hover:!bg-red-900/30 transition-colors" @click="ctxRemoveFromHistory">
+							<i class="material-icons text-red-400">delete</i> <span class="text-red-400">Borrar del
+								historial</span>
+						</div>
 				</template>
 			</div>
 		</div>
@@ -712,9 +753,7 @@
 	</div>
 
 	<script>
-		const {
-			createApp
-		} = Vue;
+		const { createApp } = Vue;
 
 		// Configuración estática de pestañas — no necesita ser reactiva
 		const TABS = [
@@ -757,6 +796,14 @@
 					urlMetadata: {},
 					volume: 100,
 					ws: null,
+					favorites: [],
+					showFavoritesOnly: false,
+					timePos: 0,
+					duration: 0,
+					localTimePos: 0,
+					isDraggingSeek: false,
+					listenLocally: false,
+					serverMuted: false
 				}
 			},
 
@@ -771,9 +818,7 @@
 				},
 
 				fogonBackgroundStyle() {
-					if (this.currentCoverUrl) {
-						return { backgroundImage: `url('${this.currentCoverUrl}')` };
-					}
+					if (this.currentCoverUrl) return { backgroundImage: `url('${this.currentCoverUrl}')` };
 					return { backgroundColor: '#1f1a17' };
 				},
 
@@ -784,11 +829,14 @@
 				},
 
 				filteredTracks() {
-					if (!this.searchQuery) return this.currentTracks;
+					let tracks = this.currentTracks;
+					if (this.showFavoritesOnly) {
+						tracks = tracks.filter(t => this.favorites.includes(t.path));
+					}
+					if (!this.searchQuery) return tracks;
 					const q = this.normalizeString(this.searchQuery);
-					let exact = [],
-						fuzzy = [];
-					this.currentTracks.forEach(t => {
+					let exact = [], fuzzy = [];
+					tracks.forEach(t => {
 						const target = this.normalizeString((t.artist || '') + ' ' + (t.title || ''));
 						if (target.includes(q)) {
 							exact.push(t);
@@ -806,9 +854,7 @@
 					return exact.concat(fuzzy);
 				},
 
-				isPlaying() {
-					return this.currentTrackPath && !this.isPaused;
-				},
+				isPlaying() { return this.currentTrackPath && !this.isPaused; },
 
 				currentTrackTitle() {
 					if (!this.currentTrackPath) return "Silencio estampa. Poné algo, fiera.";
@@ -817,7 +863,7 @@
 				},
 
 				volIcon() {
-					if (this.volume == 0) return "volume_off";
+					if (this.serverMuted || this.volume == 0) return "volume_off";
 					if (this.volume <= 40) return "volume_down";
 					if (this.volume <= 100) return "volume_up";
 					return "surround_sound";
@@ -835,9 +881,7 @@
 						return `${t.display_title || t.title} - ${t.display_artist || t.artist}`;
 					}
 					// 3. Fila vacía y DJ activo pero aún eligiendo
-					if (this.djCarpinchoEnabled) {
-						return "DJ Carpincho eligiendo...";
-					}
+					if (this.djCarpinchoEnabled) return "DJ Carpincho eligiendo...";
 					// 4. Si no hay fila y el DJ está apagado.
 					return this.currentTrackPath ? "Termina este y nos re vimos" : "Agregá algo pa' escuchar";
 				},
@@ -845,50 +889,106 @@
 				upNextCoverUrl() {
 					if (this.brokenNextCover) return null;
 					// Fila normal
-					if (this.queueState.length > 0 && !this.queueState[0].startsWith('http')) {
-						return '/cover?path=' + encodeURIComponent(this.queueState[0]);
-					}
+					if (this.queueState.length > 0 && !this.queueState[0].startsWith('http')) return '/cover?path=' + encodeURIComponent(this.queueState[0]);
 					// Pre-elección del DJ
 					if (this.djCarpinchoEnabled && this.djNextTrack) {
 						const p = this.djNextTrack.path;
 						if (p && !p.startsWith('http')) return '/cover?path=' + encodeURIComponent(p);
 					}
 					return null;
-				}
+				},
+
+				progressPercent() {
+					if (!this.duration) return 0;
+					return (this.localTimePos / this.duration) * 100;
+				},
+				formattedTimePos() { return this.formatTime(this.localTimePos); },
+				formattedDuration() { return this.formatTime(this.duration); }
 			},
 
 			watch: {
-				queueState() {
-					this.brokenNextCover = false;
-				},
-
+				queueState() { this.brokenNextCover = false; },
 				activeTab(newTab) {
-					if (newTab === 'controls' && !this.qrCreado) {
-						setTimeout(this.generateQR, 300);
-					}
+					if (newTab === 'controls' && !this.qrCreado) setTimeout(this.generateQR, 300);
 				},
 
 				currentTrackPath(newPath, oldPath) {
 					this.updateDocumentTitle();
 					this.updateMediaSession();
+					this.localTimePos = 0;
 
-					// Si el tema que acaba de terminar era el marcado, borramos la marca visual
-					if (oldPath && oldPath === this.pauseAfterPath) {
-						this.pauseAfterPath = null;
+					if (oldPath && oldPath === this.pauseAfterPath) this.pauseAfterPath = null;
+
+					if (this.listenLocally && this.$refs.localPlayer) {
+						if (newPath && !newPath.startsWith('http')) {
+							this.$refs.localPlayer.src = '/stream?path=' + encodeURIComponent(newPath);
+							this.$refs.localPlayer.currentTime = 0;
+							if (this.isPlaying) this.$refs.localPlayer.play().catch(e => console.log(e));
+						} else {
+							this.$refs.localPlayer.pause();
+							this.$refs.localPlayer.removeAttribute('src');
+							this.$refs.localPlayer.load();
+						}
 					}
 				},
 
-				isPlaying() {
-					this.updateDocumentTitle();
+				listenLocally(val) {
+					this.sendCmd('set_mute', { state: val });
+					if (!this.$refs.localPlayer) return;
+					if (val) {
+						if (this.currentTrackPath && !this.currentTrackPath.startsWith('http')) {
+							this.$refs.localPlayer.src = '/stream?path=' + encodeURIComponent(this.currentTrackPath);
+							this.$refs.localPlayer.currentTime = this.timePos || 0;
+							if (!this.isPaused) {
+								this.$refs.localPlayer.play().catch(e => {
+									this.showToast("Dále un toque a la pantalla para arrancar el audio local", "warning");
+								});
+							}
+						}
+					} else {
+						this.$refs.localPlayer.pause();
+						this.$refs.localPlayer.removeAttribute('src');
+						this.$refs.localPlayer.load();
+					}
 				},
 
-				isPaused() {
-					if (!('mediaSession' in navigator)) return;
-					navigator.mediaSession.playbackState = this.isPaused ? "paused" : "playing";
+				isPlaying() { this.updateDocumentTitle(); },
+
+				isPaused(val) {
+					if ('mediaSession' in navigator) navigator.mediaSession.playbackState = val ? "paused" : "playing";
+					if (this.listenLocally && this.$refs.localPlayer && this.$refs.localPlayer.src) {
+						if (val) this.$refs.localPlayer.pause();
+						else this.$refs.localPlayer.play().catch(e => console.log(e));
+					}
 				},
 			},
 
 			methods: {
+				formatTime(sec) {
+					if (!sec || isNaN(sec)) return '0:00';
+					const m = Math.floor(sec / 60);
+					const s = Math.floor(sec % 60).toString().padStart(2, '0');
+					return `${m}:${s}`;
+				},
+
+				seekFromBar(event) {
+					if (!this.duration) return;
+					const rect = event.currentTarget.getBoundingClientRect();
+					const clickX = event.clientX - rect.left;
+					const percent = Math.max(0, Math.min(1, clickX / rect.width));
+					const targetTime = percent * this.duration;
+					this.localTimePos = targetTime;
+					this.sendCmd('seek_absolute', { amount: targetTime });
+				},
+
+				onSeekAbsolute() {
+					this.sendCmd('seek_absolute', { amount: parseFloat(this.localTimePos) });
+				},
+
+				async toggleFavorite(path) {
+					await this.sendCmd("toggle_favorite", { path });
+				},
+
 				updateDocumentTitle() {
 					if (this.isPlaying && this.currentTrackPath) {
 						const t = this.getTrackInfo(this.currentTrackPath);
@@ -939,10 +1039,26 @@
 								if (data.is_scanning !== undefined) this.isScanning = data.is_scanning;
 								if (data.pause_after_path !== undefined) this.pauseAfterPath = data.pause_after_path;
 								if (data.paused !== undefined) this.isPaused = data.paused;
-								if (data.queue !== undefined) this.queueState = data.queue;  // fix: [] is falsy
+								if (data.queue !== undefined) this.queueState = data.queue;
 								if (data.top_played) this.topPlayedState = data.top_played;
 								if (data.url_metadata) this.urlMetadata = data.url_metadata;
 								if (data.volume !== undefined) this.volume = data.volume;
+								if (data.favorites !== undefined) this.favorites = data.favorites;
+								if (data.duration !== undefined) this.duration = data.duration;
+								if (data.server_muted !== undefined) this.serverMuted = data.server_muted;
+								if (data.time_pos !== undefined) {
+									this.timePos = data.time_pos;
+									if (!this.isDraggingSeek) {
+										if (Math.abs(this.localTimePos - this.timePos) > 1.5) {
+											this.localTimePos = this.timePos;
+										}
+									}
+									if (this.listenLocally && this.$refs.localPlayer && !this.$refs.localPlayer.paused) {
+										if (Math.abs(this.$refs.localPlayer.currentTime - this.timePos) > 2.5) {
+											this.$refs.localPlayer.currentTime = this.timePos;
+										}
+									}
+								}
 							}
 						} catch (e) {
 							console.error("¡Se rompió el JSON que mandó el server, fiera!", e, event.data);
@@ -959,42 +1075,26 @@
 				async sendCmd(cmd, data = {}) {
 					try {
 						const res = await fetch("/command", {
-							method: "POST",
-							headers: {
-								"Content-Type": "application/json"
-							},
-
-							body: JSON.stringify({
-								cmd,
-								...data
-							})
+							method: "POST", headers: { "Content-Type": "application/json" },
+							body: JSON.stringify({ cmd, ...data })
 						});
 						return await res.json();
-					} catch (err) {
-						this.showToast("Error mandando comando fiera.", "error");
-					}
+					} catch (err) { this.showToast("Error mandando comando fiera.", "error"); }
 				},
 
 				getTrackInfo(path) {
 					if (this.trackMap[path]) return this.trackMap[path];
 					if (this.urlMetadata[path]) return this.urlMetadata[path];
 					const isUrl = path.startsWith("http");
-					return {
-						display_title: isUrl ? path : "Audio Misterioso",
-						display_artist: isUrl ? "🌐 De la Internet" : "Vaya uno a saber"
-					};
+					return { display_title: isUrl ? path : "Audio Misterioso", display_artist: isUrl ? "🌐 De la Internet" : "Vaya uno a saber" };
 				},
 
-				queueIndex(path) {
-					return this.queueState.indexOf(path);
-				},
+				queueIndex(path) { return this.queueState.indexOf(path); },
 
 				async toggleQueue(path, mostrarToast = true) {
 					const wasInQueue = this.queueState.includes(path);
 					const title = this.getTrackInfo(path).display_title;
-					const res = await this.sendCmd("toggle_queue", {
-						path
-					});
+					const res = await this.sendCmd("toggle_queue", { path });
 					if (res && res.status === "ok") {
 						if (mostrarToast) {
 							if (!wasInQueue) this.showToast(`¡Adentro! <b>${title}</b> a la fila.`, "success");
@@ -1012,9 +1112,7 @@
 
 				async addUrl() {
 					if (!this.newUrl.trim()) return;
-					const res = await this.sendCmd("add_url", {
-						path: this.newUrl.trim()
-					});
+					const res = await this.sendCmd("add_url", { path: this.newUrl.trim() });
 					if (res && res.status === "ok") {
 						this.newUrl = '';
 						this.showToast("¡Adentro! Temita de internet a la fila.", "success");
@@ -1029,31 +1127,19 @@
 					if (el) {
 						el.classList.add('deleting');
 						setTimeout(() => this.sendCmd("remove_queue_item", { index }), 380);
-					} else {
-						this.sendCmd("remove_queue_item", { index });
-					}
+					} else { this.sendCmd("remove_queue_item", { index }); }
 				},
 
 				moveQueueItem(index, target) {
 					let newIndex = target === 'first' ? 0 : this.queueState.length - 1;
-					if (newIndex !== index) {
-						this.sendCmd("move_queue_item", {
-							index,
-							new_index: newIndex
-						});
-					}
+					if (newIndex !== index) { this.sendCmd("move_queue_item", { index, new_index: newIndex }); }
 				},
 
-				setVolume() {
-					this.sendCmd('set_volume', {
-						vollevel: parseInt(this.volume)
-					});
-				},
+				setVolume() { this.sendCmd('set_volume', { vollevel: parseInt(this.volume) }); },
 
 				sortLibrary(type) {
-					if (type === 'time') {
-						this.currentTracks = [...this.originalTracks];
-					} else if (type === 'artist') {
+					if (type === 'time') { this.currentTracks = [...this.originalTracks]; }
+					else if (type === 'artist') {
 						this.currentTracks.sort((a, b) => {
 							const cmp = (a.artist || '').localeCompare(b.artist || '');
 							return cmp === 0 ? (a.title || '').localeCompare(b.title || '') : cmp;
@@ -1071,34 +1157,22 @@
 
 				switchTab(tabId) {
 					this.activeTab = tabId;
-					if (tabId === 'queue') { //|| tabId === 'library') {
-						setTimeout(this.scrollToCurrent, 200);
-					}
+					if (tabId === 'queue') setTimeout(this.scrollToCurrent, 200);
 				},
 
 				scrollToCurrent() {
 					// currentLibraryRow vive dentro de un v-for, así que $refs devuelve un array
 					// en Vue 3 — usamos el :id que ya tiene el <tr> para ese caso.
 					// currentQueueRow es un elemento único, $refs funciona perfecto ahí.
-					const el = this.activeTab === 'library'
-						? document.getElementById('current-library-row')
-						: this.$refs.currentQueueRow;
-					if (el) el.scrollIntoView({
-						behavior: "smooth",
-						block: "center"
-					});
+					const el = this.activeTab === 'library' ? document.getElementById('current-library-row') : this.$refs.currentQueueRow;
+					if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
 				},
 
-				normalizeString(s) {
-					return s ? s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() : "";
-				},
+				normalizeString(s) { return s ? s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() : ""; },
 
 				haptic(heavy = false) {
 					// Android / Firefox: Vibration API
-					if (navigator.vibrate) {
-						navigator.vibrate(heavy ? [10, 30, 20] : 10);
-						return;
-					}
+					if (navigator.vibrate) { navigator.vibrate(heavy ? [10, 30, 20] : 10); return; }
 					// iOS Safari: no Vibration API. Use a near-silent AudioContext click
 					// which tickles the Taptic Engine on supported devices.
 					try {
@@ -1117,9 +1191,7 @@
 					} catch (_) { }
 				},
 
-				handleTouchStart(e) {
-					this.touchStartX = e.changedTouches[0].screenX;
-				},
+				handleTouchStart(e) { this.touchStartX = e.changedTouches[0].screenX; },
 
 				// --- Unified touch for queue rows (swipe + long-press, no conflict) ---
 				queueTouchStart(e, index) {
@@ -1163,9 +1235,7 @@
 							this.moveQueueItem(index, 'first');
 							row.style.transform = "translateX(0)";
 						}, 250);
-					} else {
-						row.style.transform = "translateX(0)";
-					}
+					} else { row.style.transform = "translateX(0)"; }
 				},
 
 				toggleWebFullscreen() {
@@ -1177,14 +1247,7 @@
 					const el = this.$refs.qrcode;
 					if (!this.qrCreado && el) {
 						el.innerHTML = "";
-						new QRCode(el, {
-							text: window.location.href,
-							width: 200,
-							height: 200,
-							colorDark: "#2b2622",
-							colorLight: "#ffffff",
-							correctLevel: QRCode.CorrectLevel.H
-						});
+						new QRCode(el, { text: window.location.href, width: 200, height: 200, colorDark: "#2b2622", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.H });
 						const logo = document.createElement("img");
 						logo.src = "/favicon.ico";
 						logo.style.cssText = "position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); width:88px; height:88px; padding:4px; border-radius:8px;";
@@ -1195,29 +1258,12 @@
 
 				showToast(msg, type = 'info') {
 					const id = this.toastIdCounter++;
-					let icon = "info",
-						colorClasses = "bg-blue-600";
-					if (type === 'success') {
-						icon = "check_circle";
-						colorClasses = "bg-green-600";
-					}
-					if (type === 'warning') {
-						icon = "warning";
-						colorClasses = "bg-orange-600";
-					}
-					if (type === 'error') {
-						icon = "error";
-						colorClasses = "bg-red-600";
-					}
-					this.toasts.push({
-						id,
-						msg,
-						icon,
-						colorClasses
-					});
-					setTimeout(() => {
-						this.toasts = this.toasts.filter(t => t.id !== id);
-					}, 3000);
+					let icon = "info", colorClasses = "bg-blue-600";
+					if (type === 'success') { icon = "check_circle"; colorClasses = "bg-green-600"; }
+					if (type === 'warning') { icon = "warning"; colorClasses = "bg-orange-600"; }
+					if (type === 'error') { icon = "error"; colorClasses = "bg-red-600"; }
+					this.toasts.push({ id, msg, icon, colorClasses });
+					setTimeout(() => { this.toasts = this.toasts.filter(t => t.id !== id); }, 3000);
 				},
 
 				toggleDjCarpincho() {
@@ -1260,9 +1306,7 @@
 					});
 				},
 
-				closeCtxMenu() {
-					this.ctxMenu = { ...this.ctxMenu, visible: false };
-				},
+				closeCtxMenu() { this.ctxMenu = { ...this.ctxMenu, visible: false }; },
 
 				ctxTouchStart(event, track, source = 'library', index = null) {
 					this.ctxLongPressTimer = setTimeout(() => {
@@ -1271,9 +1315,7 @@
 					}, 500);
 				},
 
-				ctxTouchEnd() {
-					clearTimeout(this.ctxLongPressTimer);
-				},
+				ctxTouchEnd() { clearTimeout(this.ctxLongPressTimer); },
 
 				// Acciones de menú secundario
 				async ctxPlayNext() {
@@ -1281,17 +1323,13 @@
 					this.closeCtxMenu();
 					// Remove from queue if already in it, then add at position 0
 					const inQueue = this.queueState.indexOf(track.path);
-					if (inQueue !== -1) {
-						await this.sendCmd("remove_queue_item", { index: inQueue });
-					}
+					if (inQueue !== -1) await this.sendCmd("remove_queue_item", { index: inQueue });
 					// Add to queue then move to top
 					const res = await this.sendCmd("toggle_queue", { path: track.path });
 					if (res && res.status === "ok") {
 						// Move to first position (sendCmd move_queue_item to index 0)
 						const newIndex = this.queueState.indexOf(track.path);
-						if (newIndex > 0) {
-							await this.sendCmd("move_queue_item", { index: newIndex, new_index: 0 });
-						}
+						if (newIndex > 0) await this.sendCmd("move_queue_item", { index: newIndex, new_index: 0 });
 					}
 					this.haptic();
 				},
@@ -1299,8 +1337,7 @@
 				ctxFilterByArtist() {
 					const track = this.ctxMenu.track;
 					this.closeCtxMenu();
-					const artist = track.artist || track.display_artist || '';
-					this.searchQuery = artist;
+					this.searchQuery = track.artist || track.display_artist || '';
 					this.activeTab = 'library';
 					this.haptic();
 					// this.showToast(`Chusmeando a <b>${artist}</b>`, "info");
@@ -1316,10 +1353,14 @@
 				async ctxAddToQueue() {
 					const track = this.ctxMenu.track;
 					this.closeCtxMenu();
-					const inQueue = this.queueState.includes(track.path);
-					if (!inQueue) {
-						await this.sendCmd("toggle_queue", { path: track.path });
-					}
+					if (!this.queueState.includes(track.path)) await this.sendCmd("toggle_queue", { path: track.path });
+					this.haptic();
+				},
+
+				async ctxToggleFavorite() {
+					const track = this.ctxMenu.track;
+					this.closeCtxMenu();
+					await this.toggleFavorite(track.path);
 					this.haptic();
 				},
 
@@ -1338,9 +1379,7 @@
 
 					const inQueue = this.queueState.includes(track.path);
 					// Si no está en la fila y no está sonando ahora, lo mandamos a la fila
-					if (!inQueue && this.currentTrackPath !== track.path) {
-						await this.sendCmd("toggle_queue", { path: track.path });
-					}
+					if (!inQueue && this.currentTrackPath !== track.path) await this.sendCmd("toggle_queue", { path: track.path });
 
 					this.pauseAfterPath = track.path;
 					await this.sendCmd("pause_after", { path: track.path });
@@ -1401,13 +1440,9 @@
 						const rowEl = [...rows].find(r => r.dataset.historyPath === path) || null;
 						if (rowEl) {
 							rowEl.classList.add('deleting');
-							rowEl.addEventListener('animationend', () => {
-								this.sendCmd('remove_history_item', { index });
-							}, { once: true });
-						} else {
-							this.sendCmd('remove_history_item', { index });
-						}
-						this.showToast(`Borrado del historial: <b>${track.display_title}</b>`, "warning");
+							rowEl.addEventListener('animationend', () => { this.sendCmd('remove_history_item', { index }); }, { once: true });
+						} else { this.sendCmd('remove_history_item', { index }); }
+						this.showToast(`Borrado del historial`, "warning");
 						this.haptic();
 					}
 				},
@@ -1415,10 +1450,7 @@
 				ctxPlayNextQueue() {
 					const index = this.ctxMenu.index;
 					this.closeCtxMenu();
-					if (index !== null && index > 0) {
-						this.sendCmd('move_queue_item', { index, new_index: 0 });
-						this.haptic();
-					}
+					if (index !== null && index > 0) { this.sendCmd('move_queue_item', { index, new_index: 0 }); this.haptic(); }
 				},
 
 				// --- FUNCIONES PARA ARRASTRE NATIVO EN PC (HTML5 Drag & Drop) ---
@@ -1433,16 +1465,11 @@
 					const rect = e.currentTarget.getBoundingClientRect();
 					const midY = rect.top + rect.height / 2;
 					e.currentTarget.classList.remove('drag-over-top', 'drag-over-bottom');
-					if (e.clientY < midY) {
-						e.currentTarget.classList.add('drag-over-top');
-					} else {
-						e.currentTarget.classList.add('drag-over-bottom');
-					}
+					if (e.clientY < midY) e.currentTarget.classList.add('drag-over-top');
+					else e.currentTarget.classList.add('drag-over-bottom');
 				},
 
-				dragLeave(e) {
-					e.currentTarget.classList.remove('drag-over-top', 'drag-over-bottom');
-				},
+				dragLeave(e) { e.currentTarget.classList.remove('drag-over-top', 'drag-over-bottom'); },
 
 				dragDrop(e, toIndex) {
 					e.currentTarget.classList.remove('drag-over-top', 'drag-over-bottom');
@@ -1451,16 +1478,11 @@
 					const midY = rect.top + rect.height / 2;
 					let finalIndex = e.clientY < midY ? toIndex : toIndex + 1;
 					if (finalIndex > this.dragFromIndex) finalIndex--;
-					if (finalIndex !== this.dragFromIndex) {
-						this.sendCmd('move_queue_item', { index: this.dragFromIndex, new_index: finalIndex });
-					}
+					if (finalIndex !== this.dragFromIndex) this.sendCmd('move_queue_item', { index: this.dragFromIndex, new_index: finalIndex });
 					this.dragFromIndex = null;
 				},
 
-				dragEnd(e) {
-					e.currentTarget.classList.remove('dragging', 'drag-over-top', 'drag-over-bottom');
-					this.dragFromIndex = null;
-				},
+				dragEnd(e) { e.currentTarget.classList.remove('dragging', 'drag-over-top', 'drag-over-bottom'); this.dragFromIndex = null; },
 
 				updateMediaSession() {
 					if (!('mediaSession' in navigator)) return;
@@ -1472,18 +1494,13 @@
 
 					const info = this.getTrackInfo(this.currentTrackPath);
 					// Only set artwork for local files; URL tracks have no cover endpoint
-					const artworkSrc = (!this.currentTrackPath.startsWith('http') && this.currentCoverUrl)
-						? (window.location.origin + this.currentCoverUrl)
-						: null;
+					const artworkSrc = (!this.currentTrackPath.startsWith('http') && this.currentCoverUrl) ? (window.location.origin + this.currentCoverUrl) : null;
 
 					navigator.mediaSession.metadata = new MediaMetadata({
 						title: info.display_title || 'Desconocido',
 						artist: info.display_artist || 'Desconocido',
 						album: 'La Rockola del Carpincho',
-						artwork: artworkSrc ? [
-							{ src: artworkSrc, sizes: '96x96', type: 'image/jpeg' },
-							{ src: artworkSrc, sizes: '512x512', type: 'image/jpeg' },
-						] : []
+						artwork: artworkSrc ? [{ src: artworkSrc, sizes: '96x96', type: 'image/jpeg' }, { src: artworkSrc, sizes: '512x512', type: 'image/jpeg' }] : []
 					});
 
 					navigator.mediaSession.playbackState = this.isPaused ? "paused" : "playing";
@@ -1493,7 +1510,14 @@
 			mounted() {
 				this.loadLibrary(false);
 				this.connectWebSocket();
-				// Reaccionar a metadatos de medios si el celu lo soporta
+
+				// Ciclo para suavizar la barra de progreso de manera local
+				setInterval(() => {
+					if (this.isPlaying && !this.isPaused && !this.isDraggingSeek && this.duration > 0) {
+						this.localTimePos = Math.min(this.localTimePos + 0.25, this.duration);
+					}
+				}, 250);
+
 				if ('mediaSession' in navigator) {
 					navigator.mediaSession.setActionHandler('play', () => this.sendCmd('pause'));
 					navigator.mediaSession.setActionHandler('pause', () => this.sendCmd('pause'));

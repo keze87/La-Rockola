@@ -371,8 +371,21 @@ class AsyncMpvController:
 				not self.is_windows
 			):  # En Unix mandamos la suscripción por acá porque la conexión es única y no se cierra.
 				# Request MPV to broadcast volume and pause changes
-				await self._send(json.dumps({"command": ["observe_property", 1, "volume"]}))
-				await self._send(json.dumps({"command": ["observe_property", 2, "pause"]}))
+				await self._send(
+					json.dumps({"command": ["observe_property", 1, "volume"]})
+				)
+				await self._send(
+					json.dumps({"command": ["observe_property", 2, "pause"]})
+				)
+				await self._send(
+					json.dumps({"command": ["observe_property", 3, "time-pos"]})
+				)
+				await self._send(
+					json.dumps({"command": ["observe_property", 4, "duration"]})
+				)
+				await self._send(
+					json.dumps({"command": ["observe_property", 5, "mute"]})
+				)
 
 			# Si hay un callback de reinicio, avisamos que ya estamos listos para recibir los datos de nuevo
 			if "mpv_restarted" in self.callbacks:
@@ -392,6 +405,9 @@ class AsyncMpvController:
 					# Nos suscribimos a los eventos en LA MISMA pipa que va a quedarse leyendo
 					pipe.write(b'{"command": ["observe_property", 1, "volume"]}\n')
 					pipe.write(b'{"command": ["observe_property", 2, "pause"]}\n')
+					pipe.write(b'{"command": ["observe_property", 3, "time-pos"]}\n')
+					pipe.write(b'{"command": ["observe_property", 4, "duration"]}\n')
+					pipe.write(b'{"command": ["observe_property", 5, "mute"]}\n')
 					pipe.flush()
 
 					while True:
@@ -419,7 +435,9 @@ class AsyncMpvController:
 				break
 
 		# Si llegamos acá es porque se cerró el socket (MPV murió o se cerró)
-		logger.debug("El socket Unix de MPV se cerró. Limpiando conexión para forzar reinicio...")
+		logger.debug(
+			"El socket Unix de MPV se cerró. Limpiando conexión para forzar reinicio..."
+		)
 		self.reader = None
 		if self.writer:
 			self.writer.close()
@@ -440,6 +458,7 @@ class AsyncMpvController:
 			elif event_name == "property-change":
 				prop_name = event_data.get("name")
 				prop_val = event_data.get("data")
+
 				if (
 					prop_name == "volume"
 					and prop_val is not None
@@ -452,11 +471,21 @@ class AsyncMpvController:
 					and "pause_update" in self.callbacks
 				):
 					asyncio.create_task(self.callbacks["pause_update"](prop_val))
+				elif prop_name == "time-pos" and "time_update" in self.callbacks:
+					asyncio.create_task(self.callbacks["time_update"](prop_val))
+				elif prop_name == "duration" and "duration_update" in self.callbacks:
+					asyncio.create_task(self.callbacks["duration_update"](prop_val))
+				elif (
+					prop_name == "mute"
+					and prop_val is not None
+					and "mute_update" in self.callbacks
+				):
+					asyncio.create_task(self.callbacks["mute_update"](prop_val))
 		except json.JSONDecodeError:
 			pass
 
 	async def _send(self, cmd_payload: str):
-		logger.debug(f"Tirándole comando al MPV: \n {highlight_json(cmd_payload)}")
+		# logger.debug(f"Tirándole comando al MPV: \n {highlight_json(cmd_payload)}")
 		cmd_bytes = (cmd_payload + "\n").encode("utf-8")
 
 		try:
@@ -536,21 +565,39 @@ class APIState:
 		self.processing_eof = False
 		self.queue = []
 		self.secondary_dir = secondary_dir
+
+		# Track state
+		self.time_pos = 0
+		self.duration = 0
+		self.last_time_broadcast = 0
+
+		# Files
 		self.stats_file = Path.home() / ".carpincho_stats.json"
 		self.track_cache_by_path = {}
 		self.tracks_cache = []
 		self.url_log_file = Path.home() / ".carpincho_urls.json"
+		self.fav_file = Path.home() / ".carpincho_favs.json"
+
 		self.url_metadata = {}
 		self.volume = 100
-
+		self.server_muted = False
 		self.dj_next_track = None  # El tema que el DJ eligió para sonar después
+
+		self.track_cache_by_path = {}
+		self.tracks_cache = []
+
 		self.play_history = self._load_stats()
+		self.favorites = self._load_favs()
+
 		self.mpv = AsyncMpvController(
 			{
 				"song_ended": self.handle_song_ended,
 				"track_stopped": self.handle_track_stopped,
 				"volume_update": self.handle_volume_update,
 				"pause_update": self.handle_pause_update,
+				"time_update": self.handle_time_update,
+				"duration_update": self.handle_duration_update,
+				"mute_update": self.handle_mute_update,
 				"mpv_restarted": self.handle_mpv_restarted,
 			}
 		)
@@ -561,11 +608,15 @@ class APIState:
 			"current_track": self.current_track,
 			"dj_carpincho_enabled": self.dj_carpincho_enabled,
 			"dj_next_track": self.dj_next_track,
+			"favorites": list(self.favorites),
 			"history": list(self.history),
 			"is_scanning": self.is_scanning,
 			"paused": self.mpv_paused,
 			"pause_after_path": self.pause_after_path,
 			"queue": list(self.queue),
+			"time_pos": self.time_pos,
+			"duration": self.duration,
+			"server_muted": self.server_muted,
 			"top_played": self.get_top_played(),
 			"url_metadata": dict(self.url_metadata),
 			"volume": self.volume,
@@ -586,6 +637,22 @@ class APIState:
 				json.dump(self.play_history, f)
 		except Exception as e:
 			logger.error(f"Error guardando los stats: {e}")
+
+	def _load_favs(self):
+		try:
+			if os.path.exists(self.fav_file):
+				with open(self.fav_file, "r", encoding="utf-8") as f:
+					return json.load(f)
+		except Exception as e:
+			pass
+		return []
+
+	def _save_favs(self):
+		try:
+			with open(self.fav_file, "w", encoding="utf-8") as f:
+				json.dump(self.favorites, f)
+		except Exception as e:
+			logger.error(f"Error guardando favoritos: {e}")
 
 	def _log_url(self, url):
 		"""Guarda un registro de los links que sonaron, con su metadata si existe."""
@@ -690,7 +757,6 @@ class APIState:
 			self.path_to_id[track_dict["path"]] = track_hash
 
 		self.track_cache_by_path = new_cache
-
 		logger.info("¡Listo el escaneo, maestro!")
 		return tracks
 
@@ -774,7 +840,10 @@ class APIState:
 
 			# Volvemos a cargar la pista sin tocar el historial
 			await self.mpv._send(
-				json.dumps({"command": ["loadfile", str(self.current_track)]}, ensure_ascii=False)
+				json.dumps(
+					{"command": ["loadfile", str(self.current_track)]},
+					ensure_ascii=False,
+				)
 			)
 			# Le devolvemos su estado de pausa y volumen
 			await self.mpv._send(
@@ -783,6 +852,13 @@ class APIState:
 			await self.mpv._send(
 				json.dumps({"command": ["set_property", "volume", self.volume]})
 			)
+			await self.mpv._send(
+				json.dumps({"command": ["set_property", "mute", self.server_muted]})
+			)
+			if self.time_pos > 0:
+				await self.mpv._send(
+					json.dumps({"command": ["seek", self.time_pos, "absolute"]})
+				)
 
 	async def handle_track_stopped(self):
 		# Si cambiamos de tema hace menos de medio segundo,
@@ -794,6 +870,8 @@ class APIState:
 			return
 		self.current_track = None
 		self.mpv_paused = False
+		self.time_pos = 0
+		self.duration = 0
 		await broadcast_state()
 
 	async def handle_volume_update(self, vol):
@@ -804,6 +882,22 @@ class APIState:
 		self.mpv_paused = paused
 		await broadcast_state()
 
+	async def handle_time_update(self, pos):
+		self.time_pos = pos or 0
+		now = time.time()
+		# Solo triggereamos broadcast cada ~5 seg para no fundir el WebSocket
+		if now - self.last_time_broadcast >= 5.0:
+			self.last_time_broadcast = now
+			await broadcast_state()
+
+	async def handle_duration_update(self, dur):
+		self.duration = dur or 0
+		await broadcast_state()
+
+	async def handle_mute_update(self, is_muted):
+		self.server_muted = is_muted
+		await broadcast_state()
+
 	async def play_track(self, path):
 		# Si MPV está cerrado o en coma, lo forzamos a arrancar ANTES de tocar el estado (current_track)
 		# Así evitamos que handle_mpv_restarted se maree y mande doble loadfile.
@@ -812,6 +906,7 @@ class APIState:
 
 		self.current_track = path
 		self.mpv_paused = False
+		self.time_pos = 0
 		self.last_track_change = time.time()
 
 		str_path = str(path)
@@ -822,7 +917,9 @@ class APIState:
 		await self.mpv._send('{"command": ["set_property", "force-window", "yes"]}')
 
 		# Usamos json.dumps() con ensure_ascii=False para mandar acentos (ñ, tildes) en crudo y evitar marear a MPV
-		cmd_payload = json.dumps({"command": ["loadfile", str_path]}, ensure_ascii=False)
+		cmd_payload = json.dumps(
+			{"command": ["loadfile", str_path]}, ensure_ascii=False
+		)
 		await self.mpv._send(cmd_payload)
 		await self.mpv._send(json.dumps({"command": ["set_property", "pause", False]}))
 
@@ -833,7 +930,9 @@ class APIState:
 			self.current_track = None
 
 		# Verificamos si tocaba pausar después del track que acaba de terminar
-		should_pause = (self.pause_after_path is not None) and (just_finished == self.pause_after_path)
+		should_pause = (self.pause_after_path is not None) and (
+			just_finished == self.pause_after_path
+		)
 		if should_pause:
 			self.pause_after_path = None
 
@@ -843,15 +942,20 @@ class APIState:
 			await self.play_track(next_path)
 			if should_pause:
 				self.mpv_paused = True
-				await self.mpv._send(json.dumps({"command": ["set_property", "pause", True]}))
+				await self.mpv._send(
+					json.dumps({"command": ["set_property", "pause", True]})
+				)
 		elif self.dj_carpincho_enabled and self.tracks_cache:
 			# Usamos la pre-elección del DJ si existe; sino elegimos ahora
 			import random
+
 			if self.dj_next_track:
 				chosen = self.dj_next_track
 			else:
 				played_paths = set(self.history)
-				unplayed = [t for t in self.tracks_cache if t["path"] not in played_paths]
+				unplayed = [
+					t for t in self.tracks_cache if t["path"] not in played_paths
+				]
 				chosen = random.choice(unplayed) if unplayed else None
 
 			self.dj_next_track = None  # Consumimos la pre-elección
@@ -861,7 +965,9 @@ class APIState:
 				await self.play_track(chosen["path"])
 				if should_pause:
 					self.mpv_paused = True
-					await self.mpv._send(json.dumps({"command": ["set_property", "pause", True]}))
+					await self.mpv._send(
+						json.dumps({"command": ["set_property", "pause", True]})
+					)
 				# Pre-elegimos el siguiente para el front
 				self._pick_dj_next()
 				return
@@ -871,7 +977,9 @@ class APIState:
 				self.dj_next_track = None
 				self.current_track = None
 				await self.mpv._send('{"command": ["stop"]}')
-				await self.mpv._send('{"command": ["set_property", "force-window", "no"]}')
+				await self.mpv._send(
+					'{"command": ["set_property", "force-window", "no"]}'
+				)
 		else:
 			# Sin fila ni DJ: frena
 			self.dj_next_track = None
@@ -895,6 +1003,7 @@ class APIState:
 		"""Elige (o limpia) el próximo tema del DJ Carpincho según el estado actual."""
 		if self.dj_carpincho_enabled and not self.queue and self.tracks_cache:
 			import random
+
 			played_paths = set(self.history)
 			if self.current_track:
 				played_paths.add(self.current_track)
@@ -1108,6 +1217,18 @@ async def serve_cover(path: str = Query(...)):
 	return Response(status_code=404)
 
 
+@app.get("/stream")
+async def stream_audio(path: str = Query(...)):
+	"""Endpoint para mandarle la música al navegador del cliente si quiere escuchar ahí."""
+	# Validar que el path exista en nuestra librería para no servir archivos confidenciales
+	if path not in state.path_to_id and not any(
+		t["path"] == path for t in state.tracks_cache
+	):
+		return Response(status_code=404)
+	# FileResponse en Starlette maneja encabezados 'Range' si el browser los pide
+	return FileResponse(path)
+
+
 class CommandRequest(BaseModel):
 	cmd: str
 	path: str = None
@@ -1115,7 +1236,8 @@ class CommandRequest(BaseModel):
 	index: int = None
 	vollevel: int = None
 	new_index: int = None
-	amount: int = None
+	amount: float = None
+	state: bool = None
 
 
 @app.post("/command")
@@ -1150,6 +1272,7 @@ async def handle_command(req: CommandRequest):
 			state.current_track = None
 		state.mpv_paused = False
 		state.dj_carpincho_enabled = False
+		state.time_pos = 0
 		await state.mpv._send('{"command": ["stop"]}')
 		await state.mpv._send('{"command": ["set_property", "force-window", "no"]}')
 	elif cmd == "clear_queue":
@@ -1170,6 +1293,13 @@ async def handle_command(req: CommandRequest):
 				{"command": ["set_property", "volume", state.volume]}
 			)
 			await state.mpv._send(cmd_payload)
+	elif cmd == "set_mute":
+		if req.state is not None:
+			state.server_muted = req.state
+			cmd_payload = json.dumps(
+				{"command": ["set_property", "mute", state.server_muted]}
+			)
+			await state.mpv._send(cmd_payload)
 	elif cmd == "fullscreen":
 		await state.mpv._send('{"command": ["cycle", "fullscreen"]}')
 	elif cmd == "toggle_queue":
@@ -1187,6 +1317,17 @@ async def handle_command(req: CommandRequest):
 		if req.amount is not None:
 			cmd_payload = json.dumps({"command": ["seek", req.amount]})
 			await state.mpv._send(cmd_payload)
+	elif cmd == "seek_absolute":
+		if req.amount is not None:
+			cmd_payload = json.dumps({"command": ["seek", req.amount, "absolute"]})
+			await state.mpv._send(cmd_payload)
+	elif cmd == "toggle_favorite":
+		if req.path:
+			if req.path in state.favorites:
+				state.favorites.remove(req.path)
+			else:
+				state.favorites.append(req.path)
+			state._save_favs()
 	elif cmd == "toggle_dj_carpincho":
 		state.dj_carpincho_enabled = not state.dj_carpincho_enabled
 		logger.info(f"DJ Carpincho cambiado a: {state.dj_carpincho_enabled}")
