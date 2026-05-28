@@ -582,6 +582,7 @@ class APIState:
 		self.volume = 100
 		self.server_muted = False
 		self.dj_next_track = None  # El tema que el DJ eligió para sonar después
+		self.dj_countdown_task = None  # Task del countdown de 10s del DJ (cancelable)
 
 		self.track_cache_by_path = {}
 		self.tracks_cache = []
@@ -899,6 +900,12 @@ class APIState:
 		await broadcast_state()
 
 	async def play_track(self, path):
+		# Cancelar el countdown del DJ si el usuario eligió un tema manualmente
+		if self.dj_countdown_task and not self.dj_countdown_task.done():
+			self.dj_countdown_task.cancel()
+			self.dj_countdown_task = None
+			logger.info("Countdown del DJ Carpincho cancelado por nueva acción del usuario.")
+
 		# Si MPV está cerrado o en coma, lo forzamos a arrancar ANTES de tocar el estado (current_track)
 		# Así evitamos que handle_mpv_restarted se maree y mande doble loadfile.
 		if not self.mpv.writer and not self.mpv.is_windows:
@@ -924,6 +931,11 @@ class APIState:
 		await self.mpv._send(json.dumps({"command": ["set_property", "pause", False]}))
 
 	async def play_next(self):
+		# Si hay un countdown del DJ corriendo en otra task que no sea esta, lo matamos
+		if self.dj_countdown_task and not self.dj_countdown_task.done() and self.dj_countdown_task != asyncio.current_task():
+			self.dj_countdown_task.cancel()
+			self.dj_countdown_task = None
+
 		just_finished = self.current_track
 		if self.current_track:
 			self.history.append(self.current_track)
@@ -961,7 +973,18 @@ class APIState:
 			self.dj_next_track = None  # Consumimos la pre-elección
 
 			if chosen:
-				logger.info(f"🦦 DJ Carpincho salvó las papas con un clásico: {chosen['display_title']}")
+				logger.info(f"🦦 DJ Carpincho salvó las papas con un clásico: {chosen['display_title']} (arranca en 10 segundos...)")
+
+				# Guardamos el countdown como task cancelable
+				self.dj_countdown_task = asyncio.current_task()
+				try:
+					await asyncio.sleep(10)  # Pausa de 10 segundos antes de que el DJ arranque
+				except asyncio.CancelledError:
+					logger.info("Countdown del DJ cancelado, no se reproduce el tema pre-elegido.")
+					return
+				finally:
+					self.dj_countdown_task = None
+
 				await self.play_track(chosen["path"])
 				if should_pause:
 					self.mpv_paused = True
@@ -1138,6 +1161,29 @@ async def serve_favicon():
 		return {"error": f"No encuentro el favicon en {favicon_path}"}
 
 	return FileResponse(favicon_path)
+
+"""Propiedades como force-window y audio-display son evaluadas por mpv principalmente al momento de cargar un archivo o inicializar la ventana.
+Cambiar force-window a no en tiempo de ejecución después de que la ventana ya fue creada no le da la orden a mpv de destruirla dinámicamente. Simplemente cambia el estado interno para la próxima vez que el reproductor tenga que tomar la decisión de abrir una ventana.
+TODO: reiniciar mpv con force-window en no para que cierre la ventana, y arrancarlo de nuevo con force-window en yes cuando queramos mostrarla otra vez. Esto es un poco más brusco pero es la forma más confiable de asegurarnos que mpv reaccione a los cambios.
+"""
+@app.post("/mpv/hide")
+async def mpv_hide():
+	"""Manda no-audio-display y no-force-window al MPV para ocultar la ventana."""
+	await state.mpv._send('{"command": ["set_property", "audio-display", "no"]}')
+	await state.mpv._send('{"command": ["set_property", "force-window", "no"]}')
+	await state.mpv._send('{"command": ["set_property", "window-minimized", "yes"]}')
+	logger.info("Ventana de MPV ocultada (no-audio-display + no-force-window)")
+	return {"status": "ok"}
+
+
+@app.post("/mpv/show")
+async def mpv_show():
+	"""Manda force-window al MPV para restaurar la ventana."""
+	await state.mpv._send('{"command": ["set_property", "audio-display", "attachment"]}')
+	await state.mpv._send('{"command": ["set_property", "force-window", "yes"]}')
+	await state.mpv._send('{"command": ["set_property", "window-minimized", "no"]}')
+	logger.info("Ventana de MPV restaurada (audio-display + force-window)")
+	return {"status": "ok"}
 
 
 # --- API Routes ---

@@ -290,42 +290,60 @@
 						<span class="w-10 shrink-0">{{ formattedDuration }}</span>
 					</div>
 
-					<div class="mt-8 flex items-center justify-center gap-6 w-full px-8">
+					<div class="mt-8 flex items-center justify-center gap-4 sm:gap-6 w-full px-4 relative">
+						<!-- Overlay invisible para cerrar el volumen al tocar afuera -->
+						<div v-if="showFogonVolume" class="fixed inset-0 z-10" @click="showFogonVolume = false"></div>
+
+						<!-- Volume Toggle & Slider Popup -->
+						<div class="relative z-20">
+							<button @click="showFogonVolume = !showFogonVolume; haptic()"
+								class="text-white hover:text-carpincho-warning transition active:scale-90 p-2">
+								<i class="material-icons text-3xl">{{ volIcon }}</i>
+							</button>
+
+							<!-- <div v-if="showFogonVolume"
+								class="absolute bottom-full mb-4 left-0 -translate-x-4 bg-carpincho-panel/95 backdrop-blur border border-carpincho-border rounded-xl p-3 shadow-xl flex items-center gap-3 w-48 transition-all">
+								<i class="material-icons text-sm cursor-pointer text-gray-300 hover:text-white"
+									@click="sendCmd('set_mute', {state: !serverMuted})">{{ serverMuted || volume == 0 ?
+									'volume_off' : 'volume_down' }}</i>
+								<input v-model="volume" @change="setVolume" type="range" min="0" max="110"
+									class="w-full accent-carpincho-warning h-1.5 bg-gray-600 rounded-lg appearance-none outline-none cursor-pointer"
+									:class="{'opacity-50': serverMuted}">
+							</div> -->
+						</div>
+
 						<button @click="sendCmd('prev'); haptic()"
-							class="text-white hover:text-carpincho-warning transition active:scale-90">
-							<i class="material-icons text-5xl">skip_previous</i>
+							class="text-white hover:text-carpincho-warning transition active:scale-90 z-20 p-1">
+							<i class="material-icons text-4xl sm:text-5xl">skip_previous</i>
 						</button>
 
 						<button @click="sendCmd('pause'); haptic(true)"
-							class="bg-carpincho-primary hover:bg-carpincho-secondary text-white w-20 h-20 shrink-0 rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(166,124,82,0.4)] active:scale-90 transition">
+							class="bg-carpincho-primary hover:bg-carpincho-secondary text-white w-20 h-20 shrink-0 rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(166,124,82,0.4)] active:scale-90 transition z-20">
 							<i class="material-icons text-5xl">{{ isPlaying ? 'pause' : 'play_arrow' }}</i>
 						</button>
 
 						<button @click="sendCmd('skip'); haptic()"
-							class="text-white hover:text-carpincho-warning transition active:scale-90">
-							<i class="material-icons text-5xl">skip_next</i>
+							class="text-white hover:text-carpincho-warning transition active:scale-90 z-20 p-1">
+							<i class="material-icons text-4xl sm:text-5xl">skip_next</i>
 						</button>
-					</div>
 
-					<div class="mt-6 flex justify-center">
+						<!-- Timer / Pause After Toggle -->
 						<button @click="togglePauseAfterCurrent(); haptic()"
-							:class="['flex items-center gap-2 px-5 py-2 rounded-full text-sm font-medium active:scale-95 transition', pauseAfterPath === currentTrackPath && currentTrackPath ? 'bg-carpincho-warning text-carpincho-panel shadow-[0_0_15px_rgba(233,196,106,0.4)]' : 'bg-gray-800 text-white hover:bg-gray-700']">
-							<i class="material-icons text-base">timer</i>
-							{{ pauseAfterPath === currentTrackPath && currentTrackPath ? 'Cancelar pausa al terminar' :
-							'Frenar tras este tema' }}
+							:class="['p-2 transition active:scale-90 z-20', pauseAfterPath === currentTrackPath && currentTrackPath ? 'text-carpincho-warning drop-shadow-[0_0_8px_rgba(233,196,106,0.8)]' : 'text-white hover:text-carpincho-warning']"
+							:title="pauseAfterPath === currentTrackPath && currentTrackPath ? 'Cancelar pausa al terminar' : 'Frenar tras este tema'">
+							<i class="material-icons text-3xl">timer</i>
 						</button>
 					</div>
-
-					<div
-							class="mt-8 flex items-center text-gray-300 w-full px-8 gap-4 opacity-80 hover:opacity-100 transition">
-							<i class="material-icons text-sm cursor-pointer"
-								@click="sendCmd('set_mute', {state: !serverMuted})">{{ serverMuted || volume == 0 ?
-								'volume_off' : 'volume_down' }}</i>
-							<input v-model="volume" @change="setVolume" type="range" min="0" max="110"
-								class="w-full accent-carpincho-warning h-1 bg-gray-600 rounded-lg appearance-none outline-none"
-								:class="{'opacity-50': serverMuted}">
-							<i class="material-icons text-sm">volume_up</i>
-						</div>
+					<div v-if="showFogonVolume"
+						class="mt-8 flex items-center text-gray-300 w-full px-8 gap-4 opacity-80 hover:opacity-100 transition">
+						<i class="material-icons text-sm cursor-pointer"
+							@click="sendCmd('set_mute', {state: !serverMuted})">{{ serverMuted || volume == 0 ?
+							'volume_off' : 'volume_down' }}</i>
+						<input v-model="volume" @change="setVolume" type="range" min="0" max="110"
+							class="w-full accent-carpincho-warning h-1 bg-gray-600 rounded-lg appearance-none outline-none"
+							:class="{'opacity-50': serverMuted}">
+						<i class="material-icons text-sm">volume_up</i>
+					</div>
 				</div>
 			</div>
 		</transition>
@@ -635,6 +653,10 @@
 					<button @click="sendCmd('fullscreen')"
 						class="bg-blue-700 hover:bg-blue-600 text-white px-5 py-2 rounded-full font-medium active:scale-95 transition flex items-center gap-2">
 						<i class="material-icons">fullscreen</i> Todo pantalla, ñeri</button>
+					<button @click="toggleMpvVisibility"
+						class="bg-gray-700 hover:bg-gray-600 text-white px-5 py-2 rounded-full font-medium active:scale-95 transition flex items-center gap-2">
+						<i class="material-icons">{{ mpvVisible ? 'visibility_off' : 'visibility' }}</i> {{ mpvVisible ?
+						'Ocultar MPV' : 'Mostrar MPV' }}</button>
 				</div>
 			</div>
 			<div class="flex justify-center gap-3 mb-8 flex-wrap">
@@ -778,16 +800,26 @@
 					djCarpinchoEnabled: false,
 					djNextTrack: null,
 					dragFromIndex: null,
+					duration: 0,
+					favorites: [],
 					historyState: [],
+					isDraggingSeek: false,
 					isFogonMode: false,
 					isPaused: false,
 					isScanning: false,
+					listenLocally: false,
+					localTimePos: 0,
+					mpvVisible: true,
 					newUrl: '',
 					originalTracks: [],
 					pauseAfterPath: null,
 					qrCreado: false,
 					queueState: [],
 					searchQuery: '',
+					serverMuted: false,
+					showFavoritesOnly: false,
+					showFogonVolume: false,
+					timePos: 0,
 					toastIdCounter: 0,
 					toasts: [],
 					topPlayedState: [],
@@ -796,14 +828,6 @@
 					urlMetadata: {},
 					volume: 100,
 					ws: null,
-					favorites: [],
-					showFavoritesOnly: false,
-					timePos: 0,
-					duration: 0,
-					localTimePos: 0,
-					isDraggingSeek: false,
-					listenLocally: false,
-					serverMuted: false
 				}
 			},
 
@@ -1269,6 +1293,18 @@
 				toggleDjCarpincho() {
 					this.sendCmd("toggle_dj_carpincho");
 					this.haptic();
+				},
+
+				async toggleMpvVisibility() {
+					this.mpvVisible = !this.mpvVisible;
+					const endpoint = this.mpvVisible ? "/mpv/show" : "/mpv/hide";
+					try {
+						await fetch(endpoint, { method: "POST" });
+						this.showToast(this.mpvVisible ? "Mostrando ventana de MPV" : "Ocultando ventana de MPV", "info");
+						this.haptic();
+					} catch (err) {
+						this.showToast("Error cambiando visibilidad de MPV", "error");
+					}
 				},
 
 				// --- CONTEXT MENU (long press / right click) ---
