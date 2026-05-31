@@ -610,9 +610,9 @@ class APIState:
 			}
 		)
 
-	def get_full_state_dict(self):
+	def get_full_state_dict(self, include_library=False):
 		"""Genera un diccionario con el estado completo actual (creando copias listas/diccionarios)"""
-		return {
+		d = {
 			"current_track": self.current_track,
 			"dj_carpincho_enabled": self.dj_carpincho_enabled,
 			"dj_next_track": self.dj_next_track,
@@ -630,6 +630,9 @@ class APIState:
 			"url_metadata": dict(self.url_metadata),
 			"volume": self.volume,
 		}
+		if include_library:
+			d["library"] = list(self.tracks_cache)
+		return d
 
 	def _load_stats(self):
 		try:
@@ -1112,9 +1115,9 @@ class APIState:
 state = APIState()
 
 
-async def broadcast_state():
+async def broadcast_state(include_library=False):
 	"""Helper que manda POR WEBSOCKET SOLAMENTE LOS DATOS QUE CAMBIARON"""
-	new_state = state.get_full_state_dict()
+	new_state = state.get_full_state_dict(include_library=include_library)
 
 	# Preparamos un diccionario 'diff' con los cambios
 	diff = {"type": "state_update"}
@@ -1229,12 +1232,16 @@ async def scan_library(dir: str = None, dir2: str = None):
 	state.is_scanning = True
 	await broadcast_state()
 
+	# Guardamos el tamaño anterior para detectar cambios
+	prev_count = len(state.tracks_cache)
+
 	# Hacemos el trabajo pesado
 	state.tracks_cache = await asyncio.to_thread(state.scan_directory, target_dirs)
 
-	# Apagamos el "Cargando" y le avisamos al front
+	# Si la librería cambió, la incluimos en el broadcast para que todos los clientes la actualicen sin hacer un GET /library
+	library_changed = len(state.tracks_cache) != prev_count
 	state.is_scanning = False
-	await broadcast_state()
+	await broadcast_state(include_library=library_changed)
 
 	return {"data": state.tracks_cache}
 
@@ -1426,8 +1433,8 @@ async def websocket_endpoint(websocket: WebSocket):
 
 	await manager.connect(websocket)
 	try:
-		# Send initial state immediately (full state needed for fresh clients)
-		full_state = state.get_full_state_dict()
+		# Send initial state immediately (full state needed for fresh clients), including the library
+		full_state = state.get_full_state_dict(include_library=True)
 		full_state["type"] = "state_update"
 		await websocket.send_json(full_state)
 

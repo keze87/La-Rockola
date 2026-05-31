@@ -1065,16 +1065,24 @@
 								if (data.mpv_visible !== undefined) this.mpvVisible = data.mpv_visible;
 								if (data.time_pos !== undefined) {
 									this.timePos = data.time_pos;
-									if (!this.isDraggingSeek) {
-										if (Math.abs(this.localTimePos - this.timePos) > 1.5) {
-											this.localTimePos = this.timePos;
+									// Cuando escuchamos localmente, el <audio> lleva su propio tiempo —
+									// sincronizarlo con el time_pos del servidor (que llega con hasta 5s de retraso)
+									// causaría saltos y jitter constante. Lo ignoramos en ese modo.
+									if (!this.listenLocally) {
+										if (!this.isDraggingSeek) {
+											if (Math.abs(this.localTimePos - this.timePos) > 1.5) {
+												this.localTimePos = this.timePos;
+											}
 										}
 									}
-									if (this.listenLocally && this.$refs.localPlayer && !this.$refs.localPlayer.paused) {
-										if (Math.abs(this.$refs.localPlayer.currentTime - this.timePos) > 2.5) {
-											this.$refs.localPlayer.currentTime = this.timePos;
-										}
-									}
+									// La corrección del localPlayer tampoco aplica: el jugador local
+									// ya corre independiente y cualquier seek externo lo desincronizaría.
+								}
+								if (data.library) {
+									this.originalTracks = [...data.library];
+									this.currentTracks = [...data.library];
+									this.trackMap = {};
+									data.library.forEach(t => this.trackMap[t.path] = t);
 								}
 							}
 						} catch (e) {
