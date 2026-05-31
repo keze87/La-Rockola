@@ -303,6 +303,11 @@ class AsyncMpvController:
 
 			logger.info(f"Armando el socket de MPV en {self.socket_path}...")
 
+			# Determinar si mostramos la ventana en base al estado (si existe)
+			show_window = True
+			if 'APIState' in globals() and hasattr(state, 'mpv_visible'):
+				show_window = state.mpv_visible
+
 			mpv_args = [
 				"mpv",
 				"--autofit=33%x33%",
@@ -320,6 +325,7 @@ class AsyncMpvController:
 				"--sub-scale-by-window=no",
 				"--sub-scale-with-window=no",
 				"--ytdl-raw-options=no-playlist=",
+				f"--{'quiet' if show_window else 'no-audio-display'}",
 				f"--input-ipc-server={self.socket_path}",
 			]
 
@@ -583,6 +589,7 @@ class APIState:
 		self.server_muted = False
 		self.dj_next_track = None  # El tema que el DJ eligió para sonar después
 		self.dj_countdown_task = None  # Task del countdown de 10s del DJ (cancelable)
+		self.mpv_visible = True
 
 		self.track_cache_by_path = {}
 		self.tracks_cache = []
@@ -592,14 +599,14 @@ class APIState:
 
 		self.mpv = AsyncMpvController(
 			{
+				"duration_update": self.handle_duration_update,
+				"mpv_restarted": self.handle_mpv_restarted,
+				"mute_update": self.handle_mute_update,
+				"pause_update": self.handle_pause_update,
 				"song_ended": self.handle_song_ended,
+				"time_update": self.handle_time_update,
 				"track_stopped": self.handle_track_stopped,
 				"volume_update": self.handle_volume_update,
-				"pause_update": self.handle_pause_update,
-				"time_update": self.handle_time_update,
-				"duration_update": self.handle_duration_update,
-				"mute_update": self.handle_mute_update,
-				"mpv_restarted": self.handle_mpv_restarted,
 			}
 		)
 
@@ -609,15 +616,16 @@ class APIState:
 			"current_track": self.current_track,
 			"dj_carpincho_enabled": self.dj_carpincho_enabled,
 			"dj_next_track": self.dj_next_track,
+			"duration": self.duration,
 			"favorites": list(self.favorites),
 			"history": list(self.history),
 			"is_scanning": self.is_scanning,
-			"paused": self.mpv_paused,
+			"mpv_visible": self.mpv_visible,
 			"pause_after_path": self.pause_after_path,
+			"paused": self.mpv_paused,
 			"queue": list(self.queue),
-			"time_pos": self.time_pos,
-			"duration": self.duration,
 			"server_muted": self.server_muted,
+			"time_pos": self.time_pos,
 			"top_played": self.get_top_played(),
 			"url_metadata": dict(self.url_metadata),
 			"volume": self.volume,
@@ -921,7 +929,8 @@ class APIState:
 			# Si es un link de YouTube o internet, lo mandamos al log especial apenas arranca
 			self._log_url(str_path)
 
-		await self.mpv._send('{"command": ["set_property", "force-window", "yes"]}')
+		if state.mpv_visible:
+			await self.mpv._send('{"command": ["set_property", "force-window", "yes"]}')
 
 		# Usamos json.dumps() con ensure_ascii=False para mandar acentos (ñ, tildes) en crudo y evitar marear a MPV
 		cmd_payload = json.dumps(
@@ -978,7 +987,13 @@ class APIState:
 				# Guardamos el countdown como task cancelable
 				self.dj_countdown_task = asyncio.current_task()
 				try:
+					await self.mpv._send(
+						json.dumps({"command": ["set_property", "pause", True]})
+					)
 					await asyncio.sleep(10)  # Pausa de 10 segundos antes de que el DJ arranque
+					await self.mpv._send(
+						json.dumps({"command": ["set_property", "pause", False]})
+					)
 				except asyncio.CancelledError:
 					logger.info("Countdown del DJ cancelado, no se reproduce el tema pre-elegido.")
 					return
@@ -1162,27 +1177,23 @@ async def serve_favicon():
 
 	return FileResponse(favicon_path)
 
-"""Propiedades como force-window y audio-display son evaluadas por mpv principalmente al momento de cargar un archivo o inicializar la ventana.
-Cambiar force-window a no en tiempo de ejecución después de que la ventana ya fue creada no le da la orden a mpv de destruirla dinámicamente. Simplemente cambia el estado interno para la próxima vez que el reproductor tenga que tomar la decisión de abrir una ventana.
-TODO: reiniciar mpv con force-window en no para que cierre la ventana, y arrancarlo de nuevo con force-window en yes cuando queramos mostrarla otra vez. Esto es un poco más brusco pero es la forma más confiable de asegurarnos que mpv reaccione a los cambios.
-"""
 @app.post("/mpv/hide")
 async def mpv_hide():
-	"""Manda no-audio-display y no-force-window al MPV para ocultar la ventana."""
-	await state.mpv._send('{"command": ["set_property", "audio-display", "no"]}')
-	await state.mpv._send('{"command": ["set_property", "force-window", "no"]}')
-	await state.mpv._send('{"command": ["set_property", "window-minimized", "yes"]}')
-	logger.info("Ventana de MPV ocultada (no-audio-display + no-force-window)")
+	"""Reinicia MPV con la ventana oculta."""
+	state.mpv_visible = False
+	logger.info("Reiniciando MPV para ocultar la ventana...")
+	await state.mpv.start() # start() matará el proceso viejo y leerá mpv_visible
+	await broadcast_state()
 	return {"status": "ok"}
 
 
 @app.post("/mpv/show")
 async def mpv_show():
-	"""Manda force-window al MPV para restaurar la ventana."""
-	await state.mpv._send('{"command": ["set_property", "audio-display", "attachment"]}')
-	await state.mpv._send('{"command": ["set_property", "force-window", "yes"]}')
-	await state.mpv._send('{"command": ["set_property", "window-minimized", "no"]}')
-	logger.info("Ventana de MPV restaurada (audio-display + force-window)")
+	"""Reinicia MPV con la ventana visible."""
+	state.mpv_visible = True
+	logger.info("Reiniciando MPV para mostrar la ventana...")
+	await state.mpv.start() # start() matará el proceso viejo y leerá mpv_visible
+	await broadcast_state()
 	return {"status": "ok"}
 
 

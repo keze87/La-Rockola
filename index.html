@@ -300,16 +300,6 @@
 								class="text-white hover:text-carpincho-warning transition active:scale-90 p-2">
 								<i class="material-icons text-3xl">{{ volIcon }}</i>
 							</button>
-
-							<!-- <div v-if="showFogonVolume"
-								class="absolute bottom-full mb-4 left-0 -translate-x-4 bg-carpincho-panel/95 backdrop-blur border border-carpincho-border rounded-xl p-3 shadow-xl flex items-center gap-3 w-48 transition-all">
-								<i class="material-icons text-sm cursor-pointer text-gray-300 hover:text-white"
-									@click="sendCmd('set_mute', {state: !serverMuted})">{{ serverMuted || volume == 0 ?
-									'volume_off' : 'volume_down' }}</i>
-								<input v-model="volume" @change="setVolume" type="range" min="0" max="110"
-									class="w-full accent-carpincho-warning h-1.5 bg-gray-600 rounded-lg appearance-none outline-none cursor-pointer"
-									:class="{'opacity-50': serverMuted}">
-							</div> -->
 						</div>
 
 						<button @click="sendCmd('prev'); haptic()"
@@ -633,7 +623,9 @@
 			<div
 				class="w-full max-w-lg mx-auto flex items-center justify-between bg-carpincho-panel p-4 rounded-xl border-l-4 border-carpincho-warning shadow-md mb-8">
 				<div class="text-left">
-					<div class="font-bold text-carpincho-text">DJ Carpincho</div>
+					<div class="font-bold text-carpincho-text flex items-center gap-2">
+						<i class="material-icons text-carpincho-warning">shuffle</i> DJ Carpincho
+					</div>
 					<div class="text-xs text-[#a6adc8]">Tira un tema random nuevo si se vacía la fila</div>
 				</div>
 				<label class="relative inline-flex items-center cursor-pointer ml-4">
@@ -1070,6 +1062,7 @@
 								if (data.favorites !== undefined) this.favorites = data.favorites;
 								if (data.duration !== undefined) this.duration = data.duration;
 								if (data.server_muted !== undefined) this.serverMuted = data.server_muted;
+								if (data.mpv_visible !== undefined) this.mpvVisible = data.mpv_visible;
 								if (data.time_pos !== undefined) {
 									this.timePos = data.time_pos;
 									if (!this.isDraggingSeek) {
@@ -1296,11 +1289,12 @@
 				},
 
 				async toggleMpvVisibility() {
-					this.mpvVisible = !this.mpvVisible;
-					const endpoint = this.mpvVisible ? "/mpv/show" : "/mpv/hide";
+					// Toggle local immediately for responsiveness, server state will confirm later
+					const targetState = !this.mpvVisible;
+					const endpoint = targetState ? "/mpv/show" : "/mpv/hide";
 					try {
 						await fetch(endpoint, { method: "POST" });
-						this.showToast(this.mpvVisible ? "Mostrando ventana de MPV" : "Ocultando ventana de MPV", "info");
+						this.showToast(targetState ? "Mostrando ventana de MPV" : "Ocultando ventana de MPV", "info");
 						this.haptic();
 					} catch (err) {
 						this.showToast("Error cambiando visibilidad de MPV", "error");
