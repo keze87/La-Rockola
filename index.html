@@ -276,11 +276,17 @@
 						<i v-else class="material-icons text-[8rem] text-carpincho-warning">album</i>
 					</div>
 
-					<h1 class="text-3xl font-bold mb-2 truncate w-full px-4">{{ currentTrackInfo.title }}</h1>
+					<h1 class="text-3xl font-bold mb-2 truncate w-full px-4">
+						<span v-if="currentTrackInfo.isComing"
+							class="block text-sm text-carpincho-warning uppercase tracking-widest mb-2 animate-pulse">🦦
+							Se viene...</span>
+						{{ currentTrackInfo.title }}
+					</h1>
 					<h2 class="text-xl text-carpincho-secondary truncate w-full px-4">{{ currentTrackInfo.artist }}</h2>
 
 					<!-- Barra de progreso / Seek Fogon -->
-					<div class="w-full px-6 mt-6 flex items-center gap-4 text-xs text-carpincho-secondary font-medium">
+					<div v-show="currentTrackPath"
+						class="w-full px-6 mt-6 flex items-center gap-4 text-xs text-carpincho-secondary font-medium">
 						<span class="w-10 text-right shrink-0">{{ formattedTimePos }}</span>
 						<input type="range"
 							class="w-full accent-carpincho-warning h-1.5 bg-gray-600/50 rounded-lg appearance-none cursor-pointer"
@@ -830,6 +836,10 @@
 					if (this.currentTrackPath && !this.currentTrackPath.startsWith('http')) {
 						return '/cover?path=' + encodeURIComponent(this.currentTrackPath);
 					}
+					// NUEVO: Fallback a la tapa del tema que está por arrancar (DJ Carpincho)
+					if (!this.currentTrackPath && this.djCarpinchoEnabled && this.djNextTrack && this.djNextTrack.path && !this.djNextTrack.path.startsWith('http')) {
+						return '/cover?path=' + encodeURIComponent(this.djNextTrack.path);
+					}
 					return null;
 				},
 
@@ -839,9 +849,19 @@
 				},
 
 				currentTrackInfo() {
-					if (!this.currentTrackPath) return { title: "Silencio estampa", artist: "Nadie" };
-					const t = this.getTrackInfo(this.currentTrackPath);
-					return { title: t.display_title, artist: t.display_artist };
+					if (this.currentTrackPath) {
+						const t = this.getTrackInfo(this.currentTrackPath);
+						return { title: t.display_title, artist: t.display_artist, isComing: false };
+					}
+					// NUEVO: Mostrar la data del tema que el DJ eligió mientras cuenta los 10s
+					if (this.djCarpinchoEnabled && this.djNextTrack) {
+						return {
+							title: this.djNextTrack.display_title || this.djNextTrack.title,
+							artist: this.djNextTrack.display_artist || this.djNextTrack.artist,
+							isComing: true
+						};
+					}
+					return { title: "Silencio estampa", artist: "Nadie", isComing: false };
 				},
 
 				filteredTracks() {
