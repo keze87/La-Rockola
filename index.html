@@ -937,34 +937,27 @@
 
 					if (this.listenLocally && this.$refs.localPlayer) {
 						if (newPath && !newPath.startsWith('http')) {
-							this.$refs.localPlayer.src = '/stream?path=' + encodeURIComponent(newPath);
-							this.$refs.localPlayer.currentTime = 0;
-							if (this.isPlaying) this.$refs.localPlayer.play().catch(e => console.log(e));
+							this._startLocalPlayer(newPath);
 						} else {
-							this.$refs.localPlayer.pause();
-							this.$refs.localPlayer.removeAttribute('src');
-							this.$refs.localPlayer.load();
+							this._stopLocalPlayer();
 						}
 					}
 				},
 
 				listenLocally(val) {
-					this.sendCmd('set_mute', { state: val });
-					if (!this.$refs.localPlayer) return;
 					if (val) {
-						if (this.currentTrackPath && !this.currentTrackPath.startsWith('http')) {
-							this.$refs.localPlayer.src = '/stream?path=' + encodeURIComponent(this.currentTrackPath);
-							this.$refs.localPlayer.currentTime = this.timePos || 0;
-							if (!this.isPaused) {
-								this.$refs.localPlayer.play().catch(e => {
-									this.showToast("Dále un toque a la pantalla para arrancar el audio local", "warning");
-								});
-							}
+						// Pedir el rol de reproductor local al servidor
+						if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+							this.ws.send(JSON.stringify({ type: 'local_player_claim' }));
 						}
+						// El setup del <audio> se hace en local_player_claim_result (ver WS handler)
 					} else {
-						this.$refs.localPlayer.pause();
-						this.$refs.localPlayer.removeAttribute('src');
-						this.$refs.localPlayer.load();
+						// Soltar el rol y apagar el reproductor
+						if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+							this.ws.send(JSON.stringify({ type: 'local_player_release' }));
+						}
+						this.sendCmd('set_mute', { state: false });
+						this._stopLocalPlayer();
 					}
 				},
 
@@ -975,6 +968,8 @@
 					if (this.listenLocally && this.$refs.localPlayer && this.$refs.localPlayer.src) {
 						if (val) this.$refs.localPlayer.pause();
 						else this.$refs.localPlayer.play().catch(e => console.log(e));
+						// Reportamos el cambio de pausa al servidor para que lo propague a los demás clientes
+						this._sendLocalPlayerUpdate({ paused: val });
 					}
 				},
 			},
@@ -994,11 +989,22 @@
 					const percent = Math.max(0, Math.min(1, clickX / rect.width));
 					const targetTime = percent * this.duration;
 					this.localTimePos = targetTime;
-					this.sendCmd('seek_absolute', { amount: targetTime });
+					if (this.listenLocally && this.$refs.localPlayer) {
+						this.$refs.localPlayer.currentTime = targetTime;
+						this._sendLocalPlayerUpdate({ time_pos: targetTime });
+					} else {
+						this.sendCmd('seek_absolute', { amount: targetTime });
+					}
 				},
 
 				onSeekAbsolute() {
-					this.sendCmd('seek_absolute', { amount: parseFloat(this.localTimePos) });
+					const t = parseFloat(this.localTimePos);
+					if (this.listenLocally && this.$refs.localPlayer) {
+						this.$refs.localPlayer.currentTime = t;
+						this._sendLocalPlayerUpdate({ time_pos: t });
+					} else {
+						this.sendCmd('seek_absolute', { amount: t });
+					}
 				},
 
 				async toggleFavorite(path) {
@@ -1047,6 +1053,21 @@
 						try {
 							const data = JSON.parse(event.data);
 
+							if (data.type === 'local_player_claim_result') {
+								if (data.ok) {
+									// El servidor aceptó nuestro rol — mutear MPV y arrancar el reproductor local
+									this.sendCmd('set_mute', { state: true });
+									if (this.currentTrackPath && !this.currentTrackPath.startsWith('http')) {
+										this._startLocalPlayer(this.currentTrackPath);
+									}
+								} else {
+									// Otro cliente ya está reproduciendo — revertir el toggle
+									this.listenLocally = false;
+									this.showToast("Otro cliente ya está reproduciendo localmente.", "warning");
+								}
+								return;
+							}
+
 							if (data.type === 'state_update') {
 								if (data.current_track !== undefined) this.currentTrackPath = data.current_track;
 								if (data.dj_carpincho_enabled !== undefined) this.djCarpinchoEnabled = data.dj_carpincho_enabled;
@@ -1089,7 +1110,13 @@
 							console.error("¡Se rompió el JSON que mandó el server, fiera!", e, event.data);
 						}
 					};
-					this.ws.onopen = () => { delay = 1000; }; // reset backoff al conectar
+					this.ws.onopen = () => {
+						delay = 1000; // reset backoff al conectar
+						// Si seguimos en modo local, reclamar el rol después de reconectar
+						if (this.listenLocally) {
+							this.ws.send(JSON.stringify({ type: 'local_player_claim' }));
+						}
+					};
 					this.ws.onclose = () => {
 						this.showToast("Se cortó la señal. Reconectando...", "warning");
 						const nextDelay = Math.min(delay * 2, 30000);
@@ -1278,6 +1305,60 @@
 						logo.style.cssText = "position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); width:88px; height:88px; padding:4px; border-radius:8px;";
 						el.appendChild(logo);
 						this.qrCreado = true;
+					}
+				},
+
+				// --- REPRODUCTOR LOCAL: helpers internos ---
+
+				_startLocalPlayer(path) {
+					const lp = this.$refs.localPlayer;
+					if (!lp) return;
+					lp.src = '/stream?path=' + encodeURIComponent(path);
+					lp.currentTime = 0;
+
+					// Arrancamos el audio y reportamos la duración cuando el browser la tenga
+					lp.onloadedmetadata = () => {
+						this.duration = lp.duration;
+						this._sendLocalPlayerUpdate({ duration: lp.duration });
+					};
+
+					// Reportar time_pos mientras avanza (throttleado a ~1s para no inundar el WS)
+					let lastSent = 0;
+					lp.ontimeupdate = () => {
+						this.localTimePos = lp.currentTime;
+						const now = Date.now();
+						if (now - lastSent >= 5000) {
+							lastSent = now;
+							this._sendLocalPlayerUpdate({ time_pos: lp.currentTime });
+						}
+					};
+
+					// Avisar al servidor cuando termina la canción
+					lp.onended = () => {
+						this._sendLocalPlayerUpdate({ song_ended: true });
+					};
+
+					if (!this.isPaused) {
+						lp.play().catch(() => {
+							this.showToast("Tocá la pantalla para arrancar el audio local", "warning");
+						});
+					}
+				},
+
+				_stopLocalPlayer() {
+					const lp = this.$refs.localPlayer;
+					if (!lp) return;
+					lp.onloadedmetadata = null;
+					lp.ontimeupdate = null;
+					lp.onended = null;
+					lp.pause();
+					lp.removeAttribute('src');
+					lp.load();
+				},
+
+				_sendLocalPlayerUpdate(payload) {
+					if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+						this.ws.send(JSON.stringify({ type: 'local_player_update', ...payload }));
 					}
 				},
 

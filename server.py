@@ -305,7 +305,7 @@ class AsyncMpvController:
 
 			# Determinar si mostramos la ventana en base al estado (si existe)
 			show_window = True
-			if 'APIState' in globals() and hasattr(state, 'mpv_visible'):
+			if "APIState" in globals() and hasattr(state, "mpv_visible"):
 				show_window = state.mpv_visible
 
 			mpv_args = [
@@ -534,6 +534,9 @@ class AsyncMpvController:
 class ConnectionManager:
 	def __init__(self):
 		self.active_connections: list[WebSocket] = []
+		self.local_player_ws: WebSocket | None = (
+			None  # El cliente que está reproduciendo localmente
+		)
 
 	async def connect(self, websocket: WebSocket):
 		await websocket.accept()
@@ -542,6 +545,22 @@ class ConnectionManager:
 	def disconnect(self, websocket: WebSocket):
 		if websocket in self.active_connections:
 			self.active_connections.remove(websocket)
+		if self.local_player_ws is websocket:
+			self.local_player_ws = None
+			logger.info("El cliente reproductor local se desconectó.")
+
+	def claim_local_player(self, websocket: WebSocket) -> bool:
+		"""Intenta registrar este WS como el reproductor local. Devuelve True si lo logró."""
+		if self.local_player_ws is not None and self.local_player_ws is not websocket:
+			return False  # Ya hay otro cliente reproduciendo localmente
+		self.local_player_ws = websocket
+		logger.info("Nuevo cliente registrado como reproductor local.")
+		return True
+
+	def release_local_player(self, websocket: WebSocket):
+		if self.local_player_ws is websocket:
+			self.local_player_ws = None
+			logger.info("Cliente liberó el rol de reproductor local.")
 
 	async def broadcast(self, message: dict):
 		logger.debug(f"AVISANDO A LA MUCHACHADA:\n{highlight_json(message)}")
@@ -895,6 +914,11 @@ class APIState:
 		await broadcast_state()
 
 	async def handle_time_update(self, pos):
+		# Mientras hay un reproductor local activo, el cliente es la fuente de verdad para
+		# time_pos. Ignoramos los ticks del MPV para evitar que sobreescriban el valor del
+		# cliente y creen jitter en todos los demás clientes.
+		if manager.local_player_ws is not None:
+			return
 		self.time_pos = pos or 0
 		now = time.time()
 		# Solo triggereamos broadcast cada ~5 seg para no fundir el WebSocket
@@ -903,6 +927,9 @@ class APIState:
 			await broadcast_state()
 
 	async def handle_duration_update(self, dur):
+		# Igual que handle_time_update: el cliente local reporta su propia duración.
+		if manager.local_player_ws is not None:
+			return
 		self.duration = dur or 0
 		await broadcast_state()
 
@@ -915,7 +942,9 @@ class APIState:
 		if self.dj_countdown_task and not self.dj_countdown_task.done():
 			self.dj_countdown_task.cancel()
 			self.dj_countdown_task = None
-			logger.info("Countdown del DJ Carpincho cancelado por nueva acción del usuario.")
+			logger.info(
+				"Countdown del DJ Carpincho cancelado por nueva acción del usuario."
+			)
 
 		# Si MPV está cerrado o en coma, lo forzamos a arrancar ANTES de tocar el estado (current_track)
 		# Así evitamos que handle_mpv_restarted se maree y mande doble loadfile.
@@ -944,7 +973,11 @@ class APIState:
 
 	async def play_next(self):
 		# Si hay un countdown del DJ corriendo en otra task que no sea esta, lo matamos
-		if self.dj_countdown_task and not self.dj_countdown_task.done() and self.dj_countdown_task != asyncio.current_task():
+		if (
+			self.dj_countdown_task
+			and not self.dj_countdown_task.done()
+			and self.dj_countdown_task != asyncio.current_task()
+		):
 			self.dj_countdown_task.cancel()
 			self.dj_countdown_task = None
 
@@ -962,7 +995,9 @@ class APIState:
 
 		if self.queue:
 			next_path = self.queue.pop(0)
-			self.dj_next_track = None  # Limpiamos (si la fila tenía temas, el DJ no pre-eligió)
+			self.dj_next_track = (
+				None  # Limpiamos (si la fila tenía temas, el DJ no pre-eligió)
+			)
 			await self.play_track(next_path)
 			if should_pause:
 				self.mpv_paused = True
@@ -985,7 +1020,9 @@ class APIState:
 			self.dj_next_track = None  # Consumimos la pre-elección
 
 			if chosen:
-				logger.info(f"🦦 DJ Carpincho salvó las papas con un clásico: {chosen['display_title']} (arranca en 10 segundos...)")
+				logger.info(
+					f"🦦 DJ Carpincho salvó las papas con un clásico: {chosen['display_title']} (arranca en 10 segundos...)"
+				)
 
 				# Guardamos el countdown como task cancelable
 				self.dj_countdown_task = asyncio.current_task()
@@ -993,12 +1030,16 @@ class APIState:
 					await self.mpv._send(
 						json.dumps({"command": ["set_property", "pause", True]})
 					)
-					await asyncio.sleep(10)  # Pausa de 10 segundos antes de que el DJ arranque
+					await asyncio.sleep(
+						10
+					)  # Pausa de 10 segundos antes de que el DJ arranque
 					await self.mpv._send(
 						json.dumps({"command": ["set_property", "pause", False]})
 					)
 				except asyncio.CancelledError:
-					logger.info("Countdown del DJ cancelado, no se reproduce el tema pre-elegido.")
+					logger.info(
+						"Countdown del DJ cancelado, no se reproduce el tema pre-elegido."
+					)
 					return
 				finally:
 					self.dj_countdown_task = None
@@ -1180,12 +1221,13 @@ async def serve_favicon():
 
 	return FileResponse(favicon_path)
 
+
 @app.post("/mpv/hide")
 async def mpv_hide():
 	"""Reinicia MPV con la ventana oculta."""
 	state.mpv_visible = False
 	logger.info("Reiniciando MPV para ocultar la ventana...")
-	await state.mpv.start() # start() matará el proceso viejo y leerá mpv_visible
+	await state.mpv.start()  # start() matará el proceso viejo y leerá mpv_visible
 	await broadcast_state()
 	return {"status": "ok"}
 
@@ -1195,7 +1237,7 @@ async def mpv_show():
 	"""Reinicia MPV con la ventana visible."""
 	state.mpv_visible = True
 	logger.info("Reiniciando MPV para mostrar la ventana...")
-	await state.mpv.start() # start() matará el proceso viejo y leerá mpv_visible
+	await state.mpv.start()  # start() matará el proceso viejo y leerá mpv_visible
 	await broadcast_state()
 	return {"status": "ok"}
 
@@ -1434,14 +1476,82 @@ async def websocket_endpoint(websocket: WebSocket):
 	await manager.connect(websocket)
 	try:
 		# Send initial state immediately (full state needed for fresh clients), including the library
-		full_state = state.get_full_state_dict(include_library=True)
+		full_state = state.get_full_state_dict(include_library=False)
 		full_state["type"] = "state_update"
 		await websocket.send_json(full_state)
 
 		while True:
-			# Keep connection alive, listen for text but we don't process incoming WS cmds currently
-			data = await websocket.receive_text()
-			logger.debug(f"WS Mensajito de {client_host}: {data}")
+			raw = await websocket.receive_text()
+			try:
+				msg = json.loads(raw)
+			except json.JSONDecodeError:
+				logger.debug(f"WS mensaje no-JSON de {client_host}: {raw}")
+				continue
+
+			msg_type = msg.get("type")
+
+			if msg_type == "local_player_claim":
+				# El cliente quiere convertirse en el reproductor local
+				ok = manager.claim_local_player(websocket)
+				await websocket.send_json(
+					{"type": "local_player_claim_result", "ok": ok}
+				)
+				if not ok:
+					logger.info(
+						f"Rechazamos solicitud de reproductor local de {client_host}: ya hay otro."
+					)
+
+			elif msg_type == "local_player_release":
+				# El cliente deja de reproducir localmente
+				manager.release_local_player(websocket)
+
+			elif (
+				msg_type == "local_player_update"
+				and manager.local_player_ws is websocket
+			):
+				# El reproductor local nos manda su estado — lo aplicamos al estado global
+				# y lo rebroadcasteamos a todos sin mandárselo al MPV.
+				changed = False
+
+				if "time_pos" in msg:
+					new_pos = msg["time_pos"]
+					state.time_pos = new_pos or 0
+					now = time.time()
+					# Seguimos al cliente: MPV sigue la posición del reproductor local.
+					# El cliente manda actualizaciones cada ~5s, así que el seek es infrecuente
+					# y MPV (que está mutado) no produce ningún glitch audible al recibir el seek.
+					await state.mpv._send(
+						json.dumps({"command": ["seek", new_pos, "absolute"]})
+					)
+					if now - state.last_time_broadcast >= 5.0:
+						state.last_time_broadcast = now
+						changed = True
+
+				if "duration" in msg and msg["duration"] != state.duration:
+					state.duration = msg["duration"] or 0
+					changed = True
+
+				if "paused" in msg and msg["paused"] != state.mpv_paused:
+					state.mpv_paused = msg["paused"]
+					changed = True
+
+				if msg.get("song_ended"):
+					# La canción terminó en el browser — avanzamos la fila igual que cuando termina en MPV
+					logger.info(
+						"El reproductor local avisó que terminó la canción. Avanzando fila..."
+					)
+					if state.current_track:
+						state._register_play_stat(state.current_track)
+					await state.play_next()
+					await broadcast_state()
+					continue  # play_next ya hizo broadcast, no hace falta otro
+
+				if changed:
+					await broadcast_state()
+
+			else:
+				logger.debug(f"WS Mensajito de {client_host}: {raw}")
+
 	except WebSocketDisconnect:
 		logger.info(
 			f"CLIENTE DESCONECTADO: Se nos fue {client_host}, se habrá quedado sin agua en el termo."
