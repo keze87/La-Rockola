@@ -1024,6 +1024,11 @@ class APIState:
 					f"🦦 DJ Carpincho salvó las papas con un clásico: {chosen['display_title']} (arranca en 10 segundos...)"
 				)
 
+				# Durante el countdown mostramos el tema elegido en dj_next_track
+				# para que todos los clientes vean qué viene — lo borramos recién cuando arranca.
+				self.dj_next_track = chosen
+				await broadcast_state()
+
 				# Guardamos el countdown como task cancelable
 				self.dj_countdown_task = asyncio.current_task()
 				try:
@@ -1040,9 +1045,13 @@ class APIState:
 					logger.info(
 						"Countdown del DJ cancelado, no se reproduce el tema pre-elegido."
 					)
+					if self.dj_next_track == chosen:
+						self.dj_next_track = None
 					return
 				finally:
 					self.dj_countdown_task = None
+
+				self.dj_next_track = None  # Ahora sí borramos: el tema está por arrancar
 
 				await self.play_track(chosen["path"])
 				if should_pause:
@@ -1421,12 +1430,27 @@ async def handle_command(req: CommandRequest):
 		await state.jump(req.type, req.index)
 	elif cmd == "seek":
 		if req.amount is not None:
-			cmd_payload = json.dumps({"command": ["seek", req.amount]})
-			await state.mpv._send(cmd_payload)
+			if manager.local_player_ws is not None:
+				# Hay un reproductor local activo — le mandamos el seek relativo
+				await manager.local_player_ws.send_json(
+					{"type": "local_player_seek", "mode": "relative", "amount": req.amount}
+				)
+			else:
+				cmd_payload = json.dumps({"command": ["seek", req.amount]})
+				await state.mpv._send(cmd_payload)
 	elif cmd == "seek_absolute":
 		if req.amount is not None:
-			cmd_payload = json.dumps({"command": ["seek", req.amount, "absolute"]})
-			await state.mpv._send(cmd_payload)
+			if manager.local_player_ws is not None:
+				# Hay un reproductor local activo — le mandamos el seek absoluto directamente
+				await manager.local_player_ws.send_json(
+					{"type": "local_player_seek", "mode": "absolute", "amount": req.amount}
+				)
+				# También buscamos en MPV para mantenerlo en sincronía
+				await state.mpv._send(json.dumps({"command": ["seek", req.amount, "absolute"]}))
+				state.time_pos = req.amount
+			else:
+				cmd_payload = json.dumps({"command": ["seek", req.amount, "absolute"]})
+				await state.mpv._send(cmd_payload)
 	elif cmd == "toggle_favorite":
 		if req.path:
 			if req.path in state.favorites:

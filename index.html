@@ -746,7 +746,7 @@
 				</div>
 				<div class="grow overflow-hidden flex flex-col justify-center">
 					<div class="text-[0.7rem] text-carpincho-primary uppercase tracking-wider font-bold">
-						{{ queueState.length > 0 ? 'Próximo Temazo' : (djCarpinchoEnabled ? (djNextTrack ? '🦦 DJ Carpincho activado' : 'Eligiendo...') : 'Fin de la fila') }}
+						{{ queueState.length > 0 ? 'Próximo Temazo' : (djCarpinchoEnabled ? (djNextTrack ? '🦦 Arranca en unos segundos...' : 'Eligiendo...') : 'Fin de la fila') }}
 						<!-- NO CORTAR -->
 					</div>
 					<div class="text-[0.95rem] font-bold truncate text-carpincho-text">{{ upNextTitle }}</div>
@@ -1052,6 +1052,20 @@
 					this.ws.onmessage = (event) => {
 						try {
 							const data = JSON.parse(event.data);
+
+							if (data.type === 'local_player_seek') {
+								// Otro cliente mandó un seek — lo aplicamos al <audio> local
+								const lp = this.$refs.localPlayer;
+								if (lp && lp.src) {
+									const newTime = data.mode === 'absolute'
+										? data.amount
+										: (lp.currentTime + data.amount);
+									lp.currentTime = Math.max(0, Math.min(newTime, lp.duration || Infinity));
+									this.localTimePos = lp.currentTime;
+									this._sendLocalPlayerUpdate({ time_pos: lp.currentTime });
+								}
+								return;
+							}
 
 							if (data.type === 'local_player_claim_result') {
 								if (data.ok) {
