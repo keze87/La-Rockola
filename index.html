@@ -178,6 +178,22 @@
 			overflow: hidden;
 		}
 
+		/* Letras (Lyrics) Animation */
+		.lyric-enter-active,
+		.lyric-leave-active {
+			transition: opacity 0.3s ease-out, transform 0.3s ease-out;
+		}
+
+		.lyric-enter-from {
+			opacity: 0;
+			transform: translateY(8px);
+		}
+
+		.lyric-leave-to {
+			opacity: 0;
+			transform: translateY(-8px);
+		}
+
 		/* Context menu */
 		.ctx-menu {
 			position: fixed;
@@ -340,6 +356,16 @@
 							:class="{'opacity-50': serverMuted}">
 						<i class="material-icons text-sm">volume_up</i>
 					</div>
+
+					<!-- LETRAS MODO FOGÓN -->
+					<div class="h-[4.5rem] mt-2 flex items-center justify-center w-full px-6 overflow-hidden">
+						<transition name="lyric" mode="out-in">
+							<p v-if="currentLyricLine" :key="currentLyricLine"
+								class="text-xl md:text-2xl font-bold text-carpincho-secondary italic text-center">
+								{{ currentLyricLine }}
+							</p>
+						</transition>
+					</div>
 				</div>
 			</div>
 		</transition>
@@ -368,6 +394,17 @@
 				<span class="truncate">
 					{{ isScanning ? '[Avisando] Chusmeando temas, aguantá fiera... 🧉' : currentTrackTitle }}
 				</span>
+			</div>
+			<!-- LETRAS BARRA NORMAL (Aparece sólo si hay letra para el tema actual) -->
+			<div v-if="!isScanning && currentTrackPath && currentLyricLine"
+				class="w-full text-center py-1.5 px-4 shrink-0 overflow-hidden cursor-pointer flex items-center justify-center min-h-[30px]"
+			@click="isFogonMode = true; haptic()">
+				<transition name="lyric" mode="out-in">
+					<span :key="currentLyricLine"
+						class="text-[0.8rem] items-center text-carpincho-warning font-medium italic drop-shadow-sm truncate w-full">
+						{{ currentLyricLine }}
+					</span>
+				</transition>
 			</div>
 		</nav>
 
@@ -825,6 +862,7 @@
 					isScanning: false,
 					listenLocally: false,
 					localTimePos: 0,
+					lyrics: [],
 					mpvVisible: true,
 					newUrl: '',
 					originalTracks: [],
@@ -880,6 +918,19 @@
 						};
 					}
 					return { title: "Silencio estampa", artist: "Nadie", isComing: false };
+				},
+
+				currentLyricLine() {
+					if (!this.lyrics || !this.lyrics.length) return null;
+					// Arrancamos con un iconito por si estamos en el intro antes de que canten
+					let activeLine = " ";
+					// Buscamos cuál es la última línea que ya debería estar sonando según el tiempo
+					for (let i = this.lyrics.length - 1; i >= 0; i--) {
+						if (this.localTimePos >= this.lyrics[i].time) {
+							return this.lyrics[i].text;
+						}
+					}
+					return activeLine;
 				},
 
 				filteredTracks() {
@@ -970,6 +1021,7 @@
 					this.updateDocumentTitle();
 					this.updateMediaSession();
 					this.localTimePos = 0;
+					this.loadLyrics(newPath); // A chusmear si hay letra cuando cambia el tema
 
 					if (oldPath && oldPath === this.pauseAfterPath) this.pauseAfterPath = null;
 
@@ -1018,6 +1070,54 @@
 					const m = Math.floor(sec / 60);
 					const s = Math.floor(sec % 60).toString().padStart(2, '0');
 					return `${m}:${s}`;
+				},
+
+				async loadLyrics(path) {
+					this.lyrics = []; // Limpiamos la pista vieja al toque
+					if (!path || path.startsWith('http')) return;
+
+					try {
+						const res = await fetch('/lrc?path=' + encodeURIComponent(path));
+						if (res.ok) {
+							const text = await res.text();
+							this.parseLrc(text);
+						}
+					} catch (err) {
+						console.error("Pifió buscando las lyrics, maestro:", err);
+					}
+				},
+
+				parseLrc(text) {
+					const lines = text.split('\n');
+					const parsed = [];
+					// Buscamos todas las marcas de tiempo que puedan haber en la línea (Ej: [01:22.33][01:30.00] Letra)
+					const tagRegex = /\[\d{2}:\d{2}\.\d{2,3}\]/g;
+
+					lines.forEach(line => {
+						const tags = line.match(tagRegex);
+						if (tags) {
+							const lyricText = line.replace(tagRegex, '').trim();
+							// Agregamos la misma letra para todas las marcas de tiempo que comparta
+							if (lyricText) {
+								tags.forEach(tag => {
+									const match = /\[(\d{2}):(\d{2})\.(\d{2,3})\]/.exec(tag);
+									if (match) {
+										const mins = parseInt(match[1], 10);
+										const secs = parseInt(match[2], 10);
+										const msStr = match[3];
+										const ms = parseInt(msStr, 10) * (msStr.length === 2 ? 10 : 1);
+										const timeInSeconds = mins * 60 + secs + ms / 1000;
+
+										parsed.push({ time: timeInSeconds, text: lyricText });
+									}
+								});
+							}
+						}
+					});
+
+					// Acomodamos cronológicamente por si el archivo venía desordenado
+					parsed.sort((a, b) => a.time - b.time);
+					this.lyrics = parsed;
 				},
 
 				handleKeydown(e) {
