@@ -91,6 +91,7 @@ import re
 import time
 import uvicorn
 import tempfile
+import sqlite3
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.responses import FileResponse, Response
@@ -99,90 +100,45 @@ from mutagen import File as MutagenFile
 from pathlib import Path
 from pydantic import BaseModel
 
-
-# --- 3. Antes de arrancar, damos una vuelta por el disco para asegurarnos de que los JSONs no estén explotados ---
-def enforce_json_size_limits(max_bytes=10 * 1024 * 1024):
-	"""
-	Pasa la escoba por los JSONs del carpincho antes de arrancar.
-	Evita que el historial y el registro de URLs exploten el disco.
-	"""
-	stats_file = Path.home() / ".carpincho_stats.json"
-	urls_file = Path.home() / ".carpincho_urls.json"
-
-	# --- 1. Limpieza del Historial de Reproducciones ---
-	if stats_file.exists() and stats_file.stat().st_size > max_bytes:
-		print(
-			"🧹 El historial de reproducciones está medio gordito. Haciendo dieta...",
-			file=sys.stderr,
-		)
-		try:
-			with open(stats_file, "r", encoding="utf-8") as f:
-				data = json.load(f)
-
-			# Recolectamos todas las reproducciones: (timestamp, track_id)
-			all_plays = []
-			for tid, info in data.items():
-				# Soporte para el formato viejo (lista directa) o el nuevo (diccionario con _path)
-				ts_list = info.get("timestamps", []) if isinstance(info, dict) else info
-				for ts in ts_list:
-					all_plays.append((ts, tid))
-
-			all_plays.sort(key=lambda x: x[0])
-
-			# Borramos el 20% más viejo
-			plays_to_remove = int(len(all_plays) * 0.2)
-			oldest_plays = all_plays[:plays_to_remove]
-			to_delete = set((tid, ts) for ts, tid in oldest_plays)
-
-			# Reconstruimos el diccionario
-			for tid in list(data.keys()):
-				info = data[tid]
-				if isinstance(info, dict):
-					new_ts = [
-						ts
-						for ts in info.get("timestamps", [])
-						if (tid, ts) not in to_delete
-					]
-					if new_ts:
-						data[tid]["timestamps"] = new_ts
-					else:
-						del data[tid]
-				else:
-					# Por si quedó algo en el formato viejo
-					new_ts = [ts for ts in info if (tid, ts) not in to_delete]
-					if new_ts:
-						data[tid] = new_ts
-					else:
-						del data[tid]
-
-			with open(stats_file, "w", encoding="utf-8") as f:
-				json.dump(data, f, indent=4, ensure_ascii=False)
-		except Exception as e:
-			print(f"⚠️ Pifió podando las stats: {e}", file=sys.stderr)
-
-	# --- 2. Limpieza del Caché de URLs ---
-	if urls_file.exists() and urls_file.stat().st_size > max_bytes:
-		print(
-			"🧹 El registro de URLs pide pista. Borrando links viejos...",
-			file=sys.stderr,
-		)
-		try:
-			with open(urls_file, "r", encoding="utf-8") as f:
-				urls_data = json.load(f)
-
-			if isinstance(urls_data, list):
-				# Como siempre hacemos append al final, los más viejos están al principio.
-				# Nos quedamos solo con el 80% más nuevo.
-				keep_count = int(len(urls_data) * 0.8)
-				urls_data = urls_data[-keep_count:]
-
-				with open(urls_file, "w", encoding="utf-8") as f:
-					json.dump(urls_data, f, indent=4, ensure_ascii=False)
-		except Exception as e:
-			print(f"⚠️ Pifió podando las URLs: {e}", file=sys.stderr)
+# --- 3. INICIALIZAMOS LA BASE DE DATOS (SQLITE) ---
+DB_PATH = Path.home() / ".carpincho.db"
 
 
-enforce_json_size_limits()
+def init_db():
+	with sqlite3.connect(DB_PATH) as conn:
+		c = conn.cursor()
+
+		# La tabla maestra de canciones (una fila por tema, con su hash único y metadata básica)
+		c.execute("""CREATE TABLE IF NOT EXISTS tracks
+					 (track_id TEXT PRIMARY KEY,
+					  path TEXT,
+					  title TEXT,
+					  album TEXT,
+					  artist TEXT,
+					  duration_str TEXT)""")
+
+		# Historial de reproducciones (múltiples entradas por tema)
+		c.execute("""CREATE TABLE IF NOT EXISTS play_history
+					 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+					  track_id TEXT,
+					  played_at REAL)""")
+
+		# Favoritos (una fila por tema)
+		c.execute("""CREATE TABLE IF NOT EXISTS favorites
+					 (track_id TEXT PRIMARY KEY)""")
+
+		# URLs de YouTube
+		c.execute("""CREATE TABLE IF NOT EXISTS url_logs
+					 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+					  url TEXT,
+					  title TEXT,
+					  artist TEXT,
+					  played_at TEXT)""")
+		conn.commit()
+
+
+init_db()
+
 
 # --- 4. Y DBUS, SI ESTAMOS EN LINUX Y LO TENEMOS INSTALADO ---
 DBUS_AVAILABLE = False
@@ -361,6 +317,7 @@ class Track:
 		self.path = path
 		self.title = path.stem
 		self.artist = "Desconocido"
+		self.album = "Desconocido"
 		self.duration_str = "0:00"
 		self._extract_metadata()
 
@@ -381,6 +338,11 @@ class Track:
 						val = tags[k]
 						self.artist = val[0] if isinstance(val, list) else str(val)
 						break
+				for k in ["album", "©alb", "talb"]:
+					if k in tags:
+						val = tags[k]
+						self.album = val[0] if isinstance(val, list) else str(val)
+						break
 			if audio and hasattr(audio, "info") and hasattr(audio.info, "length"):
 				length = audio.info.length
 				if length:
@@ -398,6 +360,7 @@ class Track:
 			"path": str(self.path),
 			"display_title": self.title,
 			"display_artist": self.artist,
+			"album": self.album,
 			"duration_str": self.duration_str,
 			"search_string": self.search_string,
 			"title": self.title,
@@ -820,18 +783,21 @@ if DBUS_AVAILABLE:
 
 			title = "Desconocido"
 			artist = "Desconocido"
+			album = "Desconocido"
 			dur_usec = 0
 
 			for t in self.state.tracks_cache:
 				if t["path"] == self.state.current_track:
 					title = t.get("display_title", title)
 					artist = t.get("display_artist", artist)
+					album = t.get("album", album)
 					break
 
 			if self.state.current_track in self.state.url_metadata:
 				meta = self.state.url_metadata[self.state.current_track]
 				title = meta.get("display_title", title)
 				artist = meta.get("display_artist", artist)
+				album = meta.get("album", album)
 
 			if self.state.duration:
 				dur_usec = int(self.state.duration * 1000000)
@@ -844,6 +810,7 @@ if DBUS_AVAILABLE:
 				),
 				"xesam:title": Variant("s", title),
 				"xesam:artist": Variant("as", [artist]),
+				"xesam:album": Variant("s", album),
 				"mpris:length": Variant("x", dur_usec),
 			}
 
@@ -973,11 +940,8 @@ class APIState:
 		self.last_time_broadcast = 0
 
 		# Files
-		self.stats_file = Path.home() / ".carpincho_stats.json"
 		self.track_cache_by_path = {}
 		self.tracks_cache = []
-		self.url_log_file = Path.home() / ".carpincho_urls.json"
-		self.fav_file = Path.home() / ".carpincho_favs.json"
 
 		self.url_metadata = {}
 		self.volume = 100
@@ -986,11 +950,7 @@ class APIState:
 		self.dj_countdown_task = None  # Task del countdown de 10s del DJ (cancelable)
 		self.mpv_visible = True
 
-		self.track_cache_by_path = {}
-		self.tracks_cache = []
-
-		self.play_history = self._load_stats()
-		self.favorites = self._load_favs()
+		self.favorites = self._load_favs_from_db()
 
 		self.mpris_bus = None
 		self.mpris_root = None
@@ -1066,97 +1026,70 @@ class APIState:
 			except Exception as e:
 				logger.debug(f"Pifió actualizando propiedades MPRIS: {e}")
 
-	def _load_stats(self):
+	def _load_favs_from_db(self):
 		try:
-			if os.path.exists(self.stats_file):
-				with open(self.stats_file, "r", encoding="utf-8") as f:
-					data = json.load(f)
-					history = {}
-					for k, v in data.items():
-						if isinstance(v, list):
-							# Formato viejo: "hash": [timestamps]
-							history[k] = v
-						elif isinstance(v, dict) and "timestamps" in v:
-							# Formato nuevo: "hash": {"_path": "...", "timestamps": [...]}
-							history[k] = v["timestamps"]
-					return history
+			with sqlite3.connect(DB_PATH) as conn:
+				c = conn.cursor()
+				c.execute("SELECT track_id FROM favorites")
+				return [row[0] for row in c.fetchall()]
 		except Exception as e:
-			logger.error(f"Error cargando la memoria del carpincho: {e}")
-		return {}
+			logger.error(f"Error cargando favoritos de la DB: {e}")
+			return []
 
-	def _save_stats(self):
-		try:
-			data_to_save = {}
-			for track_id, timestamps in self.play_history.items():
-				# Intentamos rescatar el path real para dejarlo como "comentario" visual
-				path = self.id_to_current_path.get(track_id, track_id)
-				data_to_save[track_id] = {"_path": path, "timestamps": timestamps}
-			with open(self.stats_file, "w", encoding="utf-8") as f:
-				json.dump(data_to_save, f, indent=4, ensure_ascii=False)
-		except Exception as e:
-			logger.error(f"Error guardando los stats: {e}")
+	def _register_play_stat(self, path):
+		str_path = str(path)
+		if not (str_path.startswith("http://") or str_path.startswith("https://")):
+			track_id = self.path_to_id.get(str_path, str_path)
+			now = time.time()
 
-	def _load_favs(self):
-		try:
-			if os.path.exists(self.fav_file):
-				with open(self.fav_file, "r", encoding="utf-8") as f:
-					data = json.load(f)
-					if isinstance(data, list):
-						# Formato viejo: ["hash1", "hash2"]
-						return data
-					elif isinstance(data, dict):
-						# Formato nuevo: {"hash1": "Path: ..."} -> Ignoramos el value
-						return list(data.keys())
-		except Exception as e:
-			pass
-		return []
+			try:
+				with sqlite3.connect(DB_PATH) as conn:
+					# Agregamos la reproducción actual
+					conn.execute(
+						"INSERT INTO play_history (track_id, played_at) VALUES (?, ?)",
+						(track_id, now),
+					)
 
-	def _save_favs(self):
-		try:
-			data_to_save = {}
-			for fav_id in self.favorites:
-				# Dejamos el path como un valor descriptivo para que el JSON sea legible
-				path = self.id_to_current_path.get(fav_id, fav_id)
-				data_to_save[fav_id] = f"Path: {path}"
-			with open(self.fav_file, "w", encoding="utf-8") as f:
-				json.dump(data_to_save, f, indent=4, ensure_ascii=False)
-		except Exception as e:
-			logger.error(f"Error guardando favoritos: {e}")
+					# PODA AUTOMÁTICA: Borramos reproducciones de más de 60 días en 1 milisegundo
+					# two_months_ago = now - (30 * 24 * 3600 * 2)
+					# conn.execute("DELETE FROM play_history WHERE played_at < ?", (two_months_ago,))
+					# conn.commit()
+
+				logger.debug(f"Tema completado, sumando +1 al top: {str_path}")
+			except Exception as e:
+				logger.error(f"Error guardando stat en DB: {e}")
 
 	def _log_url(self, url):
 		"""Guarda un registro de los links que sonaron, con su metadata si existe."""
 		try:
-			logs = []
-			if self.url_log_file.exists():
-				with open(self.url_log_file, "r", encoding="utf-8") as f:
-					try:
-						logs = json.load(f)
-					except json.JSONDecodeError:
-						pass
-
-			# Filtramos la lista para sacar el link si ya estaba guardado antes
-			# (así evitamos duplicados y la nueva entrada queda al final con fecha fresca)
-			logs = [log for log in logs if log.get("url") != url]
-
-			# Rescatamos la metadata que haya sacado yt-dlp
 			meta = self.url_metadata.get(
 				url,
-				{"path": url, "display_title": "Link directo", "artist": "Desconocido"},
+				{"display_title": "Link directo", "display_artist": "Desconocido"},
 			)
+			title = meta.get("title", meta.get("display_title"))
+			artist = meta.get("artist", meta.get("display_artist"))
+			played_at = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
-			log_entry = {
-				"played_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
-				"url": url,
-				"title": meta.get("title", meta.get("display_title")),
-				"artist": meta.get("artist", meta.get("display_artist")),
-			}
+			with sqlite3.connect(DB_PATH) as conn:
+				# Borramos si existía antes para no duplicar y que vuelva a aparecer arriba
+				conn.execute("DELETE FROM url_logs WHERE url = ?", (url,))
 
-			logs.append(log_entry)
+				# Insertamos la entrada fresca
+				conn.execute(
+					"INSERT INTO url_logs (url, title, artist, played_at) VALUES (?, ?, ?, ?)",
+					(url, title, artist, played_at),
+				)
 
-			with open(self.url_log_file, "w", encoding="utf-8") as f:
-				json.dump(logs, f, indent=4, ensure_ascii=False)
+				# Mantenemos el log cortito (ej: máximo 200 links) para que no sea infinito
+				# conn.execute("""
+				# 	DELETE FROM url_logs
+				# 	WHERE id NOT IN (
+				# 		SELECT id FROM url_logs ORDER BY id DESC LIMIT 200
+				# 	)
+				# """)
+				# conn.commit()
 		except Exception as e:
-			logger.error(f"Error guardando el log de URLs: {e}")
+			logger.error(f"Error guardando el log de URLs en DB: {e}")
 
 	def scan_directory(self, target_dirs: list):
 		logger.info(f"Pegando una ojeada por estas carpetas: {target_dirs}")
@@ -1226,6 +1159,19 @@ class APIState:
 			self.path_to_id[track_dict["path"]] = track_hash
 
 		self.track_cache_by_path = new_cache
+
+		# Guardamos el diccionario de pistas en la DB para poder hacer JOINs ---
+		try:
+			with sqlite3.connect(DB_PATH) as conn:
+				for t in tracks:
+					conn.execute('''
+						INSERT OR REPLACE INTO tracks (track_id, path, title, album, artist, duration_str)
+						VALUES (?, ?, ?, ?, ?, ?)
+					''', (t["track_hash"], t["path"], t["title"], t.get("album", "Desconocido"), t["artist"], t["duration_str"]))
+				conn.commit()
+		except Exception as e:
+			logger.error(f"Error guardando tracks en la DB: {e}")
+
 		logger.info("¡Listo el escaneo, maestro!")
 		return tracks
 
@@ -1260,6 +1206,7 @@ class APIState:
 					"path": url,
 					"display_title": title,
 					"display_artist": artist,
+					"album": "Internet",
 					"duration_str": f"{mins}:{secs:02d}",
 					"search_string": f"{artist} {title}".lower(),
 					"title": title,
@@ -1289,16 +1236,6 @@ class APIState:
 			await broadcast_state()
 		finally:
 			self.processing_eof = False
-
-	def _register_play_stat(self, path):
-		str_path = str(path)
-		if not (str_path.startswith("http://") or str_path.startswith("https://")):
-			track_id = self.path_to_id.get(str_path, str_path)
-			if track_id not in self.play_history:
-				self.play_history[track_id] = []
-			self.play_history[track_id].append(time.time())
-			self._save_stats()
-			logger.debug(f"Tema completado, sumando +1 al top: {str_path}")
 
 	async def handle_mpv_restarted(self):
 		"""Si MPV se muere y revive, le devolvemos la memoria de lo que estaba sonando."""
@@ -1581,25 +1518,38 @@ class APIState:
 	def get_top_played(self):
 		now = time.time()
 		two_months_ago = now - (30 * 24 * 3600 * 2)
-		bimonthly_counts = {}
 
-		for track_id, timestamps in self.play_history.items():
-			recent_plays = [ts for ts in timestamps if ts >= two_months_ago]
-			if recent_plays:
-				# Mantenemos compatibilidad con el historial viejo (rutas) o URLs
-				if "\\" in track_id or "/" in track_id or track_id.startswith("http"):
-					current_path = track_id
-				else:
-					current_path = self.id_to_current_path.get(track_id)
+		try:
+			with sqlite3.connect(DB_PATH) as conn:
+				c = conn.cursor()
+				# SQL hace todo el trabajo pesado: cuenta y ordena los más escuchados
+				c.execute(
+					"""
+					SELECT track_id, COUNT(*) as count
+					FROM play_history
+					WHERE played_at >= ?
+					GROUP BY track_id
+					ORDER BY count DESC
+					LIMIT 50
+				""",
+					(two_months_ago,),
+				)
+				results = c.fetchall()
+		except Exception as e:
+			logger.error(f"Error calculando el top played: {e}")
+			return []
 
-				if current_path and os.path.exists(current_path):
-					bimonthly_counts[current_path] = len(recent_plays)
+		top_played = []
+		for track_id, count in results:
+			if "\\" in track_id or "/" in track_id or track_id.startswith("http"):
+				current_path = track_id
+			else:
+				current_path = self.id_to_current_path.get(track_id)
 
-		return sorted(
-			[{"path": k, "count": v} for k, v in bimonthly_counts.items()],
-			key=lambda x: x["count"],
-			reverse=True,
-		)[:50]
+			if current_path and os.path.exists(current_path):
+				top_played.append({"path": current_path, "count": count})
+
+		return top_played
 
 
 # --- FastAPI Setup ---
@@ -1811,6 +1761,22 @@ async def stream_audio(path: str = Query(...)):
 	return FileResponse(path)
 
 
+@app.get("/lrc")
+async def serve_lrc(path: str = Query(...)):
+	"""Sirve el archivo .lrc local si existe junto a la pista original."""
+	if path not in state.path_to_id and not any(
+		t["path"] == path for t in state.tracks_cache
+	):
+		return Response(status_code=404)
+
+	lrc_path = Path(path).with_suffix(".lrc")
+
+	if not lrc_path.exists():
+		return Response(status_code=404)
+
+	return FileResponse(lrc_path, media_type="text/plain")
+
+
 class CommandRequest(BaseModel):
 	cmd: str
 	path: str = None
@@ -1931,11 +1897,22 @@ async def handle_command(req: CommandRequest):
 	elif cmd == "toggle_favorite":
 		if req.path:
 			track_id = state.path_to_id.get(req.path, req.path)
-			if track_id in state.favorites:
-				state.favorites.remove(track_id)
-			else:
-				state.favorites.append(track_id)
-			state._save_favs()
+			try:
+				with sqlite3.connect(DB_PATH) as conn:
+					if track_id in state.favorites:
+						state.favorites.remove(track_id)
+						conn.execute(
+							"DELETE FROM favorites WHERE track_id = ?", (track_id,)
+						)
+					else:
+						state.favorites.append(track_id)
+						conn.execute(
+							"INSERT OR IGNORE INTO favorites (track_id) VALUES (?)",
+							(track_id,),
+						)
+					conn.commit()
+			except Exception as e:
+				logger.error(f"Error guardando favorito: {e}")
 	elif cmd == "toggle_dj_carpincho":
 		state.dj_carpincho_enabled = not state.dj_carpincho_enabled
 		logger.info(f"DJ Carpincho cambiado a: {state.dj_carpincho_enabled}")
