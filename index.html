@@ -1002,6 +1002,56 @@
 					return `${m}:${s}`;
 				},
 
+				handleKeydown(e) {
+					// Ignoramos si el usuario está escribiendo en un input de texto
+					if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+
+					switch (e.key) {
+						case 'Escape':
+							if (this.isFogonMode) {
+								this.isFogonMode = false;
+								this.haptic();
+							}
+							if (this.ctxMenu.visible) this.closeCtxMenu();
+							if (this.showFogonVolume) this.showFogonVolume = false;
+							break;
+						case ' ': // Barra espaciadora
+							e.preventDefault(); // Evita que la página haga scroll hacia abajo
+							this.sendCmd('pause');
+							this.haptic(true);
+							break;
+						case 'ArrowRight':
+							e.preventDefault();
+							this.sendCmd('skip');
+							this.haptic();
+							break;
+						case 'ArrowLeft':
+							e.preventDefault();
+							this.sendCmd('prev');
+							this.haptic();
+							break;
+						case 'ArrowUp':
+							e.preventDefault();
+							this.volume = Math.min(110, parseInt(this.volume) + 5);
+							this.setVolume();
+							break;
+						case 'ArrowDown':
+							e.preventDefault();
+							this.volume = Math.max(0, parseInt(this.volume) - 5);
+							this.setVolume();
+							break;
+						case 'm':
+						case 'M':
+							this.sendCmd('set_mute', {state: !this.serverMuted});
+							break;
+						case 'f':
+						case 'F':
+							this.isFogonMode = !this.isFogonMode;
+							this.haptic();
+							break;
+					}
+				},
+
 				seekFromBar(event) {
 					if (!this.duration) return;
 					const rect = event.currentTarget.getBoundingClientRect();
@@ -1664,6 +1714,9 @@
 				this.loadLibrary(false);
 				this.connectWebSocket();
 
+				// Conectar los atajos de teclado
+				window.addEventListener('keydown', this.handleKeydown);
+
 				// Ciclo para suavizar la barra de progreso de manera local
 				setInterval(() => {
 					if (this.isPlaying && !this.isPaused && !this.isDraggingSeek && this.duration > 0) {
@@ -1680,6 +1733,10 @@
 					navigator.mediaSession.setActionHandler('seekbackward', (d) => this.sendCmd('seek', { amount: -(d.seekOffset ?? 10) }));
 					navigator.mediaSession.setActionHandler('seekforward', (d) => this.sendCmd('seek', { amount: (d.seekOffset ?? 10) }));
 				}
+			},
+
+			beforeUnmount() {
+				window.removeEventListener('keydown', this.handleKeydown);
 			},
 		}).mount('#app');
 	</script>
