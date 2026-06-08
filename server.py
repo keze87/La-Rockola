@@ -99,6 +99,92 @@ from mutagen import File as MutagenFile
 from pathlib import Path
 from pydantic import BaseModel
 
+
+# --- 3. Antes de arrancar, damos una vuelta por el disco para asegurarnos de que los JSONs no estén explotados ---
+def enforce_json_size_limits(max_bytes=10 * 1024 * 1024):
+	"""
+	Pasa la escoba por los JSONs del carpincho antes de arrancar.
+	Evita que el historial y el registro de URLs exploten el disco.
+	"""
+	stats_file = Path.home() / ".carpincho_stats.json"
+	urls_file = Path.home() / ".carpincho_urls.json"
+
+	# --- 1. Limpieza del Historial de Reproducciones ---
+	if stats_file.exists() and stats_file.stat().st_size > max_bytes:
+		print(
+			"🧹 El historial de reproducciones está medio gordito. Haciendo dieta...",
+			file=sys.stderr,
+		)
+		try:
+			with open(stats_file, "r", encoding="utf-8") as f:
+				data = json.load(f)
+
+			# Recolectamos todas las reproducciones: (timestamp, track_id)
+			all_plays = []
+			for tid, info in data.items():
+				# Soporte para el formato viejo (lista directa) o el nuevo (diccionario con _path)
+				ts_list = info.get("timestamps", []) if isinstance(info, dict) else info
+				for ts in ts_list:
+					all_plays.append((ts, tid))
+
+			all_plays.sort(key=lambda x: x[0])
+
+			# Borramos el 20% más viejo
+			plays_to_remove = int(len(all_plays) * 0.2)
+			oldest_plays = all_plays[:plays_to_remove]
+			to_delete = set((tid, ts) for ts, tid in oldest_plays)
+
+			# Reconstruimos el diccionario
+			for tid in list(data.keys()):
+				info = data[tid]
+				if isinstance(info, dict):
+					new_ts = [
+						ts
+						for ts in info.get("timestamps", [])
+						if (tid, ts) not in to_delete
+					]
+					if new_ts:
+						data[tid]["timestamps"] = new_ts
+					else:
+						del data[tid]
+				else:
+					# Por si quedó algo en el formato viejo
+					new_ts = [ts for ts in info if (tid, ts) not in to_delete]
+					if new_ts:
+						data[tid] = new_ts
+					else:
+						del data[tid]
+
+			with open(stats_file, "w", encoding="utf-8") as f:
+				json.dump(data, f, indent=4, ensure_ascii=False)
+		except Exception as e:
+			print(f"⚠️ Pifió podando las stats: {e}", file=sys.stderr)
+
+	# --- 2. Limpieza del Caché de URLs ---
+	if urls_file.exists() and urls_file.stat().st_size > max_bytes:
+		print(
+			"🧹 El registro de URLs pide pista. Borrando links viejos...",
+			file=sys.stderr,
+		)
+		try:
+			with open(urls_file, "r", encoding="utf-8") as f:
+				urls_data = json.load(f)
+
+			if isinstance(urls_data, list):
+				# Como siempre hacemos append al final, los más viejos están al principio.
+				# Nos quedamos solo con el 80% más nuevo.
+				keep_count = int(len(urls_data) * 0.8)
+				urls_data = urls_data[-keep_count:]
+
+				with open(urls_file, "w", encoding="utf-8") as f:
+					json.dump(urls_data, f, indent=4, ensure_ascii=False)
+		except Exception as e:
+			print(f"⚠️ Pifió podando las URLs: {e}", file=sys.stderr)
+
+
+enforce_json_size_limits()
+
+# --- 4. Y DBUS, SI ESTAMOS EN LINUX Y LO TENEMOS INSTALADO ---
 DBUS_AVAILABLE = False
 if sys.platform == "linux":
 	try:
@@ -189,6 +275,18 @@ def get_cover_art_uri(path: str) -> str:
 		path_hash = hashlib.md5(path.encode("utf-8")).hexdigest()
 		tmp_dir = os.path.join(tempfile.gettempdir(), "carpincho_covers")
 		os.makedirs(tmp_dir, exist_ok=True)
+
+		try:  # Evitamos que se junten más de 50 tapas en el disco
+			covers = [os.path.join(tmp_dir, f) for f in os.listdir(tmp_dir)]
+			if len(covers) > 50:
+				# Ordenamos de más vieja a más nueva
+				covers.sort(key=os.path.getmtime)
+				# Borramos las más viejitas hasta que queden solo 30
+				for old_cover in covers[:-30]:
+					os.remove(old_cover)
+		except Exception as e:
+			logger.debug(f"Pifió pasando la escoba por las tapas: {e}")
+
 		tmp_cover = os.path.join(tmp_dir, f"{path_hash}.jpg")
 
 		if os.path.exists(tmp_cover):
@@ -992,10 +1090,7 @@ class APIState:
 			for track_id, timestamps in self.play_history.items():
 				# Intentamos rescatar el path real para dejarlo como "comentario" visual
 				path = self.id_to_current_path.get(track_id, track_id)
-				data_to_save[track_id] = {
-					"_path": path,
-					"timestamps": timestamps
-				}
+				data_to_save[track_id] = {"_path": path, "timestamps": timestamps}
 			with open(self.stats_file, "w", encoding="utf-8") as f:
 				json.dump(data_to_save, f, indent=4, ensure_ascii=False)
 		except Exception as e:
