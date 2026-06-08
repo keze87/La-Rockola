@@ -18,15 +18,19 @@ def check_dependencies():
 		"pydantic": "pip install pydantic",
 	}
 
+	is_win = sys.platform == "win32"
+	is_mac = sys.platform == "darwin"
+
+	# Solo en Linux pedimos DBus para controlar los botones multimedia
+	if not is_win and not is_mac:
+		python_deps["dbus_next"] = "pip install dbus-next"
+
 	for module, fix in python_deps.items():
 		if importlib.util.find_spec(module) is None:
 			missing_python.append((module, fix))
 
 	missing_system = []
 	# Determine OS for OS-specific system binary hints
-	is_win = sys.platform == "win32"
-	is_mac = sys.platform == "darwin"
-
 	mpv_fix = (
 		"winget install mpv"
 		if is_win
@@ -86,6 +90,7 @@ import os
 import re
 import time
 import uvicorn
+import tempfile
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.responses import FileResponse, Response
@@ -93,6 +98,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from mutagen import File as MutagenFile
 from pathlib import Path
 from pydantic import BaseModel
+
+DBUS_AVAILABLE = False
+if sys.platform == "linux":
+	try:
+		from dbus_next.aio import MessageBus
+		from dbus_next.service import ServiceInterface, method, dbus_property, signal
+		from dbus_next.constants import PropertyAccess
+		from dbus_next import Variant
+		DBUS_AVAILABLE = True
+	except ImportError:
+		pass
 
 logging.basicConfig(
 	level=logging.DEBUG,  # Set to DEBUG to see everything
@@ -162,6 +178,43 @@ def highlight_json(json_data):
 
 	# Apply the regex substitution
 	return re.sub(pattern, replacer, formatted_json)
+
+
+def get_cover_art_uri(path: str) -> str:
+	"""Extrae la tapa a la carpeta temporal y devuelve la URI para MPRIS."""
+	if not path or path.startswith("http"):
+		return ""
+	try:
+		path_hash = hashlib.md5(path.encode("utf-8")).hexdigest()
+		tmp_dir = os.path.join(tempfile.gettempdir(), "carpincho_covers")
+		os.makedirs(tmp_dir, exist_ok=True)
+		tmp_cover = os.path.join(tmp_dir, f"{path_hash}.jpg")
+
+		if os.path.exists(tmp_cover):
+			return f"file://{tmp_cover}"
+
+		audio = MutagenFile(path)
+		if not audio: return ""
+		cover_data = None
+
+		# Buscar portada
+		if hasattr(audio, "pictures") and audio.pictures:
+			cover_data = audio.pictures[0].data
+		elif hasattr(audio, "tags") and audio.tags:
+			for key, tag in audio.tags.items():
+				if key.startswith("APIC"):
+					cover_data = tag.data
+					break
+			if not cover_data and "covr" in audio.tags:
+				cover_data = audio.tags["covr"][0]
+
+		if cover_data:
+			with open(tmp_cover, "wb") as f:
+				f.write(cover_data)
+			return f"file://{tmp_cover}"
+	except Exception:
+		pass
+	return ""
 
 
 def generate_smart_hash(filepath, chunk_size=1024 * 1024):
@@ -308,6 +361,12 @@ class AsyncMpvController:
 			if "APIState" in globals() and hasattr(state, "mpv_visible"):
 				show_window = state.mpv_visible
 
+			# Si logramos registrar nuestro propio MPRIS en DBus, silenciamos el nativo de MPV.
+			# Si falló (ej. no hay DBus o se rompió), dejamos que MPV use su MPRIS de rescate.
+			own_mpris_active = getattr(state, "mpris_registered", False)
+			mpris_opt = "no" if own_mpris_active else "yes"
+			keys_opt = "no" if own_mpris_active else "yes"
+
 			mpv_args = [
 				"mpv",
 				"--autofit=33%x33%",
@@ -319,6 +378,8 @@ class AsyncMpvController:
 				"--ontop",
 				"--quiet",
 				"--script-opts=osc-visibility=always,osc-layout=topbar",
+				f"--load-scripts={mpris_opt}",
+				f"--input-media-keys={keys_opt}",
 				"--sub-color=#FF00FF",
 				"--sub-font-size=100",
 				"--sub-font=Pacifico",
@@ -530,6 +591,215 @@ class AsyncMpvController:
 				)
 
 
+# --- DBUS / MPRIS Classes ---
+if DBUS_AVAILABLE:
+
+	class MPRISRoot(ServiceInterface):
+		def __init__(self):
+			super().__init__("org.mpris.MediaPlayer2")
+
+		@method()
+		def Quit(self):  # type: ignore
+			pass
+
+		@method()
+		def Raise(self):  # type: ignore
+			pass
+
+		@dbus_property(access=PropertyAccess.READ)
+		def CanQuit(self) -> "b":  # type: ignore
+			return False
+
+		@dbus_property(access=PropertyAccess.READ)
+		def Fullscreen(self) -> "b":  # type: ignore
+			return False
+
+		@dbus_property(access=PropertyAccess.READ)
+		def CanSetFullscreen(self) -> "b":  # type: ignore
+			return False
+
+		@dbus_property(access=PropertyAccess.READ)
+		def CanRaise(self) -> "b":  # type: ignore
+			return False
+
+		@dbus_property(access=PropertyAccess.READ)
+		def HasTrackList(self) -> "b":  # type: ignore
+			return False
+
+		@dbus_property(access=PropertyAccess.READ)
+		def Identity(self) -> "s":  # type: ignore
+			return "La Rockola del Carpincho"
+
+		@dbus_property(access=PropertyAccess.READ)
+		def DesktopEntry(self) -> "s":  # type: ignore
+			return "carpincho"
+
+		@dbus_property(access=PropertyAccess.READ)
+		def SupportedUriSchemes(self) -> "as":  # type: ignore
+			return ["file", "http", "https"]
+
+		@dbus_property(access=PropertyAccess.READ)
+		def SupportedMimeTypes(self) -> "as":  # type: ignore
+			return ["audio/mpeg", "audio/x-flac", "audio/ogg"]
+
+	class MPRISPlayer(ServiceInterface):
+		def __init__(self, state_ref):
+			super().__init__("org.mpris.MediaPlayer2.Player")
+			self.state = state_ref
+
+		@method()
+		def Next(self):  # type: ignore
+			asyncio.create_task(handle_command(CommandRequest(cmd="skip")))
+
+		@method()
+		def Previous(self):  # type: ignore
+			asyncio.create_task(handle_command(CommandRequest(cmd="prev")))
+
+		@method()
+		def Pause(self):  # type: ignore
+			if not self.state.mpv_paused:
+				asyncio.create_task(handle_command(CommandRequest(cmd="pause")))
+
+		@method()
+		def PlayPause(self):  # type: ignore
+			asyncio.create_task(handle_command(CommandRequest(cmd="pause")))
+
+		@method()
+		def Stop(self):  # type: ignore
+			asyncio.create_task(handle_command(CommandRequest(cmd="stop")))
+
+		@method()
+		def Play(self):  # type: ignore
+			if self.state.mpv_paused:
+				asyncio.create_task(handle_command(CommandRequest(cmd="pause")))
+
+		@method()
+		def Seek(self, Offset: "x"):  # type: ignore
+			amount = Offset / 1000000.0
+			asyncio.create_task(
+				handle_command(CommandRequest(cmd="seek", amount=amount))
+			)
+
+		@method()
+		def SetPosition(self, TrackId: "o", Position: "x"):  # type: ignore
+			amount = Position / 1000000.0
+			asyncio.create_task(
+				handle_command(CommandRequest(cmd="seek_absolute", amount=amount))
+			)
+
+		@method()
+		def OpenUri(self, Uri: "s"):  # type: ignore
+			asyncio.create_task(handle_command(CommandRequest(cmd="play", path=Uri)))
+
+		@dbus_property(access=PropertyAccess.READ)
+		def PlaybackStatus(self) -> "s":  # type: ignore
+			if not self.state.current_track:
+				return "Stopped"
+			return "Paused" if self.state.mpv_paused else "Playing"
+
+		@dbus_property(access=PropertyAccess.READ)
+		def LoopStatus(self) -> "s":  # type: ignore
+			return "None"
+
+		@dbus_property(access=PropertyAccess.READ)
+		def Rate(self) -> "d":  # type: ignore
+			return 1.0
+
+		@dbus_property(access=PropertyAccess.READ)
+		def Shuffle(self) -> "b":  # type: ignore
+			return False
+
+		@dbus_property(access=PropertyAccess.READ)
+		def Metadata(self) -> "a{sv}":  # type: ignore
+			if not self.state.current_track:
+				return {
+					"mpris:trackid": Variant(
+						"o", "/org/mpris/MediaPlayer2/TrackList/NoTrack"
+					)
+				}
+
+			title = "Desconocido"
+			artist = "Desconocido"
+			dur_usec = 0
+
+			for t in self.state.tracks_cache:
+				if t["path"] == self.state.current_track:
+					title = t.get("display_title", title)
+					artist = t.get("display_artist", artist)
+					break
+
+			if self.state.current_track in self.state.url_metadata:
+				meta = self.state.url_metadata[self.state.current_track]
+				title = meta.get("display_title", title)
+				artist = meta.get("display_artist", artist)
+
+			if self.state.duration:
+				dur_usec = int(self.state.duration * 1000000)
+
+			cover_uri = get_cover_art_uri(self.state.current_track)
+
+			meta_dict = {
+				"mpris:trackid": Variant(
+					"o", "/org/mpris/MediaPlayer2/TrackList/Track0"
+				),
+				"xesam:title": Variant("s", title),
+				"xesam:artist": Variant("as", [artist]),
+				"mpris:length": Variant("x", dur_usec),
+			}
+
+			if cover_uri:
+				meta_dict["mpris:artUrl"] = Variant("s", cover_uri)
+
+			return meta_dict
+
+		@dbus_property(access=PropertyAccess.READWRITE)
+		def Volume(self) -> "d":  # type: ignore
+			return self.state.volume / 100.0
+
+		@Volume.setter
+		def Volume(self, val: "d"):  # type: ignore
+			vollevel = int(val * 100)
+			asyncio.create_task(
+				handle_command(CommandRequest(cmd="set_volume", vollevel=vollevel))
+			)
+
+		@dbus_property(access=PropertyAccess.READ)
+		def Position(self) -> "x":  # type: ignore
+			return int(self.state.time_pos * 1000000)
+
+		@dbus_property(access=PropertyAccess.READ)
+		def MinimumRate(self) -> "d":  # type: ignore
+			return 1.0
+
+		@dbus_property(access=PropertyAccess.READ)
+		def MaximumRate(self) -> "d":  # type: ignore
+			return 1.0
+
+		@dbus_property(access=PropertyAccess.READ)
+		def CanGoNext(self) -> "b":  # type: ignore
+			return True
+
+		@dbus_property(access=PropertyAccess.READ)
+		def CanGoPrevious(self) -> "b":  # type: ignore
+			return True
+
+		@dbus_property(access=PropertyAccess.READ)
+		def CanPlay(self) -> "b":  # type: ignore
+			return True
+
+		@dbus_property(access=PropertyAccess.READ)
+		def CanPause(self) -> "b":  # type: ignore
+			return True
+
+		@dbus_property(access=PropertyAccess.READ)
+		def CanSeek(self) -> "b":  # type: ignore
+			return True
+
+		@dbus_property(access=PropertyAccess.READ)
+		def CanControl(self) -> "b":  # type: ignore
+			return True
+
+
 # --- Websocket Connection Manager ---
 class ConnectionManager:
 	def __init__(self):
@@ -616,6 +886,10 @@ class APIState:
 		self.play_history = self._load_stats()
 		self.favorites = self._load_favs()
 
+		self.mpris_bus = None
+		self.mpris_root = None
+		self.mpris_player = None
+
 		self.mpv = AsyncMpvController(
 			{
 				"duration_update": self.handle_duration_update,
@@ -652,6 +926,32 @@ class APIState:
 		if include_library:
 			d["library"] = list(self.tracks_cache)
 		return d
+
+	def notify_mpris(self):
+		if self.mpris_player:
+			try:
+				changed = {}
+				new_status = self.mpris_player.PlaybackStatus
+				new_meta = self.mpris_player.Metadata
+				new_vol = self.mpris_player.Volume
+
+				if getattr(self, "_last_mpris_status", None) != new_status:
+					changed["PlaybackStatus"] = new_status
+					self._last_mpris_status = new_status
+
+				meta_repr = repr(new_meta)
+				if getattr(self, "_last_mpris_meta", None) != meta_repr:
+					changed["Metadata"] = new_meta
+					self._last_mpris_meta = meta_repr
+
+				if getattr(self, "_last_mpris_vol", None) != new_vol:
+					changed["Volume"] = new_vol
+					self._last_mpris_vol = new_vol
+
+				if changed:
+					self.mpris_player.emit_properties_changed(changed)
+			except Exception as e:
+				logger.debug(f"Pifió actualizando propiedades MPRIS: {e}")
 
 	def _load_stats(self):
 		try:
@@ -847,7 +1147,7 @@ class APIState:
 		try:
 			if self.current_track:
 				self._register_play_stat(self.current_track)
-			await self.play_next()
+			await self.play_next(skipped_by_user=False)
 			await broadcast_state()
 		finally:
 			self.processing_eof = False
@@ -971,7 +1271,7 @@ class APIState:
 		await self.mpv._send(cmd_payload)
 		await self.mpv._send(json.dumps({"command": ["set_property", "pause", False]}))
 
-	async def play_next(self):
+	async def play_next(self, skipped_by_user=False):
 		# Si hay un countdown del DJ corriendo en otra task que no sea esta, lo matamos
 		if (
 			self.dj_countdown_task
@@ -1021,7 +1321,7 @@ class APIState:
 
 			if chosen:
 				logger.info(
-					f"🦦 DJ Carpincho salvó las papas con un clásico: {chosen['display_title']} (arranca en 10 segundos...)"
+					f"🦦 DJ Carpincho salvó las papas con un clásico: {chosen['display_title']} {'(al toque)' if skipped_by_user else '(arranca en 10 segundos...)'}"
 				)
 
 				# Durante el countdown mostramos el tema elegido en dj_next_track
@@ -1029,27 +1329,28 @@ class APIState:
 				self.dj_next_track = chosen
 				await broadcast_state()
 
-				# Guardamos el countdown como task cancelable
-				self.dj_countdown_task = asyncio.current_task()
-				try:
-					await self.mpv._send(
-						json.dumps({"command": ["set_property", "pause", True]})
-					)
-					await asyncio.sleep(
-						10
-					)  # Pausa de 10 segundos antes de que el DJ arranque
-					await self.mpv._send(
-						json.dumps({"command": ["set_property", "pause", False]})
-					)
-				except asyncio.CancelledError:
-					logger.info(
-						"Countdown del DJ cancelado, no se reproduce el tema pre-elegido."
-					)
-					if self.dj_next_track == chosen:
-						self.dj_next_track = None
-					return
-				finally:
-					self.dj_countdown_task = None
+				if not skipped_by_user:
+					# Guardamos el countdown como task cancelable
+					self.dj_countdown_task = asyncio.current_task()
+					try:
+						await self.mpv._send(
+							json.dumps({"command": ["set_property", "pause", True]})
+						)
+						await asyncio.sleep(
+							10
+						)  # Pausa de 10 segundos antes de que el DJ arranque
+						await self.mpv._send(
+							json.dumps({"command": ["set_property", "pause", False]})
+						)
+					except asyncio.CancelledError:
+						logger.info(
+							"Countdown del DJ cancelado, no se reproduce el tema pre-elegido."
+						)
+						if self.dj_next_track == chosen:
+							self.dj_next_track = None
+						return
+					finally:
+						self.dj_countdown_task = None
 
 				self.dj_next_track = None  # Ahora sí borramos: el tema está por arrancar
 
@@ -1125,7 +1426,7 @@ class APIState:
 				self.current_track = None
 			self.history.extend(skipped)
 			self.queue = self.queue[index:]
-			await self.play_next()
+			await self.play_next(skipped_by_user=True)
 		elif target_type == "history":
 			# Rewind to a historical track
 			rewound = self.history[index + 1 :]
@@ -1139,11 +1440,11 @@ class APIState:
 
 	def get_top_played(self):
 		now = time.time()
-		two_month_ago = now - (30 * 24 * 3600 * 2)
+		two_months_ago = now - (30 * 24 * 3600 * 2)
 		bimonthly_counts = {}
 
 		for track_id, timestamps in self.play_history.items():
-			recent_plays = [ts for ts in timestamps if ts >= two_month_ago]
+			recent_plays = [ts for ts in timestamps if ts >= two_months_ago]
 			if recent_plays:
 				# Mantenemos compatibilidad con el historial viejo (rutas) o URLs
 				if "\\" in track_id or "/" in track_id or track_id.startswith("http"):
@@ -1180,12 +1481,36 @@ async def broadcast_state(include_library=False):
 	if len(diff) > 1:
 		state.last_broadcast = new_state
 		await manager.broadcast(diff)
+		state.notify_mpris()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-	# Startup logic
+	state.mpris_registered = False
+
+	if DBUS_AVAILABLE:
+		try:
+			bus = await MessageBus().connect()
+			state.mpris_root = MPRISRoot()
+			state.mpris_player = MPRISPlayer(state)
+			bus.export("/org/mpris/MediaPlayer2", state.mpris_root)
+			bus.export("/org/mpris/MediaPlayer2", state.mpris_player)
+			await bus.request_name(
+				f"org.mpris.MediaPlayer2.carpincho.instance{os.getpid()}"
+			)
+			state.mpris_bus = bus
+			state.mpris_registered = True
+			logger.info(
+				"Carpincho registrado en DBus MPRIS. Podés controlarlo con las teclas multimedia."
+			)
+		except Exception as e:
+			logger.warning(
+				f"No se pudo registrar DBus MPRIS (quizás corrés sin entorno de escritorio). MPV usará su sistema nativo. Error: {e}"
+			)
+
+	# Startup logic - Arrancamos MPV DESPUÉS de saber si DBus funciona para pasarle los flags correctos
 	await state.mpv.start()
+
 	# Le metemos un escaneo de fondo para que ya tenga todo cacheado al inicio
 	asyncio.create_task(scan_library())
 
@@ -1193,6 +1518,8 @@ async def lifespan(app: FastAPI):
 
 	# Shutdown logic: Todo lo que pasa acá abajo es cuando apretás Ctrl+C
 	logger.info("Cerrando el chiringuito. ¡Nos vimos!")
+	if state.mpris_bus:
+		state.mpris_bus.disconnect()
 	await state.mpv.stop()
 
 
@@ -1369,7 +1696,7 @@ async def handle_command(req: CommandRequest):
 	elif cmd == "pause":
 		if not state.current_track and state.queue:
 			# Si no hay tema sonando pero hay fila, arranca la joda
-			await state.play_next()
+			await state.play_next(skipped_by_user=True)
 		else:
 			# Comportamiento normal: pausa o despausa el tema actual
 			state.mpv_paused = not state.mpv_paused
@@ -1378,7 +1705,7 @@ async def handle_command(req: CommandRequest):
 			)
 			await state.mpv._send(cmd_payload)
 	elif cmd == "skip":
-		await state.play_next()
+		await state.play_next(skipped_by_user=True)
 	elif cmd == "prev":
 		await state.play_prev()
 	elif cmd == "stop":
@@ -1424,7 +1751,7 @@ async def handle_command(req: CommandRequest):
 			state.queue.append(req.path)
 			state._pick_dj_next()
 			if not state.current_track:
-				await state.play_next()
+				await state.play_next(skipped_by_user=True)
 			asyncio.create_task(state.fetch_yt_dlp_metadata(req.path))
 	elif cmd == "jump":
 		await state.jump(req.type, req.index)
@@ -1465,7 +1792,7 @@ async def handle_command(req: CommandRequest):
 			logger.info(
 				"DJ Carpincho se activó y no hay tema sonando, arrancando la música..."
 			)
-			await state.play_next()
+			await state.play_next(skipped_by_user=True)
 		else:
 			state._pick_dj_next()  # Actualiza (o limpia) la pre-elección inmediatamente
 	elif cmd == "pause_after":
@@ -1566,7 +1893,7 @@ async def websocket_endpoint(websocket: WebSocket):
 					)
 					if state.current_track:
 						state._register_play_stat(state.current_track)
-					await state.play_next()
+					await state.play_next(skipped_by_user=False)
 					await broadcast_state()
 					continue  # play_next ya hizo broadcast, no hace falta otro
 
