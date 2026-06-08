@@ -1139,11 +1139,11 @@ class APIState:
 
 	def get_top_played(self):
 		now = time.time()
-		one_month_ago = now - (30 * 24 * 3600)
-		monthly_counts = {}
+		two_month_ago = now - (30 * 24 * 3600 * 2)
+		bimonthly_counts = {}
 
 		for track_id, timestamps in self.play_history.items():
-			recent_plays = [ts for ts in timestamps if ts >= one_month_ago]
+			recent_plays = [ts for ts in timestamps if ts >= two_month_ago]
 			if recent_plays:
 				# Mantenemos compatibilidad con el historial viejo (rutas) o URLs
 				if "\\" in track_id or "/" in track_id or track_id.startswith("http"):
@@ -1152,13 +1152,13 @@ class APIState:
 					current_path = self.id_to_current_path.get(track_id)
 
 				if current_path and os.path.exists(current_path):
-					monthly_counts[current_path] = len(recent_plays)
+					bimonthly_counts[current_path] = len(recent_plays)
 
 		return sorted(
-			[{"path": k, "count": v} for k, v in monthly_counts.items()],
+			[{"path": k, "count": v} for k, v in bimonthly_counts.items()],
 			key=lambda x: x["count"],
 			reverse=True,
-		)[:20]
+		)[:50]
 
 
 # --- FastAPI Setup ---

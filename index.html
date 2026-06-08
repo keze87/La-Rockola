@@ -425,6 +425,9 @@
 							Orden</th>
 						<th class="p-3 text-carpincho-primary bg-carpincho-panel sticky top-0 z-100">El Temón</th>
 						<th class="p-3 text-carpincho-primary bg-carpincho-panel sticky top-0 z-100">Artista</th>
+						<th
+							class="p-3 text-carpincho-primary bg-carpincho-panel sticky top-0 z-100 hidden sm:table-cell w-20 text-right">
+							Duración</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -447,13 +450,14 @@
 								<span class="truncate">{{ track.title || track.display_title }}</span>
 								<!-- BOTÓN FAVORITO -->
 								<i @click.stop="toggleFavorite(track.path); haptic()"
-									class="material-icons text-[1.1rem] shrink-0 transition-colors cursor-pointer"
+									class="material-icons text-[1.1rem] shrink-0 transition-colors cursor-pointer hidden sm:table-cell"
 									:class="favorites.includes(track.path) ? 'text-carpincho-warning drop-shadow-md scale-110' : 'text-gray-600 hover:text-gray-400'">
 									{{ favorites.includes(track.path) ? 'star' : 'star_border' }}
 								</i>
 							</div>
 						</td>
 						<td class="p-4 text-[#a6adc8]">{{ track.artist || track.display_artist }}</td>
+						<td class="p-4 text-[#a6adc8] hidden sm:table-cell text-right">{{ track.duration_str }}</td>
 					</tr>
 					<tr v-if="filteredTracks.length === 0">
 						<td colspan="3" class="p-8 text-center text-carpincho-primary italic">No hay nada por acá con
@@ -480,6 +484,8 @@
 						<th class="p-3 text-carpincho-primary bg-carpincho-panel w-28 text-center">Acciones</th>
 						<th class="p-3 text-carpincho-primary bg-carpincho-panel">El Temón</th>
 						<th class="p-3 text-carpincho-primary bg-carpincho-panel">De quién es</th>
+						<th class="p-3 text-carpincho-primary bg-carpincho-panel hidden sm:table-cell w-20 text-right">
+							Duración</th>
 					</tr>
 				</thead>
 				<tbody class="overflow-hidden">
@@ -493,6 +499,8 @@
 						</td>
 						<td class="p-4">{{ getTrackInfo(path).display_title }}</td>
 						<td class="p-4 text-[#a6adc8]">{{ getTrackInfo(path).display_artist }}</td>
+						<td class="p-4 text-[#a6adc8] hidden sm:table-cell text-right">{{
+							getTrackInfo(path).duration_str }}</td>
 					</tr>
 
 					<tr v-if="currentTrackPath" id="current-queue-row" ref="currentQueueRow" @click="sendCmd('pause')"
@@ -515,6 +523,8 @@
 							</div>
 						</td>
 						<td class="p-4 text-carpincho-primary">{{ getTrackInfo(currentTrackPath).display_artist }}</td>
+						<td class="p-4 text-carpincho-primary hidden sm:table-cell text-right">{{
+							getTrackInfo(currentTrackPath).duration_str }}</td>
 					</tr>
 
 					<tr v-for="(path, i) in queueState" :key="path" :data-queue-path="path"
@@ -546,6 +556,9 @@
 						</td>
 						<td class="p-4 text-[#a6adc8]" @click="sendCmd('jump', { type: 'queue', index: i })">{{
 							getTrackInfo(path).display_artist }}</td>
+						<td class="p-4 text-[#a6adc8] hidden sm:table-cell text-right"
+							@click="sendCmd('jump', { type: 'queue', index: i })">{{ getTrackInfo(path).duration_str }}
+						</td>
 					</tr>
 
 					<tr v-if="djCarpinchoEnabled" class="border-b border-carpincho-border bg-carpincho-panel/50">
@@ -760,6 +773,11 @@
 			</div>
 
 			<div class="flex items-center gap-3 shrink-0 ml-2">
+				<button @click="togglePauseAfterCurrent(); haptic()"
+					:class="['w-10 h-10 hidden sm:flex justify-center items-center rounded-full active:scale-90 transition', pauseAfterPath === currentTrackPath && currentTrackPath ? 'text-carpincho-warning' : 'text-gray-400 hover:text-white']"
+					:title="pauseAfterPath === currentTrackPath && currentTrackPath ? 'Cancelar pausa al terminar' : 'Frenar tras este tema'">
+					<i class="material-icons text-2xl">timer</i>
+				</button>
 				<button @click="sendCmd('pause'); haptic(true)"
 					:class="['w-14 h-14 rounded-full flex justify-center items-center text-white shadow-lg active:scale-90 transition', isPlaying ? 'bg-orange-600 hover:bg-orange-500' : 'bg-green-600 hover:bg-green-500']">
 					<i class="material-icons text-4xl">{{ isPlaying ? 'pause' : 'play_arrow' }}</i>
@@ -1042,7 +1060,7 @@
 							break;
 						case 'm':
 						case 'M':
-							this.sendCmd('set_mute', {state: !this.serverMuted});
+							this.sendCmd('set_mute', { state: !this.serverMuted });
 							break;
 						case 'f':
 						case 'F':
