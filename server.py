@@ -106,6 +106,7 @@ if sys.platform == "linux":
 		from dbus_next.service import ServiceInterface, method, dbus_property, signal
 		from dbus_next.constants import PropertyAccess
 		from dbus_next import Variant
+
 		DBUS_AVAILABLE = True
 	except ImportError:
 		pass
@@ -194,7 +195,8 @@ def get_cover_art_uri(path: str) -> str:
 			return f"file://{tmp_cover}"
 
 		audio = MutagenFile(path)
-		if not audio: return ""
+		if not audio:
+			return ""
 		cover_data = None
 
 		# Buscar portada
@@ -833,7 +835,13 @@ class ConnectionManager:
 			logger.info("Cliente liberó el rol de reproductor local.")
 
 	async def broadcast(self, message: dict):
-		logger.debug(f"AVISANDO A LA MUCHACHADA:\n{highlight_json(message)}")
+		log_msg = message.copy()
+		if "library" in log_msg:
+			log_msg["library"] = (
+				f"<Librería omitida del log ({len(log_msg['library'])} temas)>"
+			)
+
+		logger.debug(f"AVISANDO A LA MUCHACHADA:\n{highlight_json(log_msg)}")
 		for connection in self.active_connections.copy():
 			try:
 				await connection.send_json(message)
@@ -905,12 +913,19 @@ class APIState:
 
 	def get_full_state_dict(self, include_library=False):
 		"""Genera un diccionario con el estado completo actual (creando copias listas/diccionarios)"""
+		active_favs = []
+		for fav_id in self.favorites:
+			if fav_id in self.id_to_current_path:
+				active_favs.append(self.id_to_current_path[fav_id])
+			else:
+				active_favs.append(fav_id)
+
 		d = {
 			"current_track": self.current_track,
 			"dj_carpincho_enabled": self.dj_carpincho_enabled,
 			"dj_next_track": self.dj_next_track,
 			"duration": self.duration,
-			"favorites": list(self.favorites),
+			"favorites": active_favs,
 			"history": list(self.history),
 			"is_scanning": self.is_scanning,
 			"mpv_visible": self.mpv_visible,
@@ -957,15 +972,32 @@ class APIState:
 		try:
 			if os.path.exists(self.stats_file):
 				with open(self.stats_file, "r", encoding="utf-8") as f:
-					return json.load(f)
+					data = json.load(f)
+					history = {}
+					for k, v in data.items():
+						if isinstance(v, list):
+							# Formato viejo: "hash": [timestamps]
+							history[k] = v
+						elif isinstance(v, dict) and "timestamps" in v:
+							# Formato nuevo: "hash": {"_path": "...", "timestamps": [...]}
+							history[k] = v["timestamps"]
+					return history
 		except Exception as e:
 			logger.error(f"Error cargando la memoria del carpincho: {e}")
 		return {}
 
 	def _save_stats(self):
 		try:
+			data_to_save = {}
+			for track_id, timestamps in self.play_history.items():
+				# Intentamos rescatar el path real para dejarlo como "comentario" visual
+				path = self.id_to_current_path.get(track_id, track_id)
+				data_to_save[track_id] = {
+					"_path": path,
+					"timestamps": timestamps
+				}
 			with open(self.stats_file, "w", encoding="utf-8") as f:
-				json.dump(self.play_history, f)
+				json.dump(data_to_save, f, indent=4, ensure_ascii=False)
 		except Exception as e:
 			logger.error(f"Error guardando los stats: {e}")
 
@@ -973,15 +1005,26 @@ class APIState:
 		try:
 			if os.path.exists(self.fav_file):
 				with open(self.fav_file, "r", encoding="utf-8") as f:
-					return json.load(f)
+					data = json.load(f)
+					if isinstance(data, list):
+						# Formato viejo: ["hash1", "hash2"]
+						return data
+					elif isinstance(data, dict):
+						# Formato nuevo: {"hash1": "Path: ..."} -> Ignoramos el value
+						return list(data.keys())
 		except Exception as e:
 			pass
 		return []
 
 	def _save_favs(self):
 		try:
+			data_to_save = {}
+			for fav_id in self.favorites:
+				# Dejamos el path como un valor descriptivo para que el JSON sea legible
+				path = self.id_to_current_path.get(fav_id, fav_id)
+				data_to_save[fav_id] = f"Path: {path}"
 			with open(self.fav_file, "w", encoding="utf-8") as f:
-				json.dump(self.favorites, f)
+				json.dump(data_to_save, f, indent=4, ensure_ascii=False)
 		except Exception as e:
 			logger.error(f"Error guardando favoritos: {e}")
 
@@ -1352,7 +1395,9 @@ class APIState:
 					finally:
 						self.dj_countdown_task = None
 
-				self.dj_next_track = None  # Ahora sí borramos: el tema está por arrancar
+				self.dj_next_track = (
+					None  # Ahora sí borramos: el tema está por arrancar
+				)
 
 				await self.play_track(chosen["path"])
 				if should_pause:
@@ -1760,7 +1805,11 @@ async def handle_command(req: CommandRequest):
 			if manager.local_player_ws is not None:
 				# Hay un reproductor local activo — le mandamos el seek relativo
 				await manager.local_player_ws.send_json(
-					{"type": "local_player_seek", "mode": "relative", "amount": req.amount}
+					{
+						"type": "local_player_seek",
+						"mode": "relative",
+						"amount": req.amount,
+					}
 				)
 			else:
 				cmd_payload = json.dumps({"command": ["seek", req.amount]})
@@ -1770,20 +1819,27 @@ async def handle_command(req: CommandRequest):
 			if manager.local_player_ws is not None:
 				# Hay un reproductor local activo — le mandamos el seek absoluto directamente
 				await manager.local_player_ws.send_json(
-					{"type": "local_player_seek", "mode": "absolute", "amount": req.amount}
+					{
+						"type": "local_player_seek",
+						"mode": "absolute",
+						"amount": req.amount,
+					}
 				)
 				# También buscamos en MPV para mantenerlo en sincronía
-				await state.mpv._send(json.dumps({"command": ["seek", req.amount, "absolute"]}))
+				await state.mpv._send(
+					json.dumps({"command": ["seek", req.amount, "absolute"]})
+				)
 				state.time_pos = req.amount
 			else:
 				cmd_payload = json.dumps({"command": ["seek", req.amount, "absolute"]})
 				await state.mpv._send(cmd_payload)
 	elif cmd == "toggle_favorite":
 		if req.path:
-			if req.path in state.favorites:
-				state.favorites.remove(req.path)
+			track_id = state.path_to_id.get(req.path, req.path)
+			if track_id in state.favorites:
+				state.favorites.remove(track_id)
 			else:
-				state.favorites.append(req.path)
+				state.favorites.append(track_id)
 			state._save_favs()
 	elif cmd == "toggle_dj_carpincho":
 		state.dj_carpincho_enabled = not state.dj_carpincho_enabled
