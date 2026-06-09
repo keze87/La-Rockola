@@ -16,6 +16,15 @@
 		tailwind.config = {
 			theme: {
 				extend: {
+					fontFamily: {
+						// Forzamos a que agarre Twemoji en Firefox o Apple/Noto Color en el resto
+						sans: [
+							'Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont',
+							'"Segoe UI"', 'Roboto', '"Helvetica Neue"', 'Arial', 'sans-serif',
+							'"Twemoji Mozilla"', /* El salvavidas para Firefox */
+							'"Apple Color Emoji"', '"Segoe UI Emoji"', '"Segoe UI Symbol"', '"Noto Color Emoji"'
+						],
+					},
 					colors: {
 						carpincho: {
 							bg: '#2b2622',
@@ -383,28 +392,32 @@
 		</div>
 
 		<!-- HEADER NAV -->
-		<nav class="bg-carpincho-panel border-b border-carpincho-primary px-5 pb-2 pt-[max(10px,env(safe-area-inset-top))] shrink-0 cursor-pointer"
+		<nav class="bg-carpincho-panel border-b border-carpincho-primary px-5 pb-2 pt-[max(10px,env(safe-area-inset-top))] shrink-0 cursor-pointer overflow-hidden"
 			@click="isFogonMode = true; haptic()">
-			<div class="flex items-center justify-center font-bold gap-2 text-carpincho-text">
+			<div class="flex items-center justify-start font-bold gap-3 text-carpincho-text w-full">
+				<div class="flex items-center h-[40px] overflow-hidden flex-1 min-w-0">
+					<transition name="lyric" mode="out-in">
+						<span v-if="isScanning" key="scanning" class="truncate block text-left w-full">
+							[Avisando] Chusmeando temas, aguantá fiera... 🧉
+						</span>
+						<span v-else-if="currentTrackPath && currentLyricLine && currentLyricLine.trim() !== ''"
+							:key="currentLyricLine"
+							class="text-[0.95rem] text-carpincho-warning font-medium italic drop-shadow-sm truncate block text-left w-full">
+							{{ currentLyricLine }}
+						</span>
+						<span v-else key="title" class="truncate block text-left w-full">
+							{{ currentTrackTitle }}
+						</span>
+					</transition>
+				</div>
 				<img v-if="currentTrackPath && !currentTrackPath.startsWith('http') && !isScanning"
 					:src="'/cover?path=' + encodeURIComponent(currentTrackPath)"
-					class="w-10 h-10 rounded object-cover shrink-0" @error="$event.target.style.display='none'">
-				<i v-else class="material-icons">{{ isScanning ? 'sync' : (isPlaying ? 'nightlife' : 'music_note')
-					}}</i>
-				<span class="truncate">
-					{{ isScanning ? '[Avisando] Chusmeando temas, aguantá fiera... 🧉' : currentTrackTitle }}
-				</span>
-			</div>
-			<!-- LETRAS BARRA NORMAL (Aparece sólo si hay letra para el tema actual) -->
-			<div v-if="!isScanning && currentTrackPath && currentLyricLine"
-				class="w-full text-center py-1.5 px-4 shrink-0 overflow-hidden cursor-pointer flex items-center justify-center min-h-[30px]"
-			@click="isFogonMode = true; haptic()">
-				<transition name="lyric" mode="out-in">
-					<span :key="currentLyricLine"
-						class="text-[0.8rem] items-center text-carpincho-warning font-medium italic drop-shadow-sm truncate w-full">
-						{{ currentLyricLine }}
-					</span>
-				</transition>
+					class="w-10 h-10 rounded object-cover shrink-0 shadow-sm"
+					@error="$event.target.style.display='none'">
+				<div v-else class="w-10 h-10 shrink-0 rounded flex items-center justify-center shadow-sm">
+					<i class="material-icons text-carpincho-warning">{{ isScanning ? 'sync' : (isPlaying ? 'nightlife' :
+						'music_note') }}</i>
+				</div>
 			</div>
 		</nav>
 
@@ -778,13 +791,14 @@
 						<i class="material-icons">{{ favorites.includes(ctxMenu.track?.path) ? 'star_border' : 'star'
 							}}</i>
 						{{ favorites.includes(ctxMenu.track?.path) ? 'Sacar de favoritos' : 'A los favoritos' }}
-						<div class="ctx-menu-item" @click="ctxFilterByArtist">
-							<i class="material-icons">person_search</i> Buscar en la librería
-						</div>
-						<div class="ctx-menu-item hover:!bg-red-900/30 transition-colors" @click="ctxRemoveFromHistory">
-							<i class="material-icons text-red-400">delete</i> <span class="text-red-400">Borrar del
-								historial</span>
-						</div>
+					</div>
+					<div class="ctx-menu-item" @click="ctxFilterByArtist">
+						<i class="material-icons">person_search</i> Buscar en la librería
+					</div>
+					<div class="ctx-menu-item hover:!bg-red-900/30 transition-colors" @click="ctxRemoveFromHistory">
+						<i class="material-icons text-red-400">delete</i> <span class="text-red-400">Borrar del
+							historial</span>
+					</div>
 				</template>
 			</div>
 		</div>
@@ -1020,7 +1034,6 @@
 				currentTrackPath(newPath, oldPath) {
 					this.updateDocumentTitle();
 					this.updateMediaSession();
-					this.localTimePos = 0;
 					this.loadLyrics(newPath); // A chusmear si hay letra cuando cambia el tema
 
 					if (oldPath && oldPath === this.pauseAfterPath) this.pauseAfterPath = null;
@@ -1097,27 +1110,57 @@
 						const tags = line.match(tagRegex);
 						if (tags) {
 							const lyricText = line.replace(tagRegex, '').trim();
-							// Agregamos la misma letra para todas las marcas de tiempo que comparta
-							if (lyricText) {
-								tags.forEach(tag => {
-									const match = /\[(\d{2}):(\d{2})\.(\d{2,3})\]/.exec(tag);
-									if (match) {
-										const mins = parseInt(match[1], 10);
-										const secs = parseInt(match[2], 10);
-										const msStr = match[3];
-										const ms = parseInt(msStr, 10) * (msStr.length === 2 ? 10 : 1);
-										const timeInSeconds = mins * 60 + secs + ms / 1000;
+							tags.forEach(tag => {
+								const match = /\[(\d{2}):(\d{2})\.(\d{2,3})\]/.exec(tag);
+								if (match) {
+									const mins = parseInt(match[1], 10);
+									const secs = parseInt(match[2], 10);
+									const msStr = match[3];
+									const ms = parseInt(msStr, 10) * (msStr.length === 2 ? 10 : 1);
+									const timeInSeconds = mins * 60 + secs + ms / 1000;
 
-										parsed.push({ time: timeInSeconds, text: lyricText });
-									}
-								});
-							}
+									parsed.push({ time: timeInSeconds, text: lyricText || " " });
+								}
+							});
 						}
 					});
 
 					// Acomodamos cronológicamente por si el archivo venía desordenado
 					parsed.sort((a, b) => a.time - b.time);
-					this.lyrics = parsed;
+
+					// Filtramos los silencios (líneas vacías) que duren menos de 10 segundos
+					const finalParsed = [];
+					for (let i = 0; i < parsed.length; i++) {
+						const current = parsed[i];
+
+						if (current.text === " ") {
+							// Buscamos en qué momento exacto entra la próxima letra real
+							let nextValidTime = null;
+							for (let j = i + 1; j < parsed.length; j++) {
+								if (parsed[j].text !== " ") {
+									nextValidTime = parsed[j].time;
+									break;
+								}
+							}
+
+							// Si el silencio dura 10 segundos o más, o es el final del tema (outro), nos guardamos el espacio
+							if (nextValidTime !== null) {
+								if (nextValidTime - current.time >= 10) {
+									finalParsed.push(current);
+								} else if (nextValidTime - current.time >= 1) {
+									current.text = "🦦"; // Si el silencio es menor a 10s pero mayor a 1s, lo dejamos pero sin texto para que no moleste visualmente
+									finalParsed.push(current);
+								}
+							} else {
+								finalParsed.push(current);
+							}
+						} else {
+							// Es una línea con letra, pasa de una
+							finalParsed.push(current);
+						}
+					}
+
+					this.lyrics = finalParsed;
 				},
 
 				handleKeydown(e) {
