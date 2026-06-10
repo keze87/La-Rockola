@@ -30,21 +30,18 @@ def check_dependencies():
 			missing_python.append((module, fix))
 
 	missing_system = []
-	# Determine OS for OS-specific system binary hints
-	mpv_fix = (
-		"winget install mpv"
-		if is_win
-		else (
-			"brew install mpv"
-			if is_mac
-			else "sudo apt install mpv (o lo que use tu distro)"
-		)
-	)
-	ytdlp_fix = (
-		"pip install yt-dlp (o bajate el binario de https://github.com/yt-dlp/yt-dlp)"
-	)
-
-	system_deps = {"mpv": mpv_fix, "yt-dlp": ytdlp_fix}
+	system_deps = {
+		"mpv": (
+			"winget install mpv"
+			if is_win
+			else (
+				"brew install mpv"
+				if is_mac
+				else "sudo apt install mpv (o lo que use tu distro)"
+			)
+		),
+		"yt-dlp": "pip install yt-dlp (o bajate el binario de https://github.com/yt-dlp/yt-dlp)",
+	}
 
 	for bin_name, fix in system_deps.items():
 		if shutil.which(bin_name) is None:
@@ -1053,7 +1050,7 @@ class APIState:
 					# PODA AUTOMÁTICA: Borramos reproducciones de más de 60 días en 1 milisegundo
 					# two_months_ago = now - (30 * 24 * 3600 * 2)
 					# conn.execute("DELETE FROM play_history WHERE played_at < ?", (two_months_ago,))
-					# conn.commit()
+					conn.commit()
 
 				logger.debug(f"Tema completado, sumando +1 al top: {str_path}")
 			except Exception as e:
@@ -1087,7 +1084,7 @@ class APIState:
 				# 		SELECT id FROM url_logs ORDER BY id DESC LIMIT 200
 				# 	)
 				# """)
-				# conn.commit()
+				conn.commit()
 		except Exception as e:
 			logger.error(f"Error guardando el log de URLs en DB: {e}")
 
