@@ -315,7 +315,7 @@
 						<span class="w-10 text-right shrink-0">{{ formattedTimePos }}</span>
 						<input type="range"
 							class="w-full accent-carpincho-warning h-1.5 bg-gray-600/50 rounded-lg appearance-none cursor-pointer"
-							min="0" :max="duration || 100" step="0.1" v-model="localTimePos" @change="onSeekAbsolute"
+							min="0" :max="duration || 100" step="0.1" v-model="localTimePos"
 							@mousedown="isDraggingSeek = true" @mouseup="isDraggingSeek = false; onSeekAbsolute()"
 							@touchstart="isDraggingSeek = true" @touchend="isDraggingSeek = false; onSeekAbsolute()">
 						<span class="w-10 shrink-0">{{ formattedDuration }}</span>
@@ -618,7 +618,8 @@
 						</td>
 						<td class="p-4 italic" :class="queueState.length === 0 ? 'text-[#a6adc8]' : 'text-[#a6adc8]'">
 							{{ queueState.length === 0 ? (djNextTrack ? 'DJ Carpincho eligió: ' +
-							djNextTrack.display_title : 'Eligiendo...') : 'Al vaciarse la fila, entra el DJ Carpincho' }}
+							djNextTrack.display_title : 'Eligiendo...') : 'Al vaciarse la fila, entra el DJ Carpincho'
+							}}
 						</td>
 						<td class="p-4 text-[#a6adc8] italic">🦦</td>
 						<td class="p-4 text-[#a6adc8] hidden sm:table-cell text-right"></td>
@@ -747,12 +748,12 @@
 				</div>
 
 				<template v-if="ctxMenu.source === 'library'">
+					<div class="ctx-menu-item" @click="ctxPlayNext"><i class="material-icons">queue_play_next</i> Que
+						suene de próximo</div>
 					<div class="ctx-menu-item" @click="ctxPlayNow"><i class="material-icons">play_arrow</i> Mandale play
 						de una</div>
 					<div class="ctx-menu-item" @click="ctxAddToQueue"><i class="material-icons">playlist_add</i> Al
 						fondo de la fila</div>
-					<div class="ctx-menu-item" @click="ctxPlayNext"><i class="material-icons">queue_play_next</i> Que
-						suene de próximo</div>
 					<div class="ctx-menu-item" @click="ctxToggleFavorite">
 						<i class="material-icons">{{ favorites.includes(ctxMenu.track?.path) ? 'star_border' : 'star'
 							}}</i>
@@ -765,10 +766,10 @@
 				</template>
 
 				<template v-if="ctxMenu.source === 'queue'">
-					<div class="ctx-menu-item" @click="ctxPlayNow"><i class="material-icons">play_arrow</i> Mandale play
-						de una</div>
 					<div class="ctx-menu-item" @click="ctxPlayNextQueue"><i
 							class="material-icons">vertical_align_top</i> Subir a próximo</div>
+					<div class="ctx-menu-item" @click="ctxPlayNow"><i class="material-icons">play_arrow</i> Mandale play
+						de una</div>
 					<div class="ctx-menu-item" @click="ctxToggleFavorite">
 						<i class="material-icons">{{ favorites.includes(ctxMenu.track?.path) ? 'star_border' : 'star'
 							}}</i>
@@ -871,6 +872,7 @@
 					duration: 0,
 					favorites: [],
 					historyState: [],
+					ignoreServerTimeUntil: 0,
 					isDraggingSeek: false,
 					isFogonMode: false,
 					isPaused: false,
@@ -1136,7 +1138,7 @@
 					// Acomodamos cronológicamente por si el archivo venía desordenado
 					parsed.sort((a, b) => a.time - b.time);
 
-					// Filtramos los silencios (líneas vacías) que duren menos de 10 segundos
+					// Filtramos los silencios (líneas vacías) que duren menos de 2 segundos
 					const finalParsed = [];
 					for (let i = 0; i < parsed.length; i++) {
 						const current = parsed[i];
@@ -1151,15 +1153,18 @@
 								}
 							}
 
-							// Si el silencio dura 10 segundos o más, o es el final del tema (outro), nos guardamos el espacio
+							// Si hay un silencio antes de la próxima letra
 							if (nextValidTime !== null) {
-								if (nextValidTime - current.time >= 10) {
+								// Si el silencio dura 2 segundos o más, conservamos el espacio para mostrar el título
+								if (nextValidTime - current.time >= 2) {
 									finalParsed.push(current);
 								} else if (nextValidTime - current.time >= 1) {
-									current.text = "🦦"; // Si el silencio es menor a 10s pero mayor a 1s, lo dejamos pero sin texto para que no moleste visualmente
+									current.text = "🦦"; // Si el silencio es entre 1s y 2s, usamos el emoji
 									finalParsed.push(current);
 								}
+								// Si es < 1s, se descarta (no se hace push)
 							} else {
+								// Si es el final de la canción (no hay nextValidTime), dejamos el espacio (fallback seguro)
 								finalParsed.push(current);
 							}
 						} else {
@@ -1191,12 +1196,26 @@
 							break;
 						case 'ArrowRight':
 							e.preventDefault();
-							this.sendCmd('skip');
+							if (e.shiftKey) {
+								this.sendCmd('skip');
+							} else {
+								const amount = 10;
+								this.localTimePos = Math.min(this.duration, this.localTimePos + amount);
+								this.ignoreServerTimeUntil = Date.now() + 2000;
+								this.sendCmd('seek', { amount });
+							}
 							this.haptic();
 							break;
 						case 'ArrowLeft':
 							e.preventDefault();
-							this.sendCmd('prev');
+							if (e.shiftKey) {
+								this.sendCmd('prev');
+							} else {
+								const amount = -10;
+								this.localTimePos = Math.max(0, this.localTimePos + amount);
+								this.ignoreServerTimeUntil = Date.now() + 2000;
+								this.sendCmd('seek', { amount });
+							}
 							this.haptic();
 							break;
 						case 'ArrowUp':
@@ -1218,6 +1237,28 @@
 							this.isFogonMode = !this.isFogonMode;
 							this.haptic();
 							break;
+						case 'l':
+						case 'L':
+							if (this.currentTrackPath) {
+								this.toggleFavorite(this.currentTrackPath);
+								this.haptic();
+							}
+							break;
+						case 't':
+						case 'T':
+							this.togglePauseAfterCurrent();
+							this.haptic();
+							break;
+						case 'n':
+						case 'N':
+							this.sendCmd('skip');
+							this.haptic();
+							break;
+						case 'p':
+						case 'P':
+							this.sendCmd('prev');
+							this.haptic();
+							break;
 					}
 				},
 
@@ -1228,6 +1269,7 @@
 					const percent = Math.max(0, Math.min(1, clickX / rect.width));
 					const targetTime = percent * this.duration;
 					this.localTimePos = targetTime;
+					this.ignoreServerTimeUntil = Date.now() + 2000; // Ignoramos el server por 2 seg
 					if (this.listenLocally && this.$refs.localPlayer) {
 						this.$refs.localPlayer.currentTime = targetTime;
 						this._sendLocalPlayerUpdate({ time_pos: targetTime });
@@ -1238,6 +1280,7 @@
 
 				onSeekAbsolute() {
 					const t = parseFloat(this.localTimePos);
+					this.ignoreServerTimeUntil = Date.now() + 2000; // Ignoramos el server por 2 seg
 					if (this.listenLocally && this.$refs.localPlayer) {
 						this.$refs.localPlayer.currentTime = t;
 						this._sendLocalPlayerUpdate({ time_pos: t });
@@ -1346,7 +1389,7 @@
 									// sincronizarlo con el time_pos del servidor (que llega con hasta 5s de retraso)
 									// causaría saltos y jitter constante. Lo ignoramos en ese modo.
 									if (!this.listenLocally) {
-										if (!this.isDraggingSeek) {
+										if (!this.isDraggingSeek && Date.now() > this.ignoreServerTimeUntil) {
 											if (Math.abs(this.localTimePos - this.timePos) > 1.5) {
 												this.localTimePos = this.timePos;
 											}
@@ -1904,8 +1947,18 @@
 					navigator.mediaSession.setActionHandler('previoustrack', () => this.sendCmd('prev'));
 					navigator.mediaSession.setActionHandler('nexttrack', () => this.sendCmd('skip'));
 					// Seek backward/forward (hardware buttons on some headphones / lock screen)
-					navigator.mediaSession.setActionHandler('seekbackward', (d) => this.sendCmd('seek', { amount: -(d.seekOffset ?? 10) }));
-					navigator.mediaSession.setActionHandler('seekforward', (d) => this.sendCmd('seek', { amount: (d.seekOffset ?? 10) }));
+					navigator.mediaSession.setActionHandler('seekbackward', (d) => {
+						const amount = -(d.seekOffset ?? 10);
+						this.localTimePos = Math.max(0, this.localTimePos + amount);
+						this.ignoreServerTimeUntil = Date.now() + 2000;
+						this.sendCmd('seek', { amount });
+					});
+					navigator.mediaSession.setActionHandler('seekforward', (d) => {
+						const amount = (d.seekOffset ?? 10);
+						this.localTimePos = Math.min(this.duration, this.localTimePos + amount);
+						this.ignoreServerTimeUntil = Date.now() + 2000;
+						this.sendCmd('seek', { amount });
+					});
 				}
 			},
 
