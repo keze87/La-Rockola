@@ -84,11 +84,12 @@ import hashlib
 import json
 import logging
 import os
+import random
 import re
+import sqlite3
+import tempfile
 import time
 import uvicorn
-import tempfile
-import sqlite3
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.responses import FileResponse, Response
@@ -112,7 +113,16 @@ def init_db():
 					  title TEXT,
 					  album TEXT,
 					  artist TEXT,
-					  duration_str TEXT)""")
+					  duration_str TEXT,
+					  mtime REAL,
+					  file_size INTEGER)""")
+
+		# Migración automática: por si el usuario ya tenía la DB armada de antes
+		try:
+			c.execute("ALTER TABLE tracks ADD COLUMN mtime REAL")
+			c.execute("ALTER TABLE tracks ADD COLUMN file_size INTEGER")
+		except sqlite3.OperationalError:
+			pass  # Las columnas ya están, todo piola
 
 		# Historial de reproducciones (múltiples entradas por tema)
 		c.execute("""CREATE TABLE IF NOT EXISTS play_history
@@ -430,7 +440,7 @@ class AsyncMpvController:
 			mpv_args = [
 				"mpv",
 				"--autofit=33%x33%",
-				"--fs",
+				# "--fs",
 				"--geometry=-20-40",
 				"--hwdec=auto",
 				"--idle",
@@ -919,6 +929,7 @@ class APIState:
 	def __init__(self, initial_dir=None, secondary_dir=None):
 		self.current_track = None
 		self.dj_carpincho_enabled = False
+		self.dj_safe_mode = False
 		self.history = []
 		self.id_to_current_path = {}
 		self.initial_dir = initial_dir
@@ -978,6 +989,7 @@ class APIState:
 		d = {
 			"current_track": self.current_track,
 			"dj_carpincho_enabled": self.dj_carpincho_enabled,
+			"dj_safe_mode": self.dj_safe_mode,
 			"dj_next_track": self.dj_next_track,
 			"duration": self.duration,
 			"favorites": active_favs,
@@ -1122,10 +1134,44 @@ class APIState:
 		)
 		raw_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
 
+		# --- CARGAMOS LA CACHÉ DE LA DB AL PRINCIPIO ---
+		db_cache = {}
+		try:
+			with sqlite3.connect(DB_PATH) as conn:
+				c = conn.cursor()
+				c.execute(
+					"SELECT path, mtime, file_size, track_id, title, album, artist, duration_str FROM tracks"
+				)
+				for row in c.fetchall():
+					(
+						db_path,
+						db_mtime,
+						db_size,
+						db_tid,
+						db_title,
+						db_album,
+						db_artist,
+						db_dur,
+					) = row
+					db_cache[db_path] = {
+						"mtime": db_mtime,
+						"file_size": db_size,
+						"track_hash": db_tid,
+						"title": db_title,
+						"album": db_album,
+						"artist": db_artist,
+						"duration_str": db_dur,
+					}
+		except Exception as e:
+			logger.warning(f"No pude cargar la caché de la DB (capaz está vacía): {e}")
+
 		tracks = []
 		self.id_to_current_path.clear()
 		self.path_to_id.clear()
 		new_cache = {}
+		tracks_to_insert = (
+			[]
+		)  # Guardamos acá los nuevos para hacer un solo INSERT masivo
 
 		for i, f in enumerate(raw_files):
 			if i > 0 and i % 100 == 0:
@@ -1133,41 +1179,86 @@ class APIState:
 
 			file_str = str(f)
 			try:
-				current_mtime = f.stat().st_mtime
+				stat = f.stat()
+				current_mtime = stat.st_mtime
+				current_size = stat.st_size
 			except Exception:
 				continue
 
+			# 1. Miramos si está en memoria (escaneo en caliente)
 			if (
 				file_str in self.track_cache_by_path
 				and self.track_cache_by_path[file_str]["mtime"] == current_mtime
 			):
 				track_dict = self.track_cache_by_path[file_str]["data"]
 				track_hash = track_dict.get("track_hash")
+
+			# 2. Miramos si está intacto en la DB (arranque de servidor)
+			elif (
+				file_str in db_cache
+				and db_cache[file_str]["mtime"] == current_mtime
+				and db_cache[file_str]["file_size"] == current_size
+			):
+				cached = db_cache[file_str]
+				track_hash = cached["track_hash"]
+				track_dict = {
+					"path": file_str,
+					"display_title": cached["title"],
+					"display_artist": cached["artist"],
+					"album": cached["album"],
+					"duration_str": cached["duration_str"],
+					"search_string": f"{cached['artist']} {cached['title']}".lower(),
+					"title": cached["title"],
+					"artist": cached["artist"],
+					"track_hash": track_hash,
+				}
+
+			# 3. NO HAY CACHÉ VALIDA: Leemos los metadatos y calculamos el hash desde cero
 			else:
 				track_obj = Track(f)
 				track_dict = track_obj.to_dict()
 				track_hash = track_obj.track_hash
 				track_dict["track_hash"] = track_hash
 
+				# Lo anotamos para mandarlo a la DB al final
+				tracks_to_insert.append(
+					(
+						track_hash,
+						file_str,
+						track_dict["title"],
+						track_dict.get("album", "Desconocido"),
+						track_dict["artist"],
+						track_dict["duration_str"],
+						current_mtime,
+						current_size,
+					)
+				)
+
 			new_cache[file_str] = {"mtime": current_mtime, "data": track_dict}
 			tracks.append(track_dict)
 
-			self.id_to_current_path[track_hash] = track_dict["path"]
-			self.path_to_id[track_dict["path"]] = track_hash
+			self.id_to_current_path[track_hash] = file_str
+			self.path_to_id[file_str] = track_hash
 
 		self.track_cache_by_path = new_cache
 
-		# Guardamos el diccionario de pistas en la DB para poder hacer JOINs ---
-		try:
-			with sqlite3.connect(DB_PATH) as conn:
-				for t in tracks:
-					conn.execute('''
-						INSERT OR REPLACE INTO tracks (track_id, path, title, album, artist, duration_str)
-						VALUES (?, ?, ?, ?, ?, ?)
-					''', (t["track_hash"], t["path"], t["title"], t.get("album", "Desconocido"), t["artist"], t["duration_str"]))
-				conn.commit()
-		except Exception as e:
-			logger.error(f"Error guardando tracks en la DB: {e}")
+		# Guardamos los tracks nuevos/modificados en la DB en un solo bloque ---
+		if tracks_to_insert:
+			try:
+				with sqlite3.connect(DB_PATH) as conn:
+					conn.executemany(
+						"""
+						INSERT OR REPLACE INTO tracks (track_id, path, title, album, artist, duration_str, mtime, file_size)
+						VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+					""",
+						tracks_to_insert,
+					)
+					conn.commit()
+					logger.info(
+						f"Guardados {len(tracks_to_insert)} metadatos frescos en la base de datos."
+					)
+			except Exception as e:
+				logger.error(f"Error guardando tracks en la DB: {e}")
 
 		logger.info("¡Listo el escaneo, maestro!")
 		return tracks
@@ -1378,8 +1469,6 @@ class APIState:
 				)
 		elif self.dj_carpincho_enabled and self.tracks_cache:
 			# Usamos la pre-elección del DJ si existe; sino elegimos ahora
-			import random
-
 			if self.dj_next_track:
 				chosen = self.dj_next_track
 			else:
@@ -1387,7 +1476,35 @@ class APIState:
 				unplayed = [
 					t for t in self.tracks_cache if t["path"] not in played_paths
 				]
-				chosen = random.choice(unplayed) if unplayed else None
+
+				if unplayed:
+					if self.dj_safe_mode:
+						favs = [
+							t
+							for t in unplayed
+							if self.path_to_id.get(t["path"]) in self.favorites
+						]
+						normals = [
+							t
+							for t in unplayed
+							if self.path_to_id.get(t["path"]) not in self.favorites
+						]
+
+						if favs and normals:
+							# ¡90% de chances clavadas de sacar un temazo!
+							chosen = (
+								random.choice(favs)
+								if random.random() < 0.90
+								else random.choice(normals)
+							)
+						elif favs:
+							chosen = random.choice(favs)
+						else:
+							chosen = random.choice(normals)
+					else:
+						chosen = random.choice(unplayed)
+				else:
+					chosen = None
 
 			self.dj_next_track = None  # Consumimos la pre-elección
 
@@ -1452,6 +1569,7 @@ class APIState:
 			self.current_track = None
 			await self.mpv._send('{"command": ["stop"]}')
 			await self.mpv._send('{"command": ["set_property", "force-window", "no"]}')
+
 		self._pick_dj_next()  # Actualiza la preview después de tocar la fila
 
 	async def play_prev(self):
@@ -1473,11 +1591,41 @@ class APIState:
 			played_paths = set(self.history)
 			if self.current_track:
 				played_paths.add(self.current_track)
+
 			unplayed = [t for t in self.tracks_cache if t["path"] not in played_paths]
+
 			if unplayed:
-				chosen = random.choice(unplayed)
+				if self.dj_safe_mode:
+					favs = [
+						t
+						for t in unplayed
+						if self.path_to_id.get(t["path"]) in self.favorites
+					]
+					normals = [
+						t
+						for t in unplayed
+						if self.path_to_id.get(t["path"]) not in self.favorites
+					]
+
+					if favs and normals:
+						chosen = (
+							random.choice(favs)
+							if random.random() < 0.90
+							else random.choice(normals)
+						)
+					elif favs:
+						chosen = random.choice(favs)
+					else:
+						chosen = random.choice(normals)
+				else:
+					# DJ Salvaje (Clásico): todo pesa lo mismo
+					chosen = random.choice(unplayed)
+
 				self.dj_next_track = chosen
-				logger.info(f"🦦 DJ Carpincho pre-eligió: {chosen['display_title']}")
+				is_fav = self.path_to_id.get(chosen["path"]) in self.favorites
+				logger.info(
+					f"🦦 DJ Carpincho pre-eligió: {chosen['display_title']} (Favorito: {'Sí' if is_fav else 'No'})"
+				)
 				return
 		self.dj_next_track = None
 
@@ -1920,6 +2068,10 @@ async def handle_command(req: CommandRequest):
 			await state.play_next(skipped_by_user=True)
 		else:
 			state._pick_dj_next()  # Actualiza (o limpia) la pre-elección inmediatamente
+	elif cmd == "toggle_dj_safe_mode":
+		state.dj_safe_mode = not state.dj_safe_mode
+		logger.info(f"Modo DJ Seguro cambiado a: {state.dj_safe_mode}")
+		state._pick_dj_next()  # Recalculamos la pre-elección
 	elif cmd == "pause_after":
 		state.pause_after_path = req.path
 	elif cmd == "remove_history_item":
