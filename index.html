@@ -707,6 +707,25 @@
 					</div>
 				</label>
 			</div>
+
+			<!-- Capincho seguro Box-->
+			<div v-show="djCarpinchoEnabled"
+				class="w-full max-w-lg mx-auto flex items-center justify-between bg-carpincho-panel p-4 rounded-xl border-l-4 border-carpincho-warning shadow-md mb-8 transition-all">
+				<div class="text-left">
+					<div class="font-bold text-carpincho-text flex items-center gap-2">
+						<i class="material-icons text-carpincho-warning">favorite</i> Capincho seguro
+					</div>
+					<div class="text-xs text-[#a6adc8]">Prioriza favoritos para que no decaiga</div>
+				</div>
+				<label class="relative inline-flex items-center cursor-pointer ml-4">
+					<input type="checkbox" :checked="djSafeModeEnabled" @change="toggleDjSafeMode"
+						class="sr-only peer">
+					<div
+						class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-carpincho-success">
+					</div>
+				</label>
+			</div>
+
 			<!-- Buttons Container (Keeps the buttons side-by-side) -->
 			<div class="flex flex-col items-center gap-4 mb-4">
 				<div class="flex justify-center gap-3 flex-wrap">
@@ -723,6 +742,9 @@
 				</div>
 			</div>
 			<div class="flex justify-center gap-3 mb-8 flex-wrap">
+				<button @click="sendCmd('set_mute', {state: !serverMuted}); haptic()"
+					:class="['px-5 py-2 rounded-full font-medium active:scale-95 transition flex items-center gap-2', serverMuted ? 'bg-red-700 hover:bg-red-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-white']">
+					<i class="material-icons">{{ serverMuted ? 'volume_off' : 'volume_up' }}</i> {{ serverMuted ? 'Desmutear' : 'Mutear' }}</button>
 				<button @click="loadLibrary(true)"
 					class="bg-green-700 hover:bg-green-600 text-white px-5 py-2 rounded-full font-medium active:scale-95 transition flex items-center gap-2"><i
 						class="material-icons">refresh</i> Pegale otra escaneada</button>
@@ -867,6 +889,7 @@
 					currentTracks: [],
 					deletingQueueIndex: null,
 					djCarpinchoEnabled: false,
+					djSafeModeEnabled: false,
 					djNextTrack: null,
 					dragFromIndex: null,
 					duration: 0,
@@ -1674,7 +1697,12 @@
 				},
 
 				toggleDjCarpincho() {
-					this.sendCmd("toggle_dj_carpincho");
+					this.sendCmd("toggle_dj_carpincho", { state: !this.djCarpinchoEnabled });
+					this.haptic();
+				},
+
+				toggleDjSafeMode() {
+					this.sendCmd("toggle_dj_safe_mode", { state: !this.djSafeModeEnabled });
 					this.haptic();
 				},
 
