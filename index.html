@@ -1393,6 +1393,7 @@
 							if (data.type === 'state_update') {
 								if (data.current_track !== undefined) this.currentTrackPath = data.current_track;
 								if (data.dj_carpincho_enabled !== undefined) this.djCarpinchoEnabled = data.dj_carpincho_enabled;
+								if (data.dj_safe_mode !== undefined) this.djSafeModeEnabled = data.dj_safe_mode;
 								if (data.dj_next_track !== undefined) this.djNextTrack = data.dj_next_track;
 								if (data.history) this.historyState = data.history;
 								if (data.is_scanning !== undefined) this.isScanning = data.is_scanning;
