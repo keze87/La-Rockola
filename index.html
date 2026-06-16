@@ -315,9 +315,10 @@
 						<span class="w-10 text-right shrink-0">{{ formattedTimePos }}</span>
 						<input type="range"
 							class="w-full accent-carpincho-warning h-1.5 bg-gray-600/50 rounded-lg appearance-none cursor-pointer"
-							min="0" :max="duration || 100" step="0.1" v-model="localTimePos"
-							@mousedown="isDraggingSeek = true" @mouseup="isDraggingSeek = false; onSeekAbsolute()"
-							@touchstart="isDraggingSeek = true" @touchend="isDraggingSeek = false; onSeekAbsolute()">
+							min="0" :max="duration || 100" step="0.1"
+							:value="isDraggingSeek ? dragTimePos : localTimePos" @input="updateDragTimePos"
+							@mousedown="startDragSeek" @mouseup="endDragSeek" @touchstart="startDragSeek"
+							@touchend="endDragSeek">
 						<span class="w-10 shrink-0">{{ formattedDuration }}</span>
 					</div>
 
@@ -718,8 +719,7 @@
 					<div class="text-xs text-[#a6adc8]">Prioriza favoritos para que no decaiga</div>
 				</div>
 				<label class="relative inline-flex items-center cursor-pointer ml-4">
-					<input type="checkbox" :checked="djSafeModeEnabled" @change="toggleDjSafeMode"
-						class="sr-only peer">
+					<input type="checkbox" :checked="djSafeModeEnabled" @change="toggleDjSafeMode" class="sr-only peer">
 					<div
 						class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-carpincho-success">
 					</div>
@@ -744,7 +744,8 @@
 			<div class="flex justify-center gap-3 mb-8 flex-wrap">
 				<button @click="sendCmd('set_mute', {state: !serverMuted}); haptic()"
 					:class="['px-5 py-2 rounded-full font-medium active:scale-95 transition flex items-center gap-2', serverMuted ? 'bg-red-700 hover:bg-red-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-white']">
-					<i class="material-icons">{{ serverMuted ? 'volume_off' : 'volume_up' }}</i> {{ serverMuted ? 'Desmutear' : 'Mutear' }}</button>
+					<i class="material-icons">{{ serverMuted ? 'volume_off' : 'volume_up' }}</i> {{ serverMuted ?
+					'Desmutear' : 'Mutear' }}</button>
 				<button @click="loadLibrary(true)"
 					class="bg-green-700 hover:bg-green-600 text-white px-5 py-2 rounded-full font-medium active:scale-95 transition flex items-center gap-2"><i
 						class="material-icons">refresh</i> Pegale otra escaneada</button>
@@ -892,6 +893,7 @@
 					djSafeModeEnabled: false,
 					djNextTrack: null,
 					dragFromIndex: null,
+					dragTimePos: 0,
 					duration: 0,
 					favorites: [],
 					historyState: [],
@@ -1045,9 +1047,14 @@
 
 				progressPercent() {
 					if (!this.duration) return 0;
-					return (this.localTimePos / this.duration) * 100;
+					const current = this.isDraggingSeek ? this.dragTimePos : this.localTimePos;
+					return (current / this.duration) * 100;
 				},
-				formattedTimePos() { return this.formatTime(this.localTimePos); },
+
+				formattedTimePos() {
+					return this.formatTime(this.isDraggingSeek ? this.dragTimePos : this.localTimePos);
+				},
+
 				formattedDuration() { return this.formatTime(this.duration); }
 			},
 
@@ -1301,6 +1308,22 @@
 					}
 				},
 
+				// --- FUNCIONES PARA EL SEEK ---
+				startDragSeek() {
+					this.isDraggingSeek = true;
+					this.dragTimePos = this.localTimePos;
+				},
+
+				updateDragTimePos(event) {
+					this.dragTimePos = parseFloat(event.target.value);
+				},
+
+				endDragSeek() {
+					this.isDraggingSeek = false;
+					this.localTimePos = this.dragTimePos;
+					this.onSeekAbsolute();
+				},
+
 				onSeekAbsolute() {
 					const t = parseFloat(this.localTimePos);
 					this.ignoreServerTimeUntil = Date.now() + 2000; // Ignoramos el server por 2 seg
@@ -1409,6 +1432,7 @@
 								if (data.mpv_visible !== undefined) this.mpvVisible = data.mpv_visible;
 								if (data.time_pos !== undefined) {
 									this.timePos = data.time_pos;
+									this.dragTimePos = data.time_pos; // Si el servidor manda un time_pos, reseteamos el drag (en caso de que estuviera activo) para evitar jumps al soltar el seekbar
 									// Cuando escuchamos localmente, el <audio> lleva su propio tiempo —
 									// sincronizarlo con el time_pos del servidor (que llega con hasta 5s de retraso)
 									// causaría saltos y jitter constante. Lo ignoramos en ese modo.

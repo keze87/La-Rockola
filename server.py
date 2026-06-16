@@ -1401,13 +1401,9 @@ class APIState:
 		self.server_muted = is_muted
 		await broadcast_state()
 
-	async def play_track(self, path, start_paused=False):
+	async def play_track(self, path):
 		# Cancelar el countdown del DJ si el usuario eligió un tema manualmente
-		if (
-			self.dj_countdown_task
-			and not self.dj_countdown_task.done()
-			and self.dj_countdown_task != asyncio.current_task()
-		):
+		if self.dj_countdown_task and not self.dj_countdown_task.done():
 			self.dj_countdown_task.cancel()
 			self.dj_countdown_task = None
 			logger.info(
@@ -1420,7 +1416,7 @@ class APIState:
 			await self.mpv.start()
 
 		self.current_track = path
-		self.mpv_paused = start_paused
+		self.mpv_paused = False
 		self.time_pos = 0
 		self.last_track_change = time.time()
 
@@ -1437,9 +1433,7 @@ class APIState:
 			{"command": ["loadfile", str_path]}, ensure_ascii=False
 		)
 		await self.mpv._send(cmd_payload)
-		await self.mpv._send(
-			json.dumps({"command": ["set_property", "pause", start_paused]})
-		)
+		await self.mpv._send(json.dumps({"command": ["set_property", "pause", False]}))
 
 	async def play_next(self, skipped_by_user=False):
 		# Si hay un countdown del DJ corriendo en otra task que no sea esta, lo matamos
@@ -1465,11 +1459,15 @@ class APIState:
 
 		if self.queue:
 			next_path = self.queue.pop(0)
-			self.dj_next_track = None
-
-			# Arrancamos con pausa si el usuario tenía activado "pausar después de este tema"
-			await self.play_track(next_path, start_paused=should_pause)
-
+			self.dj_next_track = (
+				None  # Limpiamos (si la fila tenía temas, el DJ no pre-eligió)
+			)
+			await self.play_track(next_path)
+			if should_pause:
+				self.mpv_paused = True
+				await self.mpv._send(
+					json.dumps({"command": ["set_property", "pause", True]})
+				)
 		elif self.dj_carpincho_enabled and self.tracks_cache:
 			# Usamos la pre-elección del DJ si existe; sino elegimos ahora
 			if self.dj_next_track:
@@ -1517,28 +1515,21 @@ class APIState:
 				# Durante el countdown mostramos el tema elegido en dj_next_track
 				# para que todos los clientes vean qué viene — lo borramos recién cuando arranca.
 				self.dj_next_track = chosen
+				await broadcast_state()
 
 				if not skipped_by_user:
 					# Guardamos el countdown como task cancelable
 					self.dj_countdown_task = asyncio.current_task()
 					try:
-						# ¡MAGIA ACÁ! Cargamos el tema en pausa inmediatamente para ir pre-cargando audio y tapas.
-						await self.play_track(chosen["path"], start_paused=True)
-						await broadcast_state()
-
+						await self.mpv._send(
+							json.dumps({"command": ["set_property", "pause", True]})
+						)
 						await asyncio.sleep(
 							10
 						)  # Pausa de 10 segundos antes de que el DJ arranque
-
-						# Si todo salió bien y no pidieron pausar la lista, le damos play!
-						if not should_pause:
-							self.mpv_paused = False
-							await self.mpv._send(
-								json.dumps(
-									{"command": ["set_property", "pause", False]}
-								)
-							)
-
+						await self.mpv._send(
+							json.dumps({"command": ["set_property", "pause", False]})
+						)
 					except asyncio.CancelledError:
 						logger.info(
 							"Countdown del DJ cancelado, no se reproduce el tema pre-elegido."
@@ -1550,15 +1541,20 @@ class APIState:
 						self.dj_countdown_task = None
 				else:
 					# Skip manual, tocamos de una (respetando si tocaba pausar)
-					await self.play_track(chosen["path"], start_paused=should_pause)
+					await self.play_track(chosen["path"])
 
 				self.dj_next_track = (
-					None  # Ahora sí borramos la alerta del DJ porque ya arrancó
+					None  # Ahora sí borramos: el tema está por arrancar
 				)
 
+				await self.play_track(chosen["path"])
+				if should_pause:
+					self.mpv_paused = True
+					await self.mpv._send(
+						json.dumps({"command": ["set_property", "pause", True]})
+					)
 				# Pre-elegimos el siguiente para el front
 				self._pick_dj_next()
-				await broadcast_state()
 				return
 			else:
 				logger.info("DJ Carpincho se quedó sin temas nuevos esta sesión.")
@@ -2065,16 +2061,15 @@ async def handle_command(req: CommandRequest):
 			except Exception as e:
 				logger.error(f"Error guardando favorito: {e}")
 	elif cmd == "toggle_dj_carpincho":
-		if req.state is not None:
-			state.dj_carpincho_enabled = req.state
-			logger.info(f"DJ Carpincho cambiado a: {state.dj_carpincho_enabled}")
-			if state.dj_carpincho_enabled and not state.current_track:
-				logger.info(
-					"DJ Carpincho se activó y no hay tema sonando, arrancando la música..."
-				)
-				await state.play_next(skipped_by_user=True)
-			else:
-				state._pick_dj_next()  # Actualiza (o limpia) la pre-elección inmediatamente
+		state.dj_carpincho_enabled = not state.dj_carpincho_enabled
+		logger.info(f"DJ Carpincho cambiado a: {state.dj_carpincho_enabled}")
+		if state.dj_carpincho_enabled and not state.current_track:
+			logger.info(
+				"DJ Carpincho se activó y no hay tema sonando, arrancando la música..."
+			)
+			await state.play_next(skipped_by_user=True)
+		else:
+			state._pick_dj_next()  # Actualiza (o limpia) la pre-elección inmediatamente
 	elif cmd == "toggle_dj_safe_mode":
 		if req.state is not None:
 			state.dj_safe_mode = req.state
