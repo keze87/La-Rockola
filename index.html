@@ -7,6 +7,8 @@
 		content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 	<title>La Rockola del Carpincho 🦦🧉</title>
 
+	<link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,400;0,500;0,700;1,400;1,700&display=swap"
+		rel="stylesheet">
 	<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 	<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
@@ -19,7 +21,7 @@
 					fontFamily: {
 						// Forzamos a que agarre Twemoji en Firefox o Apple/Noto Color en el resto
 						sans: [
-							'Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont',
+							'"Nunito"', 'ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont',
 							'"Segoe UI"', 'Roboto', '"Helvetica Neue"', 'Arial', 'sans-serif',
 							'"Twemoji Mozilla"', /* El salvavidas para Firefox */
 							'"Apple Color Emoji"', '"Segoe UI Emoji"', '"Segoe UI Symbol"', '"Noto Color Emoji"'
@@ -447,9 +449,9 @@
 		</div>
 		<div v-show="!isScanning && currentTrackPath"
 			class="w-full h-4 bg-carpincho-panel cursor-pointer relative shrink-0 group touch-none flex items-start"
-			style="-webkit-tap-highlight-color: transparent;"
-			@mousedown="startSeek" @mousemove="moveSeek" @mouseup="endSeek" @mouseleave="endSeek"
-			@touchstart.prevent="startSeek" @touchmove.prevent="moveSeek" @touchend.prevent="endSeek">
+			style="-webkit-tap-highlight-color: transparent;" @mousedown="startSeek" @mousemove="moveSeek"
+			@mouseup="endSeek" @mouseleave="endSeek" @touchstart.prevent="startSeek" @touchmove.prevent="moveSeek"
+			@touchend.prevent="endSeek">
 			<div
 				class="w-full h-1 group-hover:h-2 group-active:h-2 bg-[#38312c] transition-all duration-100 ease-out relative">
 				<div class="absolute top-0 left-0 h-full bg-carpincho-warning"
@@ -479,14 +481,14 @@
 		<section v-show="activeTab === 'library'" ref="librarySection" class="tab-content bg-carpincho-bg relative">
 			<div class="sticky top-0 bg-carpincho-bg px-4 pt-3 pb-2 z-10 shadow-md flex gap-2 items-center">
 				<button @click="scrollToCurrent(); haptic()"
-					class="bg-gray-800 w-10 h-10 shrink-0 flex justify-center items-center rounded-full text-white active:scale-90 transition shadow"
+					class="bg-gray-800 w-10 h-10 shrink-0 flex justify-center items-center rounded-full text-white hover:text-carpincho-warning active:scale-90 transition shadow"
 					title="Ir al tema actual">
 					<i class="material-icons">my_location</i>
 				</button>
 				<button @click="showFavoritesOnly = !showFavoritesOnly; haptic()"
 					:class="['w-10 h-10 shrink-0 flex justify-center items-center rounded-full transition shadow', showFavoritesOnly ? 'bg-carpincho-warning text-carpincho-panel' : 'bg-gray-800 text-white hover:text-carpincho-warning']"
 					title="Mostrar sólo favoritos">
-					<i class="material-icons">{{ showFavoritesOnly ? 'star' : 'star_border' }}</i>
+					<i class="material-icons">{{ showFavoritesOnly ? 'favorite' : 'favorite_border' }}</i>
 				</button>
 				<div class="relative flex-grow">
 					<input v-model="searchQuery" type="text" placeholder="Buscá un buen tema pa' acompañar los mates..."
@@ -524,14 +526,14 @@
 								queueIndex(track.path) + 1 }}</span>
 						</td>
 						<td class="p-4 font-medium max-w-[200px]">
-							<div class="flex items-center justify-between gap-2">
-								<span class="truncate">{{ track.title || track.display_title }}</span>
+							<div class="flex items-center justify-start gap-3">
 								<!-- BOTÓN FAVORITO -->
 								<i @click.stop="toggleFavorite(track.path); haptic()"
-									class="material-icons text-[1.1rem] shrink-0 transition-colors cursor-pointer hidden sm:table-cell"
-									:class="favorites.includes(track.path) ? 'text-carpincho-warning drop-shadow-md scale-110' : 'text-gray-600 hover:text-gray-400'">
-									{{ favorites.includes(track.path) ? 'star' : 'star_border' }}
+									class="material-icons text-[1.1rem] shrink-0 transition-colors cursor-pointer hidden sm:block"
+									:class="favorites.includes(track.path) ? 'text-carpincho-warning drop-shadow-md scale-110' : 'text-gray-600 hover:text-carpincho-warning'">
+									{{ favorites.includes(track.path) ? 'favorite' : 'favorite_border' }}
 								</i>
+								<span class="truncate">{{ track.title || track.display_title }}</span>
 							</div>
 						</td>
 						<td class="p-4 text-[#a6adc8]">{{ track.artist || track.display_artist }}</td>
@@ -706,7 +708,7 @@
 				<button @click="sortLibrary('artist')"
 					class="bg-gray-800 hover:bg-gray-700 text-white px-5 py-2 rounded-full font-medium active:scale-95 transition flex items-center gap-2"><i
 						class="material-icons">person</i> Por el que canta</button>
-				<button @click="sortLibrary('shuffle')"
+				<button @click="sortLibrary('shuffle', false)"
 					class="bg-gray-800 hover:bg-gray-700 text-white px-5 py-2 rounded-full font-medium active:scale-95 transition flex items-center gap-2"><i
 						class="material-icons">shuffle</i> Mezcladito (A lo loco)</button>
 			</div>
@@ -816,7 +818,8 @@
 					<div class="ctx-menu-item" @click="ctxAddToQueue"><i class="material-icons">playlist_add</i> Al
 						fondo de la fila</div>
 					<div class="ctx-menu-item" @click="ctxToggleFavorite">
-						<i class="material-icons">{{ favorites.includes(ctxMenu.track?.path) ? 'star_border' : 'star'
+						<i class="material-icons">{{ favorites.includes(ctxMenu.track?.path) ? 'favorite_border' :
+							'favorite'
 							}}</i>
 						{{ favorites.includes(ctxMenu.track?.path) ? 'Sacar de favoritos' : 'A los favoritos' }}
 					</div>
@@ -832,7 +835,8 @@
 					<div class="ctx-menu-item" @click="ctxPlayNow"><i class="material-icons">play_arrow</i> Mandale play
 						de una</div>
 					<div class="ctx-menu-item" @click="ctxToggleFavorite">
-						<i class="material-icons">{{ favorites.includes(ctxMenu.track?.path) ? 'star_border' : 'star'
+						<i class="material-icons">{{ favorites.includes(ctxMenu.track?.path) ? 'favorite_border' :
+							'favorite'
 							}}</i>
 						{{ favorites.includes(ctxMenu.track?.path) ? 'Sacar de favoritos' : 'A los favoritos' }}
 					</div>
@@ -851,7 +855,8 @@
 					<div class="ctx-menu-item" @click="ctxHistoryPlayAgain"><i
 							class="material-icons">add_circle_outline</i> Agregar a la fila</div>
 					<div class="ctx-menu-item" @click="ctxToggleFavorite">
-						<i class="material-icons">{{ favorites.includes(ctxMenu.track?.path) ? 'star_border' : 'star'
+						<i class="material-icons">{{ favorites.includes(ctxMenu.track?.path) ? 'favorite_border' :
+							'favorite'
 							}}</i>
 						{{ favorites.includes(ctxMenu.track?.path) ? 'Sacar de favoritos' : 'A los favoritos' }}
 					</div>
@@ -910,9 +915,9 @@
 		// Configuración estática de pestañas — no necesita ser reactiva
 		const TABS = [
 			{ id: 'library', name: 'Los Temazos', icon: 'library_music' },
-			{ id: 'queue', name: 'La Fila', icon: 'queue_music' },
-			{ id: 'top', name: 'Más Picados', icon: 'local_fire_department' },
-			{ id: 'controls', name: 'Lo Controle', icon: 'settings' },
+			{ id: 'queue', name: 'La Ronda', icon: 'queue_music' },
+			{ id: 'top', name: 'Los Clásicos', icon: 'local_fire_department' },
+			{ id: 'controls', name: 'Las Perillas', icon: 'settings' },
 		];
 
 		createApp({
@@ -1467,9 +1472,17 @@
 						const data = await res.json();
 						if (data && data.data) {
 							this.originalTracks = [...data.data];
-							this.currentTracks = [...data.data];
 							this.trackMap = {};
 							data.data.forEach(t => this.trackMap[t.path] = t);
+
+							// Chequeamos si veníamos con un mezcladito en la URL
+							const urlParams = new URLSearchParams(window.location.search);
+							if (urlParams.has('vibra')) {
+								// Le pasamos true para que use la semilla de la URL en vez de crear una nueva
+								this.sortLibrary('shuffle', true);
+							} else {
+								this.currentTracks = [...data.data];
+							}
 						}
 					} catch (err) {
 						this.showToast("Uy! Se volcó el mate conectando con la API", "error");
@@ -1644,19 +1657,56 @@
 
 				setVolume() { this.sendCmd('set_volume', { vollevel: parseInt(this.volume) }); },
 
-				sortLibrary(type) {
+				sortLibrary(type, keepSeed = false) {
 					this.searchQuery = ''; // Limpiamos la búsqueda al reordenar
 
-					if (type === 'time') { this.currentTracks = [...this.originalTracks]; }
+					if (type === 'time') {
+						// Limpiamos la URL si volvemos al orden original
+						const url = new URL(window.location);
+						url.searchParams.delete('vibra');
+						window.history.pushState({}, '', url);
+
+						this.currentTracks = [...this.originalTracks];
+					}
 					else if (type === 'artist') {
+						// Limpiamos la URL si ordenamos por artista
+						const url = new URL(window.location);
+						url.searchParams.delete('vibra');
+						window.history.pushState({}, '', url);
+
 						this.currentTracks.sort((a, b) => {
 							const cmp = (a.artist || '').localeCompare(b.artist || '');
 							return cmp === 0 ? (a.title || '').localeCompare(b.title || '') : cmp;
 						});
 					} else if (type === 'shuffle') {
+						let seed;
+						const urlParams = new URLSearchParams(window.location.search);
+						const seedParam = urlParams.get('vibra');
+
+						// Si estamos cargando la página (keepSeed = true) y hay semilla válida, la reusamos.
+						// Si el usuario tocó el botón (keepSeed = false), inventamos una nueva siempre.
+						if (keepSeed && seedParam !== null && !isNaN(parseInt(seedParam))) {
+							seed = parseInt(seedParam);
+						} else {
+							seed = Math.floor(Math.random() * 1000000);
+							const url = new URL(window.location);
+							url.searchParams.set('vibra', seed);
+							// Actualizamos la URL sin recargar la página
+							window.history.pushState({}, '', url);
+						}
+
+						// Generador Pseudoaleatorio Mulberry32 basado en nuestra semilla
+						let a = seed;
+						const randomFunc = () => {
+							let t = a += 0x6D2B79F5;
+							t = Math.imul(t ^ t >>> 15, t | 1);
+							t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+							return ((t ^ t >>> 14) >>> 0) / 4294967296;
+						};
+
 						let array = [...this.originalTracks];
 						for (let i = array.length - 1; i > 0; i--) {
-							const j = Math.floor(Math.random() * (i + 1));
+							const j = Math.floor(randomFunc() * (i + 1));
 							[array[i], array[j]] = [array[j], array[i]];
 						}
 						this.currentTracks = array;
