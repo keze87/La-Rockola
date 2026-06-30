@@ -790,7 +790,7 @@ if DBUS_AVAILABLE:
 
 			title = "Desconocido"
 			artist = "Desconocido"
-			album = "Desconocido"
+			album = "La Rockola del Carpincho"
 			dur_usec = 0
 
 			for t in self.state.tracks_cache:
@@ -811,6 +811,12 @@ if DBUS_AVAILABLE:
 
 			cover_uri = get_cover_art_uri(self.state.current_track)
 
+			track_uri = self.state.current_track
+			if track_uri and not track_uri.startswith("http"):
+				track_uri = Path(track_uri).absolute().as_uri()
+			elif not track_uri:
+				track_uri = ""
+
 			meta_dict = {
 				"mpris:trackid": Variant(
 					"o", "/org/mpris/MediaPlayer2/TrackList/Track0"
@@ -820,6 +826,9 @@ if DBUS_AVAILABLE:
 				"xesam:album": Variant("s", album),
 				"mpris:length": Variant("x", dur_usec),
 			}
+
+			if track_uri:
+				meta_dict["xesam:url"] = Variant("s", track_uri)
 
 			if cover_uri:
 				meta_dict["mpris:artUrl"] = Variant("s", cover_uri)
