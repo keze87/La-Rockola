@@ -16,6 +16,7 @@ def check_dependencies():
 		"uvicorn": "pip install uvicorn",
 		"mutagen": "pip install mutagen",
 		"pydantic": "pip install pydantic",
+		"librosa": "pip install librosa (para el análisis de mood/BPM)",
 	}
 
 	is_win = sys.platform == "win32"
@@ -90,6 +91,9 @@ import sqlite3
 import tempfile
 import time
 import uvicorn
+import gc
+import warnings
+import subprocess
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.responses import FileResponse, Response
@@ -98,8 +102,47 @@ from mutagen import File as MutagenFile
 from pathlib import Path
 from pydantic import BaseModel
 
+# Aumentamos el límite de archivos abiertos al máximo posible para que
+# escanear 2000 temas no haga chocar al sistema operativo (Error 24).
+try:
+	import resource
+
+	soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+	resource.setrlimit(resource.RLIMIT_NOFILE, (hard, hard))
+except Exception:
+	pass  # En Windows o si no hay permisos, seguimos viaje igual
+
 # --- 3. INICIALIZAMOS LA BASE DE DATOS (SQLITE) ---
 DB_PATH = Path.home() / ".carpincho.db"
+
+
+def backup_db():
+	"""Arma un backup semanal de la base de datos para no perder todo el historial y moods."""
+	try:
+		backup_dir = DB_PATH.parent / ".carpincho_backups"
+		backup_dir.mkdir(exist_ok=True)
+
+		now = time.time()
+		backups = list(backup_dir.glob("carpincho_backup_*.db"))
+
+		if backups:
+			latest_backup = max(backups, key=os.path.getmtime)
+			if now - os.path.getmtime(latest_backup) < 7 * 24 * 3600:
+				return  # Ya hay backup fresquito de esta semana
+
+		# Armamos backup nuevo
+		backup_name = f"carpincho_backup_{time.strftime('%Y-%m-%d')}.db"
+		backup_path = backup_dir / backup_name
+		shutil.copy2(DB_PATH, backup_path)
+		logger.info(f"Copia de seguridad de la DB armada joya: {backup_name}")
+
+		# Dejamos solo los últimos 4 backups (1 mes aprox) para no reventar el disco
+		# backups = sorted(backup_dir.glob("carpincho_backup_*.db"), key=os.path.getmtime)
+		# if len(backups) > 4:
+		# 	for old_backup in backups[:-4]:
+		# 		old_backup.unlink()
+	except Exception as e:
+		logger.error(f"Error armando el backup semanal de la DB: {e}")
 
 
 def init_db():
@@ -123,6 +166,19 @@ def init_db():
 			c.execute("ALTER TABLE tracks ADD COLUMN file_size INTEGER")
 		except sqlite3.OperationalError:
 			pass  # Las columnas ya están, todo piola
+
+		# Migración para el mood: BPM, energía (RMS) y brillo espectral, calculados con librosa y la huella digital (Chromaprint/fpcalc)
+		try:
+			c.execute("ALTER TABLE tracks ADD COLUMN bpm REAL")
+			c.execute("ALTER TABLE tracks ADD COLUMN energy REAL")
+			c.execute("ALTER TABLE tracks ADD COLUMN spectral_centroid REAL")
+		except sqlite3.OperationalError:
+			pass  # Ídem, ya están
+
+		try:
+			c.execute("ALTER TABLE tracks ADD COLUMN fingerprint TEXT")
+		except sqlite3.OperationalError:
+			pass
 
 		# Historial de reproducciones (múltiples entradas por tema)
 		c.execute("""CREATE TABLE IF NOT EXISTS play_history
@@ -165,6 +221,14 @@ logging.basicConfig(
 	format="%(asctime)s - %(levelname)s - [%(funcName)s] %(message)s",
 )
 logger = logging.getLogger("RockolaCarpincho")
+
+# SILENCIADOR DE MATEMÁTICAS: Callamos la catarata de logs de Numba
+logging.getLogger("numba").setLevel(logging.WARNING)
+logging.getLogger("llvmlite").setLevel(logging.WARNING)
+
+# SILENCIADOR DE AUDIOREAD/LIBROSA: Callamos los warnings de archivos desactualizados
+warnings.filterwarnings("ignore", category=UserWarning, module="librosa")
+warnings.filterwarnings("ignore", category=FutureWarning, module="librosa")
 
 
 def truncate_text(text: str, max_len: int) -> str:
@@ -326,7 +390,17 @@ class Track:
 		self.artist = "Desconocido"
 		self.album = "Desconocido"
 		self.duration_str = "0:00"
+		self.bpm = 0.0
+		self.energy = 0.0
+		self.spectral_centroid = 0.0
+		self.fingerprint = None
+
 		self._extract_metadata()
+		self._extract_mood()
+		self._extract_fingerprint()
+
+		self.search_string = f"{self.artist} {self.title}".lower()
+		self.track_hash = str(generate_smart_hash(self.path))
 
 	def _extract_metadata(self):
 		try:
@@ -359,8 +433,82 @@ class Track:
 		except Exception as e:
 			logger.warning(f"No le pude leer la mente (metadata) a {self.path}: {e}")
 
-		self.search_string = f"{self.artist} {self.title}".lower()
-		self.track_hash = str(generate_smart_hash(self.path))
+	def _extract_fingerprint(self):
+		"""Saca la huella acústica con fpcalc para detectar temas migrados (re-codeos, retags)."""
+		if shutil.which("fpcalc"):
+			try:
+				proc = subprocess.run(
+					["fpcalc", "-raw", "-length", "60", str(self.path)],
+					capture_output=True,
+					text=True,
+					timeout=10,
+				)
+				for line in proc.stdout.splitlines():
+					if line.startswith("FINGERPRINT="):
+						self.fingerprint = line.split("=", 1)[1]
+			except Exception as e:
+				logger.debug(f"Pifió fpcalc sacando la huella a {self.path}: {e}")
+
+	def _extract_mood(self):
+		"""
+		Analiza un pedazo representativo del audio para sacar el 'mood' del tema:
+		BPM (tempo), energía (RMS) y brillo espectral (centroid).
+		No cargamos el archivo entero: 60 segundos arrancando a los 15s alcanza
+		y sobra para tempo/energía, y es mucho más rápido que decodificar todo.
+		"""
+
+		def _do_librosa_work():
+			import librosa
+			import numpy as np
+
+			y, sr = librosa.load(
+				str(self.path), sr=22050, mono=True, duration=60, offset=15
+			)
+			if y.size == 0:
+				# Tema corto (menos de 15s): probamos de nuevo desde el arranque
+				y, sr = librosa.load(str(self.path), sr=22050, mono=True)
+
+			if y.size == 0:
+				return 0.0, 0.0, 0.0
+
+			tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
+			bpm_val = float(np.mean(tempo)) if tempo is not None else 0.0
+
+			rms = librosa.feature.rms(y=y)[0]
+			energy_val = float(np.mean(rms)) if rms.size else 0.0
+
+			centroid = librosa.feature.spectral_centroid(y=y, sr=sr)[0]
+			centroid_val = float(np.mean(centroid)) if centroid.size else 0.0
+
+			return bpm_val, energy_val, centroid_val
+
+		import concurrent.futures
+
+		# Usamos un ThreadPool para poder meterle un timeout
+		executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+		future = executor.submit(_do_librosa_work)
+
+		try:
+			# Le damos 25 segundos máximo. Si es un MKV pesado o algo larguísimo, lo abortamos.
+			b, e, c = future.result(timeout=25.0)
+			self.bpm = b
+			self.energy = e
+			self.spectral_centroid = c
+		except concurrent.futures.TimeoutError:
+			logger.warning(
+				f"¡Se re colgó! Timeout de 25s sacando el mood a {self.path}"
+			)
+			self.bpm, self.energy, self.spectral_centroid = -1.0, -1.0, -1.0
+		except Exception as exc:
+			logger.warning(
+				f"No le pude sacar el mood (bpm/energía) a {self.path}: {exc}"
+			)
+			# Si falla feo (por archivo corrupto o falta de permisos) le mandamos -1.0
+			# Así diferenciamos los rotos de los que todavía no se analizaron (0.0)
+			self.bpm, self.energy, self.spectral_centroid = -1.0, -1.0, -1.0
+		finally:
+			# Cerramos el executor sin esperar. Si el hilo se quedó colgado en C/FFmpeg, que muera de fondo.
+			executor.shutdown(wait=False, cancel_futures=True)
 
 	def to_dict(self):
 		return {
@@ -372,6 +520,10 @@ class Track:
 			"search_string": self.search_string,
 			"title": self.title,
 			"artist": self.artist,
+			"bpm": self.bpm,
+			"energy": self.energy,
+			"spectral_centroid": self.spectral_centroid,
+			"fingerprint": self.fingerprint,
 		}
 
 
@@ -955,7 +1107,9 @@ class APIState:
 		self.time_pos = 0
 		self.duration = 0
 		self.last_time_broadcast = 0
-		self.last_seek_drift: float | None = None  # Última deriva con la que sincronizamos MPV
+		self.last_seek_drift: float | None = (
+			None  # Última deriva con la que sincronizamos MPV
+		)
 
 		# Files
 		self.track_cache_by_path = {}
@@ -1150,7 +1304,7 @@ class APIState:
 			with sqlite3.connect(DB_PATH) as conn:
 				c = conn.cursor()
 				c.execute(
-					"SELECT path, mtime, file_size, track_id, title, album, artist, duration_str FROM tracks"
+					"SELECT path, mtime, file_size, track_id, title, album, artist, duration_str, bpm, energy, spectral_centroid, fingerprint FROM tracks"
 				)
 				for row in c.fetchall():
 					(
@@ -1162,6 +1316,10 @@ class APIState:
 						db_album,
 						db_artist,
 						db_dur,
+						db_bpm,
+						db_energy,
+						db_centroid,
+						db_fingerprint,
 					) = row
 					db_cache[db_path] = {
 						"mtime": db_mtime,
@@ -1171,6 +1329,13 @@ class APIState:
 						"album": db_album,
 						"artist": db_artist,
 						"duration_str": db_dur,
+						# Si estaba en NULL en la base de datos vieja, aseguramos que cargue como 0.0
+						"bpm": db_bpm if db_bpm is not None else 0.0,
+						"energy": db_energy if db_energy is not None else 0.0,
+						"spectral_centroid": (
+							db_centroid if db_centroid is not None else 0.0
+						),
+						"fingerprint": db_fingerprint,
 					}
 		except Exception as e:
 			logger.warning(f"No pude cargar la caché de la DB (capaz está vacía): {e}")
@@ -1183,9 +1348,15 @@ class APIState:
 			[]
 		)  # Guardamos acá los nuevos para hacer un solo INSERT masivo
 
+		seen_track_ids = set()
+		new_tracks_for_reconciliation = []
+
 		for i, f in enumerate(raw_files):
-			if i > 0 and i % 100 == 0:
+			if i > 0 and i % 50 == 0:
 				logger.info(f"Ya procesé la data de {i}/{len(raw_files)} joyitas...")
+				# EL CAMIÓN DE LA BASURA: Forzamos a Python a cerrar todos los archivos temporales
+				# de librosa/mutagen para que no nos coma los File Descriptors (Límite del OS).
+				gc.collect()
 
 			file_str = str(f)
 			try:
@@ -1202,12 +1373,18 @@ class APIState:
 			):
 				track_dict = self.track_cache_by_path[file_str]["data"]
 				track_hash = track_dict.get("track_hash")
+				seen_track_ids.add(track_hash)
 
 			# 2. Miramos si está intacto en la DB (arranque de servidor)
 			elif (
 				file_str in db_cache
 				and db_cache[file_str]["mtime"] == current_mtime
 				and db_cache[file_str]["file_size"] == current_size
+				and db_cache[file_str].get("bpm") is not None
+				# Chequeo mágico: si el BPM es 0.0, es porque antes se rompió por los archivos
+				# abiertos o el usuario apenas había creado las columnas. Obligamos a recalcular.
+				and db_cache[file_str].get("bpm") != 0.0
+				and db_cache[file_str].get("fingerprint") is not None
 			):
 				cached = db_cache[file_str]
 				track_hash = cached["track_hash"]
@@ -1221,7 +1398,12 @@ class APIState:
 					"title": cached["title"],
 					"artist": cached["artist"],
 					"track_hash": track_hash,
+					"bpm": cached["bpm"],
+					"energy": cached["energy"],
+					"spectral_centroid": cached["spectral_centroid"],
+					"fingerprint": cached.get("fingerprint"),
 				}
+				seen_track_ids.add(track_hash)
 
 			# 3. NO HAY CACHÉ VALIDA: Leemos los metadatos y calculamos el hash desde cero
 			else:
@@ -1241,14 +1423,127 @@ class APIState:
 						track_dict["duration_str"],
 						current_mtime,
 						current_size,
+						track_dict.get("bpm", 0.0),
+						track_dict.get("energy", 0.0),
+						track_dict.get("spectral_centroid", 0.0),
+						track_obj.fingerprint
 					)
 				)
+				seen_track_ids.add(track_hash)
+				if track_obj.fingerprint:
+					new_tracks_for_reconciliation.append(track_dict)
 
 			new_cache[file_str] = {"mtime": current_mtime, "data": track_dict}
 			tracks.append(track_dict)
 
 			self.id_to_current_path[track_hash] = file_str
 			self.path_to_id[file_str] = track_hash
+
+		# --- RECONCILIACIÓN DE HUELLAS ACÚSTICAS ---
+		# Si un archivo se reemplazó (ej. MP3 a FLAC) o se le metió una tapa (cambió tamaño),
+		# su viejo "track_hash" va a faltar y va a haber uno nuevo para la misma canción.
+		missing_db_tracks = [t for t in db_cache.values() if t["track_hash"] not in seen_track_ids]
+
+		if missing_db_tracks and new_tracks_for_reconciliation:
+			logger.info(f"🔎 Reconciliando {len(new_tracks_for_reconciliation)} temas nuevos con {len(missing_db_tracks)} temas desaparecidos...")
+
+			def parse_fp(fp_str):
+				if not fp_str: return None
+				try:
+					return [int(x) for x in fp_str.split(",")]
+				except:
+					return None
+
+			def compare_fps(fp1, fp2):
+				if not fp1 or not fp2: return 0.0
+				min_len = min(len(fp1), len(fp2))
+				if min_len < 10: return 0.0
+
+				diff_bits = sum(bin((fp1[i] ^ fp2[i]) & 0xFFFFFFFF).count('1') for i in range(min_len))
+				return 1.0 - (diff_bits / (min_len * 32))
+
+			for new_t in new_tracks_for_reconciliation:
+				new_fp = parse_fp(new_t.get("fingerprint"))
+				if not new_fp: continue
+
+				best_match = None
+				best_sim = 0.0
+
+				for miss_t in missing_db_tracks:
+					miss_fp = parse_fp(miss_t.get("fingerprint"))
+					if not miss_fp: continue
+
+					sim = compare_fps(new_fp, miss_fp)
+					if sim > best_sim:
+						best_sim = sim
+						best_match = miss_t
+
+				# Si hay similitud acústica del 85% o más, asumimos que es exactamente la misma canción
+				if best_sim > 0.85:
+					old_id = best_match["track_hash"]
+					new_id = new_t["track_hash"]
+					logger.info(f"✨ ¡Migración detectada! '{new_t['display_title']}' reemplaza a '{best_match['title']}' (Similitud: {best_sim:.2%}) -> Conservando favoritos e historial.")
+
+					new_t["track_hash"] = old_id
+
+					# Actualizar la lista principal
+					for trk in tracks:
+						if trk["path"] == new_t["path"]:
+							trk["track_hash"] = old_id
+							break
+
+					# Actualizar las tuplas por insertarse para que se sobreescriba el ID viejo con la ruta nueva
+					for idx, ins_tuple in enumerate(tracks_to_insert):
+						if ins_tuple[1] == new_t["path"]:
+							l = list(ins_tuple)
+							l[0] = old_id
+							tracks_to_insert[idx] = tuple(l)
+							break
+
+					# Actualizar los mapas rápidos de búsqueda
+					self.id_to_current_path[old_id] = new_t["path"]
+					self.path_to_id[new_t["path"]] = old_id
+					if new_id in self.id_to_current_path:
+						del self.id_to_current_path[new_id]
+
+					seen_track_ids.add(old_id)
+					missing_db_tracks.remove(best_match)
+
+		# --- CALCULAMOS EL MOOD SCORE (normalizado contra el resto de la librería) ---
+		def _normalize(val, values):
+			if val <= 0 or not values:
+				return 0.5
+			lo, hi = min(values), max(values)
+			if hi - lo < 1e-9:
+				return 0.5
+			return (val - lo) / (hi - lo)
+
+		if tracks:
+			# Filtramos los que dieron error (-1.0) para que no rompan las matemáticas de promedios
+			valid_bpms = [t.get("bpm", -1.0) for t in tracks if t.get("bpm", -1.0) > 0]
+			valid_energies = [
+				t.get("energy", -1.0) for t in tracks if t.get("energy", -1.0) > 0
+			]
+			valid_centroids = [
+				t.get("spectral_centroid", -1.0)
+				for t in tracks
+				if t.get("spectral_centroid", -1.0) > 0
+			]
+
+			# Peso mayor al tempo, energía (RMS) le sigue de cerca, brillo espectral desempata
+			for t in tracks:
+				b = t.get("bpm", -1.0)
+				e = t.get("energy", -1.0)
+				c = t.get("spectral_centroid", -1.0)
+
+				# Si falló al escanear o no tiene audio, le clavamos 0.0 y lo tiramos al fondo
+				if b <= 0:
+					t["mood_score"] = 0.0
+				else:
+					nb = _normalize(b, valid_bpms)
+					ne = _normalize(e, valid_energies)
+					nc = _normalize(c, valid_centroids)
+					t["mood_score"] = round(0.5 * nb + 0.35 * ne + 0.15 * nc, 4)
 
 		self.track_cache_by_path = new_cache
 
@@ -1258,8 +1553,8 @@ class APIState:
 				with sqlite3.connect(DB_PATH) as conn:
 					conn.executemany(
 						"""
-						INSERT OR REPLACE INTO tracks (track_id, path, title, album, artist, duration_str, mtime, file_size)
-						VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+						INSERT OR REPLACE INTO tracks (track_id, path, title, album, artist, duration_str, mtime, file_size, bpm, energy, spectral_centroid, fingerprint)
+						VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 					""",
 						tracks_to_insert,
 					)
@@ -1757,6 +2052,9 @@ async def lifespan(app: FastAPI):
 	# Startup logic - Arrancamos MPV DESPUÉS de saber si DBus funciona para pasarle los flags correctos
 	await state.mpv.start()
 
+	# Hacemos el backup semanal de la base de datos (por si las moscas)
+	await asyncio.to_thread(backup_db)
+
 	# Le metemos un escaneo de fondo para que ya tenga todo cacheado al inicio
 	asyncio.create_task(scan_library())
 
@@ -2161,7 +2459,9 @@ async def websocket_endpoint(websocket: WebSocket):
 					# Solo sincronizamos si la deriva *cambió* significativamente,
 					# para no spamear a MPV cuando la diferencia es estable.
 					if abs(state.time_pos - new_pos) > 5.0:
-						current_drift = new_pos - state.time_pos  # positivo = local va adelante
+						current_drift = (
+							new_pos - state.time_pos
+						)  # positivo = local va adelante
 						if (
 							state.last_seek_drift is None
 							or abs(current_drift - state.last_seek_drift) > 1.0

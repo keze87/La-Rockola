@@ -712,6 +712,9 @@
 				<button @click="sortLibrary('shuffle', false)"
 					class="bg-gray-800 hover:bg-gray-700 text-white px-5 py-2 rounded-full font-medium active:scale-95 transition flex items-center gap-2"><i
 						class="material-icons">shuffle</i> Mezcladito (A lo loco)</button>
+				<button @click="sortLibrary('mood')"
+					class="bg-gray-800 hover:bg-gray-700 text-white px-5 py-2 rounded-full font-medium active:scale-95 transition flex items-center gap-2"><i
+						class="material-icons">bolt</i> Más Manija</button>
 			</div>
 
 			<div class="text-center font-bold text-carpincho-secondary mb-4 uppercase tracking-wider text-sm">
@@ -1678,6 +1681,15 @@
 						this.currentTracks.sort((a, b) => {
 							const cmp = (a.artist || '').localeCompare(b.artist || '');
 							return cmp === 0 ? (a.title || '').localeCompare(b.title || '') : cmp;
+						});
+					} else if (type === 'mood') {
+						// Ordenamos por la vibra (Mood) del audio
+						const url = new URL(window.location);
+						url.searchParams.delete('vibra');
+						window.history.pushState({}, '', url);
+
+						this.currentTracks.sort((a, b) => {
+							return (b.mood_score || 0) - (a.mood_score || 0); // Descendente: más rápidos/arriba primero
 						});
 					} else if (type === 'shuffle') {
 						let seed;
