@@ -9,13 +9,19 @@ def check_dependencies():
 	Revisa que esté todo piola para arrancar la Rockola del Carpincho.
 	Falla temprano pero con buena onda si falta algo.
 	"""
-	missing_python = []
-	# Define expected Python packages and their installation hints
-	python_deps = {
+	missing_req_py = []
+	missing_opt_py = []
+
+	# Paquetes vitales para que el servidor exista
+	required_python = {
 		"fastapi": "pip install fastapi",
 		"uvicorn": "pip install uvicorn",
 		"mutagen": "pip install mutagen",
 		"pydantic": "pip install pydantic",
+	}
+
+	# Paquetes que suman magia pero no son de vida o muerte
+	optional_python = {
 		"librosa": "pip install librosa (para el análisis de mood/BPM)",
 	}
 
@@ -24,14 +30,21 @@ def check_dependencies():
 
 	# Solo en Linux pedimos DBus para controlar los botones multimedia
 	if not is_win and not is_mac:
-		python_deps["dbus_next"] = "pip install dbus-next"
+		optional_python["dbus_next"] = "pip install dbus-next (para teclas multimedia)"
 
-	for module, fix in python_deps.items():
+	for module, fix in required_python.items():
 		if importlib.util.find_spec(module) is None:
-			missing_python.append((module, fix))
+			missing_req_py.append((module, fix))
 
-	missing_system = []
-	system_deps = {
+	for module, fix in optional_python.items():
+		if importlib.util.find_spec(module) is None:
+			missing_opt_py.append((module, fix))
+
+	missing_req_sys = []
+	missing_opt_sys = []
+
+	# El reproductor es sí o sí
+	required_system = {
 		"mpv": (
 			"winget install mpv"
 			if is_win
@@ -41,31 +54,51 @@ def check_dependencies():
 				else "sudo apt install mpv (o lo que use tu distro)"
 			)
 		),
-		"yt-dlp": "pip install yt-dlp (o bajate el binario de https://github.com/yt-dlp/yt-dlp)",
 	}
 
-	for bin_name, fix in system_deps.items():
-		if shutil.which(bin_name) is None:
-			missing_system.append((bin_name, fix))
+	# yt-dlp es solo si querés reproducir cosas de YouTube
+	optional_system = {
+		"yt-dlp": "pip install yt-dlp (para reproducir temas de YouTube/Internet)",
+	}
 
-	# Si falta algo, frenamos acá y le decimos al usuario qué onda
-	if missing_python or missing_system:
+	for bin_name, fix in required_system.items():
+		if shutil.which(bin_name) is None:
+			missing_req_sys.append((bin_name, fix))
+
+	for bin_name, fix in optional_system.items():
+		if shutil.which(bin_name) is None:
+			missing_opt_sys.append((bin_name, fix))
+
+	# Tiramos un aviso si falta algo opcional, pero seguimos adelante
+	if missing_opt_py or missing_opt_sys:
+		print(
+			"🦦 Ojo al piojo: Faltan algunas cositas opcionales. La Rockola arranca igual, pero con menos magia:",
+			file=sys.stderr,
+		)
+		for mod, fix in missing_opt_py:
+			print(f"  - [Opcional] {mod:<10} -> {fix}", file=sys.stderr)
+		for bin_name, fix in missing_opt_sys:
+			print(f"  - [Opcional] {bin_name:<10} -> {fix}", file=sys.stderr)
+		print("", file=sys.stderr)
+
+	# Si falta algo REQUERIDO, frenamos acá
+	if missing_req_py or missing_req_sys:
 		print(
 			"🦦 ¡Pará un cacho, che! La Rockola del Carpincho no puede arrancar así 🧉\n",
 			file=sys.stderr,
 		)
 
-		if missing_python:
+		if missing_req_py:
 			print("📦 Paquetes de Python que faltan en la ronda:", file=sys.stderr)
-			for mod, fix in missing_python:
+			for mod, fix in missing_req_py:
 				print(f"  - {mod:<10} -> Mandale un: {fix}", file=sys.stderr)
 
-		if missing_system:
+		if missing_req_sys:
 			print(
 				"\n🛠️ Herramientas del sistema (sin esto el carpincho no canta):",
 				file=sys.stderr,
 			)
-			for bin_name, fix in missing_system:
+			for bin_name, fix in missing_req_sys:
 				print(f"  - {bin_name:<10} -> Fijate con: {fix}", file=sys.stderr)
 
 		print(
@@ -781,8 +814,9 @@ class AsyncMpvController:
 			if self.is_windows:
 				# Direct file write for Windows Named Pipes
 				def write_pipe():
-					with open(self.socket_path, "a+b") as pipe:
+					with open(self.socket_path, "r+b") as pipe:
 						pipe.write(cmd_bytes)
+						pipe.flush()
 
 				await asyncio.to_thread(write_pipe)
 			else:
@@ -799,8 +833,9 @@ class AsyncMpvController:
 				if self.is_windows:
 
 					def write_pipe_retry():
-						with open(self.socket_path, "a+b") as pipe:
+						with open(self.socket_path, "r+b") as pipe:
 							pipe.write(cmd_bytes)
+							pipe.flush()
 
 					await asyncio.to_thread(write_pipe_retry)
 				else:
