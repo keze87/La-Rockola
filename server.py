@@ -114,6 +114,7 @@ check_dependencies()
 # --- 2. AHORA SÍ, IMPORTAMOS TRANQUIS ---
 import argparse
 import asyncio
+import gc
 import hashlib
 import json
 import logging
@@ -121,16 +122,16 @@ import os
 import random
 import re
 import sqlite3
+import subprocess
 import tempfile
 import time
 import uvicorn
-import gc
 import warnings
-import subprocess
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
-from fastapi.responses import FileResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, Response
+from fastapi.staticfiles import StaticFiles
 from mutagen import File as MutagenFile
 from pathlib import Path
 from pydantic import BaseModel
@@ -1461,7 +1462,7 @@ class APIState:
 						track_dict.get("bpm", 0.0),
 						track_dict.get("energy", 0.0),
 						track_dict.get("spectral_centroid", 0.0),
-						track_obj.fingerprint
+						track_obj.fingerprint,
 					)
 				)
 				seen_track_ids.add(track_hash)
@@ -1477,36 +1478,48 @@ class APIState:
 		# --- RECONCILIACIÓN DE HUELLAS ACÚSTICAS ---
 		# Si un archivo se reemplazó (ej. MP3 a FLAC) o se le metió una tapa (cambió tamaño),
 		# su viejo "track_hash" va a faltar y va a haber uno nuevo para la misma canción.
-		missing_db_tracks = [t for t in db_cache.values() if t["track_hash"] not in seen_track_ids]
+		missing_db_tracks = [
+			t for t in db_cache.values() if t["track_hash"] not in seen_track_ids
+		]
 
 		if missing_db_tracks and new_tracks_for_reconciliation:
-			logger.info(f"🔎 Reconciliando {len(new_tracks_for_reconciliation)} temas nuevos con {len(missing_db_tracks)} temas desaparecidos...")
+			logger.info(
+				f"🔎 Reconciliando {len(new_tracks_for_reconciliation)} temas nuevos con {len(missing_db_tracks)} temas desaparecidos..."
+			)
 
 			def parse_fp(fp_str):
-				if not fp_str: return None
+				if not fp_str:
+					return None
 				try:
 					return [int(x) for x in fp_str.split(",")]
 				except:
 					return None
 
 			def compare_fps(fp1, fp2):
-				if not fp1 or not fp2: return 0.0
+				if not fp1 or not fp2:
+					return 0.0
 				min_len = min(len(fp1), len(fp2))
-				if min_len < 10: return 0.0
+				if min_len < 10:
+					return 0.0
 
-				diff_bits = sum(bin((fp1[i] ^ fp2[i]) & 0xFFFFFFFF).count('1') for i in range(min_len))
+				diff_bits = sum(
+					bin((fp1[i] ^ fp2[i]) & 0xFFFFFFFF).count("1")
+					for i in range(min_len)
+				)
 				return 1.0 - (diff_bits / (min_len * 32))
 
 			for new_t in new_tracks_for_reconciliation:
 				new_fp = parse_fp(new_t.get("fingerprint"))
-				if not new_fp: continue
+				if not new_fp:
+					continue
 
 				best_match = None
 				best_sim = 0.0
 
 				for miss_t in missing_db_tracks:
 					miss_fp = parse_fp(miss_t.get("fingerprint"))
-					if not miss_fp: continue
+					if not miss_fp:
+						continue
 
 					sim = compare_fps(new_fp, miss_fp)
 					if sim > best_sim:
@@ -1517,7 +1530,9 @@ class APIState:
 				if best_sim > 0.85:
 					old_id = best_match["track_hash"]
 					new_id = new_t["track_hash"]
-					logger.info(f"✨ ¡Migración detectada! '{new_t['display_title']}' reemplaza a '{best_match['title']}' (Similitud: {best_sim:.2%}) -> Conservando favoritos e historial.")
+					logger.info(
+						f"✨ ¡Migración detectada! '{new_t['display_title']}' reemplaza a '{best_match['title']}' (Similitud: {best_sim:.2%}) -> Conservando favoritos e historial."
+					)
 
 					new_t["track_hash"] = old_id
 
@@ -2111,14 +2126,40 @@ app.add_middleware(
 	allow_headers=["*"],
 )
 
+# Definimos las rutas a la carpeta 'dist' que genera Vite
+base_dir = Path(__file__).resolve().parent
+frontend_dir = base_dir
+dist_dir = frontend_dir / "dist"
+assets_dir = dist_dir / "assets"
 
-# --- Serving the HTML File ---
+# Montamos la carpeta de assets generada por Vite
+# Es fundamental montar "/assets" para que el index.html encuentre el CSS/JS
+if assets_dir.exists():
+	app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+
+# 1. Automatizar 'npm run build' antes de que el servidor responda
+def build_frontend():
+	if frontend_dir.exists() and (frontend_dir / "package.json").exists():
+		print("🛠️ Ejecutando 'npm run build' en La Rockola del Carpincho...")
+		try:
+			# Ejecuta el comando dentro de la carpeta del frontend
+			subprocess.run(["npm", "run", "build"], cwd=str(frontend_dir), check=True)
+			print("✨ Build completado con éxito.")
+		except subprocess.CalledProcessError as e:
+			print(f"❌ Error al compilar el frontend: {e}")
+	else:
+		print("⚠️ No se encontró la carpeta del frontend o el package.json.")
+
+
+# Corremos el build al levantar el script
+build_frontend()
+
+
+# Servimos el HTML principal
 @app.get("/")
 async def serve_index():
-	# Get the absolute directory where server.py is located
-	base_dir = Path(__file__).resolve().parent
-
-	html_path = base_dir / "index.html"
+	html_path = dist_dir / "index.html"
 
 	if not html_path.exists():
 		return {"error": f"Falta el archivo {html_path}, se me cayó el mate encima"}
@@ -2128,8 +2169,7 @@ async def serve_index():
 
 @app.get("/favicon.ico", include_in_schema=False)
 async def serve_favicon():
-	base_dir = Path(__file__).resolve().parent
-	favicon_path = base_dir / "favicon.ico"
+	favicon_path = dist_dir / "favicon.ico"
 
 	if not favicon_path.exists():
 		return {"error": f"No encuentro el favicon en {favicon_path}"}
