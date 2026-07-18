@@ -1,100 +1,102 @@
-import { ref, computed } from 'vue'
+import { ref, computed } from 'vue';
 
-const lyrics = ref([])
+const lyrics = ref([]);
 
 export function useLyrics(player) {
-	const currentLyricLine = computed(() => {
-		if (!lyrics.value || !lyrics.value.length)
-			return null;
+    const currentLyricLine = computed(() => {
+        if (!lyrics.value || !lyrics.value.length) return null;
 
-		let activeLine = " ";
-		for (let i = lyrics.value.length - 1; i >= 0; i--) {
-			// Syncs against the player's localTimePos
-			if (player.localTimePos.value >= lyrics.value[i].time) {
-				return lyrics.value[i].text;
-			}
-		}
-		return activeLine;
-	})
+        let activeLine = ' ';
+        for (let i = lyrics.value.length - 1; i >= 0; i--) {
+            // Syncs against the player's localTimePos
+            if (player.localTimePos.value >= lyrics.value[i].time) {
+                return lyrics.value[i].text;
+            }
+        }
+        return activeLine;
+    });
 
-	async function loadLyrics(path) {
-		lyrics.value = []; // Clear immediately on track change
-		if (!path || path.startsWith('http')) return;
+    async function loadLyrics(path) {
+        lyrics.value = []; // Clear immediately on track change
+        if (!path || path.startsWith('http')) return;
 
-		try {
-			const res = await fetch('/lrc?path=' + encodeURIComponent(path));
-			if (res.ok) {
-				const text = await res.text();
-				parseLrc(text);
-			}
-		} catch (err) {
-			console.error("Pifió buscando las lyrics, maestro:", err);
-		}
-	}
+        try {
+            const res = await fetch('/lrc?path=' + encodeURIComponent(path));
 
-	function parseLrc(text) {
-		const lines = text.split('\n');
-		const parsed = [];
-		const tagRegex = /\[\d{2}:\d{2}\.\d{2,3}\]/g;
+            if (res.ok) {
+                const text = await res.text();
+                parseLrc(text);
+            }
+        } catch (err) {
+            console.error('Pifió buscando las lyrics, maestro:', err);
+        }
+    }
 
-		lines.forEach(line => {
-			const tags = line.match(tagRegex);
-			if (tags) {
-				const lyricText = line.replace(tagRegex, '').trim();
-				tags.forEach(tag => {
-					const match = /\[(\d{2}):(\d{2})\.(\d{2,3})\]/.exec(tag);
-					if (match) {
-						const mins = parseInt(match[1], 10);
-						const secs = parseInt(match[2], 10);
-						const msStr = match[3];
-						const ms = parseInt(msStr, 10) * (msStr.length === 2 ? 10 : 1);
-						const timeInSeconds = mins * 60 + secs + ms / 1000;
+    function parseLrc(text) {
+        const lines = text.split('\n');
+        const parsed = [];
+        const tagRegex = /\[\d{2}:\d{2}\.\d{2,3}\]/g;
 
-						parsed.push({ time: timeInSeconds, text: lyricText || " " });
-					}
-				});
-			}
-		});
+        lines.forEach((line) => {
+            const tags = line.match(tagRegex);
 
-		// Chronological sorting
-		parsed.sort((a, b) => a.time - b.time);
+            if (tags) {
+                const lyricText = line.replace(tagRegex, '').trim();
+                tags.forEach((tag) => {
+                    const match = /\[(\d{2}):(\d{2})\.(\d{2,3})\]/.exec(tag);
 
-		const finalParsed = [];
-		for (let i = 0; i < parsed.length; i++) {
-			const current = parsed[i];
+                    if (match) {
+                        const mins = parseInt(match[1], 10);
+                        const secs = parseInt(match[2], 10);
+                        const msStr = match[3];
+                        const ms = parseInt(msStr, 10) * (msStr.length === 2 ? 10 : 1);
+                        const timeInSeconds = mins * 60 + secs + ms / 1000;
 
-			if (current.text === " ") {
-				let nextValidTime = null;
-				for (let j = i + 1; j < parsed.length; j++) {
-					if (parsed[j].text !== " ") {
-						nextValidTime = parsed[j].time;
-						break;
-					}
-				}
+                        parsed.push({ time: timeInSeconds, text: lyricText || ' ' });
+                    }
+                });
+            }
+        });
 
-				if (nextValidTime !== null) {
-					// If the instrumental gap is 2 seconds or more, keep blank space
-					if (nextValidTime - current.time >= 2) {
-						finalParsed.push(current);
-					} else if (nextValidTime - current.time >= 1) {
-						// If the gap is between 1s and 2s, insert the carpincho emoji
-						current.text = "🦦";
-						finalParsed.push(current);
-					}
-				} else {
-					finalParsed.push(current);
-				}
-			} else {
-				finalParsed.push(current);
-			}
-		}
+        // Chronological sorting
+        parsed.sort((a, b) => a.time - b.time);
 
-		lyrics.value = finalParsed;
-	}
+        const finalParsed = [];
+        for (let i = 0; i < parsed.length; i++) {
+            const current = parsed[i];
 
-	return {
-		currentLyricLine,
-		loadLyrics,
-		lyrics,
-	}
+            if (current.text === ' ') {
+                let nextValidTime = null;
+                for (let j = i + 1; j < parsed.length; j++) {
+                    if (parsed[j].text !== ' ') {
+                        nextValidTime = parsed[j].time;
+                        break;
+                    }
+                }
+
+                if (nextValidTime !== null) {
+                    // If the instrumental gap is 2 seconds or more, keep blank space
+                    if (nextValidTime - current.time >= 2) {
+                        finalParsed.push(current);
+                    } else if (nextValidTime - current.time >= 1) {
+                        // If the gap is between 1s and 2s, insert the carpincho emoji
+                        current.text = '🦦';
+                        finalParsed.push(current);
+                    }
+                } else {
+                    finalParsed.push(current);
+                }
+            } else {
+                finalParsed.push(current);
+            }
+        }
+
+        lyrics.value = finalParsed;
+    }
+
+    return {
+        currentLyricLine,
+        loadLyrics,
+        lyrics,
+    };
 }
