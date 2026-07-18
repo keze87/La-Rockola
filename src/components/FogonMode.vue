@@ -1,419 +1,419 @@
 <script setup>
-    import { computed, ref, watch } from 'vue';
-    import { usePlayer } from '../composables/usePlayer';
-    import { useLyrics } from '../composables/useLyrics';
+	import { computed, ref, watch } from 'vue';
+	import { usePlayer } from '../composables/usePlayer';
+	import { useLyrics } from '../composables/useLyrics';
 
-    const player = usePlayer();
-    const {
-        currentTrackPath,
-        djCarpinchoEnabled,
-        djNextTrack,
-        duration,
-        haptic,
-        ignoreServerTimeUntil,
-        isDraggingSeek,
-        isFogonMode,
-        isPlaying,
-        listenLocally,
-        localPlayerRef,
-        localTimePos,
-        pauseAfterPath,
-        sendCmd,
-        serverMuted,
-        showFogonVolume,
-        togglePauseAfterCurrent,
-        volume,
-    } = player;
+	const player = usePlayer();
+	const {
+		currentTrackPath,
+		djCarpinchoEnabled,
+		djNextTrack,
+		duration,
+		haptic,
+		ignoreServerTimeUntil,
+		isDraggingSeek,
+		isFogonMode,
+		isPlaying,
+		listenLocally,
+		localPlayerRef,
+		localTimePos,
+		pauseAfterPath,
+		sendCmd,
+		serverMuted,
+		showFogonVolume,
+		togglePauseAfterCurrent,
+		volume,
+	} = player;
 
-    // Pass the global player instance to our lyrics composable to sync localTimePos
-    const { currentLyricLine, loadLyrics } = useLyrics(player);
+	// Pass the global player instance to our lyrics composable to sync localTimePos
+	const { currentLyricLine, loadLyrics } = useLyrics(player);
 
-    // --- Computed Properties for Template Cleanliness ---
-    const currentCoverUrl = computed(() => {
-        if (currentTrackPath.value && !currentTrackPath.value.startsWith('http')) {
-            return '/cover?path=' + encodeURIComponent(currentTrackPath.value);
-        }
+	// --- Computed Properties for Template Cleanliness ---
+	const currentCoverUrl = computed(() => {
+		if (currentTrackPath.value && !currentTrackPath.value.startsWith('http')) {
+			return '/cover?path=' + encodeURIComponent(currentTrackPath.value);
+		}
 
-        if (
-            !currentTrackPath.value &&
-            djCarpinchoEnabled.value &&
-            djNextTrack.value &&
-            djNextTrack.value.path &&
-            !djNextTrack.value.path.startsWith('http')
-        ) {
-            return '/cover?path=' + encodeURIComponent(djNextTrack.value.path);
-        }
+		if (
+			!currentTrackPath.value &&
+			djCarpinchoEnabled.value &&
+			djNextTrack.value &&
+			djNextTrack.value.path &&
+			!djNextTrack.value.path.startsWith('http')
+		) {
+			return '/cover?path=' + encodeURIComponent(djNextTrack.value.path);
+		}
 
-        return null;
-    });
+		return null;
+	});
 
-    const fogonBgStyle = computed(() =>
-        currentCoverUrl.value ? { backgroundImage: `url('${currentCoverUrl.value}')` } : { backgroundColor: '#1f1a17' }
-    );
+	const fogonBgStyle = computed(() =>
+		currentCoverUrl.value ? { backgroundImage: `url('${currentCoverUrl.value}')` } : { backgroundColor: '#1f1a17' }
+	);
 
-    const currentTrackInfo = computed(() => {
-        if (currentTrackPath.value) {
-            const info = player.getTrackInfo(currentTrackPath.value);
-            return {
-                title: info.display_title || 'Silencio estampa',
-                artist: info.display_artist || 'Nadie',
-                isComing: false,
-            };
-        }
+	const currentTrackInfo = computed(() => {
+		if (currentTrackPath.value) {
+			const info = player.getTrackInfo(currentTrackPath.value);
+			return {
+				title: info.display_title || 'Silencio estampa',
+				artist: info.display_artist || 'Nadie',
+				isComing: false,
+			};
+		}
 
-        if (djCarpinchoEnabled.value && djNextTrack.value) {
-            return {
-                title: djNextTrack.value.display_title || djNextTrack.value.title,
-                artist: djNextTrack.value.display_artist || djNextTrack.value.artist,
-                isComing: true,
-            };
-        }
+		if (djCarpinchoEnabled.value && djNextTrack.value) {
+			return {
+				title: djNextTrack.value.display_title || djNextTrack.value.title,
+				artist: djNextTrack.value.display_artist || djNextTrack.value.artist,
+				isComing: true,
+			};
+		}
 
-        return { title: 'Silencio estampa', artist: 'Nadie', isComing: false };
-    });
+		return { title: 'Silencio estampa', artist: 'Nadie', isComing: false };
+	});
 
-    const playPauseIcon = computed(() => (isPlaying.value ? 'pause' : 'play_arrow'));
-    const muteIcon = computed(() => (serverMuted.value || volume.value == 0 ? 'volume_off' : 'volume_down'));
+	const playPauseIcon = computed(() => (isPlaying.value ? 'pause' : 'play_arrow'));
+	const muteIcon = computed(() => (serverMuted.value || volume.value == 0 ? 'volume_off' : 'volume_down'));
 
-    // Timer Button Logic
-    const isTimerActive = computed(() => pauseAfterPath.value === currentTrackPath.value && currentTrackPath.value);
-    const timerClass = computed(() => [
-        'p-2 transition active:scale-90 z-20',
-        isTimerActive.value
-            ? 'text-carpincho-warning drop-shadow-[0_0_8px_rgba(233,196,106,0.8)]'
-            : 'text-white hover:text-carpincho-warning',
-    ]);
-    const timerTitle = computed(() => (isTimerActive.value ? 'Cancelar pausa al terminar' : 'Frenar tras este tema'));
+	// Timer Button Logic
+	const isTimerActive = computed(() => pauseAfterPath.value === currentTrackPath.value && currentTrackPath.value);
+	const timerClass = computed(() => [
+		'p-2 transition active:scale-90 z-20',
+		isTimerActive.value
+			? 'text-carpincho-warning drop-shadow-[0_0_8px_rgba(233,196,106,0.8)]'
+			: 'text-white hover:text-carpincho-warning',
+	]);
+	const timerTitle = computed(() => (isTimerActive.value ? 'Cancelar pausa al terminar' : 'Frenar tras este tema'));
 
-    watch(currentTrackPath, (newPath) => {
-        loadLyrics(newPath); // Fetch and parse lyrics on track change
-    });
+	watch(currentTrackPath, (newPath) => {
+		loadLyrics(newPath); // Fetch and parse lyrics on track change
+	});
 
-    function formatTime(sec) {
-        if (!sec || isNaN(sec)) return '0:00';
+	function formatTime(sec) {
+		if (!sec || isNaN(sec)) return '0:00';
 
-        const m = Math.floor(sec / 60);
-        const s = Math.floor(sec % 60)
-            .toString()
-            .padStart(2, '0');
-        return `${m}:${s}`;
-    }
+		const m = Math.floor(sec / 60);
+		const s = Math.floor(sec % 60)
+			.toString()
+			.padStart(2, '0');
+		return `${m}:${s}`;
+	}
 
-    // --- Action Handlers ---
-    function closeFogon() {
-        isFogonMode.value = false;
-        haptic();
-    }
+	// --- Action Handlers ---
+	function closeFogon() {
+		isFogonMode.value = false;
+		haptic();
+	}
 
-    function toggleVolumePopup() {
-        showFogonVolume.value = !showFogonVolume.value;
-        haptic();
-    }
+	function toggleVolumePopup() {
+		showFogonVolume.value = !showFogonVolume.value;
+		haptic();
+	}
 
-    function togglePlay() {
-        sendCmd('pause');
-        haptic(true);
-    }
+	function togglePlay() {
+		sendCmd('pause');
+		haptic(true);
+	}
 
-    function skipPrev() {
-        sendCmd('prev');
-        haptic();
-    }
+	function skipPrev() {
+		sendCmd('prev');
+		haptic();
+	}
 
-    function skipNext() {
-        sendCmd('skip');
-        haptic();
-    }
+	function skipNext() {
+		sendCmd('skip');
+		haptic();
+	}
 
-    function toggleMute() {
-        sendCmd('set_mute', { state: !serverMuted.value });
-        haptic();
-    }
+	function toggleMute() {
+		sendCmd('set_mute', { state: !serverMuted.value });
+		haptic();
+	}
 
-    function handleTimerToggle() {
-        togglePauseAfterCurrent();
-        haptic();
-    }
+	function handleTimerToggle() {
+		togglePauseAfterCurrent();
+		haptic();
+	}
 
-    // --- Seek Drag Logic (Pointer Events) ---
-    const dragTimePos = ref(0);
+	// --- Seek Drag Logic (Pointer Events) ---
+	const dragTimePos = ref(0);
 
-    const progressPercent = computed(() => {
-        if (!duration.value) return 0;
+	const progressPercent = computed(() => {
+		if (!duration.value) return 0;
 
-        const current = isDraggingSeek.value ? dragTimePos.value : localTimePos.value;
-        return (current / duration.value) * 100;
-    });
+		const current = isDraggingSeek.value ? dragTimePos.value : localTimePos.value;
+		return (current / duration.value) * 100;
+	});
 
-    const formattedTimePos = computed(() => formatTime(isDraggingSeek.value ? dragTimePos.value : localTimePos.value));
-    const formattedDuration = computed(() => formatTime(duration.value));
+	const formattedTimePos = computed(() => formatTime(isDraggingSeek.value ? dragTimePos.value : localTimePos.value));
+	const formattedDuration = computed(() => formatTime(duration.value));
 
-    function startSeek(e) {
-        if (!duration.value) return;
+	function startSeek(e) {
+		if (!duration.value) return;
 
-        isDraggingSeek.value = true;
-        e.target.setPointerCapture(e.pointerId);
-        updateSeek(e);
-    }
+		isDraggingSeek.value = true;
+		e.target.setPointerCapture(e.pointerId);
+		updateSeek(e);
+	}
 
-    function moveSeek(e) {
-        if (!isDraggingSeek.value) return;
+	function moveSeek(e) {
+		if (!isDraggingSeek.value) return;
 
-        updateSeek(e);
-    }
+		updateSeek(e);
+	}
 
-    function endSeek(e) {
-        if (!isDraggingSeek.value) return;
+	function endSeek(e) {
+		if (!isDraggingSeek.value) return;
 
-        updateSeek(e);
-        isDraggingSeek.value = false;
-        e.target.releasePointerCapture(e.pointerId);
+		updateSeek(e);
+		isDraggingSeek.value = false;
+		e.target.releasePointerCapture(e.pointerId);
 
-        localTimePos.value = dragTimePos.value;
-        const t = parseFloat(localTimePos.value);
-        ignoreServerTimeUntil.value = Date.now() + 2000;
+		localTimePos.value = dragTimePos.value;
+		const t = parseFloat(localTimePos.value);
+		ignoreServerTimeUntil.value = Date.now() + 2000;
 
-        if (listenLocally.value && localPlayerRef.value) {
-            localPlayerRef.value.currentTime = t;
-            player._sendLocalPlayerUpdate?.({ time_pos: t });
-        } else {
-            sendCmd('seek_absolute', { amount: t });
-        }
-    }
+		if (listenLocally.value && localPlayerRef.value) {
+			localPlayerRef.value.currentTime = t;
+			player._sendLocalPlayerUpdate?.({ time_pos: t });
+		} else {
+			sendCmd('seek_absolute', { amount: t });
+		}
+	}
 
-    function updateSeek(e) {
-        if (!duration.value) return;
+	function updateSeek(e) {
+		if (!duration.value) return;
 
-        const el = e.currentTarget;
-        const rect = el.getBoundingClientRect();
-        // Pointer events normalize mouse and touch, so we can always just use clientX!
-        let clickX = e.clientX - rect.left;
-        clickX = Math.max(0, Math.min(clickX, rect.width));
-        dragTimePos.value = (clickX / rect.width) * duration.value;
-    }
+		const el = e.currentTarget;
+		const rect = el.getBoundingClientRect();
+		// Pointer events normalize mouse and touch, so we can always just use clientX!
+		let clickX = e.clientX - rect.left;
+		clickX = Math.max(0, Math.min(clickX, rect.width));
+		dragTimePos.value = (clickX / rect.width) * duration.value;
+	}
 
-    // --- Volume Drag Logic (Pointer Events) ---
-    const isDraggingVol = ref(false);
-    const volPercent = computed(() => Math.min(100, (volume.value / 110) * 100));
-    const volIcon = computed(() => {
-        if (serverMuted.value || volume.value == 0) return 'volume_off';
+	// --- Volume Drag Logic (Pointer Events) ---
+	const isDraggingVol = ref(false);
+	const volPercent = computed(() => Math.min(100, (volume.value / 110) * 100));
+	const volIcon = computed(() => {
+		if (serverMuted.value || volume.value == 0) return 'volume_off';
 
-        if (volume.value <= 40) return 'volume_down';
+		if (volume.value <= 40) return 'volume_down';
 
-        return 'volume_up';
-    });
+		return 'volume_up';
+	});
 
-    function startVol(e) {
-        isDraggingVol.value = true;
-        e.target.setPointerCapture(e.pointerId);
-        updateVol(e);
-    }
+	function startVol(e) {
+		isDraggingVol.value = true;
+		e.target.setPointerCapture(e.pointerId);
+		updateVol(e);
+	}
 
-    function moveVol(e) {
-        if (!isDraggingVol.value) return;
+	function moveVol(e) {
+		if (!isDraggingVol.value) return;
 
-        updateVol(e);
-    }
+		updateVol(e);
+	}
 
-    function endVol(e) {
-        if (!isDraggingVol.value) return;
+	function endVol(e) {
+		if (!isDraggingVol.value) return;
 
-        updateVol(e);
-        isDraggingVol.value = false;
-        e.target.releasePointerCapture(e.pointerId);
-        player.setVolume();
-    }
+		updateVol(e);
+		isDraggingVol.value = false;
+		e.target.releasePointerCapture(e.pointerId);
+		player.setVolume();
+	}
 
-    function updateVol(e) {
-        const el = e.currentTarget;
-        const rect = el.getBoundingClientRect();
-        let clickX = e.clientX - rect.left;
-        clickX = Math.max(0, Math.min(clickX, rect.width));
-        volume.value = Math.round((clickX / rect.width) * 110);
+	function updateVol(e) {
+		const el = e.currentTarget;
+		const rect = el.getBoundingClientRect();
+		let clickX = e.clientX - rect.left;
+		clickX = Math.max(0, Math.min(clickX, rect.width));
+		volume.value = Math.round((clickX / rect.width) * 110);
 
-        if (serverMuted.value && volume.value > 0) sendCmd('set_mute', { state: false });
-    }
+		if (serverMuted.value && volume.value > 0) sendCmd('set_mute', { state: false });
+	}
 </script>
 
 <template>
-    <transition name="fogon">
-        <div
-            v-if="isFogonMode"
-            class="fixed inset-0 z-[10000] flex flex-col items-center justify-center bg-black bg-cover bg-center p-6 text-white"
-            :style="fogonBgStyle"
-        >
-            <!-- Background Overlay -->
-            <div class="pointer-events-none absolute inset-0 bg-black/80 backdrop-blur-xl" />
+	<transition name="fogon">
+		<div
+			v-if="isFogonMode"
+			class="fixed inset-0 z-[10000] flex flex-col items-center justify-center bg-black bg-cover bg-center p-6 text-white"
+			:style="fogonBgStyle"
+		>
+			<!-- Background Overlay -->
+			<div class="pointer-events-none absolute inset-0 bg-black/80 backdrop-blur-xl" />
 
-            <!-- Volume Popup Overlay Layer (Moved outside controls for predictable stacking) -->
-            <div v-if="showFogonVolume" class="fixed inset-0 z-10" @click="showFogonVolume = false" />
+			<!-- Volume Popup Overlay Layer (Moved outside controls for predictable stacking) -->
+			<div v-if="showFogonVolume" class="fixed inset-0 z-10" @click="showFogonVolume = false" />
 
-            <div class="relative z-20 flex w-full max-w-md flex-col items-center text-center">
-                <button
-                    aria-label="Cerrar vista de fogón"
-                    class="absolute -top-16 right-0 p-2 text-gray-400 transition hover:text-white"
-                    @click="closeFogon"
-                >
-                    <i class="material-icons !text-4xl">keyboard_arrow_down</i>
-                </button>
+			<div class="relative z-20 flex w-full max-w-md flex-col items-center text-center">
+				<button
+					aria-label="Cerrar vista de fogón"
+					class="absolute -top-16 right-0 p-2 text-gray-400 transition hover:text-white"
+					@click="closeFogon"
+				>
+					<i class="material-icons !text-4xl">keyboard_arrow_down</i>
+				</button>
 
-                <!-- Album Art -->
-                <div
-                    class="bg-carpincho-bg mb-8 flex h-64 w-64 items-center justify-center overflow-hidden rounded-2xl shadow-[0_10px_50px_rgba(0,0,0,0.8)] md:h-80 md:w-80"
-                >
-                    <img
-                        v-if="currentCoverUrl"
-                        :src="currentCoverUrl"
-                        alt="Portada del álbum"
-                        draggable="false"
-                        loading="eager"
-                        class="h-full w-full object-cover"
-                    />
-                    <i v-else class="material-icons text-carpincho-warning !text-[8rem]">album</i>
-                </div>
+				<!-- Album Art -->
+				<div
+					class="bg-carpincho-bg mb-8 flex h-64 w-64 items-center justify-center overflow-hidden rounded-2xl shadow-[0_10px_50px_rgba(0,0,0,0.8)] md:h-80 md:w-80"
+				>
+					<img
+						v-if="currentCoverUrl"
+						:src="currentCoverUrl"
+						alt="Portada del álbum"
+						draggable="false"
+						loading="eager"
+						class="h-full w-full object-cover"
+					/>
+					<i v-else class="material-icons text-carpincho-warning !text-[8rem]">album</i>
+				</div>
 
-                <!-- Track Info -->
-                <h1 class="mb-2 w-full truncate px-4 text-3xl font-bold">
-                    <span
-                        v-if="currentTrackInfo.isComing"
-                        class="text-carpincho-warning mb-2 block animate-pulse text-sm tracking-widest uppercase"
-                    >
-                        🦦 Se viene...
-                    </span>
-                    {{ currentTrackInfo.title }}
-                </h1>
-                <h2 class="text-carpincho-secondary w-full truncate px-4 text-xl">
-                    {{ currentTrackInfo.artist }}
-                </h2>
+				<!-- Track Info -->
+				<h1 class="mb-2 w-full truncate px-4 text-3xl font-bold">
+					<span
+						v-if="currentTrackInfo.isComing"
+						class="text-carpincho-warning mb-2 block animate-pulse text-sm tracking-widest uppercase"
+					>
+						🦦 Se viene...
+					</span>
+					{{ currentTrackInfo.title }}
+				</h1>
+				<h2 class="text-carpincho-secondary w-full truncate px-4 text-xl">
+					{{ currentTrackInfo.artist }}
+				</h2>
 
-                <!-- Custom Seek Bar -->
-                <div
-                    v-show="currentTrackPath"
-                    class="text-carpincho-secondary mt-6 flex w-full items-center gap-4 px-6 text-xs font-medium select-none"
-                >
-                    <span class="w-10 shrink-0 text-right">{{ formattedTimePos }}</span>
+				<!-- Custom Seek Bar -->
+				<div
+					v-show="currentTrackPath"
+					class="text-carpincho-secondary mt-6 flex w-full items-center gap-4 px-6 text-xs font-medium select-none"
+				>
+					<span class="w-10 shrink-0 text-right">{{ formattedTimePos }}</span>
 
-                    <div
-                        class="group flex h-10 w-full cursor-pointer touch-none items-center"
-                        @pointerdown="startSeek"
-                        @pointermove="moveSeek"
-                        @pointerup="endSeek"
-                        @pointercancel="endSeek"
-                    >
-                        <div class="pointer-events-none relative h-1.5 w-full rounded-full bg-gray-600/50">
-                            <div
-                                class="bg-carpincho-warning absolute top-0 left-0 h-full rounded-full"
-                                :style="{ width: progressPercent + '%' }"
-                            />
-                            <div
-                                class="bg-carpincho-warning absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full shadow transition-transform group-active:scale-125"
-                                :style="{ left: progressPercent + '%', marginLeft: '-8px' }"
-                            />
-                        </div>
-                    </div>
+					<div
+						class="group flex h-10 w-full cursor-pointer touch-none items-center"
+						@pointerdown="startSeek"
+						@pointermove="moveSeek"
+						@pointerup="endSeek"
+						@pointercancel="endSeek"
+					>
+						<div class="pointer-events-none relative h-1.5 w-full rounded-full bg-gray-600/50">
+							<div
+								class="bg-carpincho-warning absolute top-0 left-0 h-full rounded-full"
+								:style="{ width: progressPercent + '%' }"
+							/>
+							<div
+								class="bg-carpincho-warning absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full shadow transition-transform group-active:scale-125"
+								:style="{ left: progressPercent + '%', marginLeft: '-8px' }"
+							/>
+						</div>
+					</div>
 
-                    <span class="w-10 shrink-0">{{ formattedDuration }}</span>
-                </div>
+					<span class="w-10 shrink-0">{{ formattedDuration }}</span>
+				</div>
 
-                <!-- Controls -->
-                <div class="relative z-30 mt-8 flex w-full items-center justify-center gap-4 px-4 sm:gap-6">
-                    <button
-                        aria-label="Ajustar volumen"
-                        class="hover:text-carpincho-warning z-20 p-2 text-white transition active:scale-90"
-                        @click="toggleVolumePopup"
-                    >
-                        <i class="material-icons !text-3xl">{{ volIcon }}</i>
-                    </button>
+				<!-- Controls -->
+				<div class="relative z-30 mt-8 flex w-full items-center justify-center gap-4 px-4 sm:gap-6">
+					<button
+						aria-label="Ajustar volumen"
+						class="hover:text-carpincho-warning z-20 p-2 text-white transition active:scale-90"
+						@click="toggleVolumePopup"
+					>
+						<i class="material-icons !text-3xl">{{ volIcon }}</i>
+					</button>
 
-                    <button
-                        aria-label="Pista anterior"
-                        class="hover:text-carpincho-warning z-20 p-1 text-white transition active:scale-90"
-                        @click="skipPrev"
-                    >
-                        <i class="material-icons !text-4xl sm:!text-5xl">skip_previous</i>
-                    </button>
+					<button
+						aria-label="Pista anterior"
+						class="hover:text-carpincho-warning z-20 p-1 text-white transition active:scale-90"
+						@click="skipPrev"
+					>
+						<i class="material-icons !text-4xl sm:!text-5xl">skip_previous</i>
+					</button>
 
-                    <button
-                        :aria-label="isPlaying ? 'Pausar' : 'Reproducir'"
-                        class="bg-carpincho-primary hover:bg-carpincho-secondary z-20 flex h-20 w-20 shrink-0 items-center justify-center rounded-full text-white shadow-[0_0_30px_rgba(166,124,82,0.4)] transition active:scale-90"
-                        @click="togglePlay"
-                    >
-                        <i class="material-icons !text-5xl">{{ playPauseIcon }}</i>
-                    </button>
+					<button
+						:aria-label="isPlaying ? 'Pausar' : 'Reproducir'"
+						class="bg-carpincho-primary hover:bg-carpincho-secondary z-20 flex h-20 w-20 shrink-0 items-center justify-center rounded-full text-white shadow-[0_0_30px_rgba(166,124,82,0.4)] transition active:scale-90"
+						@click="togglePlay"
+					>
+						<i class="material-icons !text-5xl">{{ playPauseIcon }}</i>
+					</button>
 
-                    <button
-                        aria-label="Pista siguiente"
-                        class="hover:text-carpincho-warning z-20 p-1 text-white transition active:scale-90"
-                        @click="skipNext"
-                    >
-                        <i class="material-icons !text-4xl sm:!text-5xl">skip_next</i>
-                    </button>
+					<button
+						aria-label="Pista siguiente"
+						class="hover:text-carpincho-warning z-20 p-1 text-white transition active:scale-90"
+						@click="skipNext"
+					>
+						<i class="material-icons !text-4xl sm:!text-5xl">skip_next</i>
+					</button>
 
-                    <!-- Timer / Pause After Toggle -->
-                    <button :class="timerClass" :title="timerTitle" :aria-label="timerTitle" @click="handleTimerToggle">
-                        <i class="material-icons !text-3xl">timer</i>
-                    </button>
-                </div>
+					<!-- Timer / Pause After Toggle -->
+					<button :class="timerClass" :title="timerTitle" :aria-label="timerTitle" @click="handleTimerToggle">
+						<i class="material-icons !text-3xl">timer</i>
+					</button>
+				</div>
 
-                <!-- Custom Volume Bar -->
-                <div
-                    v-if="showFogonVolume"
-                    class="relative z-30 mt-8 flex w-full items-center gap-4 px-8 text-gray-300 opacity-80 transition select-none hover:opacity-100"
-                >
-                    <button aria-label="Silenciar" @click="toggleMute">
-                        <i class="material-icons cursor-pointer text-sm hover:text-white">{{ muteIcon }}</i>
-                    </button>
+				<!-- Custom Volume Bar -->
+				<div
+					v-if="showFogonVolume"
+					class="relative z-30 mt-8 flex w-full items-center gap-4 px-8 text-gray-300 opacity-80 transition select-none hover:opacity-100"
+				>
+					<button aria-label="Silenciar" @click="toggleMute">
+						<i class="material-icons cursor-pointer text-sm hover:text-white">{{ muteIcon }}</i>
+					</button>
 
-                    <div
-                        class="group flex h-10 w-full cursor-pointer touch-none items-center"
-                        :class="{ 'opacity-50': serverMuted }"
-                        @pointerdown="startVol"
-                        @pointermove="moveVol"
-                        @pointerup="endVol"
-                        @pointercancel="endVol"
-                    >
-                        <div class="pointer-events-none relative h-1.5 w-full rounded-full bg-gray-600">
-                            <div
-                                class="bg-carpincho-warning absolute top-0 left-0 h-full rounded-full"
-                                :style="{ width: volPercent + '%' }"
-                            />
-                            <div
-                                class="bg-carpincho-warning absolute top-1/2 h-5 w-5 -translate-y-1/2 rounded-full shadow transition-transform group-active:scale-125"
-                                :style="{ left: volPercent + '%', marginLeft: '-10px' }"
-                            />
-                        </div>
-                    </div>
+					<div
+						class="group flex h-10 w-full cursor-pointer touch-none items-center"
+						:class="{ 'opacity-50': serverMuted }"
+						@pointerdown="startVol"
+						@pointermove="moveVol"
+						@pointerup="endVol"
+						@pointercancel="endVol"
+					>
+						<div class="pointer-events-none relative h-1.5 w-full rounded-full bg-gray-600">
+							<div
+								class="bg-carpincho-warning absolute top-0 left-0 h-full rounded-full"
+								:style="{ width: volPercent + '%' }"
+							/>
+							<div
+								class="bg-carpincho-warning absolute top-1/2 h-5 w-5 -translate-y-1/2 rounded-full shadow transition-transform group-active:scale-125"
+								:style="{ left: volPercent + '%', marginLeft: '-10px' }"
+							/>
+						</div>
+					</div>
 
-                    <i class="material-icons text-sm" aria-hidden="true">volume_up</i>
-                </div>
+					<i class="material-icons text-sm" aria-hidden="true">volume_up</i>
+				</div>
 
-                <!-- Lyrics -->
-                <div class="mt-2 flex h-[6rem] w-full items-center justify-center overflow-hidden px-8">
-                    <transition name="lyric" mode="out-in">
-                        <p
-                            v-if="currentLyricLine"
-                            :key="currentLyricLine"
-                            class="text-carpincho-secondary text-center text-xl font-bold italic md:text-2xl"
-                        >
-                            {{ currentLyricLine }}
-                        </p>
-                    </transition>
-                </div>
-            </div>
-        </div>
-    </transition>
+				<!-- Lyrics -->
+				<div class="mt-2 flex h-[6rem] w-full items-center justify-center overflow-hidden px-8">
+					<transition name="lyric" mode="out-in">
+						<p
+							v-if="currentLyricLine"
+							:key="currentLyricLine"
+							class="text-carpincho-secondary text-center text-xl font-bold italic md:text-2xl"
+						>
+							{{ currentLyricLine }}
+						</p>
+					</transition>
+				</div>
+			</div>
+		</div>
+	</transition>
 </template>
 
 <style scoped>
-    .fogon-enter-active,
-    .fogon-leave-active {
-        transition:
-            opacity 0.5s,
-            backdrop-filter 0.5s;
-    }
+	.fogon-enter-active,
+	.fogon-leave-active {
+		transition:
+			opacity 0.5s,
+			backdrop-filter 0.5s;
+	}
 
-    .fogon-enter-from,
-    .fogon-leave-to {
-        opacity: 0;
-    }
+	.fogon-enter-from,
+	.fogon-leave-to {
+		opacity: 0;
+	}
 </style>
