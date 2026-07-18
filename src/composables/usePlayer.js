@@ -1,7 +1,10 @@
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, watchEffect } from 'vue'
+import { useVibrate, useTitle, useWebSocket } from '@vueuse/core'
+
+const { vibrate } = useVibrate()
 
 // Global state created outside the function so it is shared across all components
-const ws = ref(null)
+let wsSend = null // Reference to the VueUse websocket send function
 const isPaused = ref(false)
 const currentTrackPath = ref(null)
 const queueState = ref([])
@@ -53,98 +56,100 @@ export function usePlayer() {
 		return s ? s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() : "";
 	}
 
-	function connectWebSocket(delay = 1000) {
-		if (ws.value) {
-			ws.value.onclose = null;
-			ws.value.onmessage = null;
-			ws.value.onopen = null;
-			if (ws.value.readyState < WebSocket.CLOSING) ws.value.close();
-		}
+	function connectWebSocket() {
+		// Evitamos abrir múltiples conexiones si ya está instanciado
+		if (wsSend) return;
+
 		const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-		ws.value = new WebSocket(`${protocol}//${window.location.host}/ws`);
+		const wsUrl = `${protocol}//${window.location.host}/ws`;
 
-		ws.value.onmessage = (event) => {
-			try {
-				const data = JSON.parse(event.data);
-
-				// Local player logic events
-				if (data.type === 'local_player_seek') {
-					// Otro cliente mandó un seek — lo aplicamos al <audio> local
-					const lp = localPlayerRef.value;
-					if (lp && lp.src) {
-						const newTime = data.mode === 'absolute' ? data.amount : (lp.currentTime + data.amount);
-						lp.currentTime = Math.max(0, Math.min(newTime, lp.duration || Infinity));
-						localTimePos.value = lp.currentTime;
-						_sendLocalPlayerUpdate({ time_pos: lp.currentTime });
-					}
-					return;
+		// VueUse se encarga del auto-reconnect, backoff exponencial y limpieza
+		const { send } = useWebSocket(wsUrl, {
+			autoReconnect: {
+				retries: () => true, // Infinitos reintentos
+				delay: (retryCount) => Math.min(1000 * Math.pow(2, retryCount), 30000), // Backoff exponencial hasta 30s
+			},
+			onConnected() {
+				if (listenLocally.value) {
+					send(JSON.stringify({ type: 'local_player_claim' }));
 				}
+			},
+			onDisconnected() {
+				showToast("Se cortó la señal. Reconectando...", "warning");
+			},
+			onMessage(ws, event) {
+				try {
+					const data = JSON.parse(event.data);
 
-				if (data.type === 'local_player_claim_result') {
-					if (data.ok) {
-						// El servidor aceptó nuestro rol — mutear MPV y arrancar el reproductor local
-						sendCmd('set_mute', { state: true });
-						if (currentTrackPath.value && !currentTrackPath.value.startsWith('http')) {
-							_startLocalPlayer(currentTrackPath.value);
+					// Local player logic events
+					if (data.type === 'local_player_seek') {
+						// Otro cliente mandó un seek — lo aplicamos al <audio> local
+						const lp = localPlayerRef.value;
+						if (lp && lp.src) {
+							const newTime = data.mode === 'absolute' ? data.amount : (lp.currentTime + data.amount);
+							lp.currentTime = Math.max(0, Math.min(newTime, lp.duration || Infinity));
+							localTimePos.value = lp.currentTime;
+							_sendLocalPlayerUpdate({ time_pos: lp.currentTime });
 						}
-					} else {
-						// Otro cliente ya está reproduciendo — revertir el toggle
-						listenLocally.value = false;
-						showToast("Otro cliente ya está reproduciendo localmente.", "warning");
+						return;
 					}
-					return;
-				}
 
-				if (data.type === 'state_update') {
-					if (data.current_track !== undefined) currentTrackPath.value = data.current_track;
-					if (data.paused !== undefined) isPaused.value = data.paused;
-					if (data.queue !== undefined) queueState.value = data.queue;
-					if (data.history) historyState.value = data.history;
-					if (data.top_played) topPlayedState.value = data.top_played;
-					if (data.is_scanning !== undefined) isScanning.value = data.is_scanning;
-					if (data.dj_carpincho_enabled !== undefined) djCarpinchoEnabled.value = data.dj_carpincho_enabled;
-					if (data.dj_safe_mode !== undefined) djSafeModeEnabled.value = data.dj_safe_mode;
-					if (data.dj_next_track !== undefined) djNextTrack.value = data.dj_next_track;
-					if (data.pause_after_path !== undefined) pauseAfterPath.value = data.pause_after_path;
-					if (data.volume !== undefined) volume.value = data.volume;
-					if (data.duration !== undefined) duration.value = data.duration;
-					if (data.server_muted !== undefined) serverMuted.value = data.server_muted;
-					if (data.mpv_visible !== undefined) mpvVisible.value = data.mpv_visible;
-					if (data.favorites !== undefined) favorites.value = data.favorites;
-					if (data.url_metadata) urlMetadata.value = data.url_metadata;
+					if (data.type === 'local_player_claim_result') {
+						if (data.ok) {
+							// El servidor aceptó nuestro rol — mutear MPV y arrancar el reproductor local
+							sendCmd('set_mute', { state: true });
+							if (currentTrackPath.value && !currentTrackPath.value.startsWith('http')) {
+								_startLocalPlayer(currentTrackPath.value);
+							}
+						} else {
+							// Otro cliente ya está reproduciendo — revertir el toggle
+							listenLocally.value = false;
+							showToast("Otro cliente ya está reproduciendo localmente.", "warning");
+						}
+						return;
+					}
 
-					if (data.time_pos !== undefined) {
-						timePos.value = data.time_pos;
-						if (!listenLocally.value && Date.now() > ignoreServerTimeUntil.value) {
-							if (!isDraggingSeek.value && Math.abs(localTimePos.value - timePos.value) > 1.5) {
-								localTimePos.value = timePos.value;
+					if (data.type === 'state_update') {
+						if (data.current_track !== undefined) currentTrackPath.value = data.current_track;
+						if (data.paused !== undefined) isPaused.value = data.paused;
+						if (data.queue !== undefined) queueState.value = data.queue;
+						if (data.history) historyState.value = data.history;
+						if (data.top_played) topPlayedState.value = data.top_played;
+						if (data.is_scanning !== undefined) isScanning.value = data.is_scanning;
+						if (data.dj_carpincho_enabled !== undefined) djCarpinchoEnabled.value = data.dj_carpincho_enabled;
+						if (data.dj_safe_mode !== undefined) djSafeModeEnabled.value = data.dj_safe_mode;
+						if (data.dj_next_track !== undefined) djNextTrack.value = data.dj_next_track;
+						if (data.pause_after_path !== undefined) pauseAfterPath.value = data.pause_after_path;
+						if (data.volume !== undefined) volume.value = data.volume;
+						if (data.duration !== undefined) duration.value = data.duration;
+						if (data.server_muted !== undefined) serverMuted.value = data.server_muted;
+						if (data.mpv_visible !== undefined) mpvVisible.value = data.mpv_visible;
+						if (data.favorites !== undefined) favorites.value = data.favorites;
+						if (data.url_metadata) urlMetadata.value = data.url_metadata;
+
+						if (data.time_pos !== undefined) {
+							timePos.value = data.time_pos;
+							if (!listenLocally.value && Date.now() > ignoreServerTimeUntil.value) {
+								if (!isDraggingSeek.value && Math.abs(localTimePos.value - timePos.value) > 1.5) {
+									localTimePos.value = timePos.value;
+								}
 							}
 						}
+						if (data.library) {
+							originalTracks.value = [...data.library];
+							currentTracks.value = [...data.library];
+							const map = {};
+							data.library.forEach(t => map[t.path] = t);
+							trackMap.value = map;
+						}
 					}
-					if (data.library) {
-						originalTracks.value = [...data.library];
-						currentTracks.value = [...data.library];
-						const map = {};
-						data.library.forEach(t => map[t.path] = t);
-						trackMap.value = map;
-					}
+				} catch (e) {
+					console.error("¡Se rompió el JSON que mandó el server, fiera!", e);
 				}
-			} catch (e) {
-				console.error("¡Se rompió el JSON que mandó el server, fiera!", e);
 			}
-		};
+		});
 
-		ws.value.onopen = () => {
-			delay = 1000;
-			if (listenLocally.value) {
-				ws.value.send(JSON.stringify({ type: 'local_player_claim' }));
-			}
-		};
-
-		ws.value.onclose = () => {
-			showToast("Se cortó la señal. Reconectando...", "warning");
-			setTimeout(() => connectWebSocket(Math.min(delay * 2, 30000)), delay);
-		};
+		wsSend = send;
 	}
 
 	async function sendCmd(cmd, data = {}) {
@@ -321,15 +326,6 @@ export function usePlayer() {
 		setTimeout(() => { toasts.value = toasts.value.filter(t => t.id !== id); }, 3000);
 	}
 
-	function updateDocumentTitle() {
-		if (isPlaying.value && currentTrackPath.value) {
-			const t = getTrackInfo(currentTrackPath.value);
-			document.title = `${t.display_title} 🦦🧉`;
-		} else {
-			document.title = "La Rockola del Carpincho 🦦🧉";
-		}
-	}
-
 	// --- LOCAL PLAYER METHODS ---
 	function _startLocalPlayer(path) {
 		const lp = localPlayerRef.value;
@@ -373,38 +369,50 @@ export function usePlayer() {
 	}
 
 	function _sendLocalPlayerUpdate(payload) {
-		if (ws.value && ws.value.readyState === WebSocket.OPEN) {
-			ws.value.send(JSON.stringify({ type: 'local_player_update', ...payload }));
-		}
-	}
-
-	// --- MEDIA SESSION INTEGRATION ---
-	function updateMediaSession() {
-		if (!('mediaSession' in navigator)) return;
-		if (!currentTrackPath.value) {
-			navigator.mediaSession.metadata = null;
-			navigator.mediaSession.playbackState = "none";
-			return;
-		}
-		const info = getTrackInfo(currentTrackPath.value);
-		const artworkSrc = (!currentTrackPath.value.startsWith('http')) ? `${window.location.origin}/cover?path=${encodeURIComponent(currentTrackPath.value)}` : null;
-
-		navigator.mediaSession.metadata = new MediaMetadata({
-			title: info.display_title || 'Desconocido',
-			artist: info.display_artist || 'Desconocido',
-			album: 'La Rockola del Carpincho',
-			artwork: artworkSrc ? [{ src: artworkSrc, sizes: '512x512', type: 'image/jpeg' }] : []
-		});
-		navigator.mediaSession.playbackState = isPaused.value ? "paused" : "playing";
+		if (wsSend) wsSend(JSON.stringify({ type: 'local_player_update', ...payload }));
 	}
 
 	function haptic(heavy = false) {
-		if (navigator.vibrate) navigator.vibrate(heavy ? [10, 30, 20] : 10);
+		vibrate(heavy ? [10, 30, 20] : 10)
 	}
 
 	// --- Singleton Watchers and Timer initialization ---
 	if (!usePlayer._initialized) {
 		usePlayer._initialized = true;
+
+		const title = useTitle('La Rockola del Carpincho 🦦🧉')
+
+		// Sincronización reactiva del Título y MediaSession (reemplaza updateMediaSession y updateDocumentTitle)
+		watchEffect(() => {
+			if (currentTrackPath.value) {
+				const info = getTrackInfo(currentTrackPath.value);
+
+				// 1. Actualiza el título de la pestaña
+				if (isPlaying.value) {
+					title.value = `${info.display_title} 🦦🧉`;
+				} else {
+					title.value = 'La Rockola del Carpincho 🦦🧉';
+				}
+
+				// 2. Actualiza la metadata del dispositivo nativo (API Nativa)
+				if ('mediaSession' in navigator) {
+					const artworkSrc = (!currentTrackPath.value.startsWith('http'))
+						? `${window.location.origin}/cover?path=${encodeURIComponent(currentTrackPath.value)}`
+						: null;
+
+					navigator.mediaSession.metadata = new MediaMetadata({
+						title: info.display_title || 'Desconocido',
+						artist: info.display_artist || 'Desconocido',
+						album: 'La Rockola del Carpincho',
+						artwork: artworkSrc ? [{ src: artworkSrc, sizes: '512x512', type: 'image/jpeg' }] : []
+					});
+					navigator.mediaSession.playbackState = isPaused.value ? "paused" : "playing";
+				}
+			} else {
+				title.value = 'La Rockola del Carpincho 🦦🧉';
+				if ('mediaSession' in navigator) navigator.mediaSession.metadata = null;
+			}
+		});
 
 		// Smooth Local Progression Timer (Fires every 250ms)
 		setInterval(() => {
@@ -436,8 +444,6 @@ export function usePlayer() {
 		}
 
 		watch(currentTrackPath, (newPath, oldPath) => {
-			updateDocumentTitle();
-			updateMediaSession();
 			if (oldPath && oldPath === pauseAfterPath.value) pauseAfterPath.value = null;
 			if (listenLocally.value && localPlayerRef.value) {
 				if (newPath && !newPath.startsWith('http')) _startLocalPlayer(newPath);
@@ -445,10 +451,7 @@ export function usePlayer() {
 			}
 		});
 
-		watch(isPlaying, updateDocumentTitle);
-
 		watch(isPaused, (val) => {
-			if ('mediaSession' in navigator) navigator.mediaSession.playbackState = val ? "paused" : "playing";
 			if (listenLocally.value && localPlayerRef.value && localPlayerRef.value.src) {
 				if (val) localPlayerRef.value.pause();
 				else localPlayerRef.value.play().catch(() => { });
@@ -458,9 +461,9 @@ export function usePlayer() {
 
 		watch(listenLocally, (val) => {
 			if (val) {
-				if (ws.value && ws.value.readyState === WebSocket.OPEN) ws.value.send(JSON.stringify({ type: 'local_player_claim' }));
+				if (wsSend) wsSend(JSON.stringify({ type: 'local_player_claim' }));
 			} else {
-				if (ws.value && ws.value.readyState === WebSocket.OPEN) ws.value.send(JSON.stringify({ type: 'local_player_release' }));
+				if (wsSend) wsSend(JSON.stringify({ type: 'local_player_release' }));
 				sendCmd('set_mute', { state: false });
 				_stopLocalPlayer();
 			}
@@ -510,8 +513,6 @@ export function usePlayer() {
 		isDraggingSeek,
 		setVolume,
 		haptic,
-		updateMediaSession,
-		updateDocumentTitle,
 		toasts,
 		showToast,
 		_sendLocalPlayerUpdate,

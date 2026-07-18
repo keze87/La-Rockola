@@ -1,6 +1,7 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { usePlayer } from '../composables/usePlayer'
+import QRCode from 'qrcode.vue'
 
 const {
 	sendCmd, serverMuted, volume, setVolume, haptic, listenLocally,
@@ -8,8 +9,7 @@ const {
 	toggleMpvVisibility, mpvVisible
 } = usePlayer()
 
-const qrcodeRef = ref(null)
-const qrCreado = ref(false)
+const currentUrl = window.location.href // Easy access to the current URL
 
 // --- Volume Drag Logic ---
 const isDraggingVol = ref(false)
@@ -23,7 +23,9 @@ const volIcon = computed(() => {
 })
 
 function startVol(e) { isDraggingVol.value = true; updateVol(e); }
+
 function moveVol(e) { if (!isDraggingVol.value) return; updateVol(e); }
+
 function endVol(e) {
 	if (!isDraggingVol.value) return;
 	updateVol(e);
@@ -58,31 +60,6 @@ function toggleWebFullscreen() {
 	if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(e => console.warn(e));
 	else if (document.exitFullscreen) document.exitFullscreen();
 }
-
-// --- QR Code ---
-function generateQR() {
-	if (!qrCreado.value && qrcodeRef.value && window.QRCode) {
-		qrcodeRef.value.innerHTML = "";
-		new QRCode(qrcodeRef.value, {
-			text: window.location.href,
-			width: 200,
-			height: 200,
-			colorDark: "#2b2622",
-			colorLight: "#ffffff",
-			correctLevel: QRCode.CorrectLevel.H
-		});
-		const logo = document.createElement("img");
-		logo.src = "/favicon.ico";
-		logo.style.cssText = "position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); width:88px; height:88px; padding:4px; border-radius:8px;";
-		qrcodeRef.value.appendChild(logo);
-		qrCreado.value = true;
-	}
-}
-
-onMounted(() => {
-	// Generate QR slightly after mount to ensure the library is parsed
-	setTimeout(generateQR, 300);
-})
 </script>
 
 <template>
@@ -194,8 +171,10 @@ onMounted(() => {
 			</button>
 		</div>
 		<div class="flex justify-center gap-3 mb-8 flex-wrap">
-			<button @click="sendCmd('set_mute', { state: !serverMuted }); haptic()" :class="['px-5 py-2 rounded-full font-medium active:scale-95 transition flex items-center gap-2', serverMuted ? 'bg-red-700 hover:bg-red-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-white']">
-				<i class="material-icons">{{ serverMuted ? 'volume_off' : 'volume_up' }}</i> {{ serverMuted ? 'Desmutear' : 'Mutear' }}
+			<button @click="sendCmd('set_mute', { state: !serverMuted }); haptic()"
+				:class="['px-5 py-2 rounded-full font-medium active:scale-95 transition flex items-center gap-2', serverMuted ? 'bg-red-700 hover:bg-red-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-white']">
+				<i class="material-icons">{{ serverMuted ? 'volume_off' : 'volume_up' }}</i> {{ serverMuted ?
+					'Desmutear' : 'Mutear' }}
 			</button>
 			<button @click="loadLibrary(true)"
 				class="bg-green-700 hover:bg-green-600 text-white px-5 py-2 rounded-full font-medium active:scale-95 transition flex items-center gap-2">
@@ -212,7 +191,17 @@ onMounted(() => {
 			<i class="material-icons align-middle mr-1">qr_code_2</i> Sumate a la joda
 		</div>
 		<div class="flex flex-col items-center pb-20">
-			<div id="qrcode" ref="qrcodeRef" class="bg-white p-4 rounded-xl shadow-lg relative"></div>
+			<!-- Note the 'relative' class added here to contain the absolute image -->
+			<div class="relative bg-white p-4 rounded-xl shadow-lg flex justify-center items-center">
+
+				<!-- The Vue QR Component with your exact colors -->
+				<QRCode :value="currentUrl" :size="200" level="H" foreground="#2b2622" background="#ffffff" />
+
+				<!-- La impronta del carpincho -->
+				<img src="/favicon.ico" alt="Logo Carpincho"
+					class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[88px] h-[88px] p-1 rounded-lg" />
+
+			</div>
 			<p class="text-[#a6adc8] text-sm mt-3">Escaneá para entrar desde tu celu</p>
 		</div>
 	</section>
