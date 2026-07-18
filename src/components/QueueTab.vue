@@ -37,16 +37,20 @@ function moveQueueItem(index, target) {
 	}
 }
 
-// --- Touch & Swipe Handlers ---
-function queueTouchStart(e, index) {
+// --- Touch Handlers (Shared base for Queue & History rows) ---
+function ctxTouchStart(e, track, source, index) {
 	touchStartX = e.changedTouches[0].screenX;
 	_queueLongPressFired = false;
 	const touch = e.touches[0];
 	ctxLongPressTimer = setTimeout(() => {
 		_queueLongPressFired = true;
 		haptic(true);
-		openCtxMenu(touch, getTrackInfo(queueState.value[index]), 'queue', index);
+		openCtxMenu(touch, track, source, index);
 	}, 500);
+}
+
+function ctxTouchEnd() {
+	clearTimeout(ctxLongPressTimer);
 }
 
 function queueTouchMove(e) {
@@ -62,6 +66,7 @@ function queueTouchEnd(e, index) {
 
 	let diff = touchStartX - e.changedTouches[0].screenX;
 	let row = e.currentTarget;
+
 	if (diff > 80) {
 		haptic(true);
 		row.style.transform = "translateX(-100vw)";
@@ -154,8 +159,7 @@ function dragEnd(e) {
 					<th class="p-3 text-carpincho-primary bg-carpincho-panel w-28 text-center">Acciones</th>
 					<th class="p-3 text-carpincho-primary bg-carpincho-panel">El Temón</th>
 					<th class="p-3 text-carpincho-primary bg-carpincho-panel">De quién es</th>
-					<th class="p-3 text-carpincho-primary bg-carpincho-panel hidden sm:table-cell w-20 text-right">
-						Duración</th>
+					<th class="p-3 text-carpincho-primary bg-carpincho-panel hidden sm:table-cell w-20 text-right">Duración</th>
 				</tr>
 			</thead>
 			<tbody class="overflow-hidden">
@@ -164,14 +168,15 @@ function dragEnd(e) {
 				<tr v-for="(path, i) in historyState" :key="'hist-' + path" :data-history-path="path"
 					@click="sendCmd('jump', { type: 'history', index: i })"
 					@contextmenu.prevent="openCtxMenu($event, getTrackInfo(path), 'history', i)"
+					@touchstart="ctxTouchStart($event, getTrackInfo(path), 'history', i)" @touchend="ctxTouchEnd"
+					@touchmove="ctxTouchEnd"
 					class="border-b border-carpincho-border hover:bg-carpincho-border cursor-pointer opacity-70">
 					<td class="p-4 text-carpincho-success text-center">
 						<i class="material-icons text-sm">check</i>
 					</td>
 					<td class="p-4 max-w-[200px] truncate">{{ getTrackInfo(path).display_title }}</td>
 					<td class="p-4 text-[#a6adc8] truncate">{{ getTrackInfo(path).display_artist }}</td>
-					<td class="p-4 text-[#a6adc8] hidden sm:table-cell text-right">{{ getTrackInfo(path).duration_str }}
-					</td>
+					<td class="p-4 text-[#a6adc8] hidden sm:table-cell text-right">{{ getTrackInfo(path).duration_str }}</td>
 				</tr>
 
 				<!-- Current Track -->
@@ -191,19 +196,17 @@ function dragEnd(e) {
 					</td>
 					<td class="p-4 text-carpincho-primary font-bold max-w-[200px] truncate">{{
 						getTrackInfo(currentTrackPath).display_title }}</td>
-					<td class="p-4 text-carpincho-primary truncate">{{ getTrackInfo(currentTrackPath).display_artist }}
-					</td>
+					<td class="p-4 text-carpincho-primary truncate">{{ getTrackInfo(currentTrackPath).display_artist }}</td>
 					<td class="p-4 text-carpincho-primary hidden sm:table-cell text-right">{{
 						getTrackInfo(currentTrackPath).duration_str }}</td>
 				</tr>
 
 				<!-- Render queued items -->
 				<tr v-for="(path, i) in queueState" :key="path" :data-queue-index="i" draggable="true"
-					@dragstart="dragStart($event, i)" @dragover.prevent="dragOver($event, i)"
-					@dragleave="dragLeave($event)" @drop.prevent="dragDrop($event, i)" @dragend="dragEnd($event)"
-					@touchstart="queueTouchStart($event, i)" @touchend="queueTouchEnd($event, i)"
-					@touchmove="queueTouchMove($event)"
-					@contextmenu.prevent="openCtxMenu($event, getTrackInfo(path), 'queue', i)"
+					@dragstart="dragStart($event, i)" @dragover.prevent="dragOver($event, i)" @dragleave="dragLeave($event)"
+					@drop.prevent="dragDrop($event, i)" @dragend="dragEnd($event)"
+					@touchstart="ctxTouchStart($event, getTrackInfo(path), 'queue', i)" @touchend="queueTouchEnd($event, i)"
+					@touchmove="queueTouchMove($event)" @contextmenu.prevent="openCtxMenu($event, getTrackInfo(path), 'queue', i)"
 					class="swipe-row border-b border-carpincho-border hover:bg-carpincho-border cursor-pointer transition-all duration-200">
 
 					<!-- Actions Column -->
@@ -222,14 +225,19 @@ function dragEnd(e) {
 
 					<!-- Track Info -->
 					<td class="p-4 max-w-[200px]" @click="sendCmd('jump', { type: 'queue', index: i })">
-						<span class="truncate block">{{ getTrackInfo(path).display_title }}</span>
+						<div class="flex items-center gap-2 truncate">
+							<span class="truncate block">{{ getTrackInfo(path).display_title }}</span>
+							<i v-if="path === pauseAfterPath" class="material-icons text-carpincho-warning text-sm shrink-0"
+								title="Se frena acá">timer</i>
+						</div>
 					</td>
+
 					<td class="p-4 text-[#a6adc8]" @click="sendCmd('jump', { type: 'queue', index: i })">
 						{{ getTrackInfo(path).display_artist }}
 					</td>
+
 					<td class="p-4 text-[#a6adc8] hidden sm:table-cell text-right"
-						@click="sendCmd('jump', { type: 'queue', index: i })">{{ getTrackInfo(path).duration_str }}
-					</td>
+						@click="sendCmd('jump', { type: 'queue', index: i })">{{ getTrackInfo(path).duration_str }}</td>
 				</tr>
 
 				<!-- EMPTY STATE: Cuando no hay nada en la fila ni está sonando nada -->
@@ -249,9 +257,8 @@ function dragEnd(e) {
 							:class="{ 'animate-pulse': queueState.length === 0 }">auto_awesome</i>
 					</td>
 					<td class="p-4 italic" :class="queueState.length === 0 ? 'text-[#a6adc8]' : 'text-[#a6adc8]'">
-						{{ queueState.length === 0 ? (djNextTrack ? 'DJ Carpincho eligió: ' + djNextTrack.display_title
-							:
-							'Eligiendo...') : 'Al vaciarse la fila, entra el DJ Carpincho' }}
+						{{ queueState.length === 0 ? (djNextTrack ? 'DJ Carpincho eligió: ' + (djNextTrack.display_title ||
+							djNextTrack.title) : 'Eligiendo...') : 'Al vaciarse la fila, entra el DJ Carpincho' }}
 					</td>
 					<td class="p-4 text-[#a6adc8] italic">🦦</td>
 					<td class="p-4 text-[#a6adc8] hidden sm:table-cell text-right"></td>
@@ -293,18 +300,5 @@ tr.deleting {
 	animation: delete-flash 0.45s ease forwards;
 	pointer-events: none;
 	overflow: hidden;
-}
-
-/* Drag & Drop en la fila */
-.drag-over-top {
-	border-top: 2px solid #a67c52 !important;
-}
-
-.drag-over-bottom {
-	border-bottom: 2px solid #a67c52 !important;
-}
-
-tr.dragging {
-	opacity: 0.4;
 }
 </style>

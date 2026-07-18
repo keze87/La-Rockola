@@ -5,20 +5,36 @@ import { useLyrics } from '../composables/useLyrics'
 
 const player = usePlayer()
 const {
-	isFogonMode, currentTrackPath, isPlaying, sendCmd, haptic,
-	volume, serverMuted, duration, localTimePos, ignoreServerTimeUntil,
-	listenLocally, localPlayerRef, pauseAfterPath, togglePauseAfterCurrent
+	isFogonMode,
+	currentTrackPath,
+	isPlaying,
+	sendCmd,
+	haptic,
+	volume,
+	serverMuted,
+	duration,
+	localTimePos,
+	ignoreServerTimeUntil,
+	listenLocally,
+	localPlayerRef,
+	pauseAfterPath,
+	togglePauseAfterCurrent,
+	isDraggingSeek,
+	djCarpinchoEnabled,
+	djNextTrack,
+	showFogonVolume
 } = player
 
 // Pass the global player instance to our lyrics composable to sync localTimePos
 const { currentLyricLine, loadLyrics } = useLyrics(player)
 
-const showFogonVolume = ref(false)
-
 // --- Computed Properties for Template Cleanliness ---
 const currentCoverUrl = computed(() => {
 	if (currentTrackPath.value && !currentTrackPath.value.startsWith('http')) {
 		return '/cover?path=' + encodeURIComponent(currentTrackPath.value)
+	}
+	if (!currentTrackPath.value && djCarpinchoEnabled.value && djNextTrack.value && djNextTrack.value.path && !djNextTrack.value.path.startsWith('http')) {
+		return '/cover?path=' + encodeURIComponent(djNextTrack.value.path)
 	}
 	return null
 })
@@ -30,12 +46,22 @@ const fogonBgStyle = computed(() =>
 )
 
 const currentTrackInfo = computed(() => {
-	const info = player.getTrackInfo(currentTrackPath.value)
-	return {
-		title: info.display_title || "Silencio estampa",
-		artist: info.display_artist || "Nadie",
-		isComing: info.isComing || false
+	if (currentTrackPath.value) {
+		const info = player.getTrackInfo(currentTrackPath.value)
+		return {
+			title: info.display_title || "Silencio estampa",
+			artist: info.display_artist || "Nadie",
+			isComing: false
+		}
 	}
+	if (djCarpinchoEnabled.value && djNextTrack.value) {
+		return {
+			title: djNextTrack.value.display_title || djNextTrack.value.title,
+			artist: djNextTrack.value.display_artist || djNextTrack.value.artist,
+			isComing: true
+		}
+	}
+	return { title: "Silencio estampa", artist: "Nadie", isComing: false }
 })
 
 const playPauseIcon = computed(() => isPlaying.value ? 'pause' : 'play_arrow')
@@ -101,7 +127,6 @@ function handleTimerToggle() {
 }
 
 // --- Seek Drag Logic (Pointer Events) ---
-const isDraggingSeek = ref(false)
 const dragTimePos = ref(0)
 
 const progressPercent = computed(() => {
@@ -232,17 +257,16 @@ function updateVol(e) {
 				<!-- Album Art -->
 				<div
 					class="w-64 h-64 md:w-80 md:h-80 bg-carpincho-bg rounded-2xl shadow-[0_10px_50px_rgba(0,0,0,0.8)] mb-8 flex items-center justify-center overflow-hidden">
-					<img v-if="currentCoverUrl" :src="currentCoverUrl" alt="Portada del álbum" draggable="false"
-						loading="eager" class="w-full h-full object-cover">
+					<img v-if="currentCoverUrl" :src="currentCoverUrl" alt="Portada del álbum" draggable="false" loading="eager"
+						class="w-full h-full object-cover">
 					<i v-else class="material-icons !text-[8rem] text-carpincho-warning">album</i>
 				</div>
 
 				<!-- Track Info -->
 				<h1 class="text-3xl font-bold mb-2 truncate w-full px-4">
 					<span v-if="currentTrackInfo.isComing"
-						class="block text-sm text-carpincho-warning uppercase tracking-widest mb-2 animate-pulse">
-						🦦 Se viene...
-					</span>
+						class="block text-sm text-carpincho-warning uppercase tracking-widest mb-2 animate-pulse">🦦 Se
+						viene...</span>
 					{{ currentTrackInfo.title }}
 				</h1>
 				<h2 class="text-xl text-carpincho-secondary truncate w-full px-4">{{ currentTrackInfo.artist }}</h2>
@@ -258,7 +282,8 @@ function updateVol(e) {
 						<div class="w-full h-1.5 bg-gray-600/50 rounded-full relative pointer-events-none">
 							<div class="absolute top-0 left-0 h-full bg-carpincho-warning rounded-full"
 								:style="{ width: progressPercent + '%' }"></div>
-							<div class="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-carpincho-warning shadow group-active:scale-125 transition-transform"
+							<div
+								class="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-carpincho-warning shadow group-active:scale-125 transition-transform"
 								:style="{ left: progressPercent + '%', marginLeft: '-8px' }"></div>
 						</div>
 					</div>
@@ -303,13 +328,13 @@ function updateVol(e) {
 					</button>
 
 					<div class="w-full h-10 flex items-center group cursor-pointer touch-none"
-						:class="{ 'opacity-50': serverMuted }" @pointerdown="startVol" @pointermove="moveVol"
-						@pointerup="endVol" @pointercancel="endVol">
-
+						:class="{ 'opacity-50': serverMuted }" @pointerdown="startVol" @pointermove="moveVol" @pointerup="endVol"
+						@pointercancel="endVol">
 						<div class="w-full h-1.5 bg-gray-600 rounded-full relative pointer-events-none">
 							<div class="absolute top-0 left-0 h-full bg-carpincho-warning rounded-full"
 								:style="{ width: volPercent + '%' }"></div>
-							<div class="absolute top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-carpincho-warning shadow group-active:scale-125 transition-transform"
+							<div
+								class="absolute top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-carpincho-warning shadow group-active:scale-125 transition-transform"
 								:style="{ left: volPercent + '%', marginLeft: '-10px' }"></div>
 						</div>
 					</div>

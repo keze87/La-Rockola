@@ -1,14 +1,23 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { usePlayer } from '../composables/usePlayer'
 import { useContextMenu } from '../composables/useContextMenu'
 
 // Pull data from the global store
 const {
-	currentTracks, favorites, currentTrackPath, isPaused, sendCmd, haptic,
-	normalizeString, queueIndex, toggleFavorite, handleLibraryClick,
+	currentTracks,
+	favorites,
+	currentTrackPath,
+	isPaused,
+	sendCmd,
+	haptic,
+	normalizeString,
+	queueIndex,
+	toggleFavorite,
+	handleLibraryClick,
 	librarySearchQuery: searchQuery,
 } = usePlayer()
+
 const { openCtxMenu } = useContextMenu()
 
 // Local state for this tab only
@@ -16,6 +25,12 @@ const showFavoritesOnly = ref(false)
 const librarySection = ref(null)
 
 let ctxLongPressTimer = null
+
+watch(searchQuery, () => {
+	if (librarySection.value) {
+		librarySection.value.scrollTop = 0
+	}
+})
 
 const filteredTracks = computed(() => {
 	let tracks = currentTracks.value;
@@ -28,6 +43,7 @@ const filteredTracks = computed(() => {
 
 	const q = normalizeString(searchQuery.value);
 	const exact = [], fuzzy = [];
+
 	tracks.forEach(t => {
 		const target = normalizeString((t.artist || '') + ' ' + (t.title || ''));
 		if (target.includes(q)) {
@@ -39,7 +55,8 @@ const filteredTracks = computed(() => {
 					qIdx++;
 
 				if (qIdx === q.length) {
-					fuzzy.push(t); break;
+					fuzzy.push(t);
+					break;
 				}
 			}
 		}
@@ -65,7 +82,10 @@ function ctxTouchStart(e, track) {
 		openCtxMenu(touch, track, 'library');
 	}, 500);
 }
-function ctxTouchEnd() { clearTimeout(ctxLongPressTimer); }
+
+function ctxTouchEnd() {
+	clearTimeout(ctxLongPressTimer);
+}
 </script>
 
 <template>
@@ -95,8 +115,7 @@ function ctxTouchEnd() { clearTimeout(ctxLongPressTimer); }
 		<table class="w-full text-left border-collapse">
 			<thead>
 				<tr>
-					<th class="p-3 text-carpincho-primary bg-carpincho-panel sticky top-0 z-0 w-16 text-center">Orden
-					</th>
+					<th class="p-3 text-carpincho-primary bg-carpincho-panel sticky top-0 z-0 w-16 text-center">Orden</th>
 					<th class="p-3 text-carpincho-primary bg-carpincho-panel sticky top-0 z-0">El Temón</th>
 					<th class="p-3 text-carpincho-primary bg-carpincho-panel sticky top-0 z-0">Artista</th>
 					<th
@@ -106,8 +125,8 @@ function ctxTouchEnd() { clearTimeout(ctxLongPressTimer); }
 			</thead>
 			<tbody>
 				<tr v-for="track in filteredTracks" :key="track.path" @click="handleLibraryClick(track)"
-					@contextmenu.prevent="openCtxMenu($event, track, 'library')"
-					@touchstart="ctxTouchStart($event, track)" @touchend="ctxTouchEnd" @touchmove="ctxTouchEnd"
+					@contextmenu.prevent="openCtxMenu($event, track, 'library')" @touchstart="ctxTouchStart($event, track)"
+					@touchend="ctxTouchEnd" @touchmove="ctxTouchEnd"
 					:id="currentTrackPath === track.path ? 'current-library-row' : ''"
 					:class="['border-b border-carpincho-border hover:bg-carpincho-border cursor-pointer transition-colors active:scale-[0.98]', currentTrackPath === track.path ? 'bg-carpincho-panel' : '']">
 					<td class="p-4 text-center">
@@ -118,7 +137,6 @@ function ctxTouchEnd() { clearTimeout(ctxLongPressTimer); }
 						</div>
 						<span v-else-if="queueIndex(track.path) !== -1" class="text-carpincho-warning font-bold">{{
 							queueIndex(track.path) + 1 }}</span>
-						<span v-else class="text-gray-500">-</span>
 					</td>
 					<td class="p-4 font-medium max-w-[200px]">
 						<div class="flex items-center justify-start gap-3">
@@ -135,8 +153,8 @@ function ctxTouchEnd() { clearTimeout(ctxLongPressTimer); }
 					<td class="p-4 text-[#a6adc8] hidden sm:table-cell text-right">{{ track.duration_str }}</td>
 				</tr>
 				<tr v-if="filteredTracks.length === 0">
-					<td colspan="4" class="p-8 text-center text-carpincho-primary italic">No hay nada por acá con ese
-						nombre, fiera.</td>
+					<td colspan="4" class="p-8 text-center text-carpincho-primary italic">No hay nada por acá con ese nombre,
+						fiera.</td>
 				</tr>
 			</tbody>
 		</table>

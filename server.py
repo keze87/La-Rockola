@@ -1205,8 +1205,15 @@ class APIState:
 			"url_metadata": dict(self.url_metadata),
 			"volume": self.volume,
 		}
+
 		if include_library:
-			d["library"] = list(self.tracks_cache)
+			# Lista limpia filtrando fingerprints y métricas de mood
+			keys_to_exclude = {"fingerprint", "bpm", "energy", "spectral_centroid"}
+			d["library"] = [
+				{k: v for k, v in track.items() if k not in keys_to_exclude}
+				for track in self.tracks_cache
+			]
+
 		return d
 
 	def notify_mpris(self):
@@ -2203,7 +2210,15 @@ async def get_library():
 	"""Returns the already cached library without triggering a new disk scan."""
 	while state.is_scanning:
 		await asyncio.sleep(0.5)
-	return {"data": state.tracks_cache}
+
+	# Creamos una versión limpia de la librería filtrando el fingerprint
+	keys_to_exclude = {"fingerprint", "bpm", "energy", "spectral_centroid"}
+	clean_library = [
+		{k: v for k, v in track.items() if k not in keys_to_exclude}
+		for track in state.tracks_cache
+	]
+
+	return {"data": clean_library}
 
 
 @app.get("/scan")

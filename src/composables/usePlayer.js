@@ -44,6 +44,9 @@ const volume = ref(100)
 // MPV window visibility
 const mpvVisible = ref(true)
 
+// Fogon Mode
+const showFogonVolume = ref(false)
+
 // Toasts
 const toasts = ref([])
 let toastIdCounter = 0
@@ -154,7 +157,7 @@ export function usePlayer() {
 					console.error("¡Se rompió el JSON que mandó el server, fiera!", e);
 				}
 			}
-		});
+		})
 
 		wsSend = send;
 	}
@@ -165,7 +168,7 @@ export function usePlayer() {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({ cmd, ...data })
-			});
+			})
 
 			return await res.json();
 		} catch (err) {
@@ -232,7 +235,9 @@ export function usePlayer() {
 			const url = new URL(window.location);
 			url.searchParams.delete('vibra');
 			window.history.pushState({}, '', url);
-			currentTracks.value = [...currentTracks.value].sort((a, b) => (b.mood_score || 0) - (a.mood_score || 0));
+			currentTracks.value = [...currentTracks.value].sort((a, b) => {
+				return (b.mood_score || 0) - (a.mood_score || 0);
+			});
 		} else if (type === 'shuffle') {
 			let seed;
 			const urlParams = new URLSearchParams(window.location.search);
@@ -345,7 +350,9 @@ export function usePlayer() {
 			icon = "error"; colorClasses = "bg-red-600";
 		}
 		toasts.value.push({ id, msg, icon, colorClasses });
-		setTimeout(() => { toasts.value = toasts.value.filter(t => t.id !== id); }, 3000);
+		setTimeout(() => {
+			toasts.value = toasts.value.filter(t => t.id !== id);
+		}, 3000);
 	}
 
 	// --- LOCAL PLAYER METHODS ---
@@ -375,7 +382,9 @@ export function usePlayer() {
 		};
 
 		// Avisar al servidor cuando termina la canción
-		lp.onended = () => _sendLocalPlayerUpdate({ song_ended: true });
+		lp.onended = () => {
+			_sendLocalPlayerUpdate({ song_ended: true });
+		};
 
 		if (!isPaused.value) {
 			lp.play().catch(() => {
@@ -400,7 +409,23 @@ export function usePlayer() {
 	}
 
 	function haptic(heavy = false) {
-		vibrate(heavy ? [10, 30, 20] : 10)
+		if (navigator.vibrate) {
+			vibrate(heavy ? [10, 30, 20] : 10)
+			return
+		}
+		try {
+			const ctx = new (window.AudioContext || window.webkitAudioContext)();
+			const osc = ctx.createOscillator();
+			const gain = ctx.createGain();
+			osc.connect(gain);
+			gain.connect(ctx.destination);
+			gain.gain.setValueAtTime(heavy ? 0.03 : 0.01, ctx.currentTime);
+			gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + (heavy ? 0.05 : 0.02));
+			osc.frequency.setValueAtTime(heavy ? 200 : 400, ctx.currentTime);
+			osc.start(ctx.currentTime);
+			osc.stop(ctx.currentTime + (heavy ? 0.05 : 0.02));
+			osc.onended = () => ctx.close();
+		} catch (_) { }
 	}
 
 	// --- Singleton Watchers and Timer initialization ---
@@ -416,9 +441,9 @@ export function usePlayer() {
 
 				// 1. Actualiza el título de la pestaña
 				if (isPlaying.value) {
-					title.value = `${info.display_title} 🦦🧉`;
+					title.value = `${info.display_title} 🦦🧉`
 				} else {
-					title.value = 'La Rockola del Carpincho 🦦🧉';
+					title.value = 'La Rockola del Carpincho 🦦🧉'
 				}
 
 				// 2. Actualiza la metadata del dispositivo nativo (API Nativa)
@@ -436,7 +461,7 @@ export function usePlayer() {
 					navigator.mediaSession.playbackState = isPaused.value ? "paused" : "playing";
 				}
 			} else {
-				title.value = 'La Rockola del Carpincho 🦦🧉';
+				title.value = 'La Rockola del Carpincho 🦦🧉'
 				if ('mediaSession' in navigator)
 					navigator.mediaSession.metadata = null;
 			}
@@ -504,7 +529,7 @@ export function usePlayer() {
 				sendCmd('set_mute', { state: false });
 				_stopLocalPlayer();
 			}
-		});
+		})
 	}
 
 	return {
@@ -542,6 +567,7 @@ export function usePlayer() {
 		sendCmd,
 		serverMuted,
 		setVolume,
+		showFogonVolume,
 		showToast,
 		sortLibrary,
 		switchTab,
