@@ -51,12 +51,15 @@ function queueTouchStart(e, index) {
 
 function queueTouchMove(e) {
 	const dx = Math.abs(e.touches[0].screenX - touchStartX);
-	if (dx > 10) clearTimeout(ctxLongPressTimer);
+	if (dx > 10)
+		clearTimeout(ctxLongPressTimer);
 }
 
 function queueTouchEnd(e, index) {
 	clearTimeout(ctxLongPressTimer);
-	if (_queueLongPressFired) return;
+	if (_queueLongPressFired)
+		return;
+
 	let diff = touchStartX - e.changedTouches[0].screenX;
 	let row = e.currentTarget;
 	if (diff > 80) {
@@ -86,7 +89,8 @@ function dragStart(e, index) {
 }
 
 function dragOver(e, index) {
-	if (dragFromIndex.value === null || dragFromIndex.value === index) return;
+	if (dragFromIndex.value === null || dragFromIndex.value === index)
+		return;
 
 	const rect = e.currentTarget.getBoundingClientRect();
 	const midY = rect.top + rect.height / 2;
@@ -95,8 +99,10 @@ function dragOver(e, index) {
 	e.currentTarget.classList.remove('border-t-2', 'border-b-2', 'border-carpincho-primary');
 
 	// Add visual feedback
-	if (e.clientY < midY) e.currentTarget.classList.add('border-t-2', 'border-carpincho-primary');
-	else e.currentTarget.classList.add('border-b-2', 'border-carpincho-primary');
+	if (e.clientY < midY)
+		e.currentTarget.classList.add('border-t-2', 'border-carpincho-primary');
+	else
+		e.currentTarget.classList.add('border-b-2', 'border-carpincho-primary');
 }
 
 function dragLeave(e) {
@@ -105,13 +111,15 @@ function dragLeave(e) {
 
 function dragDrop(e, toIndex) {
 	e.currentTarget.classList.remove('border-t-2', 'border-b-2', 'border-carpincho-primary');
-	if (dragFromIndex.value === null || dragFromIndex.value === toIndex) return;
+	if (dragFromIndex.value === null || dragFromIndex.value === toIndex)
+		return;
 
 	const rect = e.currentTarget.getBoundingClientRect();
 	const midY = rect.top + rect.height / 2;
 
 	let finalIndex = e.clientY < midY ? toIndex : toIndex + 1;
-	if (finalIndex > dragFromIndex.value) finalIndex--;
+	if (finalIndex > dragFromIndex.value)
+		finalIndex--;
 
 	if (finalIndex !== dragFromIndex.value) {
 		sendCmd('move_queue_item', { index: dragFromIndex.value, new_index: finalIndex });
@@ -221,6 +229,16 @@ function dragEnd(e) {
 					</td>
 					<td class="p-4 text-[#a6adc8] hidden sm:table-cell text-right"
 						@click="sendCmd('jump', { type: 'queue', index: i })">{{ getTrackInfo(path).duration_str }}
+					</td>
+				</tr>
+
+				<!-- EMPTY STATE: Cuando no hay nada en la fila ni está sonando nada -->
+				<tr v-if="queueState.length === 0 && !currentTrackPath" class="border-b border-carpincho-border">
+					<td colspan="4" class="p-12 text-center">
+						<div class="flex flex-col items-center gap-4 text-carpincho-primary opacity-80">
+							<p class="font-bold text-lg">El Carpincho está esperando el mate...</p>
+							<p class="text-sm">Agregá música para que empiece a cantar.</p>
+						</div>
 					</td>
 				</tr>
 

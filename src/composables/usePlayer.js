@@ -5,41 +5,41 @@ const { vibrate } = useVibrate()
 
 // Global state created outside the function so it is shared across all components
 let wsSend = null // Reference to the VueUse websocket send function
-const isPaused = ref(false)
-const currentTrackPath = ref(null)
-const queueState = ref([])
-const historyState = ref([])
-const topPlayedState = ref([])
-const isFogonMode = ref(false)
-const isScanning = ref(false)
 const activeTab = ref('library')
+const currentTrackPath = ref(null)
+const historyState = ref([])
+const isFogonMode = ref(false)
+const isPaused = ref(false)
+const isScanning = ref(false)
 const librarySearchQuery = ref('')
+const queueState = ref([])
+const topPlayedState = ref([])
 
 // Library
 const currentTracks = ref([])
+const favorites = ref([])
 const originalTracks = ref([])
 const trackMap = ref({})
 const urlMetadata = ref({})
-const favorites = ref([])
 
 // Auto-DJ Logic
 const djCarpinchoEnabled = ref(false)
-const djSafeModeEnabled = ref(false)
 const djNextTrack = ref(null)
+const djSafeModeEnabled = ref(false)
 
 // Pause-after
 const pauseAfterPath = ref(null)
 
 // Local Audio Playback & Media Session
-const listenLocally = ref(false)
-const localPlayerRef = ref(null) // This will be bound to the <audio> element in App.vue
-const volume = ref(100)
-const serverMuted = ref(false)
-const localTimePos = ref(0)
 const duration = ref(0)
-const timePos = ref(0)
 const ignoreServerTimeUntil = ref(0)
 const isDraggingSeek = ref(false)
+const listenLocally = ref(false)
+const localPlayerRef = ref(null) // This will be bound to the <audio> element in App.vue
+const localTimePos = ref(0)
+const serverMuted = ref(false)
+const timePos = ref(0)
+const volume = ref(100)
 
 // MPV window visibility
 const mpvVisible = ref(true)
@@ -58,7 +58,8 @@ export function usePlayer() {
 
 	function connectWebSocket() {
 		// Evitamos abrir múltiples conexiones si ya está instanciado
-		if (wsSend) return;
+		if (wsSend)
+			return;
 
 		const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 		const wsUrl = `${protocol}//${window.location.host}/ws`;
@@ -69,14 +70,17 @@ export function usePlayer() {
 				retries: () => true, // Infinitos reintentos
 				delay: (retryCount) => Math.min(1000 * Math.pow(2, retryCount), 30000), // Backoff exponencial hasta 30s
 			},
+
 			onConnected() {
 				if (listenLocally.value) {
 					send(JSON.stringify({ type: 'local_player_claim' }));
 				}
 			},
+
 			onDisconnected() {
 				showToast("Se cortó la señal. Reconectando...", "warning");
 			},
+
 			onMessage(ws, event) {
 				try {
 					const data = JSON.parse(event.data);
@@ -85,12 +89,14 @@ export function usePlayer() {
 					if (data.type === 'local_player_seek') {
 						// Otro cliente mandó un seek — lo aplicamos al <audio> local
 						const lp = localPlayerRef.value;
+
 						if (lp && lp.src) {
 							const newTime = data.mode === 'absolute' ? data.amount : (lp.currentTime + data.amount);
 							lp.currentTime = Math.max(0, Math.min(newTime, lp.duration || Infinity));
 							localTimePos.value = lp.currentTime;
 							_sendLocalPlayerUpdate({ time_pos: lp.currentTime });
 						}
+
 						return;
 					}
 
@@ -98,6 +104,7 @@ export function usePlayer() {
 						if (data.ok) {
 							// El servidor aceptó nuestro rol — mutear MPV y arrancar el reproductor local
 							sendCmd('set_mute', { state: true });
+
 							if (currentTrackPath.value && !currentTrackPath.value.startsWith('http')) {
 								_startLocalPlayer(currentTrackPath.value);
 							}
@@ -111,21 +118,21 @@ export function usePlayer() {
 
 					if (data.type === 'state_update') {
 						if (data.current_track !== undefined) currentTrackPath.value = data.current_track;
+						if (data.dj_carpincho_enabled !== undefined) djCarpinchoEnabled.value = data.dj_carpincho_enabled;
+						if (data.dj_next_track !== undefined) djNextTrack.value = data.dj_next_track;
+						if (data.dj_safe_mode !== undefined) djSafeModeEnabled.value = data.dj_safe_mode;
+						if (data.duration !== undefined) duration.value = data.duration;
+						if (data.favorites !== undefined) favorites.value = data.favorites;
+						if (data.history) historyState.value = data.history;
+						if (data.is_scanning !== undefined) isScanning.value = data.is_scanning;
+						if (data.mpv_visible !== undefined) mpvVisible.value = data.mpv_visible;
+						if (data.pause_after_path !== undefined) pauseAfterPath.value = data.pause_after_path;
 						if (data.paused !== undefined) isPaused.value = data.paused;
 						if (data.queue !== undefined) queueState.value = data.queue;
-						if (data.history) historyState.value = data.history;
-						if (data.top_played) topPlayedState.value = data.top_played;
-						if (data.is_scanning !== undefined) isScanning.value = data.is_scanning;
-						if (data.dj_carpincho_enabled !== undefined) djCarpinchoEnabled.value = data.dj_carpincho_enabled;
-						if (data.dj_safe_mode !== undefined) djSafeModeEnabled.value = data.dj_safe_mode;
-						if (data.dj_next_track !== undefined) djNextTrack.value = data.dj_next_track;
-						if (data.pause_after_path !== undefined) pauseAfterPath.value = data.pause_after_path;
-						if (data.volume !== undefined) volume.value = data.volume;
-						if (data.duration !== undefined) duration.value = data.duration;
 						if (data.server_muted !== undefined) serverMuted.value = data.server_muted;
-						if (data.mpv_visible !== undefined) mpvVisible.value = data.mpv_visible;
-						if (data.favorites !== undefined) favorites.value = data.favorites;
+						if (data.top_played) topPlayedState.value = data.top_played;
 						if (data.url_metadata) urlMetadata.value = data.url_metadata;
+						if (data.volume !== undefined) volume.value = data.volume;
 
 						if (data.time_pos !== undefined) {
 							timePos.value = data.time_pos;
@@ -159,6 +166,7 @@ export function usePlayer() {
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({ cmd, ...data })
 			});
+
 			return await res.json();
 		} catch (err) {
 			showToast("Error mandando comando fiera.", "error");
@@ -166,9 +174,13 @@ export function usePlayer() {
 	}
 
 	function getTrackInfo(path) {
-		if (!path) return { display_title: "Desconocido", display_artist: "Vaya uno a saber" };
-		if (trackMap.value[path]) return trackMap.value[path];
-		if (urlMetadata.value[path]) return urlMetadata.value[path];
+		if (!path)
+			return { display_title: "Desconocido", display_artist: "Vaya uno a saber" };
+		if (trackMap.value[path])
+			return trackMap.value[path];
+		if (urlMetadata.value[path])
+			return urlMetadata.value[path];
+
 		const isUrl = path.startsWith("http");
 		return { display_title: isUrl ? path : "Audio Misterioso", display_artist: isUrl ? "🌐 De la Internet" : "Vaya uno a saber" };
 	}
@@ -177,7 +189,8 @@ export function usePlayer() {
 
 	async function loadLibrary(forceScan = false) {
 		const endpoint = forceScan ? "/scan" : "/library";
-		if (forceScan) isScanning.value = true;
+		if (forceScan)
+			isScanning.value = true;
 		try {
 			const res = await fetch(endpoint);
 			const data = await res.json();
@@ -272,8 +285,10 @@ export function usePlayer() {
 	}
 
 	function handleLibraryClick(track) {
-		if (currentTrackPath.value === track.path) sendCmd("pause");
-		else toggleQueue(track.path, false);
+		if (currentTrackPath.value === track.path)
+			sendCmd("pause");
+		else
+			toggleQueue(track.path, false);
 	}
 
 	function switchTab(tabId) {
@@ -287,7 +302,8 @@ export function usePlayer() {
 	}
 
 	async function togglePauseAfterCurrent() {
-		if (!currentTrackPath.value) return;
+		if (!currentTrackPath.value)
+			return;
 		if (pauseAfterPath.value === currentTrackPath.value) {
 			pauseAfterPath.value = null;
 			await sendCmd("pause_after", { path: "" });
@@ -319,9 +335,15 @@ export function usePlayer() {
 	function showToast(msg, type = 'info') {
 		const id = toastIdCounter++;
 		let icon = "info", colorClasses = "bg-blue-600";
-		if (type === 'success') { icon = "check_circle"; colorClasses = "bg-green-600"; }
-		if (type === 'warning') { icon = "warning"; colorClasses = "bg-orange-600"; }
-		if (type === 'error') { icon = "error"; colorClasses = "bg-red-600"; }
+		if (type === 'success') {
+			icon = "check_circle"; colorClasses = "bg-green-600";
+		}
+		if (type === 'warning') {
+			icon = "warning"; colorClasses = "bg-orange-600";
+		}
+		if (type === 'error') {
+			icon = "error"; colorClasses = "bg-red-600";
+		}
 		toasts.value.push({ id, msg, icon, colorClasses });
 		setTimeout(() => { toasts.value = toasts.value.filter(t => t.id !== id); }, 3000);
 	}
@@ -329,7 +351,9 @@ export function usePlayer() {
 	// --- LOCAL PLAYER METHODS ---
 	function _startLocalPlayer(path) {
 		const lp = localPlayerRef.value;
-		if (!lp) return;
+		if (!lp)
+			return;
+
 		lp.src = '/stream?path=' + encodeURIComponent(path);
 		lp.currentTime = 0;
 
@@ -362,14 +386,17 @@ export function usePlayer() {
 
 	function _stopLocalPlayer() {
 		const lp = localPlayerRef.value;
-		if (!lp) return;
+		if (!lp)
+			return;
+
 		lp.pause();
 		lp.removeAttribute('src');
 		lp.load();
 	}
 
 	function _sendLocalPlayerUpdate(payload) {
-		if (wsSend) wsSend(JSON.stringify({ type: 'local_player_update', ...payload }));
+		if (wsSend)
+			wsSend(JSON.stringify({ type: 'local_player_update', ...payload }));
 	}
 
 	function haptic(heavy = false) {
@@ -410,7 +437,8 @@ export function usePlayer() {
 				}
 			} else {
 				title.value = 'La Rockola del Carpincho 🦦🧉';
-				if ('mediaSession' in navigator) navigator.mediaSession.metadata = null;
+				if ('mediaSession' in navigator)
+					navigator.mediaSession.metadata = null;
 			}
 		});
 
@@ -444,26 +472,35 @@ export function usePlayer() {
 		}
 
 		watch(currentTrackPath, (newPath, oldPath) => {
-			if (oldPath && oldPath === pauseAfterPath.value) pauseAfterPath.value = null;
+			if (oldPath && oldPath === pauseAfterPath.value)
+				pauseAfterPath.value = null;
 			if (listenLocally.value && localPlayerRef.value) {
-				if (newPath && !newPath.startsWith('http')) _startLocalPlayer(newPath);
-				else _stopLocalPlayer();
+				if (newPath && !newPath.startsWith('http'))
+					_startLocalPlayer(newPath);
+				else
+					_stopLocalPlayer();
 			}
 		});
 
 		watch(isPaused, (val) => {
 			if (listenLocally.value && localPlayerRef.value && localPlayerRef.value.src) {
-				if (val) localPlayerRef.value.pause();
-				else localPlayerRef.value.play().catch(() => { });
+				if (val)
+					localPlayerRef.value.pause();
+				else
+					localPlayerRef.value.play().catch(() => { });
+
 				_sendLocalPlayerUpdate({ paused: val });
 			}
 		});
 
 		watch(listenLocally, (val) => {
 			if (val) {
-				if (wsSend) wsSend(JSON.stringify({ type: 'local_player_claim' }));
+				if (wsSend)
+					wsSend(JSON.stringify({ type: 'local_player_claim' }));
 			} else {
-				if (wsSend) wsSend(JSON.stringify({ type: 'local_player_release' }));
+				if (wsSend)
+					wsSend(JSON.stringify({ type: 'local_player_release' }));
+
 				sendCmd('set_mute', { state: false });
 				_stopLocalPlayer();
 			}
@@ -471,50 +508,50 @@ export function usePlayer() {
 	}
 
 	return {
-		connectWebSocket,
-		sendCmd,
-		isPlaying,
-		isPaused,
-		currentTrackPath,
-		queueState,
-		historyState,
-		topPlayedState,
-		isFogonMode,
-		isScanning,
+		_sendLocalPlayerUpdate,
 		activeTab,
-		switchTab,
-		librarySearchQuery,
+		connectWebSocket,
+		currentTrackPath,
 		currentTracks,
-		originalTracks,
-		favorites,
 		djCarpinchoEnabled,
-		djSafeModeEnabled,
 		djNextTrack,
-		pauseAfterPath,
-		getTrackInfo,
-		queueIndex,
-		normalizeString,
-		loadLibrary,
-		sortLibrary,
-		toggleFavorite,
-		toggleQueue,
-		handleLibraryClick,
-		togglePauseAfterCurrent,
-		toggleMpvVisibility,
-		mpvVisible,
-		listenLocally,
-		localPlayerRef,
-		volume,
-		serverMuted,
-		localTimePos,
-		timePos,
+		djSafeModeEnabled,
 		duration,
+		favorites,
+		getTrackInfo,
+		handleLibraryClick,
+		haptic,
+		historyState,
 		ignoreServerTimeUntil,
 		isDraggingSeek,
+		isFogonMode,
+		isPaused,
+		isPlaying,
+		isScanning,
+		librarySearchQuery,
+		listenLocally,
+		loadLibrary,
+		localPlayerRef,
+		localTimePos,
+		mpvVisible,
+		normalizeString,
+		originalTracks,
+		pauseAfterPath,
+		queueIndex,
+		queueState,
+		sendCmd,
+		serverMuted,
 		setVolume,
-		haptic,
-		toasts,
 		showToast,
-		_sendLocalPlayerUpdate,
+		sortLibrary,
+		switchTab,
+		timePos,
+		toasts,
+		toggleFavorite,
+		toggleMpvVisibility,
+		togglePauseAfterCurrent,
+		toggleQueue,
+		topPlayedState,
+		volume,
 	}
 }

@@ -47,8 +47,8 @@ export function useContextMenu() {
 	}
 
 	return {
+		closeCtxMenu,
 		ctxMenu,
 		openCtxMenu,
-		closeCtxMenu
 	}
 }

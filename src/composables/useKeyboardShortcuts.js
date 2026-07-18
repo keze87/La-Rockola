@@ -27,8 +27,10 @@ export function useKeyboardShortcuts() {
 			player.isFogonMode.value = false
 			player.haptic()
 		}
+
 		if (ctx.ctxMenu.visible)
 			ctx.closeCtxMenu()
+
 		if (player.showFogonVolume?.value)
 			player.showFogonVolume.value = false
 	})

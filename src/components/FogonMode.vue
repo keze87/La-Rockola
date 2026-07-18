@@ -56,7 +56,9 @@ watch(currentTrackPath, (newPath) => {
 })
 
 function formatTime(sec) {
-	if (!sec || isNaN(sec)) return '0:00'
+	if (!sec || isNaN(sec))
+		return '0:00'
+
 	const m = Math.floor(sec / 60)
 	const s = Math.floor(sec % 60).toString().padStart(2, '0')
 	return `${m}:${s}`
@@ -103,7 +105,9 @@ const isDraggingSeek = ref(false)
 const dragTimePos = ref(0)
 
 const progressPercent = computed(() => {
-	if (!duration.value) return 0
+	if (!duration.value)
+		return 0
+
 	const current = isDraggingSeek.value ? dragTimePos.value : localTimePos.value
 	return (current / duration.value) * 100
 })
@@ -112,19 +116,25 @@ const formattedTimePos = computed(() => formatTime(isDraggingSeek.value ? dragTi
 const formattedDuration = computed(() => formatTime(duration.value))
 
 function startSeek(e) {
-	if (!duration.value) return
+	if (!duration.value)
+		return
+
 	isDraggingSeek.value = true
 	e.target.setPointerCapture(e.pointerId)
 	updateSeek(e)
 }
 
 function moveSeek(e) {
-	if (!isDraggingSeek.value) return
+	if (!isDraggingSeek.value)
+		return
+
 	updateSeek(e)
 }
 
 function endSeek(e) {
-	if (!isDraggingSeek.value) return
+	if (!isDraggingSeek.value)
+		return
+
 	updateSeek(e)
 	isDraggingSeek.value = false
 	e.target.releasePointerCapture(e.pointerId)
@@ -142,7 +152,9 @@ function endSeek(e) {
 }
 
 function updateSeek(e) {
-	if (!duration.value) return
+	if (!duration.value)
+		return
+
 	const el = e.currentTarget
 	const rect = el.getBoundingClientRect()
 	// Pointer events normalize mouse and touch, so we can always just use clientX!
@@ -155,8 +167,12 @@ function updateSeek(e) {
 const isDraggingVol = ref(false)
 const volPercent = computed(() => Math.min(100, (volume.value / 110) * 100))
 const volIcon = computed(() => {
-	if (serverMuted.value || volume.value == 0) return "volume_off"
-	if (volume.value <= 40) return "volume_down"
+	if (serverMuted.value || volume.value == 0)
+		return "volume_off"
+
+	if (volume.value <= 40)
+		return "volume_down"
+
 	return "volume_up"
 })
 
@@ -167,12 +183,16 @@ function startVol(e) {
 }
 
 function moveVol(e) {
-	if (!isDraggingVol.value) return
+	if (!isDraggingVol.value)
+		return
+
 	updateVol(e)
 }
 
 function endVol(e) {
-	if (!isDraggingVol.value) return
+	if (!isDraggingVol.value)
+		return
+
 	updateVol(e)
 	isDraggingVol.value = false
 	e.target.releasePointerCapture(e.pointerId)
@@ -185,7 +205,8 @@ function updateVol(e) {
 	let clickX = e.clientX - rect.left
 	clickX = Math.max(0, Math.min(clickX, rect.width))
 	volume.value = Math.round((clickX / rect.width) * 110)
-	if (serverMuted.value && volume.value > 0) sendCmd('set_mute', { state: false })
+	if (serverMuted.value && volume.value > 0)
+		sendCmd('set_mute', { state: false })
 }
 </script>
 

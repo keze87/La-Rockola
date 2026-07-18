@@ -4,7 +4,9 @@ const lyrics = ref([])
 
 export function useLyrics(player) {
 	const currentLyricLine = computed(() => {
-		if (!lyrics.value || !lyrics.value.length) return null;
+		if (!lyrics.value || !lyrics.value.length)
+			return null;
+
 		let activeLine = " ";
 		for (let i = lyrics.value.length - 1; i >= 0; i--) {
 			// Syncs against the player's localTimePos
@@ -91,8 +93,8 @@ export function useLyrics(player) {
 	}
 
 	return {
-		lyrics,
 		currentLyricLine,
-		loadLyrics
+		loadLyrics,
+		lyrics,
 	}
 }

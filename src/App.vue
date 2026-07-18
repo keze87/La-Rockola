@@ -1,17 +1,17 @@
 <script setup>
 import { computed, onMounted } from 'vue'
-import { usePlayer } from './composables/usePlayer'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { useLyrics } from './composables/useLyrics'
+import { usePlayer } from './composables/usePlayer'
 
 // Import your isolated components
-import FogonMode from './components/FogonMode.vue'
+import ContextMenu from './components/ContextMenu.vue'
+import ControlsTab from './components/ControlsTab.vue'
 import FloatingPlayer from './components/FloatingPlayer.vue'
+import FogonMode from './components/FogonMode.vue'
 import LibraryTab from './components/LibraryTab.vue'
 import QueueTab from './components/QueueTab.vue'
 import TopTab from './components/TopTab.vue'
-import ControlsTab from './components/ControlsTab.vue'
-import ContextMenu from './components/ContextMenu.vue'
 
 const {
 	currentTrackPath, isScanning, isPlaying, isFogonMode,
@@ -34,19 +34,25 @@ const tabs = [
 ]
 
 const currentTrackTitle = computed(() => {
-	if (!currentTrackPath.value) return "Silencio estampa. Poné algo, fiera.";
+	if (!currentTrackPath.value)
+		return "Silencio estampa. Poné algo, fiera.";
+
 	const t = getTrackInfo(currentTrackPath.value);
 	return `${t.display_artist} - ${t.display_title}`;
 })
 
 const progressPercent = computed(() => {
-	if (!duration.value) return 0;
+	if (!duration.value)
+		return 0;
+
 	return (localTimePos.value / duration.value) * 100;
 })
 
 // --- Seek bar under the nav ---
 function updateSeek(e) {
-	if (!duration.value) return null;
+	if (!duration.value)
+		return null;
+
 	const el = e.currentTarget;
 	const rect = el.getBoundingClientRect();
 	const clientX = e.touches && e.touches.length > 0 ? e.touches[0].clientX : (e.changedTouches ? e.changedTouches[0].clientX : e.clientX);
@@ -55,17 +61,39 @@ function updateSeek(e) {
 	return (clickX / rect.width) * duration.value;
 }
 
-function startSeek(e) { if (duration.value) { isDraggingSeek.value = true; const t = updateSeek(e); if (t !== null) localTimePos.value = t; } }
+function startSeek(e) {
+	if (duration.value) {
+		isDraggingSeek.value = true;
+		const t = updateSeek(e);
 
-function moveSeek(e) { if (!isDraggingSeek.value) return; const t = updateSeek(e); if (t !== null) localTimePos.value = t; }
+		if (t !== null)
+			localTimePos.value = t;
+	}
+}
+
+function moveSeek(e) {
+	if (!isDraggingSeek.value)
+		return;
+
+	const t = updateSeek(e);
+
+	if (t !== null)
+		localTimePos.value = t;
+}
 
 function endSeek(e) {
-	if (!isDraggingSeek.value) return;
+	if (!isDraggingSeek.value)
+		return;
+
 	const t = updateSeek(e);
 	isDraggingSeek.value = false;
-	if (t === null) return;
+
+	if (t === null)
+		return;
+
 	localTimePos.value = t;
 	ignoreServerTimeUntil.value = Date.now() + 2000;
+
 	if (listenLocally.value && localPlayerRef.value) {
 		localPlayerRef.value.currentTime = t;
 		_sendLocalPlayerUpdate({ time_pos: t });

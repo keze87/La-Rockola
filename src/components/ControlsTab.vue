@@ -16,18 +16,34 @@ const isDraggingVol = ref(false)
 
 const volPercent = computed(() => Math.min(100, (volume.value / 110) * 100))
 const volIcon = computed(() => {
-	if (serverMuted.value || volume.value == 0) return "volume_off";
-	if (volume.value <= 40) return "volume_down";
-	if (volume.value <= 100) return "volume_up";
+	if (serverMuted.value || volume.value == 0)
+		return "volume_off";
+
+	if (volume.value <= 40)
+		return "volume_down";
+
+	if (volume.value <= 100)
+		return "volume_up";
+
 	return "surround_sound";
 })
 
-function startVol(e) { isDraggingVol.value = true; updateVol(e); }
+function startVol(e) {
+	isDraggingVol.value = true;
+	updateVol(e);
+}
 
-function moveVol(e) { if (!isDraggingVol.value) return; updateVol(e); }
+function moveVol(e) {
+	if (!isDraggingVol.value)
+		return;
+
+	updateVol(e);
+}
 
 function endVol(e) {
-	if (!isDraggingVol.value) return;
+	if (!isDraggingVol.value)
+		return;
+
 	updateVol(e);
 	isDraggingVol.value = false;
 	setVolume();
@@ -57,8 +73,10 @@ function toggleDjSafeMode() {
 }
 
 function toggleWebFullscreen() {
-	if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(e => console.warn(e));
-	else if (document.exitFullscreen) document.exitFullscreen();
+	if (!document.fullscreenElement)
+		document.documentElement.requestFullscreen().catch(e => console.warn(e));
+	else if (document.exitFullscreen)
+		document.exitFullscreen();
 }
 </script>
 

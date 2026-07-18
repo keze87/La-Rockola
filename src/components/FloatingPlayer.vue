@@ -18,19 +18,25 @@ const upNextTitle = computed(() => {
 		const t = djNextTrack.value;
 		return `${t.display_title || t.title} - ${t.display_artist || t.artist}`;
 	}
-	if (djCarpinchoEnabled.value) return "DJ Carpincho eligiendo...";
+	if (djCarpinchoEnabled.value)
+		return "DJ Carpincho eligiendo...";
+
 	return currentTrackPath.value ? "Termina este y nos re vimos" : "Agregá algo pa' escuchar";
 })
 
 const upNextCoverUrl = computed(() => {
-	if (brokenNextCover.value) return null;
+	if (brokenNextCover.value)
+		return null;
+
 	if (queueState.value.length > 0 && !queueState.value[0].startsWith('http')) {
 		return '/cover?path=' + encodeURIComponent(queueState.value[0]);
 	}
+
 	if (djCarpinchoEnabled.value && djNextTrack.value) {
 		const p = djNextTrack.value.path;
 		if (p && !p.startsWith('http')) return '/cover?path=' + encodeURIComponent(p);
 	}
+
 	return null;
 })
 
@@ -54,6 +60,7 @@ function goToQueue() {
 			</div>
 			<div class="grow overflow-hidden flex flex-col justify-center">
 				<div class="text-[0.7rem] text-carpincho-primary uppercase tracking-wider font-bold">
+					<!-- NO CORTAR -->
 					{{ queueState.length > 0 ? 'Próximo Temazo' : (djCarpinchoEnabled ? (djNextTrack ? '🦦 Arranca en unos segundos...' : 'Eligiendo...') : 'Fin de la fila') }}
 				</div>
 				<div class="text-[0.95rem] font-bold truncate text-carpincho-text">{{ upNextTitle }}</div>

@@ -35,8 +35,12 @@ const filteredTracks = computed(() => {
 		} else {
 			let qIdx = 0;
 			for (const char of target) {
-				if (char === q[qIdx]) qIdx++;
-				if (qIdx === q.length) { fuzzy.push(t); break; }
+				if (char === q[qIdx])
+					qIdx++;
+
+				if (qIdx === q.length) {
+					fuzzy.push(t); break;
+				}
 			}
 		}
 	});
@@ -50,7 +54,8 @@ function clearSearch() {
 
 function scrollToCurrent() {
 	const el = document.getElementById('current-library-row');
-	if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+	if (el)
+		el.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
 function ctxTouchStart(e, track) {
@@ -131,8 +136,7 @@ function ctxTouchEnd() { clearTimeout(ctxLongPressTimer); }
 				</tr>
 				<tr v-if="filteredTracks.length === 0">
 					<td colspan="4" class="p-8 text-center text-carpincho-primary italic">No hay nada por acá con ese
-						nombre,
-						fiera.</td>
+						nombre, fiera.</td>
 				</tr>
 			</tbody>
 		</table>
