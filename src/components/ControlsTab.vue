@@ -1,8 +1,8 @@
 <script setup>
-	import { ref, computed } from 'vue';
+	import { useDragSlider } from '../composables/useDragSlider';
 	import { usePlayer } from '../composables/usePlayer';
-	import QRCode from 'qrcode.vue';
 	import PillButton from './ui/PillButton.vue';
+	import QRCode from 'qrcode.vue';
 	import ToggleRow from './ui/ToggleRow.vue';
 
 	const {
@@ -20,58 +20,27 @@
 		volume,
 	} = usePlayer();
 
-	const currentUrl = window.location.href; // Easy access to the current URL
-
-	// --- Volume Drag Logic ---
-	const isDraggingVol = ref(false);
-
-	const volPercent = computed(() => Math.min(100, (volume.value / 110) * 100));
-	const volIcon = computed(() => {
-		if (serverMuted.value || volume.value == 0) return 'volume_off';
-
-		if (volume.value <= 40) return 'volume_down';
-
-		if (volume.value <= 100) return 'volume_up';
-
-		return 'surround_sound';
+	const {
+		progressPercent: volPercent,
+		startDrag: startVol,
+		moveDrag: moveVol,
+		endDrag: endVol,
+	} = useDragSlider({
+		max: 110,
+		getValue: () => volume.value,
+		onUpdate: (val) => {
+			volume.value = Math.round(val);
+			if (serverMuted.value && volume.value > 0) {
+				sendCmd('set_mute', { state: false });
+			}
+		},
+		onCommit: (val) => {
+			volume.value = Math.round(val);
+			setVolume();
+		},
 	});
 
-	function startVol(e) {
-		isDraggingVol.value = true;
-		updateVol(e);
-	}
-
-	function moveVol(e) {
-		if (!isDraggingVol.value) return;
-
-		updateVol(e);
-	}
-
-	function endVol(e) {
-		if (!isDraggingVol.value) return;
-
-		updateVol(e);
-		isDraggingVol.value = false;
-		setVolume();
-	}
-
-	function updateVol(e) {
-		const el = e.currentTarget;
-		const rect = el.getBoundingClientRect();
-		const clientX =
-			e.touches && e.touches.length > 0
-				? e.touches[0].clientX
-				: e.changedTouches
-					? e.changedTouches[0].clientX
-					: e.clientX;
-		let clickX = clientX - rect.left;
-		clickX = Math.max(0, Math.min(clickX, rect.width));
-		volume.value = Math.round((clickX / rect.width) * 110);
-
-		if (serverMuted.value && volume.value > 0) {
-			sendCmd('set_mute', { state: false });
-		}
-	}
+	const currentUrl = window.location.href; // Easy access to the current URL
 
 	// --- Toggles ---
 	function toggleDjCarpincho() {
@@ -107,13 +76,10 @@
 			<div
 				class="group flex h-8 w-full cursor-pointer touch-none items-center"
 				:class="{ 'opacity-50': serverMuted }"
-				@mousedown="startVol"
-				@mousemove="moveVol"
-				@mouseup="endVol"
-				@mouseleave="endVol"
-				@touchstart.prevent="startVol"
-				@touchmove.prevent="moveVol"
-				@touchend.prevent="endVol"
+				@pointerdown="startVol"
+				@pointermove="moveVol"
+				@pointerup="endVol"
+				@pointercancel="endVol"
 			>
 				<div class="relative h-2 w-full rounded-full bg-gray-800">
 					<div

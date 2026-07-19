@@ -194,10 +194,10 @@
 					<td class="max-w-[200px] truncate p-4">
 						{{ getTrackInfo(path).display_title }}
 					</td>
-					<td class="truncate p-4 text-[#a6adc8]">
+					<td class="text-carpincho-muted truncate p-4">
 						{{ getTrackInfo(path).display_artist }}
 					</td>
-					<td class="hidden p-4 text-right text-[#a6adc8] sm:table-cell">
+					<td class="text-carpincho-muted hidden p-4 text-right sm:table-cell">
 						{{ getTrackInfo(path).duration_str }}
 					</td>
 				</tr>
@@ -308,12 +308,12 @@
 						</div>
 					</td>
 
-					<td class="p-4 text-[#a6adc8]" @click="sendCmd('jump', { type: 'queue', index: i })">
+					<td class="text-carpincho-muted p-4" @click="sendCmd('jump', { type: 'queue', index: i })">
 						{{ getTrackInfo(path).display_artist }}
 					</td>
 
 					<td
-						class="hidden p-4 text-right text-[#a6adc8] sm:table-cell"
+						class="text-carpincho-muted hidden p-4 text-right sm:table-cell"
 						@click="sendCmd('jump', { type: 'queue', index: i })"
 					>
 						{{ getTrackInfo(path).duration_str }}
@@ -340,7 +340,10 @@
 							auto_awesome
 						</i>
 					</td>
-					<td class="p-4 italic" :class="queueState.length === 0 ? 'text-[#a6adc8]' : 'text-[#a6adc8]'">
+					<td
+						class="p-4 italic"
+						:class="queueState.length === 0 ? 'text-carpincho-muted' : 'text-carpincho-muted'"
+					>
 						{{
 							queueState.length === 0
 								? djNextTrack
@@ -349,8 +352,8 @@
 								: 'Al vaciarse la fila, entra el DJ Carpincho'
 						}}
 					</td>
-					<td class="p-4 text-[#a6adc8] italic">🦦</td>
-					<td class="hidden p-4 text-right text-[#a6adc8] sm:table-cell" />
+					<td class="text-carpincho-muted p-4 italic">🦦</td>
+					<td class="text-carpincho-muted hidden p-4 text-right sm:table-cell" />
 				</tr>
 			</tbody>
 		</table>

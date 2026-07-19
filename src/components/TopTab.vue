@@ -29,7 +29,7 @@
 					<div class="text-carpincho-text truncate font-bold">
 						{{ getTrackInfo(t.path).display_title }}
 					</div>
-					<div class="truncate text-sm text-[#a6adc8]">
+					<div class="text-carpincho-muted truncate text-sm">
 						{{ getTrackInfo(t.path).display_artist }} • Sonó {{ t.count }} veces
 					</div>
 				</div>

@@ -1,7 +1,8 @@
 <script setup>
-	import { computed, ref, watch } from 'vue';
-	import { usePlayer } from '../composables/usePlayer';
+	import { computed, watch } from 'vue';
+	import { useDragSlider } from '../composables/useDragSlider';
 	import { useLyrics } from '../composables/useLyrics';
+	import { usePlayer } from '../composables/usePlayer';
 
 	const player = usePlayer();
 	const {
@@ -24,6 +25,55 @@
 		togglePauseAfterCurrent,
 		volume,
 	} = player;
+
+	// 1. Seek Slider
+	const {
+		displayValue: dragTimePos,
+		progressPercent,
+		startDrag: startSeek,
+		moveDrag: moveSeek,
+		endDrag: endSeek,
+	} = useDragSlider({
+		max: () => duration.value,
+		getValue: () => localTimePos.value,
+		onUpdate: () => (isDraggingSeek.value = true),
+		onCommit: (val) => {
+			isDraggingSeek.value = false;
+			localTimePos.value = val;
+			ignoreServerTimeUntil.value = Date.now() + 2000;
+
+			if (listenLocally.value && localPlayerRef.value) {
+				localPlayerRef.value.currentTime = val;
+				player._sendLocalPlayerUpdate?.({ time_pos: val });
+			} else {
+				sendCmd('seek_absolute', { amount: val });
+			}
+		},
+	});
+
+	const formattedTimePos = computed(() => formatTime(dragTimePos.value));
+	const formattedDuration = computed(() => formatTime(duration.value));
+
+	// 2. Volume Slider
+	const {
+		progressPercent: volPercent,
+		startDrag: startVol,
+		moveDrag: moveVol,
+		endDrag: endVol,
+	} = useDragSlider({
+		max: 110,
+		getValue: () => volume.value,
+		onUpdate: (val) => {
+			volume.value = Math.round(val);
+			if (serverMuted.value && volume.value > 0) {
+				sendCmd('set_mute', { state: false });
+			}
+		},
+		onCommit: (val) => {
+			volume.value = Math.round(val);
+			player.setVolume();
+		},
+	});
 
 	// Pass the global player instance to our lyrics composable to sync localTimePos
 	const { currentLyricLine, loadLyrics } = useLyrics(player);
@@ -74,6 +124,12 @@
 
 	const playPauseIcon = computed(() => (isPlaying.value ? 'pause' : 'play_arrow'));
 	const muteIcon = computed(() => (serverMuted.value || volume.value == 0 ? 'volume_off' : 'volume_down'));
+	const volIcon = computed(() => {
+		if (serverMuted.value || volume.value == 0) return 'volume_off';
+		if (volume.value <= 40) return 'volume_down';
+		if (volume.value <= 100) return 'volume_up';
+		return 'surround_sound';
+	});
 
 	// Timer Button Logic
 	const isTimerActive = computed(() => pauseAfterPath.value === currentTrackPath.value && currentTrackPath.value);
@@ -133,105 +189,6 @@
 	function handleTimerToggle() {
 		togglePauseAfterCurrent();
 		haptic();
-	}
-
-	// --- Seek Drag Logic (Pointer Events) ---
-	const dragTimePos = ref(0);
-
-	const progressPercent = computed(() => {
-		if (!duration.value) return 0;
-
-		const current = isDraggingSeek.value ? dragTimePos.value : localTimePos.value;
-		return (current / duration.value) * 100;
-	});
-
-	const formattedTimePos = computed(() => formatTime(isDraggingSeek.value ? dragTimePos.value : localTimePos.value));
-	const formattedDuration = computed(() => formatTime(duration.value));
-
-	function startSeek(e) {
-		if (!duration.value) return;
-
-		isDraggingSeek.value = true;
-		e.target.setPointerCapture(e.pointerId);
-		updateSeek(e);
-	}
-
-	function moveSeek(e) {
-		if (!isDraggingSeek.value) return;
-
-		updateSeek(e);
-	}
-
-	function endSeek(e) {
-		if (!isDraggingSeek.value) return;
-
-		updateSeek(e);
-		isDraggingSeek.value = false;
-		e.target.releasePointerCapture(e.pointerId);
-
-		localTimePos.value = dragTimePos.value;
-		const t = parseFloat(localTimePos.value);
-		ignoreServerTimeUntil.value = Date.now() + 2000;
-
-		if (listenLocally.value && localPlayerRef.value) {
-			localPlayerRef.value.currentTime = t;
-			player._sendLocalPlayerUpdate?.({ time_pos: t });
-		} else {
-			sendCmd('seek_absolute', { amount: t });
-		}
-	}
-
-	function updateSeek(e) {
-		if (!duration.value) return;
-
-		const el = e.currentTarget;
-		const rect = el.getBoundingClientRect();
-		// Pointer events normalize mouse and touch, so we can always just use clientX!
-		let clickX = e.clientX - rect.left;
-		clickX = Math.max(0, Math.min(clickX, rect.width));
-		dragTimePos.value = (clickX / rect.width) * duration.value;
-	}
-
-	// --- Volume Drag Logic (Pointer Events) ---
-	const isDraggingVol = ref(false);
-	const volPercent = computed(() => Math.min(100, (volume.value / 110) * 100));
-	const volIcon = computed(() => {
-		if (serverMuted.value || volume.value == 0) return 'volume_off';
-
-		if (volume.value <= 40) return 'volume_down';
-
-		return 'volume_up';
-	});
-
-	function startVol(e) {
-		isDraggingVol.value = true;
-		e.target.setPointerCapture(e.pointerId);
-		updateVol(e);
-	}
-
-	function moveVol(e) {
-		if (!isDraggingVol.value) return;
-
-		updateVol(e);
-	}
-
-	function endVol(e) {
-		if (!isDraggingVol.value) return;
-
-		updateVol(e);
-		isDraggingVol.value = false;
-		e.target.releasePointerCapture(e.pointerId);
-		player.setVolume();
-	}
-
-	function updateVol(e) {
-		const el = e.currentTarget;
-		const rect = el.getBoundingClientRect();
-		let clickX = e.clientX - rect.left;
-		clickX = Math.max(0, Math.min(clickX, rect.width));
-		volume.value = Math.round((clickX / rect.width) * 110);
-
-		if (serverMuted.value && volume.value > 0) sendCmd('set_mute', { state: false });
 	}
 </script>
 

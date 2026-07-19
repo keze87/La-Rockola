@@ -12,20 +12,23 @@ const ctxMenu = reactive({
 
 export function useContextMenu() {
 	function openCtxMenu(event, track, source = 'library', index = null) {
-		ctxMenu.visible = true;
 		ctxMenu.track = track;
 		ctxMenu.source = source;
 		ctxMenu.index = index;
+
+		// 1. Extract raw coordinates
+		const clientX = event.clientX || (event.touches && event.touches[0].clientX) || 0;
+		const clientY = event.clientY || (event.touches && event.touches[0].clientY) || 0;
+
+		// 2. Pre-seed the coordinates to prevent the top-left flash
+		ctxMenu.x = clientX;
+		ctxMenu.y = clientY;
+		ctxMenu.visible = true;
 
 		nextTick(() => {
 			const menuElement = document.querySelector('.ctx-menu');
 			if (!menuElement) return;
 
-			// Extract client coordinates whether it's a mouse click or a touch
-			const clientX = event.clientX || (event.touches && event.touches[0].clientX) || 0;
-			const clientY = event.clientY || (event.touches && event.touches[0].clientY) || 0;
-
-			// Create a virtual element at the click/touch coordinates
 			const virtualEl = {
 				getBoundingClientRect() {
 					return {

@@ -168,27 +168,32 @@
 					<td class="max-w-[200px] p-4 font-medium">
 						<div class="flex items-center justify-start gap-3">
 							<!-- BOTÓN FAVORITO -->
-							<i
-								class="material-icons favorite-icon hidden shrink-0 cursor-pointer !text-[1.1rem] transition-colors sm:block"
-								:class="
-									favorites.includes(track.path)
-										? 'text-carpincho-warning scale-110 drop-shadow-md'
-										: 'hover:text-carpincho-warning text-gray-600'
-								"
-								@click.stop="
+							<button
+								type="button"
+								class="-ml-2 hidden shrink-0 cursor-pointer px-2 sm:block"
+								@click.stop.prevent="
 									toggleFavorite(track.path);
 									haptic();
 								"
 							>
-								{{ favorites.includes(track.path) ? 'favorite' : 'favorite_border' }}
-							</i>
+								<i
+									class="material-icons favorite-icon !text-[1.1rem] transition-colors"
+									:class="
+										favorites.includes(track.path)
+											? 'text-carpincho-warning scale-110 drop-shadow-md'
+											: 'hover:text-carpincho-warning text-gray-600'
+									"
+								>
+									{{ favorites.includes(track.path) ? 'favorite' : 'favorite_border' }}
+								</i>
+							</button>
 							<span class="truncate">{{ track.title || track.display_title }}</span>
 						</div>
 					</td>
-					<td class="truncate p-4 text-[#a6adc8]">
+					<td class="text-carpincho-muted truncate p-4">
 						{{ track.artist || track.display_artist }}
 					</td>
-					<td class="hidden p-4 text-right text-[#a6adc8] sm:table-cell">
+					<td class="text-carpincho-muted hidden p-4 text-right sm:table-cell">
 						{{ track.duration_str }}
 					</td>
 				</tr>

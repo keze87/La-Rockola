@@ -1,5 +1,6 @@
 <script setup>
 	import { computed, onMounted } from 'vue';
+	import { useDragSlider } from './composables/useDragSlider';
 	import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts';
 	import { useLyrics } from './composables/useLyrics';
 	import { usePlayer } from './composables/usePlayer';
@@ -36,6 +37,32 @@
 		toasts,
 	} = usePlayer();
 
+	const {
+		progressPercent,
+		startDrag: startSeek,
+		moveDrag: moveSeek,
+		endDrag: endSeek,
+	} = useDragSlider({
+		max: () => duration.value,
+		getValue: () => localTimePos.value,
+		onUpdate: (val) => {
+			isDraggingSeek.value = true; // Syncs with global state
+			localTimePos.value = val;
+		},
+		onCommit: (val) => {
+			isDraggingSeek.value = false;
+			localTimePos.value = val;
+			ignoreServerTimeUntil.value = Date.now() + 2000;
+
+			if (listenLocally.value && localPlayerRef.value) {
+				localPlayerRef.value.currentTime = val;
+				_sendLocalPlayerUpdate({ time_pos: val });
+			} else {
+				sendCmd('seek_absolute', { amount: val });
+			}
+		},
+	});
+
 	const { currentLyricLine } = useLyrics({ localTimePos });
 
 	// Keyboard shortcuts (space, arrows, f, l, t, n, p, m, esc...) — wire it up
@@ -54,65 +81,6 @@
 		const t = getTrackInfo(currentTrackPath.value);
 		return `${t.display_artist} - ${t.display_title}`;
 	});
-
-	const progressPercent = computed(() => {
-		if (!duration.value) return 0;
-
-		return (localTimePos.value / duration.value) * 100;
-	});
-
-	// --- Seek bar under the nav ---
-	function updateSeek(e) {
-		if (!duration.value) return null;
-
-		const el = e.currentTarget;
-		const rect = el.getBoundingClientRect();
-		const clientX =
-			e.touches && e.touches.length > 0
-				? e.touches[0].clientX
-				: e.changedTouches
-					? e.changedTouches[0].clientX
-					: e.clientX;
-		let clickX = clientX - rect.left;
-		clickX = Math.max(0, Math.min(clickX, rect.width));
-		return (clickX / rect.width) * duration.value;
-	}
-
-	function startSeek(e) {
-		if (duration.value) {
-			isDraggingSeek.value = true;
-			const t = updateSeek(e);
-
-			if (t !== null) localTimePos.value = t;
-		}
-	}
-
-	function moveSeek(e) {
-		if (!isDraggingSeek.value) return;
-
-		const t = updateSeek(e);
-
-		if (t !== null) localTimePos.value = t;
-	}
-
-	function endSeek(e) {
-		if (!isDraggingSeek.value) return;
-
-		const t = updateSeek(e);
-		isDraggingSeek.value = false;
-
-		if (t === null) return;
-
-		localTimePos.value = t;
-		ignoreServerTimeUntil.value = Date.now() + 2000;
-
-		if (listenLocally.value && localPlayerRef.value) {
-			localPlayerRef.value.currentTime = t;
-			_sendLocalPlayerUpdate({ time_pos: t });
-		} else {
-			sendCmd('seek_absolute', { amount: t });
-		}
-	}
 
 	onMounted(() => {
 		loadLibrary(false);
@@ -198,13 +166,10 @@
 		v-show="!isScanning && currentTrackPath"
 		class="bg-carpincho-panel group relative flex h-4 w-full shrink-0 cursor-pointer touch-none items-start"
 		style="-webkit-tap-highlight-color: transparent"
-		@mousedown="startSeek"
-		@mousemove="moveSeek"
-		@mouseup="endSeek"
-		@mouseleave="endSeek"
-		@touchstart.prevent="startSeek"
-		@touchmove.prevent="moveSeek"
-		@touchend.prevent="endSeek"
+		@pointerdown="startSeek"
+		@pointermove="moveSeek"
+		@pointerup="endSeek"
+		@pointercancel="endSeek"
 	>
 		<div
 			class="relative h-1 w-full bg-[#38312c] transition-all duration-100 ease-out group-hover:h-2 group-active:h-2"
@@ -227,7 +192,7 @@
 				'flex flex-1 cursor-pointer touch-manipulation items-center justify-center gap-1 py-3 text-center text-sm font-medium tracking-wide uppercase transition-colors active:scale-95',
 				activeTab === tab.id
 					? 'text-carpincho-primary border-carpincho-primary border-b-2'
-					: 'hover:bg-carpincho-border/50 border-b-2 border-transparent text-[#a6adc8]',
+					: 'hover:bg-carpincho-border/50 text-carpincho-muted border-b-2 border-transparent',
 			]"
 			@click="switchTab(tab.id)"
 		>
