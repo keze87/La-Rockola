@@ -12,6 +12,8 @@
     "lint:fix": "eslint . --fix"
   },
   "dependencies": {
+    "@floating-ui/vue": "^2.0.1",
+    "@headlessui/vue": "^1.7.23",
     "@vueuse/core": "^14.3.0",
     "qrcode.vue": "^3.10.0",
     "vue": "^3.5.39"

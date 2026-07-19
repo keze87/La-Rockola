@@ -16,15 +16,58 @@
 		sendCmd,
 		togglePauseAfterCurrent,
 	} = usePlayer();
-	const { openCtxMenu } = useContextMenu();
+	const { openCtxMenu, onCtxTouchStart, onCtxTouchEnd } = useContextMenu();
 
 	const newUrl = ref('');
 	const dragFromIndex = ref(null);
 
-	// Touch logic variables
+	// Queue rows need both long-press (open context menu) AND horizontal swipe
+	// (delete / move-to-first), so they get their own handler instead of the
+	// shared onCtxTouchStart/onCtxTouchEnd (which only knows about long-press).
 	let touchStartX = 0;
-	let ctxLongPressTimer = null;
-	let _queueLongPressFired = false;
+	let queueLongPressTimer = null;
+	let queueLongPressFired = false;
+
+	function queueTouchStart(e, path, i) {
+		touchStartX = e.changedTouches[0].screenX;
+		queueLongPressFired = false;
+		queueLongPressTimer = setTimeout(() => {
+			queueLongPressFired = true;
+			haptic(true);
+			openCtxMenu(e, getTrackInfo(path), 'queue', i);
+		}, 500);
+	}
+
+	function queueTouchMove(e) {
+		if (Math.abs(e.touches[0].screenX - touchStartX) > 10) clearTimeout(queueLongPressTimer);
+	}
+
+	function queueTouchEnd(e, index) {
+		clearTimeout(queueLongPressTimer);
+
+		if (queueLongPressFired) return;
+
+		const diff = touchStartX - e.changedTouches[0].screenX;
+		const row = e.currentTarget;
+
+		if (diff > 80) {
+			haptic(true);
+			row.style.transform = 'translateX(-100vw)';
+			setTimeout(() => {
+				removeQueueItem(index, row);
+				row.style.transform = 'translateX(0)';
+			}, 250);
+		} else if (diff < -80) {
+			haptic();
+			row.style.transform = 'translateX(100vw)';
+			setTimeout(() => {
+				moveQueueItem(index, 'first');
+				row.style.transform = 'translateX(0)';
+			}, 250);
+		} else {
+			row.style.transform = 'translateX(0)';
+		}
+	}
 
 	async function addUrl() {
 		if (!newUrl.value.trim()) return;
@@ -49,55 +92,6 @@
 
 		if (newIndex !== index) {
 			sendCmd('move_queue_item', { index, new_index: newIndex });
-		}
-	}
-
-	// --- Touch Handlers (Shared base for Queue & History rows) ---
-	function ctxTouchStart(e, track, source, index) {
-		touchStartX = e.changedTouches[0].screenX;
-		_queueLongPressFired = false;
-		const touch = e.touches[0];
-		ctxLongPressTimer = setTimeout(() => {
-			_queueLongPressFired = true;
-			haptic(true);
-			openCtxMenu(touch, track, source, index);
-		}, 500);
-	}
-
-	function ctxTouchEnd() {
-		clearTimeout(ctxLongPressTimer);
-	}
-
-	function queueTouchMove(e) {
-		const dx = Math.abs(e.touches[0].screenX - touchStartX);
-
-		if (dx > 10) clearTimeout(ctxLongPressTimer);
-	}
-
-	function queueTouchEnd(e, index) {
-		clearTimeout(ctxLongPressTimer);
-
-		if (_queueLongPressFired) return;
-
-		let diff = touchStartX - e.changedTouches[0].screenX;
-		let row = e.currentTarget;
-
-		if (diff > 80) {
-			haptic(true);
-			row.style.transform = 'translateX(-100vw)';
-			setTimeout(() => {
-				removeQueueItem(index, row);
-				row.style.transform = 'translateX(0)';
-			}, 250);
-		} else if (diff < -80) {
-			haptic();
-			row.style.transform = 'translateX(100vw)';
-			setTimeout(() => {
-				moveQueueItem(index, 'first');
-				row.style.transform = 'translateX(0)';
-			}, 250);
-		} else {
-			row.style.transform = 'translateX(0)';
 		}
 	}
 
@@ -190,9 +184,9 @@
 					class="border-carpincho-border hover:bg-carpincho-border cursor-pointer border-b opacity-70"
 					@click="sendCmd('jump', { type: 'history', index: i })"
 					@contextmenu.prevent="openCtxMenu($event, getTrackInfo(path), 'history', i)"
-					@touchstart="ctxTouchStart($event, getTrackInfo(path), 'history', i)"
-					@touchend="ctxTouchEnd"
-					@touchmove="ctxTouchEnd"
+					@touchstart="onCtxTouchStart($event, getTrackInfo(path), 'history', i)"
+					@touchend="onCtxTouchEnd"
+					@touchmove="onCtxTouchEnd"
 				>
 					<td class="text-carpincho-success p-4 text-center">
 						<i class="material-icons text-sm">check</i>
@@ -266,7 +260,7 @@
 					@dragleave="dragLeave($event)"
 					@drop.prevent="dragDrop($event, i)"
 					@dragend="dragEnd($event)"
-					@touchstart="ctxTouchStart($event, getTrackInfo(path), 'queue', i)"
+					@touchstart="queueTouchStart($event, path, i)"
 					@touchend="queueTouchEnd($event, i)"
 					@touchmove="queueTouchMove($event)"
 					@contextmenu.prevent="openCtxMenu($event, getTrackInfo(path), 'queue', i)"

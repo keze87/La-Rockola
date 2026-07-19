@@ -2148,15 +2148,29 @@ if assets_dir.exists():
 # 1. Automatizar 'npm run build' antes de que el servidor responda
 def build_frontend():
 	if frontend_dir.exists() and (frontend_dir / "package.json").exists():
-		print("🛠️ Ejecutando 'npm run build' en La Rockola del Carpincho...")
+		print("🦦 Preparando el frontend de La Rockola...")
 		try:
-			# Ejecuta el comando dentro de la carpeta del frontend
+			# 1. Check for node_modules and install dependencies if missing
+			if not (frontend_dir / "node_modules").exists():
+				print("📦 Instalando dependencias del front (npm install)...")
+				subprocess.run(["npm", "install"], cwd=str(frontend_dir), check=True)
+
+			# 2. Run the build process
+			print("🛠️ Ejecutando 'npm run build' en La Rockola del Carpincho...")
 			subprocess.run(["npm", "run", "build"], cwd=str(frontend_dir), check=True)
-			print("✨ Build completado con éxito.")
+			print("✨ Build completado con éxito. ¡Todo piola!")
+
 		except subprocess.CalledProcessError as e:
-			print(f"❌ Error al compilar el frontend: {e}")
+			# If npm install or npm run build fails (returns non-zero exit code)
+			print(f"❌ Error fatal armando el frontend: {e}", file=sys.stderr)
+			print("🛑 La Rockola no puede arrancar a medias. Revisá los errores de Node y volvé.", file=sys.stderr)
+			sys.exit(1)
+		except FileNotFoundError:
+			# If npm is not installed on the system at all
+			print("❌ Error: No se encontró 'npm'. ¿Está instalado Node.js en este equipo?", file=sys.stderr)
+			sys.exit(1)
 	else:
-		print("⚠️ No se encontró la carpeta del frontend o el package.json.")
+		print("⚠️ No se encontró la carpeta del frontend o el package.json. Seguimos sin compilar el front.")
 
 
 # Corremos el build al levantar el script

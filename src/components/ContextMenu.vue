@@ -247,42 +247,42 @@
 
 <style scoped>
 	.ctx-menu {
-		min-width: 220px;
-		background: #1f1a17;
-		border: 1px solid #4a3f35;
+		background: var(--color-carpincho-panel);
 		border-radius: 12px;
+		border: 1px solid var(--color-carpincho-border);
 		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7);
+		min-width: 220px;
 		overflow: hidden;
 	}
 
 	.ctx-menu-header {
-		padding: 10px 16px 8px;
-		border-bottom: 1px solid #4a3f35;
+		border-bottom: 1px solid var(--color-carpincho-border);
+		color: var(--color-carpincho-primary);
 		font-size: 0.72rem;
 		font-weight: 700;
-		text-transform: uppercase;
 		letter-spacing: 0.08em;
-		color: #a67c52;
+		padding: 10px 16px 8px;
+		text-transform: uppercase;
 	}
 
 	.ctx-menu-item {
-		display: flex;
 		align-items: center;
+		color: var(--color-carpincho-text);
+		cursor: pointer;
+		display: flex;
+		font-size: 0.92rem;
 		gap: 10px;
 		padding: 12px 16px;
-		cursor: pointer;
-		color: #e8d5c4;
-		font-size: 0.92rem;
 		transition: background 0.12s;
 	}
 
 	.ctx-menu-item:hover,
 	.ctx-menu-item:active {
-		background: #2b2622;
+		background: var(--color-carpincho-bg);
 	}
 
 	.ctx-menu-item i {
-		color: #a67c52;
+		color: var(--color-carpincho-primary);
 		font-size: 1.1rem;
 	}
 

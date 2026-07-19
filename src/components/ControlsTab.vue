@@ -2,6 +2,8 @@
 	import { ref, computed } from 'vue';
 	import { usePlayer } from '../composables/usePlayer';
 	import QRCode from 'qrcode.vue';
+	import PillButton from './ui/PillButton.vue';
+	import ToggleRow from './ui/ToggleRow.vue';
 
 	const {
 		djCarpinchoEnabled,
@@ -126,155 +128,94 @@
 			</div>
 		</div>
 
+		<!-- Sorters -->
 		<div class="text-carpincho-secondary mb-4 text-center text-sm font-bold tracking-wider uppercase">
 			<i class="material-icons mr-1 align-middle">sort</i>
 			Acomodando la gilada
 		</div>
+
 		<div class="mb-8 flex flex-wrap justify-center gap-3">
-			<button
-				class="flex items-center gap-2 rounded-full bg-gray-800 px-5 py-2 font-medium text-white transition hover:bg-gray-700 active:scale-95"
-				@click="sortLibrary('time')"
-			>
-				<i class="material-icons">access_time</i>
-				Como llegaron
-			</button>
-			<button
-				class="flex items-center gap-2 rounded-full bg-gray-800 px-5 py-2 font-medium text-white transition hover:bg-gray-700 active:scale-95"
-				@click="sortLibrary('artist')"
-			>
-				<i class="material-icons">person</i>
-				Por el que canta
-			</button>
-			<button
-				class="flex items-center gap-2 rounded-full bg-gray-800 px-5 py-2 font-medium text-white transition hover:bg-gray-700 active:scale-95"
-				@click="sortLibrary('shuffle', false)"
-			>
-				<i class="material-icons">shuffle</i>
-				Mezcladito (A lo loco)
-			</button>
-			<button
-				class="flex items-center gap-2 rounded-full bg-gray-800 px-5 py-2 font-medium text-white transition hover:bg-gray-700 active:scale-95"
-				@click="sortLibrary('mood')"
-			>
-				<i class="material-icons">bolt</i>
-				Más Manija
-			</button>
+			<PillButton icon="access_time" @click="sortLibrary('time')">Como llegaron</PillButton>
+			<PillButton icon="person" @click="sortLibrary('artist')">Por el que canta</PillButton>
+			<PillButton icon="shuffle" @click="sortLibrary('shuffle', false)">Mezcladito (A lo loco)</PillButton>
+			<PillButton icon="bolt" @click="sortLibrary('mood')">Más Manija</PillButton>
 		</div>
 
+		<!-- The Toggles -->
 		<div class="text-carpincho-secondary mb-4 text-center text-sm font-bold tracking-wider uppercase">
 			<i class="material-icons mr-1 align-middle">celebration</i>
 			La Joda
 		</div>
 
 		<!-- Local Listen Toggle -->
-		<div
-			class="bg-carpincho-panel border-carpincho-warning mx-auto mb-8 flex w-full max-w-lg items-center justify-between rounded-xl border-l-4 p-4 shadow-md"
-		>
-			<div class="text-left">
-				<div class="text-carpincho-text flex items-center gap-2 font-bold">
-					<i class="material-icons text-carpincho-warning">headphones</i>
-					Escuchar acá
-				</div>
-				<div class="mt-1 text-xs text-[#a6adc8]">Stremea la música directo a tu celular o PC.</div>
-			</div>
-			<label class="relative ml-4 inline-flex cursor-pointer items-center">
-				<input v-model="listenLocally" type="checkbox" class="peer sr-only" />
-				<div
-					class="peer peer-checked:bg-carpincho-warning h-6 w-11 rounded-full bg-gray-700 peer-focus:outline-none after:absolute after:top-[2px] after:left-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:after:translate-x-full peer-checked:after:border-white"
-				/>
-			</label>
-		</div>
+		<ToggleRow
+			v-model="listenLocally"
+			icon="headphones"
+			title="Escuchar acá"
+			description="Stremea la música directo a tu celular o PC."
+		/>
 
-		<!-- DJ Carpincho Toggle -->
-		<div
-			class="bg-carpincho-panel border-carpincho-warning mx-auto mb-8 flex w-full max-w-lg items-center justify-between rounded-xl border-l-4 p-4 shadow-md"
-		>
-			<div class="text-left">
-				<div class="text-carpincho-text flex items-center gap-2 font-bold">
-					<i class="material-icons text-carpincho-warning">shuffle</i>
-					DJ Carpincho
-				</div>
-				<div class="text-xs text-[#a6adc8]">Tira un tema random nuevo si se vacía la fila</div>
-			</div>
-			<label class="relative ml-4 inline-flex cursor-pointer items-center">
-				<input type="checkbox" :checked="djCarpinchoEnabled" class="peer sr-only" @change="toggleDjCarpincho" />
-				<div
-					class="peer peer-checked:bg-carpincho-success h-6 w-11 rounded-full bg-gray-700 peer-focus:outline-none after:absolute after:top-[2px] after:left-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:after:translate-x-full peer-checked:after:border-white"
-				/>
-			</label>
-		</div>
+		<ToggleRow
+			:model-value="djCarpinchoEnabled"
+			icon="shuffle"
+			title="DJ Carpincho"
+			description="Tira un tema random nuevo si se vacía la fila"
+			active-class="bg-carpincho-success"
+			@update:model-value="toggleDjCarpincho"
+		/>
 
-		<!-- DJ Safe Mode Toggle -->
-		<div
+		<ToggleRow
 			v-show="djCarpinchoEnabled"
-			class="bg-carpincho-panel border-carpincho-warning mx-auto mb-8 flex w-full max-w-lg items-center justify-between rounded-xl border-l-4 p-4 shadow-md transition-all"
-		>
-			<div class="text-left">
-				<div class="text-carpincho-text flex items-center gap-2 font-bold">
-					<i class="material-icons text-carpincho-warning">favorite</i>
-					Capincho seguro
-				</div>
-				<div class="text-xs text-[#a6adc8]">Prioriza favoritos para que no decaiga</div>
-			</div>
-			<label class="relative ml-4 inline-flex cursor-pointer items-center">
-				<input type="checkbox" :checked="djSafeModeEnabled" class="peer sr-only" @change="toggleDjSafeMode" />
-				<div
-					class="peer peer-checked:bg-carpincho-success h-6 w-11 rounded-full bg-gray-700 peer-focus:outline-none after:absolute after:top-[2px] after:left-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:after:translate-x-full peer-checked:after:border-white"
-				/>
-			</label>
-		</div>
+			:model-value="djSafeModeEnabled"
+			icon="favorite"
+			title="Capincho seguro"
+			description="Prioriza favoritos para que no decaiga"
+			active-class="bg-carpincho-success"
+			@update:model-value="toggleDjSafeMode"
+		/>
 
+		<!-- Action Buttons -->
 		<div class="mb-4 flex flex-wrap justify-center gap-3">
-			<button
-				class="flex items-center gap-2 rounded-full bg-red-700 px-5 py-2 font-medium text-white transition hover:bg-red-600 active:scale-95"
-				@click="sendCmd('stop')"
-			>
-				<i class="material-icons">stop</i>
+			<PillButton icon="stop" color-class="bg-red-700 hover:bg-red-600" @click="sendCmd('stop')">
 				Cortala de una
-			</button>
-			<button
-				class="flex items-center gap-2 rounded-full bg-blue-700 px-5 py-2 font-medium text-white transition hover:bg-blue-600 active:scale-95"
-				@click="sendCmd('fullscreen')"
-			>
-				<i class="material-icons">fullscreen</i>
+			</PillButton>
+
+			<PillButton icon="fullscreen" color-class="bg-blue-700 hover:bg-blue-600" @click="sendCmd('fullscreen')">
 				Todo pantalla, ñeri
-			</button>
-			<button
-				class="flex items-center gap-2 rounded-full bg-gray-700 px-5 py-2 font-medium text-white transition hover:bg-gray-600 active:scale-95"
+			</PillButton>
+
+			<PillButton
+				:icon="mpvVisible ? 'visibility_off' : 'visibility'"
+				color-class="bg-gray-700 hover:bg-gray-600"
 				@click="toggleMpvVisibility"
 			>
-				<i class="material-icons">{{ mpvVisible ? 'visibility_off' : 'visibility' }}</i>
 				{{ mpvVisible ? 'Ocultar MPV' : 'Mostrar MPV' }}
-			</button>
+			</PillButton>
 		</div>
+
 		<div class="mb-8 flex flex-wrap justify-center gap-3">
-			<button
-				:class="[
-					'flex items-center gap-2 rounded-full px-5 py-2 font-medium transition active:scale-95',
-					serverMuted ? 'bg-red-700 text-white hover:bg-red-600' : 'bg-gray-700 text-white hover:bg-gray-600',
-				]"
+			<PillButton
+				:icon="serverMuted ? 'volume_off' : 'volume_up'"
+				:color-class="serverMuted ? 'bg-red-700 hover:bg-red-600' : 'bg-gray-700 hover:bg-gray-600'"
 				@click="
 					sendCmd('set_mute', { state: !serverMuted });
 					haptic();
 				"
 			>
-				<i class="material-icons">{{ serverMuted ? 'volume_off' : 'volume_up' }}</i>
 				{{ serverMuted ? 'Desmutear' : 'Mutear' }}
-			</button>
-			<button
-				class="flex items-center gap-2 rounded-full bg-green-700 px-5 py-2 font-medium text-white transition hover:bg-green-600 active:scale-95"
-				@click="loadLibrary(true)"
-			>
-				<i class="material-icons">refresh</i>
+			</PillButton>
+
+			<PillButton icon="refresh" color-class="bg-green-700 hover:bg-green-600" @click="loadLibrary(true)">
 				Pegale otra escaneada
-			</button>
-			<button
-				class="flex items-center gap-2 rounded-full bg-purple-700 px-5 py-2 font-medium text-white transition hover:bg-purple-600 active:scale-95"
+			</PillButton>
+
+			<PillButton
+				icon="open_in_full"
+				color-class="bg-purple-700 hover:bg-purple-600"
 				@click="toggleWebFullscreen"
 			>
-				<i class="material-icons">open_in_full</i>
 				Full Rockola
-			</button>
+			</PillButton>
 		</div>
 
 		<!-- QR Code -->
@@ -282,6 +223,7 @@
 			<i class="material-icons mr-1 align-middle">qr_code_2</i>
 			Sumate a la joda
 		</div>
+
 		<div class="flex flex-col items-center pb-20">
 			<!-- Note the 'relative' class added here to contain the absolute image -->
 			<div class="relative flex items-center justify-center rounded-xl bg-white p-4 shadow-lg">
@@ -295,7 +237,7 @@
 					class="absolute top-1/2 left-1/2 h-[88px] w-[88px] -translate-x-1/2 -translate-y-1/2 rounded-lg p-1"
 				/>
 			</div>
-			<p class="mt-3 text-sm text-[#a6adc8]">Escaneá para entrar desde tu celu</p>
+			<p class="text-carpincho-muted mt-3 text-sm">Escaneá para entrar desde tu celu</p>
 		</div>
 	</section>
 </template>

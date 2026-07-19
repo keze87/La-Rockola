@@ -17,13 +17,11 @@
 		toggleFavorite,
 	} = usePlayer();
 
-	const { openCtxMenu } = useContextMenu();
+	const { openCtxMenu, onCtxTouchStart, onCtxTouchEnd } = useContextMenu();
 
 	// Local state for this tab only
 	const showFavoritesOnly = ref(false);
 	const librarySection = ref(null);
-
-	let ctxLongPressTimer = null;
 
 	watch(searchQuery, () => {
 		if (librarySection.value) {
@@ -74,18 +72,6 @@
 		const el = document.getElementById('current-library-row');
 
 		if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-	}
-
-	function ctxTouchStart(e, track) {
-		const touch = e.touches[0];
-		ctxLongPressTimer = setTimeout(() => {
-			haptic(true);
-			openCtxMenu(touch, track, 'library');
-		}, 500);
-	}
-
-	function ctxTouchEnd() {
-		clearTimeout(ctxLongPressTimer);
 	}
 </script>
 
@@ -163,9 +149,9 @@
 					]"
 					@click="handleLibraryClick(track)"
 					@contextmenu.prevent="openCtxMenu($event, track, 'library')"
-					@touchstart="ctxTouchStart($event, track)"
-					@touchend="ctxTouchEnd"
-					@touchmove="ctxTouchEnd"
+					@touchstart="onCtxTouchStart($event, track, 'library')"
+					@touchend="onCtxTouchEnd"
+					@touchmove="onCtxTouchEnd"
 				>
 					<td class="p-4 text-center">
 						<div v-if="currentTrackPath === track.path" class="flex items-center justify-center">
