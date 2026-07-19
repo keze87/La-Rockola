@@ -52,6 +52,12 @@ const toasts = ref([]);
 let toastIdCounter = 0;
 
 const isPlaying = computed(() => !!currentTrackPath.value && !isPaused.value);
+const volIcon = computed(() => {
+	if (serverMuted.value || volume.value == 0) return 'volume_off';
+	if (volume.value <= 40) return 'volume_down';
+	if (volume.value <= 100) return 'volume_up';
+	return 'surround_sound';
+});
 
 export function usePlayer() {
 	function normalizeString(s) {
@@ -594,6 +600,7 @@ export function usePlayer() {
 		togglePauseAfterCurrent,
 		toggleQueue,
 		topPlayedState,
+		volIcon,
 		volume,
 	};
 }

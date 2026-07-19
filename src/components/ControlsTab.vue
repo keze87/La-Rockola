@@ -17,6 +17,7 @@
 		setVolume,
 		sortLibrary,
 		toggleMpvVisibility,
+		volIcon,
 		volume,
 	} = usePlayer();
 

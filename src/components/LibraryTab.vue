@@ -170,7 +170,7 @@
 							<!-- BOTÓN FAVORITO -->
 							<button
 								type="button"
-								class="-ml-2 hidden shrink-0 cursor-pointer px-2 sm:block"
+								class="hidden shrink-0 cursor-pointer px-2 sm:block"
 								@click.stop.prevent="
 									toggleFavorite(track.path);
 									haptic();
@@ -180,7 +180,7 @@
 									class="material-icons favorite-icon !text-[1.1rem] transition-colors"
 									:class="
 										favorites.includes(track.path)
-											? 'text-carpincho-warning scale-110 drop-shadow-md'
+											? 'text-carpincho-warning drop-shadow-md'
 											: 'hover:text-carpincho-warning text-gray-600'
 									"
 								>

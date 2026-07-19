@@ -23,6 +23,7 @@
 		serverMuted,
 		showFogonVolume,
 		togglePauseAfterCurrent,
+		volIcon,
 		volume,
 	} = player;
 
@@ -124,12 +125,6 @@
 
 	const playPauseIcon = computed(() => (isPlaying.value ? 'pause' : 'play_arrow'));
 	const muteIcon = computed(() => (serverMuted.value || volume.value == 0 ? 'volume_off' : 'volume_down'));
-	const volIcon = computed(() => {
-		if (serverMuted.value || volume.value == 0) return 'volume_off';
-		if (volume.value <= 40) return 'volume_down';
-		if (volume.value <= 100) return 'volume_up';
-		return 'surround_sound';
-	});
 
 	// Timer Button Logic
 	const isTimerActive = computed(() => pauseAfterPath.value === currentTrackPath.value && currentTrackPath.value);
