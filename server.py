@@ -2149,15 +2149,19 @@ if assets_dir.exists():
 def build_frontend():
 	if frontend_dir.exists() and (frontend_dir / "package.json").exists():
 		print("🦦 Preparando el frontend de La Rockola...")
+
+		# Detectamos si estamos en Windows para usar el nombre correcto del ejecutable
+		npm_cmd = "npm.cmd" if os.name == "nt" else "npm"
+
 		try:
 			# 1. Check for node_modules and install dependencies if missing
 			if not (frontend_dir / "node_modules").exists():
 				print("📦 Instalando dependencias del front (npm install)...")
-				subprocess.run(["npm", "install"], cwd=str(frontend_dir), check=True)
+				subprocess.run([npm_cmd, "install"], cwd=str(frontend_dir), check=True)
 
 			# 2. Run the build process
 			print("🛠️ Ejecutando 'npm run build' en La Rockola del Carpincho...")
-			subprocess.run(["npm", "run", "build"], cwd=str(frontend_dir), check=True)
+			subprocess.run([npm_cmd, "run", "build"], cwd=str(frontend_dir), check=True)
 			print("✨ Build completado con éxito. ¡Todo piola!")
 
 		except subprocess.CalledProcessError as e:
