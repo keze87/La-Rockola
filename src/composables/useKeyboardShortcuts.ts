@@ -1,12 +1,12 @@
 import { onKeyStroke } from '@vueuse/core';
-import { usePlayer } from './usePlayer';
 import { useContextMenu } from './useContextMenu';
+import { usePlayer } from './usePlayer';
 
 export function useKeyboardShortcuts() {
 	const player = usePlayer();
 	const ctx = useContextMenu();
 
-	const shouldIgnore = (e) => {
+	const shouldIgnore = (e: KeyboardEvent) => {
 		// Ignoramos si el usuario está escribiendo en un input de texto
 		const el = e.target;
 
@@ -17,7 +17,7 @@ export function useKeyboardShortcuts() {
 		);
 	};
 
-	onKeyStroke('Escape', (e) => {
+	onKeyStroke('Escape', (e: KeyboardEvent) => {
 		if (shouldIgnore(e)) return;
 
 		if (player.isFogonMode.value) {
@@ -30,7 +30,7 @@ export function useKeyboardShortcuts() {
 		if (player.showFogonVolume?.value) player.showFogonVolume.value = false;
 	});
 
-	onKeyStroke(' ', (e) => {
+	onKeyStroke(' ', (e: KeyboardEvent) => {
 		if (shouldIgnore(e)) return;
 
 		e.preventDefault();
@@ -38,7 +38,7 @@ export function useKeyboardShortcuts() {
 		player.haptic(true);
 	});
 
-	onKeyStroke('ArrowRight', (e) => {
+	onKeyStroke('ArrowRight', (e: KeyboardEvent) => {
 		if (shouldIgnore(e)) return;
 
 		e.preventDefault();
@@ -55,7 +55,7 @@ export function useKeyboardShortcuts() {
 		player.haptic();
 	});
 
-	onKeyStroke('ArrowLeft', (e) => {
+	onKeyStroke('ArrowLeft', (e: KeyboardEvent) => {
 		if (shouldIgnore(e)) return;
 
 		e.preventDefault();
@@ -72,47 +72,29 @@ export function useKeyboardShortcuts() {
 		player.haptic();
 	});
 
-	onKeyStroke('ArrowUp', (e) => {
+	onKeyStroke('ArrowUp', (e: KeyboardEvent) => {
 		if (shouldIgnore(e)) return;
 
 		e.preventDefault();
 		player.volume.value = Math.min(110, Number(player.volume.value) + 5);
 		player.setVolume();
-
-		player.showToast(
-			{
-				prefix: 'Volumen: ',
-				highlight: player.volume.value + '%',
-			},
-			'success'
-		);
+		player.showToast({ prefix: 'Volumen: ', highlight: player.volume.value + '%' }, 'success');
 	});
 
-	onKeyStroke('ArrowDown', (e) => {
+	onKeyStroke('ArrowDown', (e: KeyboardEvent) => {
 		if (shouldIgnore(e)) return;
 
 		e.preventDefault();
 		player.volume.value = Math.max(0, Number(player.volume.value) - 5);
 		player.setVolume();
-
-		player.showToast(
-			{
-				prefix: 'Volumen: ',
-				highlight: player.volume.value + '%',
-			},
-			'success'
-		);
+		player.showToast({ prefix: 'Volumen: ', highlight: player.volume.value + '%' }, 'success');
 	});
 
-	onKeyStroke(['m', 'M'], (e) => {
+	onKeyStroke(['m', 'M'], (e: KeyboardEvent) => {
 		if (shouldIgnore(e)) return;
 
 		const isCurrentlyMuted = player.serverMuted.value;
-
-		player.sendCmd('set_mute', {
-			state: !isCurrentlyMuted,
-		});
-
+		player.sendCmd('set_mute', { state: !isCurrentlyMuted });
 		player.haptic();
 
 		if (!isCurrentlyMuted) {
@@ -127,14 +109,14 @@ export function useKeyboardShortcuts() {
 		}
 	});
 
-	onKeyStroke(['f', 'F'], (e) => {
+	onKeyStroke(['f', 'F'], (e: KeyboardEvent) => {
 		if (shouldIgnore(e)) return;
 
 		player.isFogonMode.value = !player.isFogonMode.value;
 		player.haptic();
 	});
 
-	onKeyStroke(['l', 'L'], (e) => {
+	onKeyStroke(['l', 'L'], (e: KeyboardEvent) => {
 		if (shouldIgnore(e)) return;
 
 		const currentPath = player.currentTrackPath.value;
@@ -146,15 +128,12 @@ export function useKeyboardShortcuts() {
 			player.haptic();
 
 			// Show the toast based on what the new state will be
-			if (!wasFavorite) {
-				player.showToast('Agregado a favoritos', 'success');
-			} else {
-				player.showToast('Quitado de favoritos', 'error');
-			}
+			if (!wasFavorite) player.showToast('Agregado a favoritos', 'success');
+			else player.showToast('Quitado de favoritos', 'error');
 		}
 	});
 
-	onKeyStroke(['t', 'T'], (e) => {
+	onKeyStroke(['t', 'T'], (e: KeyboardEvent) => {
 		if (shouldIgnore(e)) return;
 
 		player.togglePauseAfterCurrent();
@@ -171,14 +150,14 @@ export function useKeyboardShortcuts() {
 		);
 	});
 
-	onKeyStroke(['n', 'N'], (e) => {
+	onKeyStroke(['n', 'N'], (e: KeyboardEvent) => {
 		if (shouldIgnore(e)) return;
 
 		player.sendCmd('skip');
 		player.haptic();
 	});
 
-	onKeyStroke(['p', 'P'], (e) => {
+	onKeyStroke(['p', 'P'], (e: KeyboardEvent) => {
 		if (shouldIgnore(e)) return;
 
 		player.sendCmd('prev');

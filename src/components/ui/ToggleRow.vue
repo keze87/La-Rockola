@@ -1,14 +1,25 @@
-<script setup>
+<script setup lang="ts">
 	import { Switch } from '@headlessui/vue';
 
-	defineProps({
-		modelValue: Boolean,
-		icon: { type: String, default: null },
-		title: { type: String, default: '' },
-		description: { type: String, default: '' },
-		activeClass: { type: String, default: 'bg-carpincho-warning' },
-	});
-	defineEmits(['update:modelValue']);
+	withDefaults(
+		defineProps<{
+			modelValue: boolean;
+			icon?: string | null;
+			title?: string;
+			description?: string;
+			activeClass?: string;
+		}>(),
+		{
+			icon: null,
+			title: '',
+			description: '',
+			activeClass: 'bg-carpincho-warning',
+		}
+	);
+
+	defineEmits<{
+		(e: 'update:modelValue', value: boolean): void;
+	}>();
 </script>
 
 <template>

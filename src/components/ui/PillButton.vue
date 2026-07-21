@@ -1,9 +1,17 @@
-<script setup>
-	defineProps({
-		icon: { type: String, default: null },
-		colorClass: { type: String, default: 'bg-gray-800 hover:bg-gray-700' },
-	});
-	defineEmits(['click']);
+<script setup lang="ts">
+	withDefaults(
+		defineProps<{
+			icon?: string | null;
+			colorClass?: string;
+		}>(),
+		{
+			icon: null,
+			colorClass: 'bg-gray-800 hover:bg-gray-700',
+		}
+	);
+	defineEmits<{
+		(e: 'click'): void;
+	}>();
 </script>
 
 <template>

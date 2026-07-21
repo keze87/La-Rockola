@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 	import { useDragSlider } from '../composables/useDragSlider';
 	import { usePlayer } from '../composables/usePlayer';
 	import PillButton from './ui/PillButton.vue';

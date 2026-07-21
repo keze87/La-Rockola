@@ -1,11 +1,10 @@
-<script setup>
+<script setup lang="ts">
 	import { computed, onMounted } from 'vue';
-	import 'vue-sonner/style.css';
 	import { Toaster } from 'vue-sonner';
-	import { useSliderFactory } from './composables/useSliderFactory';
 	import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts';
 	import { useLyrics } from './composables/useLyrics';
 	import { usePlayer } from './composables/usePlayer';
+	import { useSliderFactory } from './composables/useSliderFactory';
 
 	// Import your isolated components
 	import ContextMenu from './components/ContextMenu.vue';
@@ -85,6 +84,12 @@
 		return `${t.display_artist} - ${t.display_title}`;
 	});
 
+	function hideBrokenCover(e: Event) {
+		if (e.target) {
+			(e.target as HTMLElement).style.display = 'none';
+		}
+	}
+
 	onMounted(() => {
 		loadLibrary(false);
 		connectWebSocket();
@@ -155,7 +160,7 @@
 				v-if="currentTrackPath && !currentTrackPath.startsWith('http') && !isScanning"
 				:src="'/cover?path=' + encodeURIComponent(currentTrackPath)"
 				class="h-10 w-10 shrink-0 rounded object-cover shadow-sm"
-				@error="$event.target.style.display = 'none'"
+				@error="hideBrokenCover"
 			/>
 			<div v-else class="flex h-10 w-10 shrink-0 items-center justify-center rounded shadow-sm">
 				<i class="material-icons text-carpincho-warning">

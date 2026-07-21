@@ -3,13 +3,14 @@ import { useVibrate } from '@vueuse/core';
 const { vibrate } = useVibrate();
 
 export function useHaptics() {
-	function haptic(heavy = false) {
-		if (navigator.vibrate) {
+	function haptic(heavy: boolean = false) {
+		if ('vibrate' in navigator && typeof navigator.vibrate === 'function') {
 			vibrate(heavy ? [10, 30, 20] : 10);
 			return;
 		}
 		try {
-			const ctx = new (window.AudioContext || window.webkitAudioContext)();
+			const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+			const ctx = new AudioContextClass();
 			const osc = ctx.createOscillator();
 			const gain = ctx.createGain();
 			osc.connect(gain);

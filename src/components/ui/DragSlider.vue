@@ -1,14 +1,25 @@
-<script setup>
+<script setup lang="ts">
 	import { useDragSlider } from '../../composables/useDragSlider';
 
-	const props = defineProps({
-		modelValue: { type: Number, required: true },
-		max: { type: Number, default: 100 },
-		activeColor: { type: String, default: 'bg-carpincho-warning' },
-		trackColor: { type: String, default: 'bg-gray-600/50' },
-	});
+	const props = withDefaults(
+		defineProps<{
+			modelValue: number;
+			max?: number;
+			activeColor?: string;
+			trackColor?: string;
+		}>(),
+		{
+			max: 100,
+			activeColor: 'bg-carpincho-warning',
+			trackColor: 'bg-gray-600/50',
+		}
+	);
 
-	const emit = defineEmits(['update:modelValue', 'commit', 'dragging']);
+	const emit = defineEmits<{
+		(e: 'update:modelValue', value: number): void;
+		(e: 'commit', value: number): void;
+		(e: 'dragging', value: boolean): void;
+	}>();
 
 	const { progressPercent, startDrag, moveDrag, endDrag } = useDragSlider({
 		max: () => props.max,

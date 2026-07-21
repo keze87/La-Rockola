@@ -1,7 +1,8 @@
-<script setup>
+<script setup lang="ts">
 	import { ref, computed, watch } from 'vue';
 	import { usePlayer } from '../composables/usePlayer';
 	import TrackRow from './ui/TrackRow.vue';
+	import type { Track } from '../types';
 
 	// Pull data from the global store
 	const {
@@ -11,14 +12,14 @@
 		handleLibraryClick,
 		haptic,
 		isPaused,
-		normalizeString,
 		librarySearchQuery: searchQuery,
+		normalizeString,
 		queueIndex,
 	} = usePlayer();
 
 	// Local state for this tab only
 	const showFavoritesOnly = ref(false);
-	const librarySection = ref(null);
+	const librarySection = ref<HTMLElement | null>(null);
 
 	watch(searchQuery, () => {
 		if (librarySection.value) {
@@ -36,8 +37,8 @@
 		if (!searchQuery.value) return tracks;
 
 		const q = normalizeString(searchQuery.value);
-		const exact = [],
-			fuzzy = [];
+		const exact: Track[] = [],
+			fuzzy: Track[] = [];
 
 		tracks.forEach((t) => {
 			const target = normalizeString((t.artist || '') + ' ' + (t.title || ''));

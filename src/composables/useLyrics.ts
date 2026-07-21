@@ -1,12 +1,17 @@
-import { ref, computed } from 'vue';
+import { ref, computed, type Ref } from 'vue';
 
-const lyrics = ref([]);
+interface LyricLine {
+	time: number;
+	text: string;
+}
 
-export function useLyrics(player) {
+const lyrics = ref<LyricLine[]>([]);
+
+export function useLyrics(player: { localTimePos: Ref<number> }) {
 	const currentLyricLine = computed(() => {
 		if (!lyrics.value || !lyrics.value.length) return null;
 
-		let activeLine = ' ';
+		const activeLine = ' ';
 		for (let i = lyrics.value.length - 1; i >= 0; i--) {
 			// Syncs against the player's localTimePos
 			if (player.localTimePos.value >= lyrics.value[i].time) {
@@ -16,7 +21,7 @@ export function useLyrics(player) {
 		return activeLine;
 	});
 
-	async function loadLyrics(path) {
+	async function loadLyrics(path: string | null) {
 		lyrics.value = []; // Clear immediately on track change
 		if (!path || path.startsWith('http')) return;
 
@@ -32,9 +37,9 @@ export function useLyrics(player) {
 		}
 	}
 
-	function parseLrc(text) {
+	function parseLrc(text: string) {
 		const lines = text.split('\n');
-		const parsed = [];
+		const parsed: LyricLine[] = [];
 		const tagRegex = /\[\d{2}:\d{2}\.\d{2,3}\]/g;
 
 		lines.forEach((line) => {
@@ -61,12 +66,12 @@ export function useLyrics(player) {
 		// Chronological sorting
 		parsed.sort((a, b) => a.time - b.time);
 
-		const finalParsed = [];
+		const finalParsed: LyricLine[] = [];
 		for (let i = 0; i < parsed.length; i++) {
 			const current = parsed[i];
 
 			if (current.text === ' ') {
-				let nextValidTime = null;
+				let nextValidTime: number | null = null;
 				for (let j = i + 1; j < parsed.length; j++) {
 					if (parsed[j].text !== ' ') {
 						nextValidTime = parsed[j].time;
@@ -94,9 +99,5 @@ export function useLyrics(player) {
 		lyrics.value = finalParsed;
 	}
 
-	return {
-		currentLyricLine,
-		loadLyrics,
-		lyrics,
-	};
+	return { currentLyricLine, loadLyrics, lyrics };
 }

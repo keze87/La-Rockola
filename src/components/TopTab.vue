@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 	import { usePlayer } from '../composables/usePlayer';
 	import { useContextMenuBindings } from '../composables/useContextMenu';
 	import CoverImage from './ui/CoverImage.vue';

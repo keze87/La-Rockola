@@ -1,7 +1,7 @@
-import { useWebSocket } from '@vueuse/core';
+import { _startLocalPlayer, applyRemoteSeek } from './useLocalPlayback';
 import { useCommands } from './useCommands';
 import { useToasts } from './useToasts';
-import { _startLocalPlayer, applyRemoteSeek } from './useLocalPlayback';
+import { useWebSocket } from '@vueuse/core';
 import {
 	currentTrackPath,
 	currentTracks,
@@ -13,14 +13,14 @@ import {
 	historyState,
 	ignoreServerTimeUntil,
 	isDraggingSeek,
-	isSocketConnected,
+	isPaused,
 	isScanning,
+	isSocketConnected,
 	listenLocally,
 	localTimePos,
 	mpvVisible,
 	originalTracks,
 	pauseAfterPath,
-	isPaused,
 	queueState,
 	serverMuted,
 	setWsSend,
@@ -30,6 +30,7 @@ import {
 	urlMetadata,
 	volume,
 } from './state';
+import type { PlayerState, Track } from '../../types';
 
 export function useSocket() {
 	const { sendCmd } = useCommands();
@@ -87,37 +88,39 @@ export function useSocket() {
 					}
 
 					if (data.type === 'state_update') {
-						if (data.current_track !== undefined) currentTrackPath.value = data.current_track;
-						if (data.dj_carpincho_enabled !== undefined)
-							djCarpinchoEnabled.value = data.dj_carpincho_enabled;
-						if (data.dj_next_track !== undefined) djNextTrack.value = data.dj_next_track;
-						if (data.dj_safe_mode !== undefined) djSafeModeEnabled.value = data.dj_safe_mode;
-						if (data.duration !== undefined) duration.value = data.duration;
-						if (data.favorites !== undefined) favorites.value = data.favorites;
-						if (data.history) historyState.value = data.history;
-						if (data.is_scanning !== undefined) isScanning.value = data.is_scanning;
-						if (data.mpv_visible !== undefined) mpvVisible.value = data.mpv_visible;
-						if (data.pause_after_path !== undefined) pauseAfterPath.value = data.pause_after_path;
-						if (data.paused !== undefined) isPaused.value = data.paused;
-						if (data.queue !== undefined) queueState.value = data.queue;
-						if (data.server_muted !== undefined) serverMuted.value = data.server_muted;
-						if (data.top_played) topPlayedState.value = data.top_played;
-						if (data.url_metadata) urlMetadata.value = data.url_metadata;
-						if (data.volume !== undefined) volume.value = data.volume;
+						const state: PlayerState = data;
+						if (state.current_track !== undefined) currentTrackPath.value = state.current_track;
+						if (state.dj_carpincho_enabled !== undefined)
+							djCarpinchoEnabled.value = state.dj_carpincho_enabled;
+						if (state.dj_next_track !== undefined) djNextTrack.value = state.dj_next_track;
+						if (state.dj_safe_mode !== undefined) djSafeModeEnabled.value = state.dj_safe_mode;
+						if (state.duration !== undefined) duration.value = state.duration;
+						if (state.favorites !== undefined) favorites.value = state.favorites;
+						if (state.history) historyState.value = state.history;
+						if (state.is_scanning !== undefined) isScanning.value = state.is_scanning;
+						if (state.mpv_visible !== undefined) mpvVisible.value = state.mpv_visible;
+						if (state.pause_after_path !== undefined) pauseAfterPath.value = state.pause_after_path;
+						if (state.paused !== undefined) isPaused.value = state.paused;
+						if (state.queue !== undefined) queueState.value = state.queue;
+						if (state.server_muted !== undefined) serverMuted.value = state.server_muted;
+						if (state.top_played) topPlayedState.value = state.top_played;
+						if (state.url_metadata) urlMetadata.value = state.url_metadata;
+						if (state.volume !== undefined) volume.value = state.volume;
 
-						if (data.time_pos !== undefined) {
-							timePos.value = data.time_pos;
+						if (state.time_pos !== undefined) {
+							timePos.value = state.time_pos;
 							if (!listenLocally.value && Date.now() > ignoreServerTimeUntil.value) {
 								if (!isDraggingSeek.value && Math.abs(localTimePos.value - timePos.value) > 1.5) {
 									localTimePos.value = timePos.value;
 								}
 							}
 						}
-						if (data.library) {
-							originalTracks.value = [...data.library];
-							currentTracks.value = [...data.library];
-							const map = {};
-							data.library.forEach((t) => (map[t.path] = t));
+
+						if (state.library) {
+							originalTracks.value = [...state.library];
+							currentTracks.value = [...state.library];
+							const map: Record<string, Track> = {};
+							state.library.forEach((t) => (map[t.path] = t));
 							trackMap.value = map;
 						}
 					}

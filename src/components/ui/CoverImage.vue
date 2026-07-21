@@ -1,12 +1,20 @@
-<script setup>
+<script setup lang="ts">
 	import { useCover } from '../../composables/useCover';
 
-	const props = defineProps({
-		path: { type: String, default: null },
-		size: { type: String, default: 'h-10 w-10' },
-		rounded: { type: String, default: 'rounded' },
-		iconSize: { type: String, default: '!text-lg' },
-	});
+	const props = withDefaults(
+		defineProps<{
+			path?: string | null;
+			size?: string;
+			rounded?: string;
+			iconSize?: string;
+		}>(),
+		{
+			path: null,
+			size: 'h-10 w-10',
+			rounded: 'rounded',
+			iconSize: '!text-lg',
+		}
+	);
 
 	// Getter form so a changing `path` prop keeps recomputing (see useCover/useTrack).
 	const { coverUrl, onCoverError } = useCover(() => props.path);

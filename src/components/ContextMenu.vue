@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 	import { ref, watch } from 'vue';
 	import { useContextMenu } from '../composables/useContextMenu';
 	import { usePlayer } from '../composables/usePlayer';
@@ -35,6 +35,9 @@
 
 	function ctxFilterByArtist() {
 		const track = ctxMenu.track;
+
+		if (!track) return;
+
 		closeCtxMenu();
 		librarySearchQuery.value = track.artist || track.display_artist || '';
 		switchTab('library');
@@ -43,18 +46,20 @@
 
 	// Arrow keys move focus between items, Escape closes and returns focus to
 	// the row that opened the menu, and Tab is trapped inside the menu while
-	// it's open — without this the menu can only be driven with a mouse/touch.
-	function ctxMenuKeydown(e) {
+	// it's open - without this the menu can only be driven with a mouse/touch.
+	function ctxMenuKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') {
 			e.preventDefault();
 			closeCtxMenu();
 			return;
 		}
+		const items = Array.from(
+			(e.currentTarget as HTMLElement).querySelectorAll('[role="menuitem"]')
+		) as HTMLElement[];
 
-		const items = Array.from(e.currentTarget.querySelectorAll('[role="menuitem"]'));
 		if (items.length === 0) return;
 
-		const currentIndex = items.indexOf(document.activeElement);
+		const currentIndex = items.indexOf(document.activeElement as HTMLElement);
 
 		if (e.key === 'ArrowDown') {
 			e.preventDefault();
@@ -66,6 +71,7 @@
 			items[(currentIndex - 1 + items.length) % items.length].focus();
 		} else if (e.key === 'Tab') {
 			keyboardNav.value = true;
+
 			if (e.shiftKey && currentIndex === 0) {
 				e.preventDefault();
 				items[items.length - 1].focus();
@@ -79,6 +85,9 @@
 	// --- Shared Actions ---
 	async function ctxPlayNow() {
 		const track = ctxMenu.track;
+
+		if (!track) return;
+
 		closeCtxMenu();
 		await sendCmd('play', { path: track.path });
 		haptic();
@@ -86,6 +95,9 @@
 
 	async function ctxToggleFavorite() {
 		const track = ctxMenu.track;
+
+		if (!track) return;
+
 		closeCtxMenu();
 		await toggleFavorite(track.path);
 		haptic();
@@ -93,17 +105,21 @@
 
 	async function ctxPauseAfter() {
 		const track = ctxMenu.track;
+
+		if (!track) return;
+
 		closeCtxMenu();
 
 		if (pauseAfterPath.value === track.path) {
 			pauseAfterPath.value = null;
 			await sendCmd('pause_after', { path: '' });
-			showToast(`Cancelamos la pausa al terminar 🦦`, 'info');
+			showToast(`Cancelamos la pausa al terminar 🤠`, 'info');
 			haptic();
 			return;
 		}
 
 		const inQueue = queueState.value.includes(track.path);
+
 		if (!inQueue && currentTrackPath.value !== track.path) {
 			await sendCmd('toggle_queue', { path: track.path });
 		}
@@ -117,7 +133,11 @@
 	// --- Library Source Actions ---
 	async function ctxPlayNext() {
 		const track = ctxMenu.track;
+
+		if (!track) return;
+
 		closeCtxMenu();
+
 		const inQueue = queueState.value.indexOf(track.path);
 
 		if (inQueue !== -1) await sendCmd('remove_queue_item', { index: inQueue });
@@ -129,11 +149,13 @@
 
 			if (newIndex > 0) await sendCmd('move_queue_item', { index: newIndex, new_index: 0 });
 		}
+
 		haptic();
 	}
 
 	async function ctxAddToQueue() {
 		const track = ctxMenu.track;
+		if (!track) return;
 		closeCtxMenu();
 
 		if (!queueState.value.includes(track.path)) {
@@ -150,8 +172,9 @@
 
 		if (index !== null && index > 0) {
 			sendCmd('move_queue_item', { index, new_index: 0 });
-			haptic();
 		}
+
+		haptic();
 	}
 
 	function ctxRemoveFromQueue() {
@@ -176,8 +199,11 @@
 	// --- History Source Actions ---
 	function ctxHistoryPlayAgain() {
 		const track = ctxMenu.track;
+
+		if (ctxMenu.index === null) return;
+
 		closeCtxMenu();
-		sendCmd('toggle_queue', { path: track.path || historyState.value[ctxMenu.index] });
+		sendCmd('toggle_queue', { path: track?.path || historyState.value[ctxMenu.index] });
 		haptic();
 	}
 
@@ -237,9 +263,9 @@
 				</button>
 				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxToggleFavorite">
 					<i class="material-icons">
-						{{ favorites?.includes(ctxMenu.track?.path) ? 'favorite' : 'favorite_border' }}
+						{{ favorites?.includes(ctxMenu.track?.path || '') ? 'favorite' : 'favorite_border' }}
 					</i>
-					{{ favorites?.includes(ctxMenu.track?.path) ? 'Sacar de favoritos' : 'A los favoritos' }}
+					{{ favorites?.includes(ctxMenu.track?.path || '') ? 'Sacar de favoritos' : 'A los favoritos' }}
 				</button>
 				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxFilterByArtist">
 					<i class="material-icons">person_search</i>
@@ -263,9 +289,9 @@
 				</button>
 				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxToggleFavorite">
 					<i class="material-icons">
-						{{ favorites?.includes(ctxMenu.track?.path) ? 'favorite' : 'favorite_border' }}
+						{{ favorites?.includes(ctxMenu.track?.path || '') ? 'favorite' : 'favorite_border' }}
 					</i>
-					{{ favorites?.includes(ctxMenu.track?.path) ? 'Sacar de favoritos' : 'A los favoritos' }}
+					{{ favorites?.includes(ctxMenu.track?.path || '') ? 'Sacar de favoritos' : 'A los favoritos' }}
 				</button>
 				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxPauseAfter">
 					<i class="material-icons">timer</i>
@@ -289,9 +315,9 @@
 				</button>
 				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxToggleFavorite">
 					<i class="material-icons">
-						{{ favorites?.includes(ctxMenu.track?.path) ? 'favorite' : 'favorite_border' }}
+						{{ favorites?.includes(ctxMenu.track?.path || '') ? 'favorite' : 'favorite_border' }}
 					</i>
-					{{ favorites?.includes(ctxMenu.track?.path) ? 'Sacar de favoritos' : 'A los favoritos' }}
+					{{ favorites?.includes(ctxMenu.track?.path || '') ? 'Sacar de favoritos' : 'A los favoritos' }}
 				</button>
 				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxFilterByArtist">
 					<i class="material-icons">person_search</i>

@@ -1,4 +1,4 @@
-import { toValue } from 'vue';
+import { toValue, type MaybeRefOrGetter } from 'vue';
 import { useDragSlider } from './useDragSlider';
 
 export function useSliderFactory() {
@@ -8,7 +8,12 @@ export function useSliderFactory() {
 	 * @param {Function} onUpdate - Fires continuously while dragging
 	 * @param {Function} onCommit - Fires once when the user releases the slider
 	 */
-	function createSlider(source, max, onUpdate, onCommit) {
+	function createSlider(
+		source: MaybeRefOrGetter<number>,
+		max: MaybeRefOrGetter<number>,
+		onUpdate: (val: number) => void,
+		onCommit?: (val: number) => void
+	) {
 		return useDragSlider({
 			// toValue automatically unwraps refs or executes getter functions
 			max: () => toValue(max),

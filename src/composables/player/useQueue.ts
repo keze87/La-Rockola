@@ -1,18 +1,19 @@
+import { currentTrackPath, pauseAfterPath, queueState } from './state';
 import { useCommands } from './useCommands';
 import { useLibrary } from './useLibrary';
 import { useToasts } from './useToasts';
-import { currentTrackPath, pauseAfterPath, queueState } from './state';
+import type { Track } from '../../types';
 
 export function useQueue() {
 	const { sendCmd } = useCommands();
 	const { getTrackInfo } = useLibrary();
 	const { showToast } = useToasts();
 
-	async function toggleFavorite(path) {
+	async function toggleFavorite(path: string) {
 		await sendCmd('toggle_favorite', { path });
 	}
 
-	async function toggleQueue(path, mostrarToast = true) {
+	async function toggleQueue(path: string, mostrarToast = true) {
 		const wasInQueue = queueState.value.includes(path);
 		const title = getTrackInfo(path).display_title;
 		const res = await sendCmd('toggle_queue', { path });
@@ -28,7 +29,7 @@ export function useQueue() {
 		}
 	}
 
-	function handleLibraryClick(track) {
+	function handleLibraryClick(track: Track) {
 		if (currentTrackPath.value === track.path) sendCmd('pause');
 		else toggleQueue(track.path, false);
 	}
@@ -39,7 +40,7 @@ export function useQueue() {
 		if (pauseAfterPath.value === currentTrackPath.value) {
 			pauseAfterPath.value = null;
 			await sendCmd('pause_after', { path: '' });
-			showToast('Cancelamos la pausa al terminar 🦦', 'info');
+			showToast('Cancelamos la pausa al terminar 🤠', 'info');
 		} else {
 			pauseAfterPath.value = currentTrackPath.value;
 			await sendCmd('pause_after', { path: currentTrackPath.value });

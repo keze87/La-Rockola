@@ -1,7 +1,17 @@
-import { reactive, nextTick, toValue } from 'vue';
 import { computePosition, flip, shift, offset } from '@floating-ui/vue';
+import { reactive, nextTick, toValue, type MaybeRefOrGetter } from 'vue';
+import type { Track } from '../types';
 
-const ctxMenu = reactive({
+interface CtxMenuState {
+	visible: boolean;
+	x: number;
+	y: number;
+	track: Track | null;
+	source: string;
+	index: number | null;
+}
+
+const ctxMenu = reactive<CtxMenuState>({
 	visible: false,
 	x: 0,
 	y: 0,
@@ -13,29 +23,34 @@ const ctxMenu = reactive({
 // The element that opened the menu (a table row, typically), so we can
 // return keyboard focus to it once the menu closes. Module-level like
 // ctxMenu itself, since there's only ever one menu instance in the app.
-let triggerEl = null;
+let triggerEl: HTMLElement | null = null;
 
 // Touch state stored outside the composable so it persists accurately
-let ctxLongPressTimer = null;
+let ctxLongPressTimer: ReturnType<typeof setTimeout> | null = null;
 let touchStartX = 0;
 let touchStartY = 0;
 let ctxLongPressFired = false;
 
 export function useContextMenu() {
-	function openCtxMenu(event, track, source = 'library', index = null) {
+	function openCtxMenu(
+		event: MouseEvent | TouchEvent,
+		track: Track,
+		source = 'library',
+		index: number | null = null
+	) {
 		// Only valid for handlers invoked synchronously (e.g. a real
 		// `contextmenu` event) — for the touch long-press path this is
 		// captured earlier by onCtxTouchStart, since `currentTarget` is
 		// already null by the time its setTimeout fires.
-		if (event.currentTarget) triggerEl = event.currentTarget;
+		if (event.currentTarget) triggerEl = event.currentTarget as HTMLElement;
 
 		ctxMenu.track = track;
 		ctxMenu.source = source;
 		ctxMenu.index = index;
 
 		// 1. Extract raw coordinates
-		const clientX = event.clientX || (event.touches && event.touches[0].clientX) || 0;
-		const clientY = event.clientY || (event.touches && event.touches[0].clientY) || 0;
+		const clientX = 'touches' in event ? (event.touches[0]?.clientX ?? 0) : event.clientX;
+		const clientY = 'touches' in event ? (event.touches[0]?.clientY ?? 0) : event.clientY;
 
 		// 2. Pre-seed the coordinates to prevent the top-left flash
 		ctxMenu.x = clientX;
@@ -43,7 +58,7 @@ export function useContextMenu() {
 		ctxMenu.visible = true;
 
 		nextTick(() => {
-			const menuElement = document.querySelector('.ctx-menu');
+			const menuElement = document.querySelector('.ctx-menu') as HTMLElement;
 			if (!menuElement) return;
 
 			const virtualEl = {
@@ -57,7 +72,7 @@ export function useContextMenu() {
 						left: clientX,
 						right: clientX,
 						bottom: clientY,
-					};
+					} as DOMRect;
 				},
 			};
 
@@ -70,7 +85,7 @@ export function useContextMenu() {
 			});
 
 			// Move keyboard focus into the menu so it's usable without a mouse
-			menuElement.querySelector('[role="menuitem"]')?.focus();
+			(menuElement.querySelector('[role="menuitem"]') as HTMLElement)?.focus();
 		});
 	}
 
@@ -84,11 +99,11 @@ export function useContextMenu() {
 		triggerEl = null;
 	}
 
-	function onCtxTouchStart(e, track, source = 'library', index = null) {
+	function onCtxTouchStart(e: TouchEvent, track: Track, source = 'library', index: number | null = null) {
 		// Capture now, synchronously — `e.currentTarget` is nulled out by the
 		// browser once the touchstart event finishes dispatching, so it would
 		// already be gone by the time the setTimeout below fires.
-		const el = e.currentTarget;
+		const el = e.currentTarget as HTMLElement;
 
 		touchStartX = e.touches[0].screenX;
 		touchStartY = e.touches[0].screenY;
@@ -103,7 +118,7 @@ export function useContextMenu() {
 		}, 500);
 	}
 
-	function onCtxTouchMove(e) {
+	function onCtxTouchMove(e: TouchEvent) {
 		if (!ctxLongPressTimer) return;
 
 		const diffX = Math.abs(e.touches[0].screenX - touchStartX);
@@ -116,7 +131,7 @@ export function useContextMenu() {
 		}
 	}
 
-	function onCtxTouchEnd(e) {
+	function onCtxTouchEnd(e: TouchEvent) {
 		if (ctxLongPressTimer) {
 			clearTimeout(ctxLongPressTimer);
 			ctxLongPressTimer = null;
@@ -128,14 +143,7 @@ export function useContextMenu() {
 		}
 	}
 
-	return {
-		closeCtxMenu,
-		ctxMenu,
-		onCtxTouchEnd,
-		onCtxTouchMove,
-		onCtxTouchStart,
-		openCtxMenu,
-	};
+	return { closeCtxMenu, ctxMenu, onCtxTouchEnd, onCtxTouchMove, onCtxTouchStart, openCtxMenu };
 }
 
 /**
@@ -151,24 +159,30 @@ export function useContextMenu() {
  * (e.g. the queue list's swipe-to-delete gesture), leaving only the
  * right-click binding in place.
  */
-export function useContextMenuBindings(track, source = 'library', index = null, { touch = true } = {}) {
+export function useContextMenuBindings(
+	track: MaybeRefOrGetter<Track>,
+	source: MaybeRefOrGetter<string> = 'library',
+	index: MaybeRefOrGetter<number | null> = null,
+	{ touch = true } = {}
+) {
 	const { openCtxMenu, onCtxTouchStart, onCtxTouchEnd, onCtxTouchMove } = useContextMenu();
 
-	const resolve = () => [toValue(track), toValue(source), toValue(index)];
+	const resolve = () => [toValue(track), toValue(source), toValue(index)] as const;
 
 	const bindings = {
-		contextmenu: (e) => {
+		contextmenu: (e: MouseEvent) => {
 			e.preventDefault();
-			openCtxMenu(e, ...resolve());
+			openCtxMenu(e, ...(resolve() as [Track, string, number | null]));
 		},
+		...(touch
+			? {
+					touchstart: (e: TouchEvent) => onCtxTouchStart(e, ...(resolve() as [Track, string, number | null])),
+					touchend: onCtxTouchEnd,
+					touchcancel: onCtxTouchEnd,
+					touchmove: onCtxTouchMove,
+				}
+			: {}),
 	};
-
-	if (touch) {
-		bindings.touchstart = (e) => onCtxTouchStart(e, ...resolve());
-		bindings.touchend = onCtxTouchEnd;
-		bindings.touchcancel = onCtxTouchEnd;
-		bindings.touchmove = onCtxTouchMove;
-	}
 
 	return bindings;
 }

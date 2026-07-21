@@ -1,7 +1,7 @@
 import { activeTab } from './state';
 
 export function useTabs() {
-	function switchTab(tabId) {
+	function switchTab(tabId: string) {
 		activeTab.value = tabId;
 
 		if (tabId === 'queue') {

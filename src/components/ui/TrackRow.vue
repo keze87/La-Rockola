@@ -1,28 +1,48 @@
-<script setup>
+<script setup lang="ts">
 	import { useTrack } from '../../composables/useTrack';
 	import { useContextMenuBindings } from '../../composables/useContextMenu';
 	import CoverImage from './CoverImage.vue';
+	import type { Track } from '../../types';
 
-	const props = defineProps({
-		track: { type: [Object, String], required: true },
-		contextSource: { type: String, default: 'library' },
-		index: { type: Number, default: null },
-		// Queue rows own their long-press-vs-swipe-to-delete touch logic
-		// themselves, so they set this to skip the default touch bindings.
-		contextMenuOnly: { type: Boolean, default: false },
-		hideCover: { type: Boolean, default: false }, // Added to control cover visibility
-	});
+	const props = withDefaults(
+		defineProps<{
+			track: Track | string;
+			contextSource?: string;
+			index?: number | null;
+			// Queue rows own their long-press-vs-swipe-to-delete touch logic
+			// themselves, so they set this to skip the default touch bindings.
+			contextMenuOnly?: boolean;
+			hideCover?: boolean;
+		}>(),
+		{
+			contextSource: 'library',
+			index: null,
+			contextMenuOnly: false,
+			hideCover: false,
+		}
+	);
 
-	const emit = defineEmits(['click']);
+	const emit = defineEmits<{
+		(e: 'click', track: Track | string): void;
+	}>();
 
 	// Getter form (not `props.track` by value) so this keeps tracking the
 	// current prop when a `:key`-stable row is reused for fresh track data
 	// (e.g. after a websocket state_update replaces the library array).
-	const { path, displayTitle, displayArtist, durationStr, isFavorite, isPlaying, isPaused, toggleFavorite } =
-		useTrack(() => props.track);
+	const {
+		displayArtist,
+		displayTitle,
+		durationStr,
+		isFavorite,
+		isPaused,
+		isPlaying,
+		path,
+		toggleFavorite,
+		trackInfo,
+	} = useTrack(() => props.track);
 
 	const bindings = useContextMenuBindings(
-		() => props.track,
+		() => trackInfo.value,
 		() => props.contextSource,
 		() => props.index,
 		{ touch: !props.contextMenuOnly }
@@ -56,7 +76,7 @@
 					<!-- Cover shown: favorite is a badge anchored to its corner -->
 					<div v-if="!hideCover" class="relative shrink-0">
 						<CoverImage
-							:path="path && !path.startsWith('http') ? path : null"
+							:path="path && !path.startsWith('http') ? path : undefined"
 							size="h-10 w-10"
 							rounded="rounded"
 						/>
@@ -98,6 +118,7 @@
 						</i>
 					</button>
 				</slot>
+
 				<span class="truncate">{{ displayTitle }}</span>
 				<slot name="title-extra" />
 			</div>

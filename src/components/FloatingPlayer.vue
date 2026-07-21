@@ -1,7 +1,7 @@
-<script setup>
+<script setup lang="ts">
 	import { computed } from 'vue';
-	import { usePlayer } from '../composables/usePlayer';
 	import { useCover } from '../composables/useCover';
+	import { usePlayer } from '../composables/usePlayer';
 
 	const {
 		currentTrackPath,

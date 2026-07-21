@@ -1,8 +1,8 @@
-<script setup>
+<script setup lang="ts">
 	import { ref } from 'vue';
-	import { usePlayer } from '../composables/usePlayer';
 	import { useContextMenu } from '../composables/useContextMenu';
 	import { usePlaybackControls } from '../composables/usePlaybackControls';
+	import { usePlayer } from '../composables/usePlayer';
 	import TrackRow from './ui/TrackRow.vue';
 
 	const {
@@ -30,16 +30,16 @@
 	} = usePlaybackControls();
 
 	const newUrl = ref('');
-	const dragFromIndex = ref(null);
+	const dragFromIndex = ref<number | null>(null);
 
 	// Queue rows need both long-press (open context menu) AND horizontal swipe
 	// (delete / move-to-first), so they get their own handler instead of the
 	// shared onCtxTouchStart/onCtxTouchEnd (which only knows about long-press).
 	let touchStartX = 0;
-	let queueLongPressTimer = null;
+	let queueLongPressTimer: ReturnType<typeof setTimeout> | null = null;
 	let queueLongPressFired = false;
 
-	function queueTouchStart(e, path, i) {
+	function queueTouchStart(e: TouchEvent, path: string, i: number) {
 		touchStartX = e.changedTouches[0].screenX;
 		queueLongPressFired = false;
 
@@ -50,17 +50,21 @@
 		}, 500);
 	}
 
-	function queueTouchMove(e) {
-		if (Math.abs(e.touches[0].screenX - touchStartX) > 10) clearTimeout(queueLongPressTimer);
+	function queueTouchMove(e: TouchEvent) {
+		if (Math.abs(e.touches[0].screenX - touchStartX) > 10 && queueLongPressTimer) {
+			clearTimeout(queueLongPressTimer);
+		}
 	}
 
-	function queueTouchEnd(e, index) {
-		clearTimeout(queueLongPressTimer);
+	function queueTouchEnd(e: TouchEvent, index: number) {
+		if (queueLongPressTimer) {
+			clearTimeout(queueLongPressTimer);
+		}
 
 		if (queueLongPressFired) return;
 
 		const diff = touchStartX - e.changedTouches[0].screenX;
-		const row = e.currentTarget;
+		const row = e.currentTarget as HTMLElement;
 
 		if (diff > 80) {
 			haptic(true);
@@ -88,7 +92,7 @@
 		newUrl.value = '';
 	}
 
-	function removeQueueItem(index, rowEl) {
+	function removeQueueItem(index: number, rowEl?: HTMLElement | null) {
 		const el = rowEl || document.querySelector(`[data-queue-index="${index}"]`);
 
 		if (el) {
@@ -99,8 +103,14 @@
 		}
 	}
 
-	function moveQueueItem(index, target) {
+	function onRemoveClick(index: number, event: Event) {
+		const target = event.currentTarget as HTMLElement | null;
+		removeQueueItem(index, target?.closest('tr'));
+	}
+
+	function moveQueueItem(index: number, target: 'first' | 'last' | number) {
 		let newIndex = target === 'first' ? 0 : queueState.value.length - 1;
+		if (typeof target === 'number') newIndex = target;
 
 		if (newIndex !== index) {
 			moveQueueItemCmd(index, newIndex);
@@ -108,36 +118,41 @@
 	}
 
 	// --- Drag & Drop Handlers ---
-	function dragStart(e, index) {
+	function dragStart(e: DragEvent, index: number) {
 		dragFromIndex.value = index;
-		e.currentTarget.classList.add('opacity-40');
-		e.dataTransfer.effectAllowed = 'move';
+		(e.currentTarget as HTMLElement).classList.add('opacity-40');
+		if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
 	}
 
-	function dragOver(e, index) {
+	function dragOver(e: DragEvent, index: number) {
 		if (dragFromIndex.value === null || dragFromIndex.value === index) return;
 
-		const rect = e.currentTarget.getBoundingClientRect();
+		const target = e.currentTarget as HTMLElement;
+		const rect = target.getBoundingClientRect();
 		const midY = rect.top + rect.height / 2;
 
 		// Clean previous visual classes
-		e.currentTarget.classList.remove('border-t-2', 'border-b-2', 'border-carpincho-primary');
+		target.classList.remove('border-t-2', 'border-b-2', 'border-carpincho-primary');
 
 		// Add visual feedback
-		if (e.clientY < midY) e.currentTarget.classList.add('border-t-2', 'border-carpincho-primary');
-		else e.currentTarget.classList.add('border-b-2', 'border-carpincho-primary');
+		if (e.clientY < midY) {
+			target.classList.add('border-t-2', 'border-carpincho-primary');
+		} else {
+			target.classList.add('border-b-2', 'border-carpincho-primary');
+		}
 	}
 
-	function dragLeave(e) {
-		e.currentTarget.classList.remove('border-t-2', 'border-b-2', 'border-carpincho-primary');
+	function dragLeave(e: DragEvent) {
+		(e.currentTarget as HTMLElement).classList.remove('border-t-2', 'border-b-2', 'border-carpincho-primary');
 	}
 
-	function dragDrop(e, toIndex) {
-		e.currentTarget.classList.remove('border-t-2', 'border-b-2', 'border-carpincho-primary');
+	function dragDrop(e: DragEvent, toIndex: number) {
+		const target = e.currentTarget as HTMLElement;
+		target.classList.remove('border-t-2', 'border-b-2', 'border-carpincho-primary');
 
 		if (dragFromIndex.value === null || dragFromIndex.value === toIndex) return;
 
-		const rect = e.currentTarget.getBoundingClientRect();
+		const rect = target.getBoundingClientRect();
 		const midY = rect.top + rect.height / 2;
 
 		let finalIndex = e.clientY < midY ? toIndex : toIndex + 1;
@@ -151,8 +166,13 @@
 		dragFromIndex.value = null;
 	}
 
-	function dragEnd(e) {
-		e.currentTarget.classList.remove('opacity-40', 'border-t-2', 'border-b-2', 'border-carpincho-primary');
+	function dragEnd(e: DragEvent) {
+		(e.currentTarget as HTMLElement).classList.remove(
+			'opacity-40',
+			'border-t-2',
+			'border-b-2',
+			'border-carpincho-primary'
+		);
 		dragFromIndex.value = null;
 	}
 </script>
@@ -296,7 +316,7 @@
 								type="button"
 								class="hidden h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-red-500/20 active:bg-red-500/30 sm:flex"
 								title="Sacar de la fila"
-								@click="removeQueueItem(i, $event.currentTarget.closest('tr'))"
+								@click="onRemoveClick(i, $event)"
 							>
 								<i class="material-icons text-carpincho-secondary transition hover:text-red-400">
 									delete
@@ -359,7 +379,7 @@
 								: ''
 						}}
 					</td>
-					<td class="text-carpincho-muted hidden p-4 text-right sm:table-cell">🦦</td>
+					<td class="text-carpincho-muted hidden p-4 text-right sm:table-cell"></td>
 				</tr>
 			</tbody>
 		</table>

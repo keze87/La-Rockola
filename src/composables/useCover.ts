@@ -1,10 +1,11 @@
-import { ref, computed, toValue } from 'vue';
+import { ref, computed, toValue, type MaybeRefOrGetter } from 'vue';
+import type { Track } from '../types';
 
 // Shared global caches across the entire app
-const brokenCoversCache = ref(new Set());
-const coverBlobCache = new Map(); // Stores object URLs for successfully fetched covers
+const brokenCoversCache = ref<Set<string>>(new Set());
+const coverBlobCache = new Map<string, string>(); // Stores object URLs for successfully fetched covers
 
-export function useCover(trackOrPath) {
+export function useCover(trackOrPath: MaybeRefOrGetter<Track | string | null>) {
 	const path = computed(() => {
 		const t = toValue(trackOrPath);
 		return typeof t === 'string' ? t : t?.path;
@@ -30,8 +31,5 @@ export function useCover(trackOrPath) {
 		}
 	}
 
-	return {
-		coverUrl,
-		onCoverError,
-	};
+	return { coverUrl, onCoverError };
 }

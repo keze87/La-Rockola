@@ -1,8 +1,8 @@
-<script setup>
+<script setup lang="ts">
 	import { computed, watch } from 'vue';
-	import { useSliderFactory } from '../composables/useSliderFactory';
 	import { useLyrics } from '../composables/useLyrics';
 	import { usePlayer } from '../composables/usePlayer';
+	import { useSliderFactory } from '../composables/useSliderFactory';
 	import DragSlider from './ui/DragSlider.vue';
 
 	const player = usePlayer();
@@ -59,7 +59,7 @@
 	const formattedTimePos = computed(() => formatTime(dragTimePos.value));
 	const formattedDuration = computed(() => formatTime(duration.value));
 
-	function handleVolumeUpdate(val) {
+	function handleVolumeUpdate(val: number) {
 		volume.value = Math.round(val);
 		if (serverMuted.value && volume.value > 0) {
 			sendCmd('set_mute', { state: false });
@@ -130,7 +130,7 @@
 		loadLyrics(newPath); // Fetch and parse lyrics on track change
 	});
 
-	function formatTime(sec) {
+	function formatTime(sec: number) {
 		if (!sec || isNaN(sec)) return '0:00';
 
 		const m = Math.floor(sec / 60);

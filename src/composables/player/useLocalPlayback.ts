@@ -1,7 +1,7 @@
 import { watch, watchEffect } from 'vue';
-import { useTitle } from '@vueuse/core';
 import { useCommands } from './useCommands';
 import { useLibrary } from './useLibrary';
+import { useTitle } from '@vueuse/core';
 import { useToasts } from './useToasts';
 import {
 	currentTrackPath,
@@ -27,11 +27,11 @@ const { getTrackInfo } = useLibrary();
 // (for `local_player_claim_result` and `local_player_seek`), without
 // having to invoke the composable first.
 
-function _sendLocalPlayerUpdate(payload) {
+function _sendLocalPlayerUpdate(payload: Record<string, unknown>) {
 	sendRaw({ type: 'local_player_update', ...payload });
 }
 
-export function _startLocalPlayer(path) {
+export function _startLocalPlayer(path: string) {
 	const lp = localPlayerRef.value;
 
 	if (!lp) return;
@@ -81,7 +81,7 @@ export function _stopLocalPlayer() {
 
 // Applies a seek that another connected client requested, to our own
 // local <audio> element — used by useSocket's `local_player_seek` handler.
-export function applyRemoteSeek(data) {
+export function applyRemoteSeek(data: { mode: string; amount: number }) {
 	const lp = localPlayerRef.value;
 
 	if (lp && lp.src) {
@@ -98,7 +98,7 @@ export function useLocalPlayback() {
 	const { sendCmd } = useCommands();
 
 	function setVolume() {
-		sendCmd('set_volume', { vollevel: parseInt(volume.value) });
+		sendCmd('set_volume', { vollevel: parseInt(volume.value.toString()) });
 	}
 
 	// --- Singleton watchers and timers, set up once no matter how many
@@ -115,7 +115,7 @@ export function useLocalPlayback() {
 
 				// 1. Actualiza el título de la pestaña
 				if (isPlaying.value) {
-					title.value = `${info.display_title} 🦦🧉`;
+					title.value = `▶ ${info.display_title} 🦦🧉`;
 				} else {
 					title.value = 'La Rockola del Carpincho 🦦🧉';
 				}
