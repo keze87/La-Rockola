@@ -12,7 +12,8 @@ export function useKeyboardShortcuts() {
 
 		return (
 			el instanceof HTMLElement &&
-			(el.closest('input, textarea, select, [contenteditable="true"]') !== null || el.isContentEditable)
+			(el.closest('input, textarea, select, [contenteditable="true"], .ctx-menu') !== null ||
+				el.isContentEditable) // , [role="menu"]
 		);
 	};
 

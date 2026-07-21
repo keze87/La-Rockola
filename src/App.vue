@@ -1,5 +1,7 @@
 <script setup>
 	import { computed, onMounted } from 'vue';
+	import 'vue-sonner/style.css';
+	import { Toaster } from 'vue-sonner';
 	import { useSliderFactory } from './composables/useSliderFactory';
 	import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts';
 	import { useLyrics } from './composables/useLyrics';
@@ -34,7 +36,6 @@
 		queueState,
 		sendCmd,
 		switchTab,
-		toasts,
 	} = usePlayer();
 
 	const { createSlider } = useSliderFactory();
@@ -95,27 +96,7 @@
 	<audio ref="localPlayerRef" style="display: none" />
 
 	<!-- TOASTS -->
-	<div
-		class="pointer-events-none fixed top-4 left-1/2 z-[9999] flex w-[90%] max-w-sm -translate-x-1/2 flex-col gap-2"
-	>
-		<transition-group name="toast">
-			<div
-				v-for="toast in toasts"
-				:key="toast.id"
-				:class="[
-					'flex items-center gap-3 rounded-lg px-4 py-3 font-medium text-white shadow-lg',
-					toast.colorClasses,
-				]"
-			>
-				<i class="material-icons">{{ toast.icon }}</i>
-				<span>
-					{{ toast.prefix }}
-					<b v-if="toast.highlight">{{ toast.highlight }}</b>
-					{{ toast.suffix }}
-				</span>
-			</div>
-		</transition-group>
-	</div>
+	<Toaster position="top-center" theme="dark" rich-colors close-button />
 
 	<!-- MODO FOGÓN -->
 	<FogonMode />

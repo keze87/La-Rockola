@@ -1,4 +1,5 @@
 <script setup>
+	import { ref, watch } from 'vue';
 	import { useContextMenu } from '../composables/useContextMenu';
 	import { usePlayer } from '../composables/usePlayer';
 
@@ -16,6 +17,21 @@
 		switchTab,
 		toggleFavorite,
 	} = usePlayer();
+
+	// Whether the focus ring should be shown. We can't rely on CSS
+	// `:focus-visible` alone: opening the menu always focuses the first item
+	// programmatically (so keyboard users can drive it at all), and some
+	// browsers treat that as focus-visible-worthy even when the menu was
+	// opened with a mouse/touch. Tracking real keyup navigation ourselves
+	// keeps the ring tied to actually navigating by keyboard.
+	const keyboardNav = ref(false);
+
+	watch(
+		() => ctxMenu.visible,
+		(visible) => {
+			if (visible) keyboardNav.value = false;
+		}
+	);
 
 	function ctxFilterByArtist() {
 		const track = ctxMenu.track;
@@ -42,11 +58,14 @@
 
 		if (e.key === 'ArrowDown') {
 			e.preventDefault();
+			keyboardNav.value = true;
 			items[(currentIndex + 1) % items.length].focus();
 		} else if (e.key === 'ArrowUp') {
 			e.preventDefault();
+			keyboardNav.value = true;
 			items[(currentIndex - 1 + items.length) % items.length].focus();
 		} else if (e.key === 'Tab') {
+			keyboardNav.value = true;
 			if (e.shiftKey && currentIndex === 0) {
 				e.preventDefault();
 				items[items.length - 1].focus();
@@ -193,8 +212,10 @@
 			class="ctx-menu absolute"
 			role="menu"
 			aria-labelledby="ctx-menu-title"
+			:class="{ 'kbd-nav': keyboardNav }"
 			:style="{ top: ctxMenu.y + 'px', left: ctxMenu.x + 'px' }"
 			@keydown="ctxMenuKeydown"
+			@pointerdown="keyboardNav = false"
 		>
 			<div id="ctx-menu-title" class="ctx-menu-header truncate">
 				🦦 {{ ctxMenu.track?.title || ctxMenu.track?.display_title }}
@@ -326,9 +347,13 @@
 		background: var(--color-carpincho-bg);
 	}
 
-	.ctx-menu-item:focus-visible {
+	.ctx-menu-item:focus {
+		outline: none;
+	}
+
+	.ctx-menu.kbd-nav .ctx-menu-item:focus {
 		background: var(--color-carpincho-bg);
-		outline: 0px solid var(--color-carpincho-warning);
+		outline: 2px solid var(--color-carpincho-warning);
 		outline-offset: -2px;
 	}
 
@@ -338,8 +363,11 @@
 	}
 
 	.ctx-menu-item.delete-item:hover,
-	.ctx-menu-item.delete-item:active,
-	.ctx-menu-item.delete-item:focus-visible {
+	.ctx-menu-item.delete-item:active {
+		background: rgba(239, 68, 68, 0.3) !important;
+	}
+
+	.ctx-menu.kbd-nav .ctx-menu-item.delete-item:focus {
 		background: rgba(239, 68, 68, 0.3) !important;
 	}
 </style>
