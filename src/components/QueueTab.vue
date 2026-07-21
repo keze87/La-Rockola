@@ -2,6 +2,8 @@
 	import { ref } from 'vue';
 	import { usePlayer } from '../composables/usePlayer';
 	import { useContextMenu } from '../composables/useContextMenu';
+	import { usePlaybackControls } from '../composables/usePlaybackControls';
+	import TrackRow from './ui/TrackRow.vue';
 
 	const {
 		currentTrackPath,
@@ -13,10 +15,19 @@
 		isPaused,
 		pauseAfterPath,
 		queueState,
-		sendCmd,
 		togglePauseAfterCurrent,
 	} = usePlayer();
-	const { openCtxMenu, onCtxTouchStart, onCtxTouchEnd } = useContextMenu();
+
+	const { openCtxMenu } = useContextMenu();
+
+	const {
+		addUrl: addUrlCmd,
+		jumpToHistory,
+		jumpToQueue,
+		moveQueueItem: moveQueueItemCmd,
+		pause,
+		removeQueueItem: removeQueueItemCmd,
+	} = usePlaybackControls();
 
 	const newUrl = ref('');
 	const dragFromIndex = ref(null);
@@ -31,6 +42,7 @@
 	function queueTouchStart(e, path, i) {
 		touchStartX = e.changedTouches[0].screenX;
 		queueLongPressFired = false;
+
 		queueLongPressTimer = setTimeout(() => {
 			queueLongPressFired = true;
 			haptic(true);
@@ -72,7 +84,7 @@
 	async function addUrl() {
 		if (!newUrl.value.trim()) return;
 
-		await sendCmd('add_url', { path: newUrl.value.trim() });
+		await addUrlCmd(newUrl.value.trim());
 		newUrl.value = '';
 	}
 
@@ -81,9 +93,9 @@
 
 		if (el) {
 			el.classList.add('deleting');
-			setTimeout(() => sendCmd('remove_queue_item', { index }), 450);
+			setTimeout(() => removeQueueItemCmd(index), 450);
 		} else {
-			sendCmd('remove_queue_item', { index });
+			removeQueueItemCmd(index);
 		}
 	}
 
@@ -91,7 +103,7 @@
 		let newIndex = target === 'first' ? 0 : queueState.value.length - 1;
 
 		if (newIndex !== index) {
-			sendCmd('move_queue_item', { index, new_index: newIndex });
+			moveQueueItemCmd(index, newIndex);
 		}
 	}
 
@@ -127,12 +139,13 @@
 
 		const rect = e.currentTarget.getBoundingClientRect();
 		const midY = rect.top + rect.height / 2;
+
 		let finalIndex = e.clientY < midY ? toIndex : toIndex + 1;
 
 		if (finalIndex > dragFromIndex.value) finalIndex--;
 
 		if (finalIndex !== dragFromIndex.value) {
-			sendCmd('move_queue_item', { index: dragFromIndex.value, new_index: finalIndex });
+			moveQueueItemCmd(dragFromIndex.value, finalIndex);
 		}
 
 		dragFromIndex.value = null;
@@ -164,7 +177,7 @@
 		</div>
 
 		<!-- Queue Table -->
-		<table class="w-full border-collapse text-left">
+		<table class="w-full table-fixed border-collapse text-left">
 			<thead>
 				<tr>
 					<th class="text-carpincho-primary bg-carpincho-panel w-28 p-3 text-center">Acciones</th>
@@ -177,40 +190,31 @@
 			</thead>
 			<tbody class="overflow-hidden">
 				<!-- History Items -->
-				<tr
+				<TrackRow
 					v-for="(path, i) in historyState"
 					:key="'hist-' + path"
 					:data-history-path="path"
-					class="border-carpincho-border hover:bg-carpincho-border cursor-pointer border-b opacity-70"
-					@click="sendCmd('jump', { type: 'history', index: i })"
-					@contextmenu.prevent="openCtxMenu($event, getTrackInfo(path), 'history', i)"
-					@touchstart="onCtxTouchStart($event, getTrackInfo(path), 'history', i)"
-					@touchend="onCtxTouchEnd"
-					@touchmove="onCtxTouchEnd"
+					:track="getTrackInfo(path)"
+					context-source="history"
+					:index="i"
+					class="opacity-70"
+					@click="jumpToHistory(i)"
 				>
-					<td class="text-carpincho-success p-4 text-center">
-						<i class="material-icons text-sm">check</i>
-					</td>
-					<td class="max-w-[200px] truncate p-4">
-						{{ getTrackInfo(path).display_title }}
-					</td>
-					<td class="text-carpincho-muted truncate p-4">
-						{{ getTrackInfo(path).display_artist }}
-					</td>
-					<td class="text-carpincho-muted hidden p-4 text-right sm:table-cell">
-						{{ getTrackInfo(path).duration_str }}
-					</td>
-				</tr>
+					<template #prefix>
+						<i class="material-icons text-carpincho-success text-sm">check</i>
+					</template>
+				</TrackRow>
 
 				<!-- Current Track -->
-				<tr
+				<TrackRow
 					v-if="currentTrackPath"
 					id="current-queue-row"
-					class="border-carpincho-border bg-carpincho-panel cursor-pointer border-b"
-					@click="sendCmd('pause')"
+					:track="getTrackInfo(currentTrackPath)"
+					context-source="queue"
+					@click="pause"
 				>
-					<td class="text-carpincho-primary p-4 text-center font-bold" @click.stop>
-						<div class="items-center gap-1">
+					<template #prefix>
+						<div class="flex items-center justify-center gap-1" @click.stop>
 							<div :class="['equalizer', isPaused ? 'paused' : '']">
 								<span />
 								<span />
@@ -225,7 +229,7 @@
 								:class="[
 									'transition active:scale-90',
 									pauseAfterPath === currentTrackPath
-										? 'text-carpincho-warning'
+										? 'text-carpincho-warning drop-shadow-[0_0_8px_rgba(233,196,106,0.8)]'
 										: 'hover:text-carpincho-warning text-gray-500',
 								]"
 								@click="
@@ -236,25 +240,21 @@
 								<i class="material-icons text-lg">timer</i>
 							</button>
 						</div>
-					</td>
-					<td class="text-carpincho-primary max-w-[200px] truncate p-4 font-bold">
-						{{ getTrackInfo(currentTrackPath).display_title }}
-					</td>
-					<td class="text-carpincho-primary truncate p-4">
-						{{ getTrackInfo(currentTrackPath).display_artist }}
-					</td>
-					<td class="text-carpincho-primary hidden p-4 text-right sm:table-cell">
-						{{ getTrackInfo(currentTrackPath).duration_str }}
-					</td>
-				</tr>
+					</template>
+				</TrackRow>
 
 				<!-- Render queued items -->
-				<tr
+				<TrackRow
 					v-for="(path, i) in queueState"
 					:key="path"
 					:data-queue-index="i"
+					:track="getTrackInfo(path)"
+					context-source="queue"
+					:index="i"
+					context-menu-only
 					draggable="true"
-					class="swipe-row border-carpincho-border hover:bg-carpincho-border cursor-pointer border-b transition-all duration-200"
+					class="swipe-row"
+					@click="jumpToQueue(i)"
 					@dragstart="dragStart($event, i)"
 					@dragover.prevent="dragOver($event, i)"
 					@dragleave="dragLeave($event)"
@@ -263,62 +263,58 @@
 					@touchstart="queueTouchStart($event, path, i)"
 					@touchend="queueTouchEnd($event, i)"
 					@touchmove="queueTouchMove($event)"
-					@contextmenu.prevent="openCtxMenu($event, getTrackInfo(path), 'queue', i)"
 				>
 					<!-- Actions Column -->
-					<td class="p-4" @click.stop>
-						<div class="flex items-center justify-center gap-2">
-							<i
-								class="material-icons hidden cursor-grab text-gray-500 select-none active:cursor-grabbing sm:block"
-							>
-								drag_indicator
-							</i>
-							<i
-								class="material-icons text-carpincho-primary hover:text-carpincho-secondary transition"
+					<template #prefix>
+						<div class="flex items-center justify-center gap-1 sm:gap-2" @click.stop>
+							<button
+								type="button"
+								class="flex h-8 w-10 cursor-pointer items-center justify-center rounded-full px-1 transition-colors hover:bg-black/20"
+								title="Subir a próximo"
 								@click="moveQueueItem(i, 'first')"
 							>
-								vertical_align_top
-							</i>
-							<i
-								class="material-icons text-carpincho-primary hover:text-carpincho-secondary transition"
+								<i
+									class="material-icons text-carpincho-primary hover:text-carpincho-secondary transition"
+								>
+									vertical_align_top
+								</i>
+							</button>
+							<button
+								type="button"
+								class="flex h-8 w-10 cursor-pointer items-center justify-center rounded-full px-1 transition-colors hover:bg-black/20"
+								title="Mover al final"
 								@click="moveQueueItem(i, 'last')"
 							>
-								vertical_align_bottom
-							</i>
-							<i
-								class="material-icons text-carpincho-secondary hidden transition hover:text-red-400 sm:block"
+								<i
+									class="material-icons text-carpincho-primary hover:text-carpincho-secondary transition"
+								>
+									vertical_align_bottom
+								</i>
+							</button>
+							<button
+								type="button"
+								class="hidden h-8 w-10 cursor-pointer items-center justify-center rounded-full px-1 transition-colors hover:bg-red-500/20 sm:flex"
+								title="Sacar de la fila"
 								@click="removeQueueItem(i, $event.currentTarget.closest('tr'))"
 							>
-								delete
-							</i>
+								<i class="material-icons text-carpincho-secondary transition hover:text-red-400">
+									delete
+								</i>
+							</button>
 						</div>
-					</td>
+					</template>
 
 					<!-- Track Info -->
-					<td class="max-w-[200px] p-4" @click="sendCmd('jump', { type: 'queue', index: i })">
-						<div class="flex items-center gap-2 truncate">
-							<span class="block truncate">{{ getTrackInfo(path).display_title }}</span>
-							<i
-								v-if="path === pauseAfterPath"
-								class="material-icons text-carpincho-warning shrink-0 text-sm"
-								title="Se frena acá"
-							>
-								timer
-							</i>
-						</div>
-					</td>
-
-					<td class="text-carpincho-muted p-4" @click="sendCmd('jump', { type: 'queue', index: i })">
-						{{ getTrackInfo(path).display_artist }}
-					</td>
-
-					<td
-						class="text-carpincho-muted hidden p-4 text-right sm:table-cell"
-						@click="sendCmd('jump', { type: 'queue', index: i })"
-					>
-						{{ getTrackInfo(path).duration_str }}
-					</td>
-				</tr>
+					<template #title-extra>
+						<i
+							v-if="path === pauseAfterPath"
+							class="material-icons text-carpincho-warning shrink-0 text-sm"
+							title="Se frena acá"
+						>
+							timer
+						</i>
+					</template>
+				</TrackRow>
 
 				<!-- EMPTY STATE: Cuando no hay nada en la fila ni está sonando nada -->
 				<tr v-if="queueState.length === 0 && !currentTrackPath" class="border-carpincho-border border-b">
@@ -352,8 +348,14 @@
 								: 'Al vaciarse la fila, entra el DJ Carpincho'
 						}}
 					</td>
-					<td class="text-carpincho-muted p-4 italic">🦦</td>
-					<td class="text-carpincho-muted hidden p-4 text-right sm:table-cell" />
+					<td class="text-carpincho-muted p-4 italic">
+						{{
+							queueState.length === 0 && djNextTrack
+								? djNextTrack.display_artist || djNextTrack.artist
+								: ''
+						}}
+					</td>
+					<td class="text-carpincho-muted hidden p-4 text-right sm:table-cell">🦦</td>
 				</tr>
 			</tbody>
 		</table>

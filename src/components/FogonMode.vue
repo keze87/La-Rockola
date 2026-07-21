@@ -1,8 +1,9 @@
 <script setup>
 	import { computed, watch } from 'vue';
-	import { useDragSlider } from '../composables/useDragSlider';
+	import { useSliderFactory } from '../composables/useSliderFactory';
 	import { useLyrics } from '../composables/useLyrics';
 	import { usePlayer } from '../composables/usePlayer';
+	import DragSlider from './ui/DragSlider.vue';
 
 	const player = usePlayer();
 	const {
@@ -25,7 +26,10 @@
 		togglePauseAfterCurrent,
 		volIcon,
 		volume,
+		setVolume,
 	} = player;
+
+	const { createSlider } = useSliderFactory();
 
 	// 1. Seek Slider
 	const {
@@ -34,11 +38,11 @@
 		startDrag: startSeek,
 		moveDrag: moveSeek,
 		endDrag: endSeek,
-	} = useDragSlider({
-		max: () => duration.value,
-		getValue: () => localTimePos.value,
-		onUpdate: () => (isDraggingSeek.value = true),
-		onCommit: (val) => {
+	} = createSlider(
+		localTimePos,
+		duration,
+		() => (isDraggingSeek.value = true),
+		(val) => {
 			isDraggingSeek.value = false;
 			localTimePos.value = val;
 			ignoreServerTimeUntil.value = Date.now() + 2000;
@@ -49,32 +53,18 @@
 			} else {
 				sendCmd('seek_absolute', { amount: val });
 			}
-		},
-	});
+		}
+	);
 
 	const formattedTimePos = computed(() => formatTime(dragTimePos.value));
 	const formattedDuration = computed(() => formatTime(duration.value));
 
-	// 2. Volume Slider
-	const {
-		progressPercent: volPercent,
-		startDrag: startVol,
-		moveDrag: moveVol,
-		endDrag: endVol,
-	} = useDragSlider({
-		max: 110,
-		getValue: () => volume.value,
-		onUpdate: (val) => {
-			volume.value = Math.round(val);
-			if (serverMuted.value && volume.value > 0) {
-				sendCmd('set_mute', { state: false });
-			}
-		},
-		onCommit: (val) => {
-			volume.value = Math.round(val);
-			player.setVolume();
-		},
-	});
+	function handleVolumeUpdate(val) {
+		volume.value = Math.round(val);
+		if (serverMuted.value && volume.value > 0) {
+			sendCmd('set_mute', { state: false });
+		}
+	}
 
 	// Pass the global player instance to our lyrics composable to sync localTimePos
 	const { currentLyricLine, loadLyrics } = useLyrics(player);
@@ -316,26 +306,12 @@
 						<i class="material-icons cursor-pointer text-sm hover:text-white">{{ muteIcon }}</i>
 					</button>
 
-					<div
-						class="group flex h-10 w-full cursor-pointer touch-none items-center"
-						:class="{ 'opacity-50': serverMuted }"
-						@pointerdown="startVol"
-						@pointermove="moveVol"
-						@pointerup="endVol"
-						@pointercancel="endVol"
-					>
-						<div class="pointer-events-none relative h-1.5 w-full rounded-full bg-gray-600">
-							<div
-								class="bg-carpincho-warning absolute top-0 left-0 h-full rounded-full"
-								:style="{ width: volPercent + '%' }"
-							/>
-							<div
-								class="bg-carpincho-warning absolute top-1/2 h-5 w-5 -translate-y-1/2 rounded-full shadow transition-transform group-active:scale-125"
-								:style="{ left: volPercent + '%', marginLeft: '-10px' }"
-							/>
-						</div>
-					</div>
-
+					<DragSlider
+						:model-value="volume"
+						:max="110"
+						@update:model-value="handleVolumeUpdate"
+						@commit="setVolume"
+					/>
 					<i class="material-icons text-sm" aria-hidden="true">volume_up</i>
 				</div>
 
@@ -367,5 +343,6 @@
 	.fogon-enter-from,
 	.fogon-leave-to {
 		opacity: 0;
+		backdrop-filter: blur(0);
 	}
 </style>

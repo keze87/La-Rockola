@@ -1,6 +1,6 @@
 <script setup>
 	import { computed, onMounted } from 'vue';
-	import { useDragSlider } from './composables/useDragSlider';
+	import { useSliderFactory } from './composables/useSliderFactory';
 	import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts';
 	import { useLyrics } from './composables/useLyrics';
 	import { usePlayer } from './composables/usePlayer';
@@ -37,19 +37,21 @@
 		toasts,
 	} = usePlayer();
 
+	const { createSlider } = useSliderFactory();
+
 	const {
 		progressPercent,
 		startDrag: startSeek,
 		moveDrag: moveSeek,
 		endDrag: endSeek,
-	} = useDragSlider({
-		max: () => duration.value,
-		getValue: () => localTimePos.value,
-		onUpdate: (val) => {
-			isDraggingSeek.value = true; // Syncs with global state
+	} = createSlider(
+		localTimePos,
+		duration,
+		(val) => {
+			isDraggingSeek.value = true;
 			localTimePos.value = val;
 		},
-		onCommit: (val) => {
+		(val) => {
 			isDraggingSeek.value = false;
 			localTimePos.value = val;
 			ignoreServerTimeUntil.value = Date.now() + 2000;
@@ -60,12 +62,12 @@
 			} else {
 				sendCmd('seek_absolute', { amount: val });
 			}
-		},
-	});
+		}
+	);
 
 	const { currentLyricLine } = useLyrics({ localTimePos });
 
-	// Keyboard shortcuts (space, arrows, f, l, t, n, p, m, esc...) — wire it up
+	// Keyboard shortcuts (space, arrows, f, l, t, n, p, m, esc...) – wire it up
 	useKeyboardShortcuts();
 
 	const tabs = [
@@ -144,6 +146,7 @@
 					</span>
 				</transition>
 			</div>
+
 			<img
 				v-if="currentTrackPath && !currentTrackPath.startsWith('http') && !isScanning"
 				:src="'/cover?path=' + encodeURIComponent(currentTrackPath)"
@@ -162,6 +165,7 @@
 	<div v-show="isScanning" class="bg-carpincho-panel h-1 w-full shrink-0 overflow-hidden">
 		<div class="bg-carpincho-primary h-full w-1/3 animate-[pulse_1s_ease-in-out_infinite]" />
 	</div>
+
 	<div
 		v-show="!isScanning && currentTrackPath"
 		class="bg-carpincho-panel group relative flex h-4 w-full shrink-0 cursor-pointer touch-none items-start"

@@ -1,6 +1,7 @@
 <script setup>
-	import { ref, computed } from 'vue';
+	import { computed } from 'vue';
 	import { usePlayer } from '../composables/usePlayer';
+	import { useCover } from '../composables/useCover';
 
 	const {
 		currentTrackPath,
@@ -15,8 +16,6 @@
 		switchTab,
 		togglePauseAfterCurrent,
 	} = usePlayer();
-
-	const brokenNextCover = ref(false);
 
 	const upNextTitle = computed(() => {
 		if (queueState.value.length > 0) {
@@ -34,20 +33,14 @@
 		return currentTrackPath.value ? 'Termina este y nos re vimos' : "Agregá algo pa' escuchar";
 	});
 
-	const upNextCoverUrl = computed(() => {
-		if (brokenNextCover.value) return null;
+	const upNextPath = computed(() => {
+		if (queueState.value.length > 0) return queueState.value[0];
 
-		if (queueState.value.length > 0 && !queueState.value[0].startsWith('http')) {
-			return '/cover?path=' + encodeURIComponent(queueState.value[0]);
-		}
-
-		if (djCarpinchoEnabled.value && djNextTrack.value) {
-			const p = djNextTrack.value.path;
-			if (p && !p.startsWith('http')) return '/cover?path=' + encodeURIComponent(p);
-		}
-
+		if (djCarpinchoEnabled.value && djNextTrack.value) return djNextTrack.value?.path;
 		return null;
 	});
+
+	const { coverUrl, onCoverError } = useCover(upNextPath);
 
 	function goToQueue() {
 		switchTab('queue');
@@ -64,10 +57,10 @@
 				class="bg-carpincho-bg relative mr-3 flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg"
 			>
 				<img
-					v-if="upNextCoverUrl"
-					:src="upNextCoverUrl"
+					v-if="coverUrl"
+					:src="coverUrl"
 					class="absolute h-full w-full object-cover"
-					@error="brokenNextCover = true"
+					@error="onCoverError"
 				/>
 				<i
 					v-else-if="djCarpinchoEnabled && queueState.length === 0"
@@ -77,6 +70,7 @@
 				</i>
 				<i v-else class="material-icons text-carpincho-warning !text-[2rem]">album</i>
 			</div>
+
 			<div class="flex grow flex-col justify-center overflow-hidden">
 				<div class="text-carpincho-primary text-[0.7rem] font-bold tracking-wider uppercase">
 					{{

@@ -1,9 +1,10 @@
 <script setup>
-	import { ref } from 'vue';
 	import { usePlayer } from '../composables/usePlayer';
+	import { useContextMenu } from '../composables/useContextMenu';
+	import CoverImage from './ui/CoverImage.vue';
 
 	const { topPlayedState, getTrackInfo, toggleQueue } = usePlayer();
-	const brokenCovers = ref([]);
+	const { openCtxMenu, onCtxTouchStart, onCtxTouchEnd } = useContextMenu();
 </script>
 
 <template>
@@ -14,16 +15,14 @@
 				:key="t.path"
 				class="border-carpincho-border hover:bg-carpincho-panel flex cursor-pointer items-center rounded-lg border-b p-4 transition active:scale-[0.98]"
 				@click="toggleQueue(t.path)"
+				@contextmenu.prevent="openCtxMenu($event, getTrackInfo(t.path), 'library')"
+				@touchstart="onCtxTouchStart($event, getTrackInfo(t.path), 'library')"
+				@touchend="onCtxTouchEnd"
+				@touchmove="onCtxTouchEnd"
 			>
 				<div class="text-carpincho-warning mr-4 w-8 text-center text-xl font-bold">#{{ i + 1 }}</div>
 
-				<img
-					v-if="!t.path.startsWith('http') && !brokenCovers.includes(t.path)"
-					:src="'/cover?path=' + encodeURIComponent(t.path)"
-					class="mr-4 h-12 w-12 shrink-0 rounded-md object-cover"
-					@error="brokenCovers.push(t.path)"
-				/>
-				<i v-else class="material-icons text-carpincho-primary mr-4 shrink-0 text-4xl">album</i>
+				<CoverImage :path="t.path" size="h-12 w-12" rounded="rounded-md" class="mr-4" icon-size="!text-4xl" />
 
 				<div class="flex-grow overflow-hidden">
 					<div class="text-carpincho-text truncate font-bold">

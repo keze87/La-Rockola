@@ -1,4 +1,4 @@
-import { reactive, nextTick } from 'vue';
+import { reactive, nextTick, toValue } from 'vue';
 import { computePosition, flip, shift, offset } from '@floating-ui/vue';
 
 const ctxMenu = reactive({
@@ -79,4 +79,38 @@ export function useContextMenu() {
 		onCtxTouchStart,
 		openCtxMenu,
 	};
+}
+
+/**
+ * Ready-to-spread event bindings (`v-on="bindings"`) for a single track row:
+ * right-click opens the context menu, and a touch long-press does the same.
+ *
+ * Accepts refs, getters, or plain values for track/source/index and resolves
+ * them at event time (not at setup time), so it stays correct even when the
+ * row is reused for different data (e.g. a `:key`-stable row in a v-for that
+ * gets fresh props on every websocket update).
+ *
+ * Pass `{ touch: false }` when the caller needs to own touch handling itself
+ * (e.g. the queue list's swipe-to-delete gesture), leaving only the
+ * right-click binding in place.
+ */
+export function useContextMenuBindings(track, source = 'library', index = null, { touch = true } = {}) {
+	const { openCtxMenu, onCtxTouchStart, onCtxTouchEnd } = useContextMenu();
+
+	const resolve = () => [toValue(track), toValue(source), toValue(index)];
+
+	const bindings = {
+		contextmenu: (e) => {
+			e.preventDefault();
+			openCtxMenu(e, ...resolve());
+		},
+	};
+
+	if (touch) {
+		bindings.touchstart = (e) => onCtxTouchStart(e, ...resolve());
+		bindings.touchend = onCtxTouchEnd;
+		bindings.touchmove = onCtxTouchEnd;
+	}
+
+	return bindings;
 }

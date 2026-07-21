@@ -1,7 +1,7 @@
 <script setup>
 	import { ref, computed, watch } from 'vue';
 	import { usePlayer } from '../composables/usePlayer';
-	import { useContextMenu } from '../composables/useContextMenu';
+	import TrackRow from './ui/TrackRow.vue';
 
 	// Pull data from the global store
 	const {
@@ -11,13 +11,10 @@
 		handleLibraryClick,
 		haptic,
 		isPaused,
-		librarySearchQuery: searchQuery,
 		normalizeString,
+		librarySearchQuery: searchQuery,
 		queueIndex,
-		toggleFavorite,
 	} = usePlayer();
-
-	const { openCtxMenu, onCtxTouchStart, onCtxTouchEnd } = useContextMenu();
 
 	// Local state for this tab only
 	const showFavoritesOnly = ref(false);
@@ -123,7 +120,7 @@
 		</div>
 
 		<!-- Track Table -->
-		<table class="w-full border-collapse text-left">
+		<table class="w-full table-fixed border-collapse text-left">
 			<thead>
 				<tr>
 					<th class="text-carpincho-primary bg-carpincho-panel sticky top-0 z-0 w-16 p-3 text-center">
@@ -139,21 +136,16 @@
 				</tr>
 			</thead>
 			<tbody>
-				<tr
+				<TrackRow
 					v-for="track in filteredTracks"
 					:id="currentTrackPath === track.path ? 'current-library-row' : ''"
 					:key="track.path"
-					:class="[
-						'border-carpincho-border hover:bg-carpincho-border cursor-pointer border-b transition-colors active:scale-[0.98]',
-						currentTrackPath === track.path ? 'bg-carpincho-panel' : '',
-					]"
+					:track="track"
+					:hide-cover="true"
+					context-source="library"
 					@click="handleLibraryClick(track)"
-					@contextmenu.prevent="openCtxMenu($event, track, 'library')"
-					@touchstart="onCtxTouchStart($event, track, 'library')"
-					@touchend="onCtxTouchEnd"
-					@touchmove="onCtxTouchEnd"
 				>
-					<td class="p-4 text-center">
+					<template #prefix>
 						<div v-if="currentTrackPath === track.path" class="flex items-center justify-center">
 							<div :class="['equalizer', isPaused ? 'paused' : '']">
 								<span />
@@ -164,39 +156,8 @@
 						<span v-else-if="queueIndex(track.path) !== -1" class="text-carpincho-warning font-bold">
 							{{ queueIndex(track.path) + 1 }}
 						</span>
-					</td>
-					<td class="max-w-[200px] p-4 font-medium">
-						<div class="flex items-center justify-start gap-3">
-							<!-- BOTÓN FAVORITO -->
-							<button
-								type="button"
-								class="hidden shrink-0 cursor-pointer px-2 sm:block"
-								@click.stop.prevent="
-									toggleFavorite(track.path);
-									haptic();
-								"
-							>
-								<i
-									class="material-icons favorite-icon !text-[1.1rem] transition-colors"
-									:class="
-										favorites.includes(track.path)
-											? 'text-carpincho-warning drop-shadow-md'
-											: 'hover:text-carpincho-warning text-gray-600'
-									"
-								>
-									{{ favorites.includes(track.path) ? 'favorite' : 'favorite_border' }}
-								</i>
-							</button>
-							<span class="truncate">{{ track.title || track.display_title }}</span>
-						</div>
-					</td>
-					<td class="text-carpincho-muted truncate p-4">
-						{{ track.artist || track.display_artist }}
-					</td>
-					<td class="text-carpincho-muted hidden p-4 text-right sm:table-cell">
-						{{ track.duration_str }}
-					</td>
-				</tr>
+					</template>
+				</TrackRow>
 				<tr v-if="filteredTracks.length === 0">
 					<td colspan="4" class="text-carpincho-primary p-8 text-center italic">
 						No hay nada por acá con ese nombre, fiera.
@@ -206,11 +167,3 @@
 		</table>
 	</section>
 </template>
-
-<style scoped>
-	@media (max-width: 639px) {
-		.favorite-icon {
-			display: none !important;
-		}
-	}
-</style>
