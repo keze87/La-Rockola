@@ -2304,7 +2304,11 @@ async def serve_cover(path: str = Query(...)):
 				)
 
 		if cover_data:
-			return Response(content=cover_data, media_type=mime_type)
+			return Response(
+				content=cover_data,
+				media_type=mime_type,
+				headers={"Cache-Control": "public, max-age=604800"} # <-- Agregado para cachear por 7 días
+			)
 	except Exception as e:
 		logger.debug(f"Pifió sacando la tapa de {path}: {e}")
 

@@ -318,7 +318,10 @@
 				</TrackRow>
 
 				<!-- EMPTY STATE: Cuando no hay nada en la fila ni está sonando nada -->
-				<tr v-if="queueState.length === 0 && !currentTrackPath" class="border-carpincho-border border-b">
+				<tr
+					v-if="queueState.length === 0 && !currentTrackPath && !djCarpinchoEnabled"
+					class="border-carpincho-border border-b"
+				>
 					<td colspan="4" class="p-12 text-center">
 						<div class="text-carpincho-primary flex flex-col items-center gap-4 opacity-80">
 							<p class="text-lg font-bold">El Carpincho está esperando el mate...</p>
