@@ -78,6 +78,14 @@ export function useKeyboardShortcuts() {
 		e.preventDefault();
 		player.volume.value = Math.min(110, Number(player.volume.value) + 5);
 		player.setVolume();
+
+		player.showToast(
+			{
+				prefix: 'Volumen: ',
+				highlight: player.volume.value + '%',
+			},
+			'success'
+		);
 	});
 
 	onKeyStroke('ArrowDown', (e) => {
@@ -86,14 +94,37 @@ export function useKeyboardShortcuts() {
 		e.preventDefault();
 		player.volume.value = Math.max(0, Number(player.volume.value) - 5);
 		player.setVolume();
+
+		player.showToast(
+			{
+				prefix: 'Volumen: ',
+				highlight: player.volume.value + '%',
+			},
+			'success'
+		);
 	});
 
 	onKeyStroke(['m', 'M'], (e) => {
 		if (shouldIgnore(e)) return;
 
+		const isCurrentlyMuted = player.serverMuted.value;
+
 		player.sendCmd('set_mute', {
-			state: !player.serverMuted.value,
+			state: !isCurrentlyMuted,
 		});
+
+		player.haptic();
+
+		if (!isCurrentlyMuted) {
+			player.showToast('Audio silenciado', 'error');
+		} else {
+			if (player.volume.value < 20) {
+				player.volume.value = 20;
+				player.setVolume();
+			}
+
+			player.showToast('Audio activado', 'success');
+		}
 	});
 
 	onKeyStroke(['f', 'F'], (e) => {
@@ -106,9 +137,20 @@ export function useKeyboardShortcuts() {
 	onKeyStroke(['l', 'L'], (e) => {
 		if (shouldIgnore(e)) return;
 
-		if (player.currentTrackPath.value) {
-			player.toggleFavorite(player.currentTrackPath.value);
+		const currentPath = player.currentTrackPath.value;
+
+		if (currentPath) {
+			const wasFavorite = player.favorites.value.includes(currentPath);
+
+			player.toggleFavorite(currentPath);
 			player.haptic();
+
+			// Show the toast based on what the new state will be
+			if (!wasFavorite) {
+				player.showToast('Agregado a favoritos', 'success');
+			} else {
+				player.showToast('Quitado de favoritos', 'error');
+			}
 		}
 	});
 
@@ -117,6 +159,16 @@ export function useKeyboardShortcuts() {
 
 		player.togglePauseAfterCurrent();
 		player.haptic();
+
+		player.showToast(
+			{
+				prefix: 'Frenamos la joda después de ',
+				highlight: player.currentTrackPath.value
+					? player.getTrackInfo(player.currentTrackPath.value).display_title
+					: 'el tema actual',
+			},
+			'warning'
+		);
 	});
 
 	onKeyStroke(['n', 'N'], (e) => {
