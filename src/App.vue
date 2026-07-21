@@ -96,7 +96,27 @@
 	<audio ref="localPlayerRef" style="display: none" />
 
 	<!-- TOASTS -->
-	<Toaster position="top-center" theme="dark" rich-colors close-button />
+	<Toaster
+		position="bottom-left"
+		theme="dark"
+		rich-colors
+		:close-button="false"
+		:toast-options="{
+			classes: {
+				toast: 'bg-[var(--color-carpincho-panel)] text-[var(--color-carpincho-text)] border border-[var(--color-carpincho-border)] shadow-xl rounded-xl font-sans',
+				title: 'font-bold text-[var(--color-carpincho-text)]',
+				description: 'text-[var(--color-carpincho-muted)] text-sm',
+				success: '!bg-[var(--color-carpincho-success)] !text-white !border-[var(--color-carpincho-success)]',
+				warning:
+					'!bg-[var(--color-carpincho-warning)] !text-[var(--color-carpincho-panel)] !border-[var(--color-carpincho-warning)] font-medium',
+				error: '!bg-red-900 !text-white !border-red-700',
+				actionButton: 'bg-[var(--color-carpincho-primary)] text-white',
+				cancelButton: 'bg-gray-700 text-gray-300',
+				closeButton:
+					'text-[var(--color-carpincho-text)] hover:text-white bg-[var(--color-carpincho-border)] border-[var(--color-carpincho-border)]',
+			},
+		}"
+	/>
 
 	<!-- MODO FOGÓN -->
 	<FogonMode />

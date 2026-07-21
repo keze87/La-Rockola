@@ -88,22 +88,9 @@
 	}
 }
 
-/* vue-sonner theming — map its CSS vars to the app's existing color tokens */
+/* Position the toaster stack right above the floating player */
 [data-sonner-toaster] {
-	--border-radius: 10px;
-	--normal-bg: var(--color-carpincho-panel);
-	--normal-border: var(--color-carpincho-border);
-	--normal-text: var(--color-carpincho-text);
-	--success-bg: var(--color-carpincho-success);
-	--success-border: var(--color-carpincho-success);
-	--success-text: #fff;
-	--warning-bg: var(--color-carpincho-warning);
-	--warning-border: var(--color-carpincho-warning);
-	--warning-text: var(--color-carpincho-panel);
-	--error-bg: #b3261e;
-	--error-border: #b3261e;
-	--error-text: #fff;
-	font-family: var(--font-sans);
+	bottom: calc(100px + env(safe-area-inset-bottom, 0px)) !important;
 }
 
 body {

@@ -15,6 +15,12 @@ const ctxMenu = reactive({
 // ctxMenu itself, since there's only ever one menu instance in the app.
 let triggerEl = null;
 
+// Touch state stored outside the composable so it persists accurately
+let ctxLongPressTimer = null;
+let touchStartX = 0;
+let touchStartY = 0;
+let ctxLongPressFired = false;
+
 export function useContextMenu() {
 	function openCtxMenu(event, track, source = 'library', index = null) {
 		// Only valid for handlers invoked synchronously (e.g. a real
@@ -78,15 +84,18 @@ export function useContextMenu() {
 		triggerEl = null;
 	}
 
-	let ctxLongPressTimer = null;
-
 	function onCtxTouchStart(e, track, source = 'library', index = null) {
 		// Capture now, synchronously — `e.currentTarget` is nulled out by the
 		// browser once the touchstart event finishes dispatching, so it would
 		// already be gone by the time the setTimeout below fires.
 		const el = e.currentTarget;
 
+		touchStartX = e.touches[0].screenX;
+		touchStartY = e.touches[0].screenY;
+		ctxLongPressFired = false;
+
 		ctxLongPressTimer = setTimeout(() => {
+			ctxLongPressFired = true;
 			if (window.navigator.vibrate) window.navigator.vibrate([10, 30, 20]);
 
 			triggerEl = el;
@@ -94,14 +103,36 @@ export function useContextMenu() {
 		}, 500);
 	}
 
-	function onCtxTouchEnd() {
-		clearTimeout(ctxLongPressTimer);
+	function onCtxTouchMove(e) {
+		if (!ctxLongPressTimer) return;
+
+		const diffX = Math.abs(e.touches[0].screenX - touchStartX);
+		const diffY = Math.abs(e.touches[0].screenY - touchStartY);
+
+		// Cancel the long press if the finger moves more than 10px
+		if (diffX > 10 || diffY > 10) {
+			clearTimeout(ctxLongPressTimer);
+			ctxLongPressTimer = null;
+		}
+	}
+
+	function onCtxTouchEnd(e) {
+		if (ctxLongPressTimer) {
+			clearTimeout(ctxLongPressTimer);
+			ctxLongPressTimer = null;
+		}
+
+		// If the context menu opened, prevent the subsequent click event
+		if (ctxLongPressFired && e && typeof e.preventDefault === 'function') {
+			e.preventDefault();
+		}
 	}
 
 	return {
 		closeCtxMenu,
 		ctxMenu,
 		onCtxTouchEnd,
+		onCtxTouchMove,
 		onCtxTouchStart,
 		openCtxMenu,
 	};
@@ -121,7 +152,7 @@ export function useContextMenu() {
  * right-click binding in place.
  */
 export function useContextMenuBindings(track, source = 'library', index = null, { touch = true } = {}) {
-	const { openCtxMenu, onCtxTouchStart, onCtxTouchEnd } = useContextMenu();
+	const { openCtxMenu, onCtxTouchStart, onCtxTouchEnd, onCtxTouchMove } = useContextMenu();
 
 	const resolve = () => [toValue(track), toValue(source), toValue(index)];
 
@@ -135,7 +166,8 @@ export function useContextMenuBindings(track, source = 'library', index = null, 
 	if (touch) {
 		bindings.touchstart = (e) => onCtxTouchStart(e, ...resolve());
 		bindings.touchend = onCtxTouchEnd;
-		bindings.touchmove = onCtxTouchEnd;
+		bindings.touchcancel = onCtxTouchEnd;
+		bindings.touchmove = onCtxTouchMove;
 	}
 
 	return bindings;

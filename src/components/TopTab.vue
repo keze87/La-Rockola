@@ -1,10 +1,9 @@
 <script setup>
 	import { usePlayer } from '../composables/usePlayer';
-	import { useContextMenu } from '../composables/useContextMenu';
+	import { useContextMenuBindings } from '../composables/useContextMenu';
 	import CoverImage from './ui/CoverImage.vue';
 
 	const { topPlayedState, getTrackInfo, toggleQueue } = usePlayer();
-	const { openCtxMenu, onCtxTouchStart, onCtxTouchEnd } = useContextMenu();
 </script>
 
 <template>
@@ -15,10 +14,7 @@
 				:key="t.path"
 				class="border-carpincho-border hover:bg-carpincho-panel flex cursor-pointer items-center rounded-lg border-b p-4 transition active:scale-[0.98]"
 				@click="toggleQueue(t.path)"
-				@contextmenu.prevent="openCtxMenu($event, getTrackInfo(t.path), 'library')"
-				@touchstart="onCtxTouchStart($event, getTrackInfo(t.path), 'library')"
-				@touchend="onCtxTouchEnd"
-				@touchmove="onCtxTouchEnd"
+				v-on="useContextMenuBindings(() => getTrackInfo(t.path), 'library')"
 			>
 				<div class="text-carpincho-warning mr-4 w-8 text-center text-xl font-bold">#{{ i + 1 }}</div>
 

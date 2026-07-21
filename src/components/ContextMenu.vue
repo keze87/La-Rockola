@@ -168,7 +168,7 @@
 				sendCmd('remove_queue_item', { index });
 			}
 
-			showToast('¡Voleo en el orto! Afuera de la fila', 'warning');
+			showToast('¡Voleo en el orto! Afuera de la fila', 'error');
 			haptic();
 		}
 	}

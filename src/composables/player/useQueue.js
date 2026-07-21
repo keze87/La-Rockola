@@ -44,7 +44,7 @@ export function useQueue() {
 			pauseAfterPath.value = currentTrackPath.value;
 			await sendCmd('pause_after', { path: currentTrackPath.value });
 			const title = getTrackInfo(currentTrackPath.value).display_title;
-			showToast({ prefix: 'Frenamos la joda después de ', highlight: title, suffix: ' ⏸' }, 'warning');
+			showToast({ prefix: 'Frenamos la joda después de ', highlight: title }, 'warning');
 		}
 	}
 
