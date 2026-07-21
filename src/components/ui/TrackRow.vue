@@ -37,7 +37,7 @@
 		@click="emit('click', track)"
 	>
 		<!-- Prefix Slot: Used for Queue drag handles, Top rankings, or EQ animations -->
-		<td class="p-4 text-center">
+		<td class="p-2 text-center">
 			<slot name="prefix">
 				<div v-if="isPlaying" class="flex items-center justify-center">
 					<div :class="['equalizer', isPaused ? 'paused' : '']">
@@ -53,20 +53,21 @@
 		<td class="max-w-[200px] p-4 font-medium">
 			<div class="flex items-center justify-start gap-3">
 				<slot name="cover">
-					<div class="relative shrink-0">
+					<!-- Cover shown: favorite is a badge anchored to its corner -->
+					<div v-if="!hideCover" class="relative shrink-0">
 						<CoverImage
-							v-if="!hideCover"
 							:path="path && !path.startsWith('http') ? path : null"
 							size="h-10 w-10"
 							rounded="rounded"
 						/>
 						<button
 							type="button"
-							class="absolute -right-1.5 -bottom-1.5 hidden h-5 w-5 cursor-pointer items-center justify-center rounded-full sm:flex"
+							class="bg-carpincho-panel absolute -right-2 -bottom-2 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full shadow transition active:scale-90"
+							:aria-label="isFavorite ? 'Quitar de favoritos' : 'Agregar a favoritos'"
 							@click.stop.prevent="toggleFavorite"
 						>
 							<i
-								class="material-icons favorite-icon !text-[0.85rem] transition-colors"
+								class="material-icons favorite-icon !text-[0.9rem] transition-colors"
 								:class="
 									isFavorite
 										? 'text-carpincho-warning drop-shadow-md'
@@ -77,6 +78,25 @@
 							</i>
 						</button>
 					</div>
+					<!-- No cover (e.g. Library rows): favorite stands on its own as a full-size touch target -->
+					<button
+						v-else
+						type="button"
+						class="hover:bg-carpincho-border flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors active:scale-90"
+						:aria-label="isFavorite ? 'Quitar de favoritos' : 'Agregar a favoritos'"
+						@click.stop.prevent="toggleFavorite"
+					>
+						<i
+							class="material-icons favorite-icon !text-xl transition-colors"
+							:class="
+								isFavorite
+									? 'text-carpincho-warning drop-shadow-md'
+									: 'hover:text-carpincho-warning text-gray-400'
+							"
+						>
+							{{ isFavorite ? 'favorite' : 'favorite_border' }}
+						</i>
+					</button>
 				</slot>
 				<span class="truncate">{{ displayTitle }}</span>
 				<slot name="title-extra" />

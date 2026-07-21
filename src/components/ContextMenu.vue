@@ -25,6 +25,38 @@
 		haptic();
 	}
 
+	// Arrow keys move focus between items, Escape closes and returns focus to
+	// the row that opened the menu, and Tab is trapped inside the menu while
+	// it's open — without this the menu can only be driven with a mouse/touch.
+	function ctxMenuKeydown(e) {
+		if (e.key === 'Escape') {
+			e.preventDefault();
+			closeCtxMenu();
+			return;
+		}
+
+		const items = Array.from(e.currentTarget.querySelectorAll('[role="menuitem"]'));
+		if (items.length === 0) return;
+
+		const currentIndex = items.indexOf(document.activeElement);
+
+		if (e.key === 'ArrowDown') {
+			e.preventDefault();
+			items[(currentIndex + 1) % items.length].focus();
+		} else if (e.key === 'ArrowUp') {
+			e.preventDefault();
+			items[(currentIndex - 1 + items.length) % items.length].focus();
+		} else if (e.key === 'Tab') {
+			if (e.shiftKey && currentIndex === 0) {
+				e.preventDefault();
+				items[items.length - 1].focus();
+			} else if (!e.shiftKey && currentIndex === items.length - 1) {
+				e.preventDefault();
+				items[0].focus();
+			}
+		}
+	}
+
 	// --- Shared Actions ---
 	async function ctxPlayNow() {
 		const track = ctxMenu.track;
@@ -59,7 +91,7 @@
 
 		pauseAfterPath.value = track.path;
 		await sendCmd('pause_after', { path: track.path });
-		showToast(`Frenamos la joda después de <b>${track.title || track.display_title}</b> ⏸`, 'warning');
+		showToast({ prefix: 'Frenamos la joda después de ', highlight: track.title || track.display_title }, 'warning');
 		haptic();
 	}
 
@@ -157,89 +189,97 @@
 		@click.self="closeCtxMenu"
 		@contextmenu.prevent="closeCtxMenu"
 	>
-		<div class="ctx-menu absolute" :style="{ top: ctxMenu.y + 'px', left: ctxMenu.x + 'px' }">
-			<div class="ctx-menu-header truncate">🦦 {{ ctxMenu.track?.title || ctxMenu.track?.display_title }}</div>
+		<div
+			class="ctx-menu absolute"
+			role="menu"
+			aria-labelledby="ctx-menu-title"
+			:style="{ top: ctxMenu.y + 'px', left: ctxMenu.x + 'px' }"
+			@keydown="ctxMenuKeydown"
+		>
+			<div id="ctx-menu-title" class="ctx-menu-header truncate">
+				🦦 {{ ctxMenu.track?.title || ctxMenu.track?.display_title }}
+			</div>
 
 			<!-- LIBRARY ACTIONS -->
 			<template v-if="ctxMenu.source === 'library'">
-				<div class="ctx-menu-item" @click="ctxPlayNext">
+				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxPlayNext">
 					<i class="material-icons">queue_play_next</i>
 					Que suene de próximo
-				</div>
-				<div class="ctx-menu-item" @click="ctxPlayNow">
+				</button>
+				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxPlayNow">
 					<i class="material-icons">play_arrow</i>
 					Mandale play de una
-				</div>
-				<div class="ctx-menu-item" @click="ctxAddToQueue">
+				</button>
+				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxAddToQueue">
 					<i class="material-icons">playlist_add</i>
 					Al fondo de la fila
-				</div>
-				<div class="ctx-menu-item" @click="ctxToggleFavorite">
+				</button>
+				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxToggleFavorite">
 					<i class="material-icons">
-						{{ favorites?.includes(ctxMenu.track?.path) ? 'favorite_border' : 'favorite' }}
+						{{ favorites?.includes(ctxMenu.track?.path) ? 'favorite' : 'favorite_border' }}
 					</i>
 					{{ favorites?.includes(ctxMenu.track?.path) ? 'Sacar de favoritos' : 'A los favoritos' }}
-				</div>
-				<div class="ctx-menu-item" @click="ctxFilterByArtist">
+				</button>
+				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxFilterByArtist">
 					<i class="material-icons">person_search</i>
 					Chusmear más del artista
-				</div>
-				<div class="ctx-menu-item" @click="ctxPauseAfter">
+				</button>
+				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxPauseAfter">
 					<i class="material-icons">timer</i>
 					Frenar la chata tras este tema
-				</div>
+				</button>
 			</template>
 
 			<!-- QUEUE ACTIONS -->
 			<template v-if="ctxMenu.source === 'queue'">
-				<div class="ctx-menu-item" @click="ctxPlayNextQueue">
+				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxPlayNextQueue">
 					<i class="material-icons">vertical_align_top</i>
 					Subir a próximo
-				</div>
-				<div class="ctx-menu-item" @click="ctxPlayNow">
+				</button>
+				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxPlayNow">
 					<i class="material-icons">play_arrow</i>
 					Mandale play de una
-				</div>
-				<div class="ctx-menu-item" @click="ctxToggleFavorite">
+				</button>
+				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxToggleFavorite">
 					<i class="material-icons">
-						{{ favorites?.includes(ctxMenu.track?.path) ? 'favorite_border' : 'favorite' }}
+						{{ favorites?.includes(ctxMenu.track?.path) ? 'favorite' : 'favorite_border' }}
 					</i>
 					{{ favorites?.includes(ctxMenu.track?.path) ? 'Sacar de favoritos' : 'A los favoritos' }}
-				</div>
-				<div class="ctx-menu-item" @click="ctxPauseAfter">
+				</button>
+				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxPauseAfter">
 					<i class="material-icons">timer</i>
 					Frenar la chata tras este tema
-				</div>
-				<div class="ctx-menu-item" @click="ctxFilterByArtist">
+				</button>
+				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxFilterByArtist">
 					<i class="material-icons">person_search</i>
 					Buscar en la librería
-				</div>
-				<div class="ctx-menu-item delete-item" @click="ctxRemoveFromQueue">
+				</button>
+				<button type="button" class="ctx-menu-item delete-item" role="menuitem" @click="ctxRemoveFromQueue">
 					<i class="material-icons text-red-400">delete</i>
 					<span class="text-red-400">Pegarle un voleo</span>
-				</div>
+				</button>
 			</template>
 
 			<!-- HISTORY ACTIONS -->
 			<template v-if="ctxMenu.source === 'history'">
-				<div class="ctx-menu-item" @click="ctxHistoryPlayAgain">
+				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxHistoryPlayAgain">
 					<i class="material-icons">add_circle_outline</i>
 					Agregar a la fila
-				</div>
-				<div class="ctx-menu-item" @click="ctxToggleFavorite">
+				</button>
+				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxToggleFavorite">
 					<i class="material-icons">
-						{{ favorites?.includes(ctxMenu.track?.path) ? 'favorite_border' : 'favorite' }}
+						{{ favorites?.includes(ctxMenu.track?.path) ? 'favorite' : 'favorite_border' }}
 					</i>
 					{{ favorites?.includes(ctxMenu.track?.path) ? 'Sacar de favoritos' : 'A los favoritos' }}
-				</div>
-				<div class="ctx-menu-item" @click="ctxFilterByArtist">
+				</button>
+				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxFilterByArtist">
 					<i class="material-icons">person_search</i>
 					Buscar en la librería
-				</div>
-				<div class="ctx-menu-item delete-item" @click="ctxRemoveFromHistory">
+				</button>
+				<button type="button" class="ctx-menu-item delete-item" role="menuitem" @click="ctxRemoveFromHistory">
 					<i class="material-icons text-red-400">delete</i>
 					<span class="text-red-400">Borrar del historial</span>
-				</div>
+				</button>
 			</template>
 		</div>
 	</div>
@@ -267,18 +307,29 @@
 
 	.ctx-menu-item {
 		align-items: center;
+		background: none;
+		border: none;
 		color: var(--color-carpincho-text);
 		cursor: pointer;
 		display: flex;
+		font: inherit;
 		font-size: 0.92rem;
 		gap: 10px;
 		padding: 12px 16px;
+		text-align: left;
 		transition: background 0.12s;
+		width: 100%;
 	}
 
 	.ctx-menu-item:hover,
 	.ctx-menu-item:active {
 		background: var(--color-carpincho-bg);
+	}
+
+	.ctx-menu-item:focus-visible {
+		background: var(--color-carpincho-bg);
+		outline: 0px solid var(--color-carpincho-warning);
+		outline-offset: -2px;
 	}
 
 	.ctx-menu-item i {
@@ -287,7 +338,8 @@
 	}
 
 	.ctx-menu-item.delete-item:hover,
-	.ctx-menu-item.delete-item:active {
+	.ctx-menu-item.delete-item:active,
+	.ctx-menu-item.delete-item:focus-visible {
 		background: rgba(239, 68, 68, 0.3) !important;
 	}
 </style>

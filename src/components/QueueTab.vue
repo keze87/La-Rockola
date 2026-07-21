@@ -180,7 +180,7 @@
 		<table class="w-full table-fixed border-collapse text-left">
 			<thead>
 				<tr>
-					<th class="text-carpincho-primary bg-carpincho-panel w-28 p-3 text-center">Acciones</th>
+					<th class="text-carpincho-primary bg-carpincho-panel w-40 p-3 text-center">Acciones</th>
 					<th class="text-carpincho-primary bg-carpincho-panel p-3">El Temón</th>
 					<th class="text-carpincho-primary bg-carpincho-panel p-3">De quién es</th>
 					<th class="text-carpincho-primary bg-carpincho-panel hidden w-20 p-3 text-right sm:table-cell">
@@ -221,16 +221,17 @@
 								<span />
 							</div>
 							<button
+								type="button"
 								:title="
 									pauseAfterPath === currentTrackPath
 										? 'Cancelar pausa al terminar'
 										: 'Frenar tras este tema'
 								"
 								:class="[
-									'transition active:scale-90',
+									'flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full transition active:scale-90',
 									pauseAfterPath === currentTrackPath
 										? 'text-carpincho-warning drop-shadow-[0_0_8px_rgba(233,196,106,0.8)]'
-										: 'hover:text-carpincho-warning text-gray-500',
+										: 'hover:text-carpincho-warning text-gray-500 hover:bg-black/20 active:bg-black/30',
 								]"
 								@click="
 									togglePauseAfterCurrent();
@@ -266,10 +267,10 @@
 				>
 					<!-- Actions Column -->
 					<template #prefix>
-						<div class="flex items-center justify-center gap-1 sm:gap-2" @click.stop>
+						<div class="flex items-center justify-center gap-1" @click.stop>
 							<button
 								type="button"
-								class="flex h-8 w-10 cursor-pointer items-center justify-center rounded-full px-1 transition-colors hover:bg-black/20"
+								class="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/20 active:bg-black/30"
 								title="Subir a próximo"
 								@click="moveQueueItem(i, 'first')"
 							>
@@ -281,7 +282,7 @@
 							</button>
 							<button
 								type="button"
-								class="flex h-8 w-10 cursor-pointer items-center justify-center rounded-full px-1 transition-colors hover:bg-black/20"
+								class="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/20 active:bg-black/30"
 								title="Mover al final"
 								@click="moveQueueItem(i, 'last')"
 							>
@@ -293,7 +294,7 @@
 							</button>
 							<button
 								type="button"
-								class="hidden h-8 w-10 cursor-pointer items-center justify-center rounded-full px-1 transition-colors hover:bg-red-500/20 sm:flex"
+								class="hidden h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-red-500/20 active:bg-red-500/30 sm:flex"
 								title="Sacar de la fila"
 								@click="removeQueueItem(i, $event.currentTarget.closest('tr'))"
 							>

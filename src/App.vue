@@ -108,8 +108,11 @@
 				]"
 			>
 				<i class="material-icons">{{ toast.icon }}</i>
-				<!-- eslint-disable-next-line vue/no-v-html -->
-				<span v-html="toast.msg" />
+				<span>
+					{{ toast.prefix }}
+					<b v-if="toast.highlight">{{ toast.highlight }}</b>
+					{{ toast.suffix }}
+				</span>
 			</div>
 		</transition-group>
 	</div>

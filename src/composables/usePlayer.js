@@ -300,8 +300,9 @@ export function usePlayer() {
 
 		if (res && res.status === 'ok') {
 			if (mostrarToast) {
-				if (!wasInQueue) showToast(`¡Adentro! <b>${title}</b> a la fila.`, 'success');
-				else showToast(`Sacamos <b>${title}</b> de la fila.`, 'warning');
+				if (!wasInQueue)
+					showToast({ prefix: '¡Adentro! ', highlight: title, suffix: ' a la fila.' }, 'success');
+				else showToast({ prefix: 'Sacamos ', highlight: title, suffix: ' de la fila.' }, 'warning');
 			}
 		} else {
 			showToast('Uy, no se pudo agregar el tema.', 'error');
@@ -335,7 +336,7 @@ export function usePlayer() {
 			pauseAfterPath.value = currentTrackPath.value;
 			await sendCmd('pause_after', { path: currentTrackPath.value });
 			const title = getTrackInfo(currentTrackPath.value).display_title;
-			showToast(`Frenamos la joda después de <b>${title}</b> ⏸`, 'warning');
+			showToast({ prefix: 'Frenamos la joda después de ', highlight: title }, 'warning');
 		}
 	}
 
@@ -356,6 +357,12 @@ export function usePlayer() {
 		sendCmd('set_volume', { vollevel: parseInt(volume.value) });
 	}
 
+	// `msg` is either a plain string, or `{ prefix, highlight, suffix }` when a
+	// track title needs to be shown in bold. Either way it's stored as plain
+	// text fields and rendered with normal (auto-escaping) interpolation in
+	// App.vue — never as raw HTML — since track titles can come from
+	// untrusted sources (pasted URLs, file metadata) and must never be
+	// treated as markup.
 	function showToast(msg, type = 'info') {
 		const id = toastIdCounter++;
 		let icon = 'info',
@@ -375,7 +382,16 @@ export function usePlayer() {
 			colorClasses = 'bg-red-600';
 		}
 
-		toasts.value.push({ id, msg, icon, colorClasses });
+		const parts = typeof msg === 'string' ? { prefix: msg, highlight: '', suffix: '' } : msg;
+
+		toasts.value.push({
+			id,
+			icon,
+			colorClasses,
+			prefix: parts.prefix || '',
+			highlight: parts.highlight || '',
+			suffix: parts.suffix || '',
+		});
 		setTimeout(() => {
 			toasts.value = toasts.value.filter((t) => t.id !== id);
 		}, 3000);

@@ -10,8 +10,19 @@ const ctxMenu = reactive({
 	index: null,
 });
 
+// The element that opened the menu (a table row, typically), so we can
+// return keyboard focus to it once the menu closes. Module-level like
+// ctxMenu itself, since there's only ever one menu instance in the app.
+let triggerEl = null;
+
 export function useContextMenu() {
 	function openCtxMenu(event, track, source = 'library', index = null) {
+		// Only valid for handlers invoked synchronously (e.g. a real
+		// `contextmenu` event) — for the touch long-press path this is
+		// captured earlier by onCtxTouchStart, since `currentTarget` is
+		// already null by the time its setTimeout fires.
+		if (event.currentTarget) triggerEl = event.currentTarget;
+
 		ctxMenu.track = track;
 		ctxMenu.source = source;
 		ctxMenu.index = index;
@@ -51,19 +62,34 @@ export function useContextMenu() {
 				ctxMenu.x = x;
 				ctxMenu.y = y;
 			});
+
+			// Move keyboard focus into the menu so it's usable without a mouse
+			menuElement.querySelector('[role="menuitem"]')?.focus();
 		});
 	}
 
 	function closeCtxMenu() {
 		ctxMenu.visible = false;
+
+		// Return focus to whatever opened the menu, if it's still around
+		if (triggerEl && document.contains(triggerEl) && typeof triggerEl.focus === 'function') {
+			triggerEl.focus();
+		}
+		triggerEl = null;
 	}
 
 	let ctxLongPressTimer = null;
 
 	function onCtxTouchStart(e, track, source = 'library', index = null) {
+		// Capture now, synchronously — `e.currentTarget` is nulled out by the
+		// browser once the touchstart event finishes dispatching, so it would
+		// already be gone by the time the setTimeout below fires.
+		const el = e.currentTarget;
+
 		ctxLongPressTimer = setTimeout(() => {
 			if (window.navigator.vibrate) window.navigator.vibrate([10, 30, 20]);
 
+			triggerEl = el;
 			openCtxMenu(e, track, source, index); // Pass the original event to openCtxMenu
 		}, 500);
 	}
