@@ -111,6 +111,7 @@ export function useContextMenu() {
 
 		ctxLongPressTimer = setTimeout(() => {
 			ctxLongPressFired = true;
+
 			if (window.navigator.vibrate) window.navigator.vibrate([10, 30, 20]);
 
 			triggerEl = el;

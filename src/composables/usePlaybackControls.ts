@@ -1,16 +1,23 @@
 import { useApi } from './useApi';
 import { usePlayer } from './usePlayer';
+import type { CommandName, CommandPayloads } from '../types';
 
 export function usePlaybackControls() {
 	const api = useApi();
 	const { showToast } = usePlayer();
 
-	async function execute(action: string, payload: Record<string, unknown> = {}, successMsg: string | null = null) {
+	async function execute<C extends CommandName>(
+		action: C,
+		payload?: CommandPayloads[C],
+		successMsg: string | null = null
+	) {
 		try {
 			const res = await api.command(action, payload);
+
 			if (res?.status === 'ok' && successMsg) {
 				showToast(successMsg, 'success');
 			}
+
 			return res;
 		} catch (error) {
 			console.error(error);
@@ -21,7 +28,7 @@ export function usePlaybackControls() {
 
 	return {
 		addUrl: (path: string) => execute('add_url', { path }, 'Procesando link...'),
-		clearQueue: () => execute('clear_queue', {}, 'La fila quedó limpita.'),
+		clearQueue: () => execute('clear_queue', undefined, 'La fila quedó limpita.'),
 		jumpToHistory: (index: number) => execute('jump', { type: 'history', index }),
 		jumpToQueue: (index: number) => execute('jump', { type: 'queue', index }),
 		moveQueueItem: (index: number, new_index: number) => execute('move_queue_item', { index, new_index }),

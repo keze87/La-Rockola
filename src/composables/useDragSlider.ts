@@ -11,7 +11,6 @@ export interface DragSliderOptions {
 
 export function useDragSlider(options: DragSliderOptions) {
 	const { max = 100, getValue, onUpdate, onCommit } = options;
-
 	const isDragging = ref(false);
 	const dragValue = ref(0);
 
@@ -36,6 +35,7 @@ export function useDragSlider(options: DragSliderOptions) {
 
 		// Supports native Pointer Events, falling back to Touch/Mouse if needed
 		let clientX = 0;
+
 		if ('touches' in e && (e as TouchEvent).touches.length > 0) {
 			clientX = (e as TouchEvent).touches[0].clientX;
 		} else if ('changedTouches' in e && (e as TouchEvent).changedTouches.length > 0) {
@@ -55,28 +55,35 @@ export function useDragSlider(options: DragSliderOptions) {
 		if ('pointerId' in e) (e.target as Element).setPointerCapture(e.pointerId);
 
 		const val = calculateValue(e);
+
 		if (val !== null) {
 			dragValue.value = val;
+
 			if (onUpdate) onUpdate(val);
 		}
 	}
 
 	function moveDrag(e: SliderInputEvent) {
 		if (!isDragging.value) return;
+
 		const val = calculateValue(e);
+
 		if (val !== null) {
 			dragValue.value = val;
+
 			if (onUpdate) onUpdate(val);
 		}
 	}
 
 	function endDrag(e: SliderInputEvent) {
 		if (!isDragging.value) return;
+
 		isDragging.value = false;
 
 		if ('pointerId' in e) (e.target as Element).releasePointerCapture(e.pointerId);
 
 		const val = calculateValue(e);
+
 		if (val !== null) {
 			dragValue.value = val;
 

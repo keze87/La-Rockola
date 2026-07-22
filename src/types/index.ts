@@ -30,3 +30,35 @@ export interface PlayerState {
 	url_metadata?: Record<string, Track>;
 	volume?: number;
 }
+
+export interface ApiResponse<T = unknown> {
+	status: string;
+	data?: T;
+	[key: string]: unknown; // Allows flexibility for arbitrary server flags if needed
+}
+
+export interface CommandPayloads {
+	play: { path: string };
+	pause: undefined;
+	stop: undefined;
+	skip: undefined;
+	prev: undefined;
+	toggle_queue: { path: string };
+	clear_queue: undefined;
+	seek: { amount: number };
+	seek_absolute: { amount: number };
+	set_volume: { vollevel: number };
+	set_mute: { state: boolean };
+	toggle_favorite: { path: string };
+	add_url: { path: string };
+	jump: { type: 'queue' | 'history'; index: number };
+	remove_queue_item: { index: number };
+	move_queue_item: { index: number; new_index: number };
+	remove_history_item: { index: number };
+	toggle_dj_carpincho: { state: boolean };
+	toggle_dj_safe_mode: { state: boolean };
+	fullscreen: undefined;
+	pause_after: { path: string };
+}
+
+export type CommandName = keyof CommandPayloads;

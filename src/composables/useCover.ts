@@ -13,7 +13,9 @@ export function useCover(trackOrPath: MaybeRefOrGetter<Track | string | null>) {
 
 	const coverUrl = computed(() => {
 		const currentPath = path.value;
+
 		if (!currentPath || currentPath.startsWith('http')) return null;
+
 		if (brokenCoversCache.value.has(currentPath)) return null;
 
 		// Return memoized blob URL if already cached locally

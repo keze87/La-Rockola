@@ -37,6 +37,7 @@
 		if (queueState.value.length > 0) return queueState.value[0];
 
 		if (djCarpinchoEnabled.value && djNextTrack.value) return djNextTrack.value?.path;
+
 		return null;
 	});
 

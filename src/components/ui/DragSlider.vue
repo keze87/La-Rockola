@@ -49,11 +49,12 @@
 				:class="activeColor"
 				:style="{ width: progressPercent + '%' }"
 			/>
+
 			<div
 				class="absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full shadow transition-transform group-active:scale-125"
 				:class="activeColor"
 				:style="{ left: progressPercent + '%', marginLeft: '-8px' }"
-			></div>
+			/>
 		</div>
 	</div>
 </template>

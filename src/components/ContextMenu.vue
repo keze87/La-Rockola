@@ -53,6 +53,7 @@
 			closeCtxMenu();
 			return;
 		}
+
 		const items = Array.from(
 			(e.currentTarget as HTMLElement).querySelectorAll('[role="menuitem"]')
 		) as HTMLElement[];
@@ -155,7 +156,9 @@
 
 	async function ctxAddToQueue() {
 		const track = ctxMenu.track;
+
 		if (!track) return;
+
 		closeCtxMenu();
 
 		if (!queueState.value.includes(track.path)) {

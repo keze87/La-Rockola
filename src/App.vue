@@ -177,7 +177,7 @@
 
 	<div
 		v-show="!isScanning && currentTrackPath"
-		class="bg-carpincho-panel group relative flex h-4 w-full shrink-0 cursor-pointer touch-none items-start"
+		class="bg-carpincho-panel group relative flex h-2 w-full shrink-0 cursor-pointer touch-none items-start"
 		style="-webkit-tap-highlight-color: transparent"
 		@pointerdown="startSeek"
 		@pointermove="moveSeek"

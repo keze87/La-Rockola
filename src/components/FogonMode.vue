@@ -1,10 +1,13 @@
 <script setup lang="ts">
 	import { computed, watch } from 'vue';
 	import { useLyrics } from '../composables/useLyrics';
+	import { useCover } from '../composables/useCover';
+	import { usePlaybackControls } from '../composables/usePlaybackControls';
 	import { usePlayer } from '../composables/usePlayer';
 	import { useSliderFactory } from '../composables/useSliderFactory';
 	import DragSlider from './ui/DragSlider.vue';
 
+	const { pause, skip, prev, seekAbsolute, setMute } = usePlaybackControls();
 	const player = usePlayer();
 	const {
 		currentTrackPath,
@@ -20,7 +23,6 @@
 		localPlayerRef,
 		localTimePos,
 		pauseAfterPath,
-		sendCmd,
 		serverMuted,
 		showFogonVolume,
 		togglePauseAfterCurrent,
@@ -51,7 +53,7 @@
 				localPlayerRef.value.currentTime = val;
 				player._sendLocalPlayerUpdate?.({ time_pos: val });
 			} else {
-				sendCmd('seek_absolute', { amount: val });
+				seekAbsolute(val);
 			}
 		}
 	);
@@ -61,8 +63,9 @@
 
 	function handleVolumeUpdate(val: number) {
 		volume.value = Math.round(val);
+
 		if (serverMuted.value && volume.value > 0) {
-			sendCmd('set_mute', { state: false });
+			setMute(false);
 		}
 	}
 
@@ -70,23 +73,13 @@
 	const { currentLyricLine, loadLyrics } = useLyrics(player);
 
 	// --- Computed Properties for Template Cleanliness ---
-	const currentCoverUrl = computed(() => {
-		if (currentTrackPath.value && !currentTrackPath.value.startsWith('http')) {
-			return '/cover?path=' + encodeURIComponent(currentTrackPath.value);
-		}
-
-		if (
-			!currentTrackPath.value &&
-			djCarpinchoEnabled.value &&
-			djNextTrack.value &&
-			djNextTrack.value.path &&
-			!djNextTrack.value.path.startsWith('http')
-		) {
-			return '/cover?path=' + encodeURIComponent(djNextTrack.value.path);
-		}
-
+	const coverSource = computed(() => {
+		if (currentTrackPath.value) return currentTrackPath.value;
+		if (djCarpinchoEnabled.value && djNextTrack.value?.path) return djNextTrack.value.path;
 		return null;
 	});
+
+	const { coverUrl: currentCoverUrl, onCoverError } = useCover(coverSource);
 
 	const fogonBgStyle = computed(() =>
 		currentCoverUrl.value ? { backgroundImage: `url('${currentCoverUrl.value}')` } : { backgroundColor: '#1f1a17' }
@@ -152,22 +145,22 @@
 	}
 
 	function togglePlay() {
-		sendCmd('pause');
+		pause();
 		haptic(true);
 	}
 
 	function skipPrev() {
-		sendCmd('prev');
+		prev();
 		haptic();
 	}
 
 	function skipNext() {
-		sendCmd('skip');
+		skip();
 		haptic();
 	}
 
 	function toggleMute() {
-		sendCmd('set_mute', { state: !serverMuted.value });
+		setMute(!serverMuted.value);
 		haptic();
 	}
 
@@ -210,6 +203,7 @@
 						draggable="false"
 						loading="eager"
 						class="h-full w-full object-cover"
+						@error="onCoverError"
 					/>
 					<i v-else class="material-icons text-carpincho-warning !text-[8rem]">album</i>
 				</div>

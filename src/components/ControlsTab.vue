@@ -31,6 +31,7 @@
 		getValue: () => volume.value,
 		onUpdate: (val) => {
 			volume.value = Math.round(val);
+
 			if (serverMuted.value && volume.value > 0) {
 				sendCmd('set_mute', { state: false });
 			}
@@ -104,8 +105,8 @@
 		<div class="mb-8 flex flex-wrap justify-center gap-3">
 			<PillButton icon="access_time" @click="sortLibrary('time')">Como llegaron</PillButton>
 			<PillButton icon="person" @click="sortLibrary('artist')">Por el que canta</PillButton>
-			<PillButton icon="shuffle" @click="sortLibrary('shuffle', false)">Mezcladito (A lo loco)</PillButton>
 			<PillButton icon="bolt" @click="sortLibrary('mood')">Más Manija</PillButton>
+			<PillButton icon="shuffle" @click="sortLibrary('shuffle', false)">Mezcladito (A lo loco)</PillButton>
 		</div>
 
 		<!-- The Toggles -->
@@ -136,7 +137,7 @@
 			:model-value="djSafeModeEnabled"
 			icon="favorite"
 			title="Capincho seguro"
-			description="Prioriza favoritos para que no decaiga"
+			description="Prioriza favoritos, para que no decaiga"
 			active-class="bg-carpincho-success"
 			@update:model-value="toggleDjSafeMode"
 		/>

@@ -110,6 +110,7 @@
 
 	function moveQueueItem(index: number, target: 'first' | 'last' | number) {
 		let newIndex = target === 'first' ? 0 : queueState.value.length - 1;
+
 		if (typeof target === 'number') newIndex = target;
 
 		if (newIndex !== index) {
@@ -121,6 +122,7 @@
 	function dragStart(e: DragEvent, index: number) {
 		dragFromIndex.value = index;
 		(e.currentTarget as HTMLElement).classList.add('opacity-40');
+
 		if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
 	}
 
