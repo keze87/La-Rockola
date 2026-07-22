@@ -29,9 +29,7 @@
 	// Getter form (not `props.track` by value) so this keeps tracking the
 	// current prop when a `:key`-stable row is reused for fresh track data
 	// (e.g. after a websocket state_update replaces the library array).
-	const { displayArtist, displayTitle, durationStr, isFavorite, isPaused, path, toggleFavorite } = useTrack(
-		() => props.track
-	);
+	const { displayArtist, displayTitle, durationStr } = useTrack(() => props.track);
 
 	const bindings = useContextMenuBindings(
 		() => props.track,
@@ -44,7 +42,6 @@
 <template>
 	<div
 		:id="isCurrent ? 'current-library-row' : undefined"
-		ref="rowRef"
 		class="border-carpincho-border hover:bg-carpincho-border grid h-[72px] cursor-pointer grid-cols-[4rem_minmax(0,1fr)_minmax(0,1fr)] items-center border-b transition-colors active:scale-[0.98] sm:grid-cols-[4rem_minmax(0,1fr)_minmax(0,1fr)_5rem]"
 		v-on="bindings"
 		@click="emit('click', track)"

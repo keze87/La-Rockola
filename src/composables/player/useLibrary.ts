@@ -16,15 +16,6 @@ export function useLibrary() {
 	const api = useApi();
 	const { showToast } = useToasts();
 
-	function normalizeString(s: string) {
-		return s
-			? s
-					.normalize('NFD')
-					.replace(/[\u0300-\u036f]/g, '')
-					.toLowerCase()
-			: '';
-	}
-
 	function getTrackInfo(path: string | null | undefined): Track {
 		if (!path) return { display_title: 'Desconocido', display_artist: 'Vaya uno a saber', path: '' };
 
@@ -115,5 +106,5 @@ export function useLibrary() {
 		activeTab.value = 'library';
 	}
 
-	return { getTrackInfo, loadLibrary, normalizeString, queueIndex, sortLibrary };
+	return { getTrackInfo, loadLibrary, queueIndex, sortLibrary };
 }

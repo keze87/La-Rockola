@@ -12,13 +12,11 @@
 			// Queue rows own their long-press-vs-swipe-to-delete touch logic
 			// themselves, so they set this to skip the default touch bindings.
 			contextMenuOnly?: boolean;
-			hideCover?: boolean;
 		}>(),
 		{
 			contextSource: 'library',
 			index: null,
 			contextMenuOnly: false,
-			hideCover: false,
 		}
 	);
 
@@ -29,17 +27,7 @@
 	// Getter form (not `props.track` by value) so this keeps tracking the
 	// current prop when a `:key`-stable row is reused for fresh track data
 	// (e.g. after a websocket state_update replaces the library array).
-	const {
-		displayArtist,
-		displayTitle,
-		durationStr,
-		isFavorite,
-		isPaused,
-		isPlaying,
-		path,
-		toggleFavorite,
-		trackInfo,
-	} = useTrack(() => props.track);
+	const { displayArtist, displayTitle, durationStr, isPaused, isPlaying, trackInfo } = useTrack(() => props.track);
 
 	const bindings = useContextMenuBindings(
 		() => trackInfo.value,
@@ -74,7 +62,7 @@
 			<div class="flex items-center justify-start gap-3">
 				<slot name="cover">
 					<!-- Cover shown: favorite is a badge anchored to its corner -->
-					<FavoritableCover v-if="!hideCover" :track="track" class="hidden sm:block" />
+					<FavoritableCover :track="track" class="hidden sm:block" />
 				</slot>
 
 				<span class="truncate">{{ displayTitle }}</span>

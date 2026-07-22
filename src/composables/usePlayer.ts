@@ -49,7 +49,7 @@ import { useToasts } from './player/useToasts';
 export function usePlayer() {
 	const { _sendLocalPlayerUpdate, setVolume } = useLocalPlayback();
 	const { connectWebSocket } = useSocket();
-	const { getTrackInfo, loadLibrary, normalizeString, queueIndex, sortLibrary } = useLibrary();
+	const { getTrackInfo, loadLibrary, queueIndex, sortLibrary } = useLibrary();
 	const { handleLibraryClick, toggleFavorite, togglePauseAfterCurrent, toggleQueue } = useQueue();
 	const { haptic } = useHaptics();
 	const { sendCmd } = useCommands();
@@ -84,7 +84,6 @@ export function usePlayer() {
 		localPlayerRef,
 		localTimePos,
 		mpvVisible,
-		normalizeString,
 		originalTracks,
 		pauseAfterPath,
 		queueIndex,

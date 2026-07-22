@@ -187,10 +187,14 @@
 		<div
 			class="relative h-1 w-full bg-[#38312c] transition-all duration-100 ease-out group-hover:h-2 group-active:h-2"
 		>
-			<div class="bg-carpincho-warning absolute top-0 left-0 h-full" :style="{ width: progressPercent + '%' }" />
+			<div
+				class="bg-carpincho-warning absolute top-0 left-0 z-50 h-full"
+				:style="{ width: progressPercent + '%' }"
+			/>
+
 			<!-- Bolita que solo aparece al pasar el dedo/mouse -->
 			<div
-				class="bg-carpincho-warning absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full opacity-0 shadow-md group-hover:opacity-100 group-active:opacity-100"
+				class="bg-carpincho-warning absolute top-1/2 z-50 h-3 w-3 -translate-y-1/2 rounded-full opacity-0 shadow-md group-hover:opacity-100 group-active:opacity-100"
 				:style="{ left: progressPercent + '%', marginLeft: '-6px' }"
 			/>
 		</div>

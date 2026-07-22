@@ -2340,7 +2340,14 @@ async def serve_lrc(path: str = Query(...)):
 	if not lrc_path.exists():
 		return Response(status_code=404)
 
-	return FileResponse(lrc_path, media_type="text/plain")
+	return FileResponse(
+		lrc_path,
+		media_type="text/plain",
+		headers={
+			"Cache-Control": "public, max-age=600, must-revalidate",
+		}
+	)
+
 
 
 class CommandRequest(BaseModel):

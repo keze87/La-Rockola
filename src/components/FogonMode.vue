@@ -6,6 +6,7 @@
 	import { usePlayer } from '../composables/usePlayer';
 	import { useSliderFactory } from '../composables/useSliderFactory';
 	import DragSlider from './ui/DragSlider.vue';
+	import FavoritableCover from './ui/FavoritableCover.vue';
 
 	const { pause, skip, prev, seekAbsolute, setMute } = usePlaybackControls();
 	const player = usePlayer();
@@ -79,7 +80,7 @@
 		return null;
 	});
 
-	const { coverUrl: currentCoverUrl, onCoverError } = useCover(coverSource);
+	const { coverUrl: currentCoverUrl } = useCover(coverSource);
 
 	const fogonBgStyle = computed(() =>
 		currentCoverUrl.value ? { backgroundImage: `url('${currentCoverUrl.value}')` } : { backgroundColor: '#1f1a17' }
@@ -180,7 +181,7 @@
 			<!-- Background Overlay -->
 			<div class="pointer-events-none absolute inset-0 bg-black/80 backdrop-blur-xl" />
 
-			<!-- Volume Popup Overlay Layer (Moved outside controls for predictable stacking) -->
+			<!-- Volume Popup Overlay Layer -->
 			<div v-if="showFogonVolume" class="fixed inset-0 z-10" @click="showFogonVolume = false" />
 
 			<div class="relative z-20 flex w-full max-w-md flex-col items-center text-center">
@@ -196,14 +197,13 @@
 				<div
 					class="bg-carpincho-bg mb-8 flex h-64 w-64 items-center justify-center overflow-hidden rounded-2xl shadow-[0_10px_50px_rgba(0,0,0,0.8)] md:h-80 md:w-80"
 				>
-					<img
-						v-if="currentCoverUrl"
-						:src="currentCoverUrl"
-						alt="Portada del álbum"
-						draggable="false"
-						loading="eager"
-						class="h-full w-full object-cover"
-						@error="onCoverError"
+					<FavoritableCover
+						v-if="coverSource"
+						:track="coverSource"
+						size="h-full w-full"
+						rounded="rounded-2xl"
+						button-size="h-10 w-10 md:h-12 md:w-12"
+						button-icon-size="!text-xl md:!text-2xl"
 					/>
 					<i v-else class="material-icons text-carpincho-warning !text-[8rem]">album</i>
 				</div>
