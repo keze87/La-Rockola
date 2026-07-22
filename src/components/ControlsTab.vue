@@ -1,4 +1,5 @@
 <script setup lang="ts">
+	import { useFullscreen } from '@vueuse/core';
 	import { useDragSlider } from '../composables/useDragSlider';
 	import { usePlayer } from '../composables/usePlayer';
 	import PillButton from './ui/PillButton.vue';
@@ -55,10 +56,7 @@
 		haptic();
 	}
 
-	function toggleWebFullscreen() {
-		if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch((e) => console.warn(e));
-		else if (document.exitFullscreen) document.exitFullscreen();
-	}
+	const { isFullscreen, toggle: toggleWebFullscreen } = useFullscreen();
 </script>
 
 <template>
@@ -178,7 +176,7 @@
 			</PillButton>
 
 			<PillButton
-				icon="open_in_full"
+				:icon="isFullscreen ? 'fullscreen_exit' : 'open_in_full'"
 				color-class="bg-purple-700 hover:bg-purple-600"
 				@click="toggleWebFullscreen"
 			>

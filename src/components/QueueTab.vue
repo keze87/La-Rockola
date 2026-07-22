@@ -202,10 +202,10 @@
 		<table class="w-full table-fixed border-collapse text-left">
 			<thead>
 				<tr>
-					<th class="text-carpincho-primary bg-carpincho-panel w-40 p-3 text-center">Acciones</th>
+					<th class="text-carpincho-primary bg-carpincho-panel w-28 p-2 text-center sm:w-40">Acciones</th>
 					<th class="text-carpincho-primary bg-carpincho-panel p-3">El Temón</th>
 					<th class="text-carpincho-primary bg-carpincho-panel p-3">De quién es</th>
-					<th class="text-carpincho-primary bg-carpincho-panel hidden w-20 p-3 text-right sm:table-cell">
+					<th class="text-carpincho-primary bg-carpincho-panel hidden w-22 p-3 text-right sm:table-cell">
 						Duración
 					</th>
 				</tr>

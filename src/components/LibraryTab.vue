@@ -1,8 +1,9 @@
 <script setup lang="ts">
 	import { ref, computed, watch } from 'vue';
+	import Fuse from 'fuse.js';
+	import { useVirtualList } from '@vueuse/core';
 	import { usePlayer } from '../composables/usePlayer';
-	import TrackRow from './ui/TrackRow.vue';
-	import type { Track } from '../types';
+	import LibraryRow from './ui/LibraryRow.vue';
 
 	// Pull data from the global store
 	const {
@@ -13,18 +14,19 @@
 		haptic,
 		isPaused,
 		librarySearchQuery: searchQuery,
-		normalizeString,
 		queueIndex,
 	} = usePlayer();
 
 	// Local state for this tab only
 	const showFavoritesOnly = ref(false);
-	const librarySection = ref<HTMLElement | null>(null);
 
-	watch(searchQuery, () => {
-		if (librarySection.value) {
-			librarySection.value.scrollTop = 0;
-		}
+	// Initialize Fuse.js (re-computed if library updates entirely)
+	const fuse = computed(() => {
+		return new Fuse(currentTracks.value, {
+			keys: ['title', 'artist', 'display_title', 'display_artist'],
+			threshold: 0.3, // 0.0 is exact match, 1.0 is match anything
+			ignoreLocation: true,
+		});
 	});
 
 	const filteredTracks = computed(() => {
@@ -36,29 +38,23 @@
 
 		if (!searchQuery.value) return tracks;
 
-		const q = normalizeString(searchQuery.value);
-		const exact: Track[] = [],
-			fuzzy: Track[] = [];
+		// Delegate to Fuse.js for typo tolerance and relevance ranking
+		return fuse.value.search(searchQuery.value).map((result) => result.item);
+	});
 
-		tracks.forEach((t) => {
-			const target = normalizeString((t.artist || '') + ' ' + (t.title || ''));
+	// Setup Virtualization
+	const {
+		list: virtualTracks,
+		containerProps,
+		wrapperProps,
+		scrollTo,
+	} = useVirtualList(filteredTracks, {
+		itemHeight: 72, // Must match the fixed h-[72px] class in LibraryRow.vue
+		overscan: 15,
+	});
 
-			if (target.includes(q)) {
-				exact.push(t);
-			} else {
-				let qIdx = 0;
-				for (const char of target) {
-					if (char === q[qIdx]) qIdx++;
-
-					if (qIdx === q.length) {
-						fuzzy.push(t);
-						break;
-					}
-				}
-			}
-		});
-
-		return exact.concat(fuzzy);
+	watch(searchQuery, () => {
+		scrollTo(0);
 	});
 
 	function clearSearch() {
@@ -67,16 +63,18 @@
 	}
 
 	function scrollToCurrent() {
-		const el = document.getElementById('current-library-row');
-
-		if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+		const currentIndex = filteredTracks.value.findIndex((t) => t.path === currentTrackPath.value);
+		if (currentIndex !== -1) {
+			scrollTo(currentIndex);
+		}
 	}
 </script>
 
 <template>
-	<section ref="librarySection" class="tab-content bg-carpincho-bg relative h-full overflow-y-auto">
-		<!-- Tab Sticky Header -->
-		<div class="bg-carpincho-bg sticky top-0 z-10 flex items-center gap-2 px-4 py-3 shadow-md">
+	<!-- Virtual List Scroll Container -->
+	<section v-bind="containerProps" class="tab-content bg-carpincho-bg relative h-full overflow-y-auto">
+		<!-- Tab Sticky Header (Search & Controls) -->
+		<div class="bg-carpincho-bg sticky top-0 z-20 flex items-center gap-2 px-4 py-3 shadow-md">
 			<button
 				class="hover:text-carpincho-warning flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-800 text-white shadow transition active:scale-90"
 				title="Ir al tema actual"
@@ -98,6 +96,7 @@
 				@click="
 					showFavoritesOnly = !showFavoritesOnly;
 					haptic();
+					scrollTo(0);
 				"
 			>
 				<i class="material-icons">{{ showFavoritesOnly ? 'favorite' : 'favorite_border' }}</i>
@@ -120,51 +119,32 @@
 			</div>
 		</div>
 
-		<!-- Track Table -->
-		<table class="w-full table-fixed border-collapse text-left">
-			<thead>
-				<tr>
-					<th class="text-carpincho-primary bg-carpincho-panel sticky top-0 z-0 w-16 p-3 text-center">
-						Orden
-					</th>
-					<th class="text-carpincho-primary bg-carpincho-panel sticky top-0 z-0 p-3">El Temón</th>
-					<th class="text-carpincho-primary bg-carpincho-panel sticky top-0 z-0 p-3">Artista</th>
-					<th
-						class="text-carpincho-primary bg-carpincho-panel sticky top-0 z-0 hidden w-20 p-3 text-right sm:table-cell"
-					>
-						Duración
-					</th>
-				</tr>
-			</thead>
-			<tbody>
-				<TrackRow
-					v-for="track in filteredTracks"
-					:id="currentTrackPath === track.path ? 'current-library-row' : ''"
-					:key="track.path"
-					:track="track"
-					:hide-cover="true"
-					context-source="library"
-					@click="handleLibraryClick(track)"
-				>
-					<template #prefix>
-						<div v-if="currentTrackPath === track.path" class="flex items-center justify-center">
-							<div :class="['equalizer', isPaused ? 'paused' : '']">
-								<span />
-								<span />
-								<span />
-							</div>
-						</div>
-						<span v-else-if="queueIndex(track.path) !== -1" class="text-carpincho-warning font-bold">
-							{{ queueIndex(track.path) + 1 }}
-						</span>
-					</template>
-				</TrackRow>
-				<tr v-if="filteredTracks.length === 0">
-					<td colspan="4" class="text-carpincho-primary p-8 text-center italic">
-						No hay nada por acá con ese nombre, fiera.
-					</td>
-				</tr>
-			</tbody>
-		</table>
+		<!-- Table Header (CSS Grid Equivalent) -->
+		<div
+			class="bg-carpincho-panel text-carpincho-primary border-carpincho-border sticky top-[64px] z-10 grid grid-cols-[4rem_minmax(0,1fr)_minmax(0,1fr)] items-center border-b shadow-sm sm:grid-cols-[4rem_minmax(0,1fr)_minmax(0,1fr)_5.5rem]"
+		>
+			<div class="p-3 text-center font-bold">Orden</div>
+			<div class="p-3 font-bold">El Temón</div>
+			<div class="p-3 font-bold">Artista</div>
+			<div class="hidden p-3 text-right font-bold sm:block">Duración</div>
+		</div>
+
+		<!-- Virtualized Track Rows -->
+		<div v-bind="wrapperProps" class="w-full">
+			<LibraryRow
+				v-for="item in virtualTracks"
+				:key="item.data.path"
+				:track="item.data"
+				:is-current="currentTrackPath === item.data.path"
+				:is-paused="isPaused"
+				:queue-position="queueIndex(item.data.path)"
+				@click="handleLibraryClick(item.data)"
+			/>
+
+			<!-- Empty State -->
+			<div v-if="filteredTracks.length === 0" class="text-carpincho-primary p-8 text-center italic">
+				No hay nada por acá con ese nombre, fiera.
+			</div>
+		</div>
 	</section>
 </template>

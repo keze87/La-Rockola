@@ -1,3 +1,4 @@
+import { useUrlSearchParams } from '@vueuse/core';
 import { ref, computed } from 'vue';
 import type { Track } from '../../types';
 
@@ -28,6 +29,12 @@ export const urlMetadata = ref<Record<string, Track>>({});
 
 // Queue
 export const queueState = ref<string[]>([]);
+
+// Reactive URL search params (history mode), synced automatically both ways —
+// used by useLibrary's sortLibrary for the `vibra` shuffle-seed param instead
+// of each caller building its own URLSearchParams + history.pushState. Called
+// once here, at module scope, rather than per-component.
+export const urlParams = useUrlSearchParams<{ vibra?: string }>('history');
 
 // Auto-DJ (mirrored from the server — no client-side logic lives here)
 export const djCarpinchoEnabled = ref<boolean>(false);

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 	import { useTrack } from '../../composables/useTrack';
 	import { useContextMenuBindings } from '../../composables/useContextMenu';
-	import CoverImage from './CoverImage.vue';
+	import FavoritableCover from './FavoritableCover.vue';
 	import type { Track } from '../../types';
 
 	const props = withDefaults(
@@ -51,7 +51,7 @@
 
 <template>
 	<tr
-		class="border-carpincho-border hover:bg-carpincho-border cursor-pointer border-b transition-colors active:scale-[0.98]"
+		class="border-carpincho-border hover:bg-carpincho-border h-[72px] cursor-pointer border-b transition-colors active:scale-[0.98]"
 		:class="{ 'bg-carpincho-panel': isPlaying }"
 		v-on="bindings"
 		@click="emit('click', track)"
@@ -74,49 +74,7 @@
 			<div class="flex items-center justify-start gap-3">
 				<slot name="cover">
 					<!-- Cover shown: favorite is a badge anchored to its corner -->
-					<div v-if="!hideCover" class="relative shrink-0">
-						<CoverImage
-							:path="path && !path.startsWith('http') ? path : undefined"
-							size="h-10 w-10"
-							rounded="rounded"
-						/>
-						<button
-							type="button"
-							class="bg-carpincho-panel absolute -right-2 -bottom-2 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full shadow transition active:scale-90"
-							:aria-label="isFavorite ? 'Quitar de favoritos' : 'Agregar a favoritos'"
-							@click.stop.prevent="toggleFavorite"
-						>
-							<i
-								class="material-icons favorite-icon !text-[0.9rem] transition-colors"
-								:class="
-									isFavorite
-										? 'text-carpincho-warning drop-shadow-md'
-										: 'hover:text-carpincho-warning text-gray-400'
-								"
-							>
-								{{ isFavorite ? 'favorite' : 'favorite_border' }}
-							</i>
-						</button>
-					</div>
-					<!-- No cover (e.g. Library rows): favorite stands on its own as a full-size touch target -->
-					<button
-						v-else
-						type="button"
-						class="hover:bg-carpincho-border flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors active:scale-90"
-						:aria-label="isFavorite ? 'Quitar de favoritos' : 'Agregar a favoritos'"
-						@click.stop.prevent="toggleFavorite"
-					>
-						<i
-							class="material-icons favorite-icon !text-xl transition-colors"
-							:class="
-								isFavorite
-									? 'text-carpincho-warning drop-shadow-md'
-									: 'hover:text-carpincho-warning text-gray-400'
-							"
-						>
-							{{ isFavorite ? 'favorite' : 'favorite_border' }}
-						</i>
-					</button>
+					<FavoritableCover v-if="!hideCover" :track="track" class="hidden sm:block" />
 				</slot>
 
 				<span class="truncate">{{ displayTitle }}</span>

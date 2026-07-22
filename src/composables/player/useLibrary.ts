@@ -1,6 +1,15 @@
 import { useApi } from '../useApi';
 import { useToasts } from './useToasts';
-import { activeTab, currentTracks, isScanning, originalTracks, queueState, trackMap, urlMetadata } from './state';
+import {
+	activeTab,
+	currentTracks,
+	isScanning,
+	originalTracks,
+	queueState,
+	trackMap,
+	urlMetadata,
+	urlParams,
+} from './state';
 import type { Track } from '../../types';
 
 export function useLibrary() {
@@ -47,9 +56,7 @@ export function useLibrary() {
 				data.data.forEach((t: Track) => (map[t.path] = t));
 				trackMap.value = map;
 
-				const urlParams = new URLSearchParams(window.location.search);
-
-				if (urlParams.has('vibra')) {
+				if (urlParams.vibra !== undefined) {
 					sortLibrary('shuffle', true);
 				} else {
 					currentTracks.value = [...data.data];
@@ -65,37 +72,28 @@ export function useLibrary() {
 
 	function sortLibrary(type: 'time' | 'artist' | 'mood' | 'shuffle', keepSeed: boolean = false) {
 		if (type === 'time') {
-			const url = new URL(window.location.href);
-			url.searchParams.delete('vibra');
-			window.history.pushState({}, '', url.toString());
+			delete urlParams.vibra;
 			currentTracks.value = [...originalTracks.value];
 		} else if (type === 'artist') {
-			const url = new URL(window.location.href);
-			url.searchParams.delete('vibra');
-			window.history.pushState({}, '', url.toString());
+			delete urlParams.vibra;
 			currentTracks.value = [...currentTracks.value].sort((a, b) => {
 				const cmp = (a.artist || '').localeCompare(b.artist || '');
 				return cmp === 0 ? (a.title || '').localeCompare(b.title || '') : cmp;
 			});
 		} else if (type === 'mood') {
-			const url = new URL(window.location.href);
-			url.searchParams.delete('vibra');
-			window.history.pushState({}, '', url.toString());
+			delete urlParams.vibra;
 			currentTracks.value = [...currentTracks.value].sort((a, b) => {
 				return (b.mood_score || 0) - (a.mood_score || 0);
 			});
 		} else if (type === 'shuffle') {
 			let seed: number;
-			const urlParams = new URLSearchParams(window.location.search);
-			const seedParam = urlParams.get('vibra');
+			const seedParam = urlParams.vibra;
 
-			if (keepSeed && seedParam !== null && !isNaN(parseInt(seedParam))) {
+			if (keepSeed && seedParam !== undefined && !isNaN(parseInt(seedParam))) {
 				seed = parseInt(seedParam);
 			} else {
 				seed = Math.floor(Math.random() * 1000000);
-				const url = new URL(window.location.href);
-				url.searchParams.set('vibra', seed.toString());
-				window.history.pushState({}, '', url.toString());
+				urlParams.vibra = seed.toString();
 			}
 
 			// Mulberry32 PRNG for a reproducible shuffle

@@ -1,7 +1,7 @@
 import { watch, watchEffect } from 'vue';
 import { useCommands } from './useCommands';
 import { useLibrary } from './useLibrary';
-import { useTitle } from '@vueuse/core';
+import { useMediaControls, useTitle } from '@vueuse/core';
 import { useToasts } from './useToasts';
 import {
 	currentTrackPath,
@@ -31,6 +31,15 @@ function _sendLocalPlayerUpdate(payload: Record<string, unknown>) {
 	sendRaw({ type: 'local_player_update', ...payload });
 }
 
+// Set once, inside useLocalPlayback()'s singleton setup below — reactive
+// currentTime/duration/ended wired to the <audio> element, replacing the old
+// manual onloadedmetadata/ontimeupdate/onended assignment in _startLocalPlayer.
+// Play/pause stay imperative (lp.play()/lp.pause()) rather than going through
+// mediaControls.playing: that ref only calls play() when its *value* flips,
+// so setting it to `true` again while already `true` (the common case when
+// advancing to the next track mid-playback) would silently no-op.
+let mediaControls: ReturnType<typeof useMediaControls> | undefined;
+
 export function _startLocalPlayer(path: string) {
 	const lp = localPlayerRef.value;
 
@@ -38,29 +47,6 @@ export function _startLocalPlayer(path: string) {
 
 	lp.src = '/stream?path=' + encodeURIComponent(path);
 	lp.currentTime = 0;
-
-	// Arrancamos el audio y reportamos la duración cuando el browser la tenga
-	lp.onloadedmetadata = () => {
-		duration.value = lp.duration;
-		_sendLocalPlayerUpdate({ duration: lp.duration });
-	};
-
-	// Reportar time_pos mientras avanza (throttleado a ~1s para no inundar el WS)
-	let lastSent = 0;
-	lp.ontimeupdate = () => {
-		localTimePos.value = lp.currentTime;
-		const now = Date.now();
-
-		if (now - lastSent >= 5000) {
-			lastSent = now;
-			_sendLocalPlayerUpdate({ time_pos: lp.currentTime });
-		}
-	};
-
-	// Avisar al servidor cuando termina la canción
-	lp.onended = () => {
-		_sendLocalPlayerUpdate({ song_ended: true });
-	};
 
 	if (!isPaused.value) {
 		lp.play().catch(() => {
@@ -84,11 +70,11 @@ export function _stopLocalPlayer() {
 export function applyRemoteSeek(data: { mode: string; amount: number }) {
 	const lp = localPlayerRef.value;
 
-	if (lp && lp.src) {
+	if (lp && lp.src && mediaControls) {
 		const newTime = data.mode === 'absolute' ? data.amount : lp.currentTime + data.amount;
-		lp.currentTime = Math.max(0, Math.min(newTime, lp.duration || Infinity));
-		localTimePos.value = lp.currentTime;
-		_sendLocalPlayerUpdate({ time_pos: lp.currentTime });
+		mediaControls.currentTime.value = Math.max(0, Math.min(newTime, lp.duration || Infinity));
+		localTimePos.value = mediaControls.currentTime.value;
+		_sendLocalPlayerUpdate({ time_pos: mediaControls.currentTime.value });
 	}
 }
 
@@ -105,6 +91,34 @@ export function useLocalPlayback() {
 	// components call useLocalPlayback() (or usePlayer(), which composes it) ---
 	if (!initialized) {
 		initialized = true;
+
+		mediaControls = useMediaControls(localPlayerRef);
+		const { currentTime, duration: elementDuration, ended } = mediaControls;
+
+		// Reportamos la duración ni bien el navegador la tiene
+		watch(elementDuration, (d) => {
+			if (d > 0) {
+				duration.value = d;
+				_sendLocalPlayerUpdate({ duration: d });
+			}
+		});
+
+		// Reportar time_pos mientras avanza (throttleado a ~1s para no inundar el WS)
+		let lastSent = 0;
+		watch(currentTime, (t) => {
+			localTimePos.value = t;
+			const now = Date.now();
+
+			if (now - lastSent >= 5000) {
+				lastSent = now;
+				_sendLocalPlayerUpdate({ time_pos: t });
+			}
+		});
+
+		// Avisar al servidor cuando termina la canción
+		watch(ended, (isEnded) => {
+			if (isEnded) _sendLocalPlayerUpdate({ song_ended: true });
+		});
 
 		const title = useTitle('La Rockola del Carpincho 🦦🧉');
 

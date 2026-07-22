@@ -1,7 +1,7 @@
 <script setup lang="ts">
 	import { usePlayer } from '../composables/usePlayer';
 	import { useContextMenuBindings } from '../composables/useContextMenu';
-	import CoverImage from './ui/CoverImage.vue';
+	import FavoritableCover from './ui/FavoritableCover.vue';
 
 	const { topPlayedState, getTrackInfo, toggleQueue } = usePlayer();
 </script>
@@ -18,7 +18,7 @@
 			>
 				<div class="text-carpincho-warning mr-4 w-8 text-center text-xl font-bold">#{{ i + 1 }}</div>
 
-				<CoverImage :path="t.path" size="h-12 w-12" rounded="rounded-md" class="mr-4" icon-size="!text-4xl" />
+				<FavoritableCover :track="t" size="h-12 w-12" rounded="rounded-md" class="mr-4" icon-size="!text-4xl" />
 
 				<div class="flex-grow overflow-hidden">
 					<div class="text-carpincho-text truncate font-bold">
