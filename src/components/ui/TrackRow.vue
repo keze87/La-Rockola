@@ -38,14 +38,14 @@
 </script>
 
 <template>
-	<tr
-		class="border-carpincho-border hover:bg-carpincho-border h-[72px] cursor-pointer border-b transition-colors active:scale-[0.98]"
+	<div
+		class="border-carpincho-border hover:bg-carpincho-border grid h-[72px] w-full cursor-pointer grid-cols-[4rem_minmax(0,1fr)_minmax(0,1fr)] items-center border-b transition-colors active:scale-[0.98] sm:grid-cols-[4rem_minmax(0,1fr)_minmax(0,1fr)_5.5rem]"
 		:class="{ 'bg-carpincho-panel': isPlaying }"
 		v-on="bindings"
 		@click="emit('click', track)"
 	>
-		<!-- Prefix Slot: Used for Queue drag handles, Top rankings, or EQ animations -->
-		<td class="p-2 text-center">
+		<!-- Prefix Slot: Used for handles, Top rankings, or EQ animations -->
+		<div class="flex items-center justify-center p-2 text-center">
 			<slot name="prefix">
 				<div v-if="isPlaying" class="flex items-center justify-center">
 					<div :class="['equalizer', isPaused ? 'paused' : '']">
@@ -55,32 +55,30 @@
 					</div>
 				</div>
 			</slot>
-		</td>
+		</div>
 
 		<!-- Main Track Info -->
-		<td class="max-w-[200px] p-4 font-medium">
-			<div class="flex items-center justify-start gap-3">
-				<slot name="cover">
-					<!-- Cover shown: favorite is a badge anchored to its corner -->
-					<FavoritableCover :track="track" class="hidden sm:block" />
-				</slot>
+		<div class="flex items-center justify-start gap-3 overflow-hidden p-4 font-medium">
+			<slot name="cover">
+				<FavoritableCover :track="track" class="hidden sm:block" />
+			</slot>
+			<span class="truncate">{{ displayTitle }}</span>
+			<slot name="title-extra" />
+		</div>
 
-				<span class="truncate">{{ displayTitle }}</span>
-				<slot name="title-extra" />
-			</div>
-		</td>
-
-		<td class="text-carpincho-muted truncate p-4">
+		<!-- Artist -->
+		<div class="text-carpincho-muted truncate p-4">
 			{{ displayArtist }}
-		</td>
-
-		<td class="text-carpincho-muted hidden p-4 text-right sm:table-cell">
-			{{ durationStr }}
-		</td>
+		</div>
 
 		<!-- Suffix Slot: Used for Queue delete buttons -->
-		<td v-if="$slots.suffix" class="p-4">
+		<div v-if="$slots.suffix" class="flex justify-end p-4">
 			<slot name="suffix"></slot>
-		</td>
-	</tr>
+		</div>
+
+		<!-- Duration -->
+		<div v-else class="text-carpincho-muted hidden p-4 text-right sm:block">
+			{{ durationStr }}
+		</div>
+	</div>
 </template>

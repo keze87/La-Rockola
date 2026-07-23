@@ -68,7 +68,7 @@
 </script>
 
 <template>
-	<section class="tab-content bg-carpincho-bg h-full overflow-y-auto px-6 pt-6">
+	<section id="controls-tab" class="tab-content bg-carpincho-bg h-full overflow-y-auto px-6 pt-6">
 		<!-- Volume Slider -->
 		<div class="text-carpincho-warning bg-carpincho-panel mb-8 flex items-center rounded-xl p-4 shadow">
 			<i

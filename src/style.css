@@ -24,12 +24,46 @@
 	--font-sans: "Nunito", "Noto Color Emoji", ui-sans-serif, system-ui, -apple-system,
 		BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 
-	--animate-ctx-appear: ctx-appear 0.15s ease;
+	--animate-ctx-appear: ctx-appear 0.15s ease-out;
+}
+
+@keyframes ctx-appear {
+	0% {
+		opacity: 0;
+		transform: scale(0.95) translateY(-8px);
+	}
+
+	100% {
+		opacity: 1;
+		transform: scale(1) translateY(0);
+	}
 }
 
 /* Tab content scroll areas need padding for the floating player */
 .tab-content {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	overflow-y: auto;
 	padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+/* Add the tab-fade transition utilities at the bottom */
+.tab-fade-enter-active,
+.tab-fade-leave-active {
+	transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+}
+
+.tab-fade-enter-from {
+	opacity: 0;
+	transform: translateY(10px);
+}
+
+.tab-fade-leave-to {
+	opacity: 0;
+	transform: translateY(-10px);
 }
 
 /* Floating player bar */
@@ -153,4 +187,22 @@ th,
 td {
 	/* text-align: center !important; */
 	vertical-align: middle !important;
+}
+
+.list-move,
+.list-enter-active,
+.list-leave-active {
+	transition: all 0.3s ease-out;
+}
+
+.list-enter-from,
+.list-leave-to {
+	opacity: 0;
+	transform: translateX(-30px);
+}
+
+/* Ensure leaving items don't snap the layout instantly */
+.list-leave-active {
+	position: absolute;
+	width: 100%;
 }

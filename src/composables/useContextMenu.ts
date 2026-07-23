@@ -1,5 +1,5 @@
 import { computePosition, flip, shift, offset } from '@floating-ui/vue';
-import { reactive, nextTick, toValue, type MaybeRefOrGetter } from 'vue';
+import { reactive, nextTick, toValue, type MaybeRefOrGetter, ref } from 'vue';
 import type { Track } from '../types';
 
 interface CtxMenuState {
@@ -31,6 +31,8 @@ let touchStartX = 0;
 let touchStartY = 0;
 let ctxLongPressFired = false;
 
+export const menuRef = ref<HTMLElement | null>(null);
+
 export function useContextMenu() {
 	function openCtxMenu(
 		event: MouseEvent | TouchEvent,
@@ -58,7 +60,7 @@ export function useContextMenu() {
 		ctxMenu.visible = true;
 
 		nextTick(() => {
-			const menuElement = document.querySelector('.ctx-menu') as HTMLElement;
+			const menuElement = menuRef.value;
 			if (!menuElement) return;
 
 			const virtualEl = {

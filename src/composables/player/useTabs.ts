@@ -1,3 +1,4 @@
+import { nextTick } from 'vue';
 import { activeTab } from './state';
 
 export function useTabs() {
@@ -5,11 +6,18 @@ export function useTabs() {
 		activeTab.value = tabId;
 
 		if (tabId === 'queue') {
-			setTimeout(() => {
+			nextTick(() => {
 				const el = document.getElementById('current-queue-row');
 
-				if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-			}, 200);
+				// 'auto' scrolls instantly without the smooth animation
+				if (el) el.scrollIntoView({ behavior: 'auto', block: 'center' });
+			});
+		} else if (tabId === 'controls') {
+			nextTick(() => {
+				const el = document.getElementById('controls-tab');
+				// Instantly reset the scroll position
+				if (el) el.scrollTop = 0;
+			});
 		}
 	}
 

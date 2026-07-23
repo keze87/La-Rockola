@@ -5,6 +5,12 @@
 	import { usePlayer } from '../composables/usePlayer';
 	import TrackRow from './ui/TrackRow.vue';
 
+	// Extracted layout and structural classes
+	const trackGridClass =
+		'grid grid-cols-[6.5rem_minmax(0,1fr)_minmax(0,1fr)] sm:grid-cols-[9rem_minmax(0,1fr)_minmax(0,1fr)_5.5rem]';
+	const btnBaseClass = 'flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full transition';
+	const btnHoverClass = 'hover:bg-black/20 active:bg-black/30';
+
 	const {
 		currentTrackPath,
 		djCarpinchoEnabled,
@@ -29,8 +35,9 @@
 		removeQueueItem: removeQueueItemCmd,
 	} = usePlaybackControls();
 
-	const newUrl = ref('');
 	const dragFromIndex = ref<number | null>(null);
+	const newUrl = ref('');
+	const swipeOffsets = ref(new Map<number, number>());
 
 	// Queue rows need both long-press (open context menu) AND horizontal swipe
 	// (delete / move-to-first), so they get their own handler instead of the
@@ -50,9 +57,14 @@
 		}, 500);
 	}
 
-	function queueTouchMove(e: TouchEvent) {
+	function queueTouchMove(e: TouchEvent, index: number) {
 		if (Math.abs(e.touches[0].screenX - touchStartX) > 10 && queueLongPressTimer) {
 			clearTimeout(queueLongPressTimer);
+		}
+		const diff = e.touches[0].screenX - touchStartX;
+		// Only allow left/right swipes within bounds
+		if (diff < 100 && diff > -100) {
+			swipeOffsets.value.set(index, diff);
 		}
 	}
 
@@ -64,25 +76,17 @@
 		if (queueLongPressFired) return;
 
 		const diff = touchStartX - e.changedTouches[0].screenX;
-		const row = e.currentTarget as HTMLElement;
 
 		if (diff > 80) {
 			haptic(true);
-			row.style.transform = 'translateX(-100vw)';
-			setTimeout(() => {
-				removeQueueItem(index, row);
-				row.style.transform = 'translateX(0)';
-			}, 250);
+			removeQueueItemCmd(index); // Vue's TransitionGroup handles the animation automatically!
 		} else if (diff < -80) {
 			haptic();
-			row.style.transform = 'translateX(100vw)';
-			setTimeout(() => {
-				moveQueueItem(index, 'first');
-				row.style.transform = 'translateX(0)';
-			}, 250);
-		} else {
-			row.style.transform = 'translateX(0)';
+			moveQueueItem(index, 'first');
 		}
+
+		// Reset the offset reactively
+		swipeOffsets.value.delete(index);
 	}
 
 	async function addUrl() {
@@ -190,47 +194,49 @@
 				placeholder="Pegá el link de YouTube acá, máquina..."
 				class="border-carpincho-primary focus:border-carpincho-secondary text-carpincho-text w-full border-b bg-transparent py-2 outline-none"
 			/>
-			<button
-				class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-700 text-white shadow transition active:scale-90"
-				@click="addUrl"
-			>
+			<button :class="[btnBaseClass, 'bg-green-700 text-white shadow active:scale-90']" @click="addUrl">
 				<i class="material-icons">add</i>
 			</button>
 		</div>
 
-		<!-- Queue Table -->
-		<table class="w-full table-fixed border-collapse text-left">
-			<thead>
-				<tr>
-					<th class="text-carpincho-primary bg-carpincho-panel w-28 p-2 text-center sm:w-40">Acciones</th>
-					<th class="text-carpincho-primary bg-carpincho-panel p-3">El Temón</th>
-					<th class="text-carpincho-primary bg-carpincho-panel p-3">De quién es</th>
-					<th class="text-carpincho-primary bg-carpincho-panel hidden w-22 p-3 text-right sm:table-cell">
-						Duración
-					</th>
-				</tr>
-			</thead>
-			<tbody class="overflow-hidden">
-				<!-- History Items -->
+		<!-- Grid Header -->
+		<div
+			:class="[
+				'bg-carpincho-panel text-carpincho-primary border-carpincho-border items-center border-b shadow-sm',
+				trackGridClass,
+			]"
+		>
+			<div class="p-3 text-center font-bold">Acciones</div>
+			<div class="p-3 font-bold">El Temón</div>
+			<div class="p-3 font-bold">De quién es</div>
+			<div class="hidden p-3 text-right font-bold sm:block">Duración</div>
+		</div>
+
+		<div class="overflow-hidden">
+			<!-- History Items -->
+			<TransitionGroup name="list" tag="div" class="relative w-full">
 				<TrackRow
 					v-for="(path, i) in historyState"
 					:key="'hist-' + path"
+					:class="['opacity-70', trackGridClass]"
 					:data-history-path="path"
 					:track="getTrackInfo(path)"
 					context-source="history"
 					:index="i"
-					class="opacity-70"
 					@click="jumpToHistory(i)"
 				>
 					<template #prefix>
 						<i class="material-icons text-carpincho-success text-sm">check</i>
 					</template>
 				</TrackRow>
+			</TransitionGroup>
 
-				<!-- Current Track -->
+			<!-- Current Track -->
+			<TransitionGroup name="list" tag="div" class="relative w-full">
 				<TrackRow
 					v-if="currentTrackPath"
 					id="current-queue-row"
+					:class="trackGridClass"
 					:track="getTrackInfo(currentTrackPath)"
 					context-source="queue"
 					@click="pause"
@@ -250,10 +256,11 @@
 										: 'Frenar tras este tema'
 								"
 								:class="[
-									'flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full transition active:scale-90',
+									btnBaseClass,
+									'active:scale-90',
 									pauseAfterPath === currentTrackPath
 										? 'text-carpincho-warning drop-shadow-[0_0_8px_rgba(233,196,106,0.8)]'
-										: 'hover:text-carpincho-warning text-gray-500 hover:bg-black/20 active:bg-black/30',
+										: `hover:text-carpincho-warning text-gray-500 ${btnHoverClass}`,
 								]"
 								@click="
 									togglePauseAfterCurrent();
@@ -265,18 +272,20 @@
 						</div>
 					</template>
 				</TrackRow>
+			</TransitionGroup>
 
-				<!-- Render queued items -->
+			<!-- Render queued items -->
+			<TransitionGroup name="list" tag="div" class="relative w-full">
 				<TrackRow
 					v-for="(path, i) in queueState"
 					:key="path"
+					:class="['swipe-row', trackGridClass]"
 					:data-queue-index="i"
 					:track="getTrackInfo(path)"
 					context-source="queue"
 					:index="i"
 					context-menu-only
 					draggable="true"
-					class="swipe-row"
 					@click="jumpToQueue(i)"
 					@dragstart="dragStart($event, i)"
 					@dragover.prevent="dragOver($event, i)"
@@ -285,14 +294,14 @@
 					@dragend="dragEnd($event)"
 					@touchstart="queueTouchStart($event, path, i)"
 					@touchend="queueTouchEnd($event, i)"
-					@touchmove="queueTouchMove($event)"
+					@touchmove="queueTouchMove($event, i)"
 				>
 					<!-- Actions Column -->
 					<template #prefix>
 						<div class="flex items-center justify-center gap-1" @click.stop>
 							<button
 								type="button"
-								class="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/20 active:bg-black/30"
+								:class="[btnBaseClass, btnHoverClass]"
 								title="Subir a próximo"
 								@click="moveQueueItem(i, 'first')"
 							>
@@ -304,7 +313,7 @@
 							</button>
 							<button
 								type="button"
-								class="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/20 active:bg-black/30"
+								:class="[btnBaseClass, btnHoverClass]"
 								title="Mover al final"
 								@click="moveQueueItem(i, 'last')"
 							>
@@ -316,7 +325,7 @@
 							</button>
 							<button
 								type="button"
-								class="hidden h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-red-500/20 active:bg-red-500/30 sm:flex"
+								:class="[btnBaseClass, 'hidden hover:bg-red-500/20 active:bg-red-500/30 sm:flex']"
 								title="Sacar de la fila"
 								@click="onRemoveClick(i, $event)"
 							>
@@ -338,53 +347,52 @@
 						</i>
 					</template>
 				</TrackRow>
+			</TransitionGroup>
 
-				<!-- EMPTY STATE: Cuando no hay nada en la fila ni está sonando nada -->
-				<tr
-					v-if="queueState.length === 0 && !currentTrackPath && !djCarpinchoEnabled"
-					class="border-carpincho-border border-b"
-				>
-					<td colspan="4" class="p-12 text-center">
-						<div class="text-carpincho-primary flex flex-col items-center gap-4 opacity-80">
-							<p class="text-lg font-bold">El Carpincho está esperando el mate...</p>
-							<p class="text-sm">Agregá música para que empiece a cantar.</p>
-						</div>
-					</td>
-				</tr>
+			<!-- EMPTY STATE: Cuando no hay nada en la fila ni está sonando nada -->
+			<div
+				v-if="queueState.length === 0 && !currentTrackPath && !djCarpinchoEnabled"
+				:class="['border-carpincho-border border-b', trackGridClass]"
+			>
+				<div class="col-span-4 p-12 text-center">
+					<div class="text-carpincho-primary flex flex-col items-center gap-4 opacity-80">
+						<p class="text-lg font-bold">El Carpincho está esperando el mate...</p>
+						<p class="text-sm">Agregá música para que empiece a cantar.</p>
+					</div>
+				</div>
+			</div>
 
-				<!-- DJ Carpincho Placeholder -->
-				<tr v-if="djCarpinchoEnabled" class="border-carpincho-border bg-carpincho-panel/50 border-b">
-					<td class="flex justify-center p-4">
-						<i
-							class="material-icons text-carpincho-warning"
-							:class="{ 'animate-pulse': queueState.length === 0 }"
-						>
-							auto_awesome
-						</i>
-					</td>
-					<td
-						class="p-4 italic"
-						:class="queueState.length === 0 ? 'text-carpincho-muted' : 'text-carpincho-muted'"
+			<!-- DJ CARPINCHO PLACEHOLDER -->
+			<div
+				v-if="djCarpinchoEnabled"
+				:class="['border-carpincho-border bg-carpincho-panel/50 items-center border-b', trackGridClass]"
+			>
+				<div class="flex justify-center p-4">
+					<i
+						class="material-icons text-carpincho-warning"
+						:class="{ 'animate-pulse': queueState.length === 0 }"
 					>
-						{{
-							queueState.length === 0
-								? djNextTrack
-									? 'DJ Carpincho eligió: ' + (djNextTrack.display_title || djNextTrack.title)
-									: 'Eligiendo...'
-								: 'Al vaciarse la fila, entra el DJ Carpincho'
-						}}
-					</td>
-					<td class="text-carpincho-muted p-4 italic">
-						{{
-							queueState.length === 0 && djNextTrack
-								? djNextTrack.display_artist || djNextTrack.artist
-								: ''
-						}}
-					</td>
-					<td class="text-carpincho-muted hidden p-4 text-right sm:table-cell"></td>
-				</tr>
-			</tbody>
-		</table>
+						auto_awesome
+					</i>
+				</div>
+
+				<div class="text-carpincho-muted p-4 italic">
+					{{
+						queueState.length === 0
+							? djNextTrack
+								? 'DJ Carpincho eligió: ' + (djNextTrack.display_title || djNextTrack.title)
+								: 'Eligiendo...'
+							: 'Al vaciarse la fila, entra el DJ Carpincho'
+					}}
+				</div>
+
+				<div class="text-carpincho-muted p-4 italic">
+					{{ queueState.length === 0 && djNextTrack ? djNextTrack.display_artist || djNextTrack.artist : '' }}
+				</div>
+
+				<div class="hidden p-4 text-right sm:block">🦦</div>
+			</div>
+		</div>
 	</section>
 </template>
 

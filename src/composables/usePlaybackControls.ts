@@ -1,10 +1,10 @@
 import { useApi } from './useApi';
-import { usePlayer } from './usePlayer';
+import { useToasts } from './player/useToasts';
 import type { CommandName, CommandPayloads } from '../types';
 
 export function usePlaybackControls() {
 	const api = useApi();
-	const { showToast } = usePlayer();
+	const { showToast } = useToasts();
 
 	async function execute<C extends CommandName>(
 		action: C,

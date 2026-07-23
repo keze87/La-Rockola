@@ -32,9 +32,8 @@ import {
 } from './state';
 import type { PlayerState, Track } from '../../types';
 
-const { setMute } = usePlaybackControls();
-
 export function useSocket() {
+	const { setMute } = usePlaybackControls();
 	const { showToast } = useToasts();
 
 	function connectWebSocket() {

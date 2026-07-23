@@ -1,6 +1,6 @@
 <script setup lang="ts">
 	import { ref, watch } from 'vue';
-	import { useContextMenu } from '../composables/useContextMenu';
+	import { menuRef, useContextMenu } from '../composables/useContextMenu';
 	import { usePlaybackControls } from '../composables/usePlaybackControls';
 	import { usePlayer } from '../composables/usePlayer';
 
@@ -239,7 +239,8 @@
 		@contextmenu.prevent="closeCtxMenu"
 	>
 		<div
-			class="ctx-menu absolute"
+			ref="menuRef"
+			class="ctx-menu animate-ctx-appear absolute"
 			role="menu"
 			aria-labelledby="ctx-menu-title"
 			:class="{ 'kbd-nav': keyboardNav }"

@@ -1,7 +1,7 @@
 import { watch, watchEffect } from 'vue';
+import { useEventListener, useMediaControls, useTitle } from '@vueuse/core';
 import { useCommands } from './useCommands';
 import { useLibrary } from './useLibrary';
-import { useMediaControls, useTitle } from '@vueuse/core';
 import { usePlaybackControls } from '../usePlaybackControls';
 import { useToasts } from './useToasts';
 import {
@@ -19,17 +19,8 @@ import {
 	volume,
 } from './state';
 
-const { pause, setMute, skip, prev, seek } = usePlaybackControls();
-const { showToast } = useToasts();
-const { getTrackInfo } = useLibrary();
-
-// --- Internals shared with useSocket.js ---
-// These aren't wrapped in the useLocalPlayback() factory below because
-// useSocket needs to call them directly from its onMessage handler
-// (for `local_player_claim_result` and `local_player_seek`), without
-// having to invoke the composable first.
-
-function _sendLocalPlayerUpdate(payload: Record<string, unknown>) {
+// --- Internals shared with useSocket ---
+export function _sendLocalPlayerUpdate(payload: Record<string, unknown>) {
 	sendRaw({ type: 'local_player_update', ...payload });
 }
 
@@ -52,6 +43,7 @@ export function _startLocalPlayer(path: string) {
 
 	if (!isPaused.value) {
 		lp.play().catch(() => {
+			const { showToast } = useToasts();
 			showToast('Tocá la pantalla para arrancar el audio local', 'warning');
 		});
 	}
@@ -84,6 +76,8 @@ let initialized = false;
 
 export function useLocalPlayback() {
 	const { sendCmd } = useCommands();
+	const { pause, setMute, skip, prev, seek, seekAbsolute } = usePlaybackControls();
+	const { getTrackInfo } = useLibrary();
 
 	function setVolume() {
 		sendCmd('set_volume', { vollevel: parseInt(volume.value.toString()) });
@@ -97,7 +91,7 @@ export function useLocalPlayback() {
 		mediaControls = useMediaControls(localPlayerRef);
 		const { currentTime, duration: elementDuration, ended } = mediaControls;
 
-		// Reportamos la duración ni bien el navegador la tiene
+		// 1. Report duration when available
 		watch(elementDuration, (d) => {
 			if (d > 0) {
 				duration.value = d;
@@ -105,7 +99,7 @@ export function useLocalPlayback() {
 			}
 		});
 
-		// Reportar time_pos mientras avanza (throttleado a ~1s para no inundar el WS)
+		// 2. Throttle time updates back to server
 		let lastSent = 0;
 		watch(currentTime, (t) => {
 			localTimePos.value = t;
@@ -117,75 +111,133 @@ export function useLocalPlayback() {
 			}
 		});
 
-		// Avisar al servidor cuando termina la canción
+		// 3. Notify server when track ends
 		watch(ended, (isEnded) => {
 			if (isEnded) _sendLocalPlayerUpdate({ song_ended: true });
 		});
 
-		const title = useTitle('La Rockola del Carpincho 🦦🧉');
-
-		// Sincronización reactiva del Título y MediaSession (reemplaza updateMediaSession y updateDocumentTitle)
-		watchEffect(() => {
-			if (currentTrackPath.value) {
-				const info = getTrackInfo(currentTrackPath.value);
-
-				// 1. Actualiza el título de la pestaña
-				if (isPlaying.value) {
-					title.value = `▶ ${info.display_title} 🦦🧉`;
-				} else {
-					title.value = 'La Rockola del Carpincho 🦦🧉';
-				}
-
-				// 2. Actualiza la metadata del dispositivo nativo (API Nativa)
-				if ('mediaSession' in navigator) {
-					const artworkSrc = !currentTrackPath.value.startsWith('http')
-						? `${window.location.origin}/cover?path=${encodeURIComponent(currentTrackPath.value)}`
-						: null;
-
-					navigator.mediaSession.metadata = new MediaMetadata({
-						title: info.display_title || 'Desconocido',
-						artist: info.display_artist || 'Desconocido',
-						album: 'La Rockola del Carpincho',
-						artwork: artworkSrc ? [{ src: artworkSrc, sizes: '512x512', type: 'image/jpeg' }] : [],
-					});
-					navigator.mediaSession.playbackState = isPaused.value ? 'paused' : 'playing';
-				}
-			} else {
-				title.value = 'La Rockola del Carpincho 🦦🧉';
-
-				if ('mediaSession' in navigator) navigator.mediaSession.metadata = null;
+		// 4. Handle OS Audio Focus Loss (e.g. another app starts playing or incoming call)
+		useEventListener(localPlayerRef, 'pause', () => {
+			if (listenLocally.value && !isPaused.value) {
+				// Browser paused HTML5 audio due to lost focus -> sync state with server
+				pause();
 			}
 		});
 
-		// Smooth Local Progression Timer (Fires every 250ms)
+		// 5. Document Title Management
+		const title = useTitle('La Rockola del Carpincho 🪗');
+
+		watchEffect(() => {
+			if (currentTrackPath.value && isPlaying.value) {
+				const info = getTrackInfo(currentTrackPath.value);
+				title.value = `▶ ${info.display_title} 🦦🧉`;
+			} else {
+				title.value = 'La Rockola del Carpincho 🦦🧉';
+			}
+		});
+
+		// 6. MediaSession Metadata & Active Playback State
+		watchEffect(() => {
+			if (!('mediaSession' in navigator)) return;
+
+			if (currentTrackPath.value && listenLocally.value) {
+				const info = getTrackInfo(currentTrackPath.value);
+				const artworkSrc = !currentTrackPath.value.startsWith('http')
+					? `${window.location.origin}/cover?path=${encodeURIComponent(currentTrackPath.value)}`
+					: null;
+
+				navigator.mediaSession.metadata = new MediaMetadata({
+					title: info.display_title || 'Desconocido',
+					artist: info.display_artist || 'Desconocido',
+					album: 'La Rockola del Carpincho',
+					artwork: artworkSrc ? [{ src: artworkSrc, sizes: '512x512', type: 'image/jpeg' }] : [],
+				});
+
+				navigator.mediaSession.playbackState = isPaused.value ? 'paused' : 'playing';
+			} else {
+				navigator.mediaSession.metadata = null;
+				navigator.mediaSession.playbackState = 'none';
+			}
+		});
+
+		// 7. MediaSession Position State (Lockscreen Seekbar Sync)
+		watch([localTimePos, duration, isPaused], () => {
+			if (!('mediaSession' in navigator) || !navigator.mediaSession.setPositionState) return;
+
+			if (duration.value > 0 && currentTrackPath.value && listenLocally.value) {
+				try {
+					navigator.mediaSession.setPositionState({
+						duration: duration.value,
+						playbackRate: 1.0,
+						position: Math.min(Math.max(0, localTimePos.value), duration.value),
+					});
+				} catch {
+					// Ignore transient state errors during track switching
+				}
+			}
+		});
+
+		// 8. MediaSession Action Handlers (Setup & Clean Teardown)
+		watchEffect(() => {
+			if (!('mediaSession' in navigator)) return;
+
+			if (listenLocally.value && currentTrackPath.value) {
+				// EXPLICIT ACTION HANDLERS: Do not toggle blindly!
+				navigator.mediaSession.setActionHandler('play', () => {
+					if (isPaused.value) pause();
+				});
+				navigator.mediaSession.setActionHandler('pause', () => {
+					if (!isPaused.value) pause();
+				});
+				navigator.mediaSession.setActionHandler('previoustrack', () => prev());
+				navigator.mediaSession.setActionHandler('nexttrack', () => skip());
+				navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+					const amount = -(details.seekOffset ?? 10);
+					localTimePos.value = Math.max(0, localTimePos.value + amount);
+					ignoreServerTimeUntil.value = Date.now() + 2000;
+					seek(amount);
+				});
+				navigator.mediaSession.setActionHandler('seekforward', (details) => {
+					const amount = details.seekOffset ?? 10;
+					localTimePos.value = Math.min(duration.value, localTimePos.value + amount);
+					ignoreServerTimeUntil.value = Date.now() + 2000;
+					seek(amount);
+				});
+				try {
+					navigator.mediaSession.setActionHandler('seekto', (details) => {
+						if (details.seekTime !== undefined && details.seekTime !== null) {
+							localTimePos.value = details.seekTime;
+							ignoreServerTimeUntil.value = Date.now() + 2000;
+							seekAbsolute(details.seekTime);
+						}
+					});
+				} catch {
+					// seekto not supported in all browsers
+				}
+			} else {
+				// RELEASE MEDIA CONTROLS TO OS WHEN LOCAL PLAYBACK IS OFF / STOPPED
+				navigator.mediaSession.setActionHandler('play', null);
+				navigator.mediaSession.setActionHandler('pause', null);
+				navigator.mediaSession.setActionHandler('previoustrack', null);
+				navigator.mediaSession.setActionHandler('nexttrack', null);
+				navigator.mediaSession.setActionHandler('seekbackward', null);
+				navigator.mediaSession.setActionHandler('seekforward', null);
+				try {
+					navigator.mediaSession.setActionHandler('seekto', null);
+				} catch {
+					// seekto not supported in all browsers
+				}
+			}
+		});
+
+		// 9. Smooth Local Time Progression Timer
 		setInterval(() => {
 			if (isPlaying.value && !isPaused.value && !isDraggingSeek.value && duration.value > 0) {
 				localTimePos.value = Math.min(localTimePos.value + 0.25, duration.value);
 			}
 		}, 250);
 
-		// Hardware Media Session Action Handlers setup
-		if ('mediaSession' in navigator) {
-			navigator.mediaSession.setActionHandler('play', () => pause());
-			navigator.mediaSession.setActionHandler('pause', () => pause());
-			navigator.mediaSession.setActionHandler('previoustrack', () => prev());
-			navigator.mediaSession.setActionHandler('nexttrack', () => skip());
-
-			navigator.mediaSession.setActionHandler('seekbackward', (details) => {
-				const amount = -(details.seekOffset ?? 10);
-				localTimePos.value = Math.max(0, localTimePos.value + amount);
-				ignoreServerTimeUntil.value = Date.now() + 2000;
-				seek(amount);
-			});
-
-			navigator.mediaSession.setActionHandler('seekforward', (details) => {
-				const amount = details.seekOffset ?? 10;
-				localTimePos.value = Math.min(duration.value, localTimePos.value + amount);
-				ignoreServerTimeUntil.value = Date.now() + 2000;
-				seek(amount);
-			});
-		}
-
+		// 10. Playback & Track Change Reactive Watchers
 		watch(currentTrackPath, (newPath, oldPath) => {
 			if (oldPath && oldPath === pauseAfterPath.value) pauseAfterPath.value = null;
 

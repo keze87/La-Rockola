@@ -230,10 +230,23 @@
 
 	<!-- TABS CONTENT -->
 	<!-- Note: We use v-show to keep the components alive in the DOM so scroll position and local state (like search queries) aren't lost when switching tabs -->
-	<LibraryTab v-show="activeTab === 'library'" />
-	<QueueTab v-show="activeTab === 'queue'" />
-	<TopTab v-show="activeTab === 'top'" />
-	<ControlsTab v-show="activeTab === 'controls'" />
+	<div class="relative min-h-0 w-full flex-1 overflow-hidden">
+		<Transition name="tab-fade">
+			<LibraryTab v-show="activeTab === 'library'" />
+		</Transition>
+
+		<Transition name="tab-fade">
+			<QueueTab v-show="activeTab === 'queue'" />
+		</Transition>
+
+		<Transition name="tab-fade">
+			<TopTab v-show="activeTab === 'top'" />
+		</Transition>
+
+		<Transition name="tab-fade">
+			<ControlsTab v-show="activeTab === 'controls'" />
+		</Transition>
+	</div>
 
 	<!-- REPRODUCTOR FLOTANTE -->
 	<FloatingPlayer />
