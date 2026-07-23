@@ -19,15 +19,80 @@ import {
 	volume,
 } from './state';
 
-// Generates a 100-second sine wave tone (440 Hz) in WAV format
+// Generates a morse code audio blob that plays "CARPINCHO" faintly in the background. This is used as a placeholder when the user is listening remotely, so that the <audio> element is active and can be controlled by the OS media session, but no actual music is played.
 function createFaintNoiseBlob(): Blob {
 	const sampleRate = 44100; // CD quality
-	const durationSec = 100;
+	const unit = 0.2; // 200 ms per unit
+	const amplitude = 10; // Max amplitude for 16-bit PCM
+	const message = 'CARPINCHO'; // Morse code message to encode
 	const frequency = 440; // A4 tone
-	const numSamples = sampleRate * durationSec;
-	const buffer = new ArrayBuffer(44 + numSamples * 2);
-	const view = new DataView(buffer);
 
+	// Morse dictionary
+	const morse: Record<string, string> = {
+		A: '.-',
+		B: '-...',
+		C: '-.-.',
+		D: '-..',
+		E: '.',
+		F: '..-.',
+		G: '--.',
+		H: '....',
+		I: '..',
+		J: '.---',
+		K: '-.-',
+		L: '.-..',
+		M: '--',
+		N: '-.',
+		O: '---',
+		P: '.--.',
+		Q: '--.-',
+		R: '.-.',
+		S: '...',
+		T: '-',
+		U: '..-',
+		V: '...-',
+		W: '.--',
+		X: '-..-',
+		Y: '-.--',
+		Z: '--..',
+	};
+
+	// Convert message to Morse
+	const sequence = message
+		.toUpperCase()
+		.split('')
+		.map((ch) => morse[ch] || '')
+		.join(' ');
+
+	// Build audio samples
+	const samples: number[] = [];
+	const addTone = (units: number) => {
+		for (let i = 0; i < units * unit * sampleRate; i++) {
+			const t = i / sampleRate;
+			samples.push(Math.sin(2 * Math.PI * frequency * t) * amplitude);
+		}
+	};
+	const addSilence = (units: number) => {
+		for (let i = 0; i < units * unit * sampleRate; i++) {
+			samples.push(0);
+		}
+	};
+
+	for (const symbol of sequence) {
+		if (symbol === '.') {
+			addTone(1);
+			addSilence(1);
+		} else if (symbol === '-') {
+			addTone(3);
+			addSilence(1);
+		} else if (symbol === ' ') {
+			addSilence(3);
+		}
+	}
+
+	// WAV header
+	const buffer = new ArrayBuffer(44 + samples.length * 2);
+	const view = new DataView(buffer);
 	const writeString = (offset: number, str: string) => {
 		for (let i = 0; i < str.length; i++) {
 			view.setUint8(offset + i, str.charCodeAt(i));
@@ -36,7 +101,7 @@ function createFaintNoiseBlob(): Blob {
 
 	// WAV header
 	writeString(0, 'RIFF');
-	view.setUint32(4, 36 + numSamples * 2, true);
+	view.setUint32(4, 36 + samples.length * 2, true);
 	writeString(8, 'WAVE');
 	writeString(12, 'fmt ');
 	view.setUint32(16, 16, true); // PCM chunk size
@@ -47,15 +112,10 @@ function createFaintNoiseBlob(): Blob {
 	view.setUint16(32, 2, true); // block align
 	view.setUint16(34, 16, true); // bits per sample
 	writeString(36, 'data');
-	view.setUint32(40, numSamples * 2, true);
+	view.setUint32(40, samples.length * 2, true);
 
-	// Generate sine wave samples
-	const amplitude = 10; // <--- Changed to a microscopic, inaudible value
-	for (let i = 0; i < numSamples; i++) {
-		const t = i / sampleRate;
-		const sample = Math.sin(2 * Math.PI * frequency * t) * amplitude;
-		view.setInt16(44 + i * 2, sample, true);
-	}
+	// Write samples
+	samples.forEach((s, i) => view.setInt16(44 + i * 2, s, true));
 
 	return new Blob([view], { type: 'audio/wav' });
 }
