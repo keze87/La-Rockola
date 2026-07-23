@@ -3,6 +3,7 @@
 	import { Toaster } from 'vue-sonner';
 	import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts';
 	import { useLyrics } from './composables/useLyrics';
+	import { usePlaybackControls } from './composables/usePlaybackControls';
 	import { usePlayer } from './composables/usePlayer';
 	import { useSliderFactory } from './composables/useSliderFactory';
 
@@ -14,6 +15,8 @@
 	import LibraryTab from './components/LibraryTab.vue';
 	import QueueTab from './components/QueueTab.vue';
 	import TopTab from './components/TopTab.vue';
+
+	const { seek } = usePlaybackControls();
 
 	const {
 		_sendLocalPlayerUpdate,
@@ -33,7 +36,6 @@
 		localPlayerRef,
 		localTimePos,
 		queueState,
-		sendCmd,
 		switchTab,
 	} = usePlayer();
 
@@ -60,7 +62,7 @@
 				localPlayerRef.value.currentTime = val;
 				_sendLocalPlayerUpdate({ time_pos: val });
 			} else {
-				sendCmd('seek_absolute', { amount: val });
+				seek(val);
 			}
 		}
 	);

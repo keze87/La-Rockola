@@ -1,10 +1,19 @@
 <script setup lang="ts">
-	import { useFullscreen } from '@vueuse/core';
 	import { useDragSlider } from '../composables/useDragSlider';
+	import { useFullscreen } from '@vueuse/core';
+	import { usePlaybackControls } from '../composables/usePlaybackControls';
 	import { usePlayer } from '../composables/usePlayer';
 	import PillButton from './ui/PillButton.vue';
 	import QRCode from 'qrcode.vue';
 	import ToggleRow from './ui/ToggleRow.vue';
+
+	const {
+		fullscreen,
+		setMute,
+		stop,
+		toggleDjCarpincho: toggleDjCmd,
+		toggleDjSafeMode: toggleSafeCmd,
+	} = usePlaybackControls();
 
 	const {
 		djCarpinchoEnabled,
@@ -13,7 +22,6 @@
 		listenLocally,
 		loadLibrary,
 		mpvVisible,
-		sendCmd,
 		serverMuted,
 		setVolume,
 		sortLibrary,
@@ -34,7 +42,7 @@
 			volume.value = Math.round(val);
 
 			if (serverMuted.value && volume.value > 0) {
-				sendCmd('set_mute', { state: false });
+				setMute(false);
 			}
 		},
 		onCommit: (val) => {
@@ -47,12 +55,12 @@
 
 	// --- Toggles ---
 	function toggleDjCarpincho() {
-		sendCmd('toggle_dj_carpincho', { state: !djCarpinchoEnabled.value });
+		toggleDjCmd(!djCarpinchoEnabled.value);
 		haptic();
 	}
 
 	function toggleDjSafeMode() {
-		sendCmd('toggle_dj_safe_mode', { state: !djSafeModeEnabled.value });
+		toggleSafeCmd(!djSafeModeEnabled.value);
 		haptic();
 	}
 
@@ -67,7 +75,7 @@
 				class="material-icons mr-3 cursor-pointer transition-colors hover:text-white"
 				:title="serverMuted ? 'Desmutear' : 'Mutear'"
 				@click="
-					sendCmd('set_mute', { state: !serverMuted });
+					setMute(!serverMuted);
 					haptic();
 				"
 			>
@@ -142,11 +150,9 @@
 
 		<!-- Action Buttons -->
 		<div class="mb-4 flex flex-wrap justify-center gap-3">
-			<PillButton icon="stop" color-class="bg-red-700 hover:bg-red-600" @click="sendCmd('stop')">
-				Cortala de una
-			</PillButton>
+			<PillButton icon="stop" color-class="bg-red-700 hover:bg-red-600" @click="stop">Cortala de una</PillButton>
 
-			<PillButton icon="fullscreen" color-class="bg-blue-700 hover:bg-blue-600" @click="sendCmd('fullscreen')">
+			<PillButton icon="fullscreen" color-class="bg-blue-700 hover:bg-blue-600" @click="fullscreen">
 				Todo pantalla, ñeri
 			</PillButton>
 
@@ -164,7 +170,7 @@
 				:icon="serverMuted ? 'volume_off' : 'volume_up'"
 				:color-class="serverMuted ? 'bg-red-700 hover:bg-red-600' : 'bg-gray-700 hover:bg-gray-600'"
 				@click="
-					sendCmd('set_mute', { state: !serverMuted });
+					setMute(!serverMuted);
 					haptic();
 				"
 			>

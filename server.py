@@ -2635,7 +2635,7 @@ async def websocket_endpoint(websocket: WebSocket):
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser()
 	parser.add_argument("--host", type=str, default="0.0.0.0")
-	parser.add_argument("--port", type=int, default=9696)
+	parser.add_argument("--port", type=int, default=1729)
 	parser.add_argument("--dir", type=str, default=None)
 	parser.add_argument("--dir2", type=str, default=None)
 	args = parser.parse_args()

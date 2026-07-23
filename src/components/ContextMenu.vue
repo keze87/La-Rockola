@@ -1,8 +1,10 @@
 <script setup lang="ts">
 	import { ref, watch } from 'vue';
 	import { useContextMenu } from '../composables/useContextMenu';
+	import { usePlaybackControls } from '../composables/usePlaybackControls';
 	import { usePlayer } from '../composables/usePlayer';
 
+	const { toggleQueue, pauseAfter, play, removeHistoryItem, moveQueueItem, removeQueueItem } = usePlaybackControls();
 	const { ctxMenu, closeCtxMenu } = useContextMenu();
 	const {
 		currentTrackPath,
@@ -12,7 +14,6 @@
 		librarySearchQuery,
 		pauseAfterPath,
 		queueState,
-		sendCmd,
 		showToast,
 		switchTab,
 		toggleFavorite,
@@ -90,7 +91,7 @@
 		if (!track) return;
 
 		closeCtxMenu();
-		await sendCmd('play', { path: track.path });
+		await play(track.path);
 		haptic();
 	}
 
@@ -113,7 +114,7 @@
 
 		if (pauseAfterPath.value === track.path) {
 			pauseAfterPath.value = null;
-			await sendCmd('pause_after', { path: '' });
+			await pauseAfter('');
 			showToast(`Cancelamos la pausa al terminar 🤠`, 'info');
 			haptic();
 			return;
@@ -122,11 +123,11 @@
 		const inQueue = queueState.value.includes(track.path);
 
 		if (!inQueue && currentTrackPath.value !== track.path) {
-			await sendCmd('toggle_queue', { path: track.path });
+			await toggleQueue(track.path);
 		}
 
 		pauseAfterPath.value = track.path;
-		await sendCmd('pause_after', { path: track.path });
+		await pauseAfter(track.path);
 		showToast({ prefix: 'Frenamos la joda después de ', highlight: track.title || track.display_title }, 'warning');
 		haptic();
 	}
@@ -141,14 +142,14 @@
 
 		const inQueue = queueState.value.indexOf(track.path);
 
-		if (inQueue !== -1) await sendCmd('remove_queue_item', { index: inQueue });
+		if (inQueue !== -1) await toggleQueue(track.path);
 
-		const res = await sendCmd('toggle_queue', { path: track.path });
+		const res = await toggleQueue(track.path);
 
 		if (res && res.status === 'ok') {
 			const newIndex = queueState.value.indexOf(track.path);
 
-			if (newIndex > 0) await sendCmd('move_queue_item', { index: newIndex, new_index: 0 });
+			if (newIndex > 0) await moveQueueItem(newIndex, 0);
 		}
 
 		haptic();
@@ -162,25 +163,25 @@
 		closeCtxMenu();
 
 		if (!queueState.value.includes(track.path)) {
-			await sendCmd('toggle_queue', { path: track.path });
+			await toggleQueue(track.path);
 		}
 
 		haptic();
 	}
 
 	// --- Queue Source Actions ---
-	function ctxPlayNextQueue() {
+	async function ctxPlayNextQueue() {
 		const index = ctxMenu.index;
 		closeCtxMenu();
 
 		if (index !== null && index > 0) {
-			sendCmd('move_queue_item', { index, new_index: 0 });
+			await moveQueueItem(index, 0);
 		}
 
 		haptic();
 	}
 
-	function ctxRemoveFromQueue() {
+	async function ctxRemoveFromQueue() {
 		const index = ctxMenu.index;
 		closeCtxMenu();
 
@@ -189,9 +190,9 @@
 
 			if (rowEl) {
 				rowEl.classList.add('deleting');
-				setTimeout(() => sendCmd('remove_queue_item', { index }), 450);
+				setTimeout(() => removeQueueItem(index), 450);
 			} else {
-				sendCmd('remove_queue_item', { index });
+				await removeQueueItem(index);
 			}
 
 			showToast('¡Voleo en el orto! Afuera de la fila', 'error');
@@ -200,17 +201,17 @@
 	}
 
 	// --- History Source Actions ---
-	function ctxHistoryPlayAgain() {
+	async function ctxHistoryPlayAgain() {
 		const track = ctxMenu.track;
 
 		if (ctxMenu.index === null) return;
 
 		closeCtxMenu();
-		sendCmd('toggle_queue', { path: track?.path || historyState.value[ctxMenu.index] });
+		await toggleQueue(track?.path || historyState.value[ctxMenu.index]);
 		haptic();
 	}
 
-	function ctxRemoveFromHistory() {
+	async function ctxRemoveFromHistory() {
 		const index = ctxMenu.index;
 		closeCtxMenu();
 
@@ -219,9 +220,9 @@
 
 			if (rowEl) {
 				rowEl.classList.add('deleting');
-				setTimeout(() => sendCmd('remove_history_item', { index }), 450);
+				setTimeout(() => removeHistoryItem(index), 450);
 			} else {
-				sendCmd('remove_history_item', { index });
+				await removeHistoryItem(index);
 			}
 
 			showToast(`Borrado del historial`, 'warning');

@@ -2,6 +2,7 @@ import { watch, watchEffect } from 'vue';
 import { useCommands } from './useCommands';
 import { useLibrary } from './useLibrary';
 import { useMediaControls, useTitle } from '@vueuse/core';
+import { usePlaybackControls } from '../usePlaybackControls';
 import { useToasts } from './useToasts';
 import {
 	currentTrackPath,
@@ -18,6 +19,7 @@ import {
 	volume,
 } from './state';
 
+const { pause, setMute, skip, prev, seek } = usePlaybackControls();
 const { showToast } = useToasts();
 const { getTrackInfo } = useLibrary();
 
@@ -164,23 +166,23 @@ export function useLocalPlayback() {
 
 		// Hardware Media Session Action Handlers setup
 		if ('mediaSession' in navigator) {
-			navigator.mediaSession.setActionHandler('play', () => sendCmd('pause'));
-			navigator.mediaSession.setActionHandler('pause', () => sendCmd('pause'));
-			navigator.mediaSession.setActionHandler('previoustrack', () => sendCmd('prev'));
-			navigator.mediaSession.setActionHandler('nexttrack', () => sendCmd('skip'));
+			navigator.mediaSession.setActionHandler('play', () => pause());
+			navigator.mediaSession.setActionHandler('pause', () => pause());
+			navigator.mediaSession.setActionHandler('previoustrack', () => prev());
+			navigator.mediaSession.setActionHandler('nexttrack', () => skip());
 
 			navigator.mediaSession.setActionHandler('seekbackward', (details) => {
 				const amount = -(details.seekOffset ?? 10);
 				localTimePos.value = Math.max(0, localTimePos.value + amount);
 				ignoreServerTimeUntil.value = Date.now() + 2000;
-				sendCmd('seek', { amount });
+				seek(amount);
 			});
 
 			navigator.mediaSession.setActionHandler('seekforward', (details) => {
 				const amount = details.seekOffset ?? 10;
 				localTimePos.value = Math.min(duration.value, localTimePos.value + amount);
 				ignoreServerTimeUntil.value = Date.now() + 2000;
-				sendCmd('seek', { amount });
+				seek(amount);
 			});
 		}
 
@@ -208,7 +210,7 @@ export function useLocalPlayback() {
 			} else {
 				sendRaw({ type: 'local_player_release' });
 
-				sendCmd('set_mute', { state: false });
+				setMute(false);
 				_stopLocalPlayer();
 			}
 		});

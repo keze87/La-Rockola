@@ -20,12 +20,12 @@ Traditional desktop media players and modern streaming apps suffer from several 
 
 ## ✨ Key Features
 
-* 🎵 **Full Track Management:** Browse, search, filter, and manage your local library and queues effortlessly.
-* 🔥 **Campfire Mode:** Social queuing made easy—let anyone queue songs without giving up control of your master device.
-* 🎙️ **Synchronized Lyrics:** Integrated lyrics display for an immersive listening or sing-along experience.
-* 🎛️ **Precision Playback Controls:** Advanced playback adjustments, sliders, volume controls, and configurable keyboard shortcuts.
-* 📱 **Mobile-Optimized Remote UI:** Responsive control interface built with tactile controls and haptic feedback.
-* 🪟 **MPV Native Player Integration:** Leverages MPV for rock-solid audio decoding and smooth window management.
+* **Full Track Management:** Browse, search, filter, and manage your local library and queues effortlessly.
+* **Campfire Mode:** Social queuing made easy—let anyone queue songs without giving up control of your master device.
+* **Synchronized Lyrics:** Integrated lyrics display for an immersive listening or sing-along experience.
+* **Precision Playback Controls:** Advanced playback adjustments, sliders, volume controls, and configurable keyboard shortcuts.
+* **Mobile-Optimized Remote UI:** Responsive control interface built with tactile controls and haptic feedback.
+* **MPV Native Player Integration:** Leverages MPV for rock-solid audio decoding and smooth window management.
 
 ## 🛠️ Tech Stack
 
@@ -82,7 +82,7 @@ Ensure you have Python 3 installed. You can install the required Python packages
 * `mutagen`: `pip install mutagen`.
 * `pydantic`: `pip install pydantic`.
 
-**Optional Packages (Highly Recommended):**
+**Optional Packages:**
 
 * `librosa`: `pip install librosa` (Enables mood and BPM analysis for your tracks).
 * `dbus-next`: `pip install dbus-next` (Required only on Linux to enable control via multimedia keys).
@@ -92,7 +92,7 @@ Ensure you have Python 3 installed. You can install the required Python packages
 Once your dependencies are installed, you can start the server. The script will automatically trigger the frontend build (`npm run build`) before launching.
 
 1. Open your terminal and navigate to the project directory.
-2. Run the server script (assuming it is named `server.py`):
+2. Run the server script:
 
 ```bash
 python server.py
@@ -101,14 +101,20 @@ python server.py
 3. **Customizing the run command:** The server accepts several arguments to customize your experience:
 
 * `--host`: Sets the host address (defaults to `0.0.0.0` to be accessible on your local network).
-* `--port`: Sets the server port (defaults to `9696`).
+* `--port`: Sets the server port (defaults to `1729`).
 * `--dir`: Defines your primary music directory (defaults to `~/Music`).
 * `--dir2`: Defines an optional secondary music directory.
 
 *Example with arguments:*
 
 ```bash
-python server.py --port 8080 --dir "C:\Users\Name\Music"
+python server.py --port 8080 --dir "C:\Users\UserName\Music"
 ```
 
-4. Once the server is running, open your web browser and navigate to `http://localhost:9696` (or your custom port) to access the player. To control it remotely from your phone, connect to the same Wi-Fi network and navigate to your computer's local IP address (e.g., `http://192.168.X.Y:9696`).
+> **Note on using Port 80:** If you choose to set `--port 80` (the standard HTTP port) so you don't have to type a port number in your browser, your operating system will likely require administrator or root privileges to bind to it.
+>
+> * **Windows:** Run your command prompt or terminal as Administrator.
+> * **macOS/Linux:** Run the command with `sudo` (e.g., `sudo python server.py --port 80`). Alternatively, on Linux, to avoid running the entire server as root, you can use `authbind` (e.g., `authbind python server.py --port 80`) after configuring it for your user account.
+>
+
+4. Once the server is running, open your web browser and navigate to `http://localhost:1729` (or your custom port) to access the player. To control it remotely from your phone, connect to the same Wi-Fi network and navigate to your computer's local IP address (e.g., `http://192.168.X.Y:1729`).

@@ -1,7 +1,10 @@
 <script setup lang="ts">
 	import { computed } from 'vue';
 	import { useCover } from '../composables/useCover';
+	import { usePlaybackControls } from '../composables/usePlaybackControls';
 	import { usePlayer } from '../composables/usePlayer';
+
+	const { skip, pause } = usePlaybackControls();
 
 	const {
 		currentTrackPath,
@@ -12,7 +15,6 @@
 		isPlaying,
 		pauseAfterPath,
 		queueState,
-		sendCmd,
 		switchTab,
 		togglePauseAfterCurrent,
 	} = usePlayer();
@@ -116,7 +118,7 @@
 					isPlaying ? 'bg-orange-600 hover:bg-orange-500' : 'bg-green-600 hover:bg-green-500',
 				]"
 				@click="
-					sendCmd('pause');
+					pause();
 					haptic(true);
 				"
 			>
@@ -125,7 +127,7 @@
 			<button
 				class="flex h-10 w-10 items-center justify-center rounded-full bg-gray-700 text-white shadow transition hover:bg-gray-600 active:scale-90"
 				@click="
-					sendCmd('skip');
+					skip();
 					haptic();
 				"
 			>

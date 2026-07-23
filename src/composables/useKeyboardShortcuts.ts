@@ -1,6 +1,9 @@
 import { onKeyStroke } from '@vueuse/core';
 import { useContextMenu } from './useContextMenu';
+import { usePlaybackControls } from './usePlaybackControls';
 import { usePlayer } from './usePlayer';
+
+const { pause, setMute, skip, prev, seek } = usePlaybackControls();
 
 export function useKeyboardShortcuts() {
 	const player = usePlayer();
@@ -34,7 +37,7 @@ export function useKeyboardShortcuts() {
 		if (shouldIgnore(e)) return;
 
 		e.preventDefault();
-		player.sendCmd('pause');
+		pause();
 		player.haptic(true);
 	});
 
@@ -44,12 +47,12 @@ export function useKeyboardShortcuts() {
 		e.preventDefault();
 
 		if (e.shiftKey) {
-			player.sendCmd('skip');
+			skip();
 		} else {
 			const amount = 10;
 			player.localTimePos.value = Math.min(player.duration.value, player.localTimePos.value + amount);
 			player.ignoreServerTimeUntil.value = Date.now() + 2000;
-			player.sendCmd('seek', { amount });
+			seek(amount);
 		}
 
 		player.haptic();
@@ -61,12 +64,12 @@ export function useKeyboardShortcuts() {
 		e.preventDefault();
 
 		if (e.shiftKey) {
-			player.sendCmd('prev');
+			prev();
 		} else {
 			const amount = -10;
 			player.localTimePos.value = Math.max(0, player.localTimePos.value + amount);
 			player.ignoreServerTimeUntil.value = Date.now() + 2000;
-			player.sendCmd('seek', { amount });
+			seek(amount);
 		}
 
 		player.haptic();
@@ -94,7 +97,7 @@ export function useKeyboardShortcuts() {
 		if (shouldIgnore(e)) return;
 
 		const isCurrentlyMuted = player.serverMuted.value;
-		player.sendCmd('set_mute', { state: !isCurrentlyMuted });
+		setMute(!isCurrentlyMuted);
 		player.haptic();
 
 		if (!isCurrentlyMuted) {
@@ -153,14 +156,14 @@ export function useKeyboardShortcuts() {
 	onKeyStroke(['n', 'N'], (e: KeyboardEvent) => {
 		if (shouldIgnore(e)) return;
 
-		player.sendCmd('skip');
+		skip();
 		player.haptic();
 	});
 
 	onKeyStroke(['p', 'P'], (e: KeyboardEvent) => {
 		if (shouldIgnore(e)) return;
 
-		player.sendCmd('prev');
+		prev();
 		player.haptic();
 	});
 }
