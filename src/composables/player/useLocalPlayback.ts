@@ -19,11 +19,48 @@ import {
 	volume,
 } from './state';
 
-// A tiny, valid silent file to keep the OS MediaSession alive
-let silentBlobUrl = '/silent';
+// Generates a 100-second sine wave tone (440 Hz) in WAV format
+function createFaintNoiseBlob(): Blob {
+	const sampleRate = 44100; // CD quality
+	const durationSec = 100;
+	const frequency = 440; // A4 tone
+	const numSamples = sampleRate * durationSec;
+	const buffer = new ArrayBuffer(44 + numSamples * 2);
+	const view = new DataView(buffer);
 
-const { pause, setMute, skip, prev, seek, seekAbsolute } = usePlaybackControls();
-const { getTrackInfo } = useLibrary();
+	const writeString = (offset: number, str: string) => {
+		for (let i = 0; i < str.length; i++) {
+			view.setUint8(offset + i, str.charCodeAt(i));
+		}
+	};
+
+	// WAV header
+	writeString(0, 'RIFF');
+	view.setUint32(4, 36 + numSamples * 2, true);
+	writeString(8, 'WAVE');
+	writeString(12, 'fmt ');
+	view.setUint32(16, 16, true); // PCM chunk size
+	view.setUint16(20, 1, true); // PCM format
+	view.setUint16(22, 1, true); // mono
+	view.setUint32(24, sampleRate, true);
+	view.setUint32(28, sampleRate * 2, true); // byte rate
+	view.setUint16(32, 2, true); // block align
+	view.setUint16(34, 16, true); // bits per sample
+	writeString(36, 'data');
+	view.setUint32(40, numSamples * 2, true);
+
+	// Generate sine wave samples
+	const amplitude = 10; // <--- Changed to a microscopic, inaudible value
+	for (let i = 0; i < numSamples; i++) {
+		const t = i / sampleRate;
+		const sample = Math.sin(2 * Math.PI * frequency * t) * amplitude;
+		view.setInt16(44 + i * 2, sample, true);
+	}
+
+	return new Blob([view], { type: 'audio/wav' });
+}
+
+let silentBlobUrl = '';
 
 // --- Internals shared with useSocket ---
 export function _sendLocalPlayerUpdate(payload: Record<string, unknown>) {
@@ -92,24 +129,13 @@ export function useLocalPlayback() {
 	if (!initialized) {
 		initialized = true;
 
-		// Fetch the silent audio into RAM to bypass the 206 Partial Content looping bug
-		fetch('/silent')
-			.then((res) => res.blob())
-			.then((blob) => {
-				silentBlobUrl = URL.createObjectURL(blob);
-				// If already acting as a remote, hot-swap the src to the in-memory blob
-				const lp = localPlayerRef.value;
-				if (!listenLocally.value && lp && lp.src.includes('/silent')) {
-					lp.src = silentBlobUrl;
-					if (!isPaused.value) lp.play().catch(() => {});
-				}
-			})
-			.catch((e) => console.error('Pifió cargando el silencio en RAM:', e));
+		// Instantiate the 100s faint noise blob URL immediately
+		silentBlobUrl = URL.createObjectURL(createFaintNoiseBlob());
 
 		mediaControls = useMediaControls(localPlayerRef);
 		const { currentTime, duration: elementDuration, ended } = mediaControls;
 
-		// 1. Report duration (ONLY if listening locally so we don't broadcast the silent track's duration)
+		// 1. Report duration (ONLY if listening locally so we don't broadcast the blob's 100s duration)
 		watch(elementDuration, (d) => {
 			if (listenLocally.value && d > 0) {
 				duration.value = d;
@@ -150,7 +176,7 @@ export function useLocalPlayback() {
 		watchEffect(() => {
 			if (currentTrackPath.value && isPlaying.value) {
 				const info = getTrackInfo(currentTrackPath.value);
-				title.value = `▶ ${info.display_title} 🦦🧉`;
+				title.value = `${info.display_title} 🦦🧉`;
 			} else {
 				title.value = 'La Rockola del Carpincho 🦦🧉';
 			}
@@ -235,7 +261,7 @@ export function useLocalPlayback() {
 					// seekto not supported in all browsers
 				}
 			} else {
-				// RELEASE MEDIA CONTROLS TO OS WHEN LOCAL PLAYBACK IS OFF / STOPPED
+				// RELEASE MEDIA CONTROLS TO OS WHEN NO TRACK IS LOADED
 				navigator.mediaSession.setActionHandler('play', null);
 				navigator.mediaSession.setActionHandler('pause', null);
 				navigator.mediaSession.setActionHandler('previoustrack', null);
@@ -269,7 +295,7 @@ export function useLocalPlayback() {
 				if (newPath && !newPath.startsWith('http')) _startLocalPlayer(newPath);
 				else _stopLocalPlayer();
 			} else {
-				// Remote Mode: Play silent audio loop from RAM
+				// Remote Mode: Play the faint noise loop from RAM
 				if (newPath) {
 					if (!lp.src.startsWith('blob:')) lp.src = silentBlobUrl;
 					lp.loop = true;
@@ -325,7 +351,7 @@ export function useLocalPlayback() {
 			lp.setAttribute('playsinline', '');
 			lp.setAttribute('webkit-playsinline', '');
 
-			// Ensure we use the Blob URL
+			// Ensure we use the Blob URL if remote
 			if (!lp.src || (!lp.src.startsWith('blob:') && silentBlobUrl.startsWith('blob:'))) {
 				lp.src = silentBlobUrl;
 				lp.loop = true;
@@ -352,7 +378,7 @@ export function useLocalPlayback() {
 			}
 		};
 
-		useEventListener(document, 'pointerdown', unlockAudio, { capture: true });
+		useEventListener(document, 'click', unlockAudio, { capture: true });
 		useEventListener(document, 'touchend', unlockAudio, { capture: true });
 	}
 

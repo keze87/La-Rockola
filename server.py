@@ -2334,24 +2334,6 @@ async def stream_audio(path: str = Query(...)):
 	return FileResponse(path)
 
 
-@app.get("/silent")
-async def serve_silent_opus():
-	try:
-		opus_path = dist_dir / "silent.opus"
-
-		return FileResponse(
-			opus_path,
-			media_type="audio/opus",
-			headers={
-				"Cache-Control": "public, max-age=604800",
-				"Accept-Ranges": "bytes"
-			}
-		)
-	except Exception as e:
-		logger.debug(f"Pifió sirviendo el Opus silencioso: {e}")
-		return Response(status_code=500)
-
-
 @app.get("/lrc")
 async def serve_lrc(path: str = Query(...)):
 	"""Sirve el archivo .lrc local si existe junto a la pista original."""
