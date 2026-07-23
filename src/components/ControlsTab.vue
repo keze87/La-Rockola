@@ -204,7 +204,7 @@
 
 				<!-- La impronta del carpincho -->
 				<img
-					src="/favicon.ico"
+					src="/favicon.png"
 					alt="Logo Carpincho"
 					class="absolute top-1/2 left-1/2 h-[88px] w-[88px] -translate-x-1/2 -translate-y-1/2 rounded-lg p-1"
 				/>

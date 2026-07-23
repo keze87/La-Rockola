@@ -19,6 +19,12 @@ import {
 	volume,
 } from './state';
 
+// A tiny, valid silent file to keep the OS MediaSession alive
+let silentBlobUrl = '/silent';
+
+const { pause, setMute, skip, prev, seek, seekAbsolute } = usePlaybackControls();
+const { getTrackInfo } = useLibrary();
+
 // --- Internals shared with useSocket ---
 export function _sendLocalPlayerUpdate(payload: Record<string, unknown>) {
 	sendRaw({ type: 'local_player_update', ...payload });
@@ -83,42 +89,56 @@ export function useLocalPlayback() {
 		sendCmd('set_volume', { vollevel: parseInt(volume.value.toString()) });
 	}
 
-	// --- Singleton watchers and timers, set up once no matter how many
-	// components call useLocalPlayback() (or usePlayer(), which composes it) ---
 	if (!initialized) {
 		initialized = true;
+
+		// Fetch the silent audio into RAM to bypass the 206 Partial Content looping bug
+		fetch('/silent')
+			.then((res) => res.blob())
+			.then((blob) => {
+				silentBlobUrl = URL.createObjectURL(blob);
+				// If already acting as a remote, hot-swap the src to the in-memory blob
+				const lp = localPlayerRef.value;
+				if (!listenLocally.value && lp && lp.src.includes('/silent')) {
+					lp.src = silentBlobUrl;
+					if (!isPaused.value) lp.play().catch(() => {});
+				}
+			})
+			.catch((e) => console.error('Pifió cargando el silencio en RAM:', e));
 
 		mediaControls = useMediaControls(localPlayerRef);
 		const { currentTime, duration: elementDuration, ended } = mediaControls;
 
-		// 1. Report duration when available
+		// 1. Report duration (ONLY if listening locally so we don't broadcast the silent track's duration)
 		watch(elementDuration, (d) => {
-			if (d > 0) {
+			if (listenLocally.value && d > 0) {
 				duration.value = d;
 				_sendLocalPlayerUpdate({ duration: d });
 			}
 		});
 
-		// 2. Throttle time updates back to server
+		// 2. Throttle time updates back to server (ONLY if listening locally)
 		let lastSent = 0;
 		watch(currentTime, (t) => {
-			localTimePos.value = t;
-			const now = Date.now();
+			if (listenLocally.value) {
+				localTimePos.value = t;
+				const now = Date.now();
 
-			if (now - lastSent >= 5000) {
-				lastSent = now;
-				_sendLocalPlayerUpdate({ time_pos: t });
+				if (now - lastSent >= 5000) {
+					lastSent = now;
+					_sendLocalPlayerUpdate({ time_pos: t });
+				}
 			}
 		});
 
-		// 3. Notify server when track ends
+		// 3. Notify server when track ends (ONLY if listening locally)
 		watch(ended, (isEnded) => {
-			if (isEnded) _sendLocalPlayerUpdate({ song_ended: true });
+			if (listenLocally.value && isEnded) _sendLocalPlayerUpdate({ song_ended: true });
 		});
 
 		// 4. Handle OS Audio Focus Loss (e.g. another app starts playing or incoming call)
 		useEventListener(localPlayerRef, 'pause', () => {
-			if (listenLocally.value && !isPaused.value) {
+			if (!isPaused.value) {
 				// Browser paused HTML5 audio due to lost focus -> sync state with server
 				pause();
 			}
@@ -136,11 +156,11 @@ export function useLocalPlayback() {
 			}
 		});
 
-		// 6. MediaSession Metadata & Active Playback State
+		// 6. MediaSession Metadata & Active Playback State (ALWAYS ACTIVE)
 		watchEffect(() => {
 			if (!('mediaSession' in navigator)) return;
 
-			if (currentTrackPath.value && listenLocally.value) {
+			if (currentTrackPath.value) {
 				const info = getTrackInfo(currentTrackPath.value);
 				const artworkSrc = !currentTrackPath.value.startsWith('http')
 					? `${window.location.origin}/cover?path=${encodeURIComponent(currentTrackPath.value)}`
@@ -160,11 +180,11 @@ export function useLocalPlayback() {
 			}
 		});
 
-		// 7. MediaSession Position State (Lockscreen Seekbar Sync)
+		// 7. MediaSession Position State (Lockscreen Seekbar Sync) (ALWAYS ACTIVE)
 		watch([localTimePos, duration, isPaused], () => {
 			if (!('mediaSession' in navigator) || !navigator.mediaSession.setPositionState) return;
 
-			if (duration.value > 0 && currentTrackPath.value && listenLocally.value) {
+			if (duration.value > 0 && currentTrackPath.value) {
 				try {
 					navigator.mediaSession.setPositionState({
 						duration: duration.value,
@@ -177,11 +197,11 @@ export function useLocalPlayback() {
 			}
 		});
 
-		// 8. MediaSession Action Handlers (Setup & Clean Teardown)
+		// 8. MediaSession Action Handlers (Setup & Clean Teardown) (ALWAYS ACTIVE)
 		watchEffect(() => {
 			if (!('mediaSession' in navigator)) return;
 
-			if (listenLocally.value && currentTrackPath.value) {
+			if (currentTrackPath.value) {
 				// EXPLICIT ACTION HANDLERS: Do not toggle blindly!
 				navigator.mediaSession.setActionHandler('play', () => {
 					if (isPaused.value) pause();
@@ -241,31 +261,99 @@ export function useLocalPlayback() {
 		watch(currentTrackPath, (newPath, oldPath) => {
 			if (oldPath && oldPath === pauseAfterPath.value) pauseAfterPath.value = null;
 
-			if (listenLocally.value && localPlayerRef.value) {
+			const lp = localPlayerRef.value;
+			if (!lp) return;
+
+			if (listenLocally.value) {
+				lp.loop = false;
 				if (newPath && !newPath.startsWith('http')) _startLocalPlayer(newPath);
 				else _stopLocalPlayer();
+			} else {
+				// Remote Mode: Play silent audio loop from RAM
+				if (newPath) {
+					if (!lp.src.startsWith('blob:')) lp.src = silentBlobUrl;
+					lp.loop = true;
+					if (!isPaused.value) lp.play().catch(() => {});
+				} else {
+					_stopLocalPlayer();
+				}
 			}
 		});
 
 		watch(isPaused, (val) => {
-			if (listenLocally.value && localPlayerRef.value && localPlayerRef.value.src) {
-				if (val) localPlayerRef.value.pause();
-				else localPlayerRef.value.play().catch(() => {});
+			const lp = localPlayerRef.value;
+			if (lp && lp.src) {
+				if (val) lp.pause();
+				else lp.play().catch(() => {});
 
-				_sendLocalPlayerUpdate({ paused: val });
+				if (listenLocally.value) _sendLocalPlayerUpdate({ paused: val });
 			}
 		});
 
 		watch(listenLocally, (val) => {
+			const lp = localPlayerRef.value;
+			if (!lp) return;
+
 			if (val) {
 				sendRaw({ type: 'local_player_claim' });
+				lp.loop = false;
+				if (currentTrackPath.value && !currentTrackPath.value.startsWith('http')) {
+					_startLocalPlayer(currentTrackPath.value);
+				}
 			} else {
 				sendRaw({ type: 'local_player_release' });
-
 				setMute(false);
-				_stopLocalPlayer();
+				if (currentTrackPath.value) {
+					lp.src = silentBlobUrl;
+					lp.loop = true;
+					if (!isPaused.value) lp.play().catch(() => {});
+				} else {
+					_stopLocalPlayer();
+				}
 			}
 		});
+
+		// 11. Audio Autoplay Unlocker (The Synchronous Resumer)
+		let audioUnlocked = false;
+		const unlockAudio = () => {
+			if (listenLocally.value) return;
+
+			const lp = localPlayerRef.value;
+			if (!lp) return;
+
+			// CRUCIAL: Mobile browsers require playsinline to maintain background audio context
+			lp.setAttribute('playsinline', '');
+			lp.setAttribute('webkit-playsinline', '');
+
+			// Ensure we use the Blob URL
+			if (!lp.src || (!lp.src.startsWith('blob:') && silentBlobUrl.startsWith('blob:'))) {
+				lp.src = silentBlobUrl;
+				lp.loop = true;
+			}
+
+			// If the server says we should be playing, enforce it synchronously on tap
+			if (!isPaused.value && currentTrackPath.value) {
+				if (lp.paused) {
+					lp.play().catch(() => {});
+				}
+				audioUnlocked = true;
+			}
+			// If it's the very first tap and we are paused, "bless" the audio tag
+			else if (!audioUnlocked) {
+				const playPromise = lp.play();
+				if (playPromise !== undefined) {
+					playPromise
+						.then(() => {
+							audioUnlocked = true;
+							lp.pause();
+						})
+						.catch(() => {});
+				}
+			}
+		};
+
+		useEventListener(document, 'pointerdown', unlockAudio, { capture: true });
+		useEventListener(document, 'touchend', unlockAudio, { capture: true });
 	}
 
 	return { _sendLocalPlayerUpdate, setVolume };

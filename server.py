@@ -2193,13 +2193,20 @@ async def serve_index():
 
 
 @app.get("/favicon.ico", include_in_schema=False)
+@app.get("/favicon.png", include_in_schema=False)
 async def serve_favicon():
-	favicon_path = dist_dir / "favicon.ico"
+	favicon_path = dist_dir / "favicon.png"
 
 	if not favicon_path.exists():
 		return {"error": f"No encuentro el favicon en {favicon_path}"}
 
-	return FileResponse(favicon_path)
+	return FileResponse(
+		favicon_path,
+		media_type="image/png",
+		headers={
+			"Cache-Control": "public, max-age=604800"  # Cacheado por 7 días
+		}
+	)
 
 
 @app.post("/mpv/hide")
@@ -2325,6 +2332,24 @@ async def stream_audio(path: str = Query(...)):
 		return Response(status_code=404)
 	# FileResponse en Starlette maneja encabezados 'Range' si el browser los pide
 	return FileResponse(path)
+
+
+@app.get("/silent")
+async def serve_silent_opus():
+	try:
+		opus_path = dist_dir / "silent.opus"
+
+		return FileResponse(
+			opus_path,
+			media_type="audio/opus",
+			headers={
+				"Cache-Control": "public, max-age=604800",
+				"Accept-Ranges": "bytes"
+			}
+		)
+	except Exception as e:
+		logger.debug(f"Pifió sirviendo el Opus silencioso: {e}")
+		return Response(status_code=500)
 
 
 @app.get("/lrc")
