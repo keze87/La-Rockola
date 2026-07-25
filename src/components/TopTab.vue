@@ -16,7 +16,9 @@
 				@click="toggleQueue(t.path)"
 				v-on="useContextMenuBindings(() => getTrackInfo(t.path), 'library')"
 			>
-				<div class="text-carpincho-warning mr-4 w-8 text-center text-xl font-bold">#{{ i + 1 }}</div>
+				<div class="text-carpincho-warning mr-4 hidden w-8 text-center text-xl font-bold sm:block">
+					#{{ i + 1 }}
+				</div>
 
 				<FavoritableCover :track="t" size="h-12 w-12" rounded="rounded-md" class="mr-4" icon-size="!text-4xl" />
 

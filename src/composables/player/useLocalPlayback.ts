@@ -3,7 +3,6 @@ import { useEventListener, useMediaControls, useTitle } from '@vueuse/core';
 import { useCommands } from './useCommands';
 import { useLibrary } from './useLibrary';
 import { usePlaybackControls } from '../usePlaybackControls';
-import { useToasts } from './useToasts';
 import {
 	currentTrackPath,
 	duration,
@@ -146,8 +145,8 @@ export function _startLocalPlayer(path: string) {
 
 	if (!isPaused.value) {
 		lp.play().catch(() => {
-			const { showToast } = useToasts();
-			showToast('Tocá la pantalla para arrancar el audio local', 'warning');
+			// const { showToast } = useToasts();
+			// showToast('Tocá la pantalla para arrancar el audio local', 'warning');
 		});
 	}
 }

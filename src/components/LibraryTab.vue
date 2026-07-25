@@ -121,7 +121,7 @@
 
 		<!-- Table Header (CSS Grid Equivalent) -->
 		<div
-			class="bg-carpincho-panel text-carpincho-primary border-carpincho-border grid grid-cols-[4rem_minmax(0,1fr)_minmax(0,1fr)] items-center border-b shadow-sm sm:grid-cols-[4rem_minmax(0,1fr)_minmax(0,1fr)_5.5rem]"
+			class="bg-carpincho-panel text-carpincho-primary border-carpincho-border grid grid-cols-[5rem_minmax(0,1fr)_minmax(0,1fr)] items-center border-b shadow-sm sm:grid-cols-[5rem_minmax(0,1fr)_minmax(0,1fr)_5.5rem]"
 		>
 			<div class="p-3 text-center font-bold">Orden</div>
 			<div class="p-3 font-bold">El Temón</div>

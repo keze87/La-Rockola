@@ -29,7 +29,7 @@
 	// Getter form (not `props.track` by value) so this keeps tracking the
 	// current prop when a `:key`-stable row is reused for fresh track data
 	// (e.g. after a websocket state_update replaces the library array).
-	const { displayArtist, displayTitle, durationStr } = useTrack(() => props.track);
+	const { displayArtist, displayTitle, durationStr, toggleFavorite } = useTrack(() => props.track);
 
 	const bindings = useContextMenuBindings(
 		() => props.track,
@@ -42,29 +42,38 @@
 <template>
 	<div
 		:id="isCurrent ? 'current-library-row' : undefined"
-		class="border-carpincho-border hover:bg-carpincho-border grid h-[72px] cursor-pointer grid-cols-[4rem_minmax(0,1fr)_minmax(0,1fr)] items-center border-b transition-colors active:scale-[0.98] sm:grid-cols-[4rem_minmax(0,1fr)_minmax(0,1fr)_5rem]"
+		class="border-carpincho-border hover:bg-carpincho-border grid h-[72px] cursor-pointer grid-cols-[5rem_minmax(0,1fr)_minmax(0,1fr)] items-center border-b transition-colors active:scale-[0.98] sm:grid-cols-[5rem_minmax(0,1fr)_minmax(0,1fr)_5rem]"
 		v-on="bindings"
 		@click="emit('click', track)"
 	>
-		<div class="flex items-center justify-center p-2 text-center">
-			<div v-if="isCurrent" class="flex items-center justify-center">
+		<div class="relative flex items-center justify-center p-2">
+			<FavoritableCover :track="track" />
+
+			<!-- Now-playing indicator, overlaid on the cover -->
+			<div
+				v-if="isCurrent"
+				class="bg-carpincho-panel absolute flex h-7 w-7 cursor-pointer items-center justify-center rounded-full shadow"
+				@click.stop.prevent="toggleFavorite"
+			>
 				<div :class="['equalizer', isPaused ? 'paused' : '']">
 					<span />
 					<span />
 					<span />
 				</div>
 			</div>
-			<span v-else-if="queuePosition !== -1" class="text-carpincho-warning font-bold">
+
+			<!-- Queue order, overlaid on the cover -->
+			<span
+				v-else-if="queuePosition !== -1"
+				class="bg-carpincho-panel text-carpincho-warning absolute flex h-7 w-7 cursor-pointer items-center justify-center rounded-full text-base font-bold shadow"
+				@click.stop.prevent="toggleFavorite"
+			>
 				{{ queuePosition + 1 }}
 			</span>
 		</div>
 
 		<div class="p-4 font-medium">
-			<div class="flex items-center justify-start gap-3">
-				<!-- Cover for desktop (hidden on narrow screens) -->
-				<FavoritableCover :track="track" class="hidden sm:block" />
-				<span class="truncate">{{ displayTitle }}</span>
-			</div>
+			<span class="truncate">{{ displayTitle }}</span>
 		</div>
 
 		<div class="text-carpincho-muted truncate p-4">

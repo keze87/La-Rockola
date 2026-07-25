@@ -1694,6 +1694,8 @@ class APIState:
 				"El MPV revivió. Volviéndole a cargar el temita que estaba sonando..."
 			)
 
+			self.last_track_change = time.time()
+
 			# Volvemos a cargar la pista sin tocar el historial
 			await self.mpv._send(
 				json.dumps(
