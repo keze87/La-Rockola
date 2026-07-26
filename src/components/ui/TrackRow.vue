@@ -2,21 +2,29 @@
 	import { useTrack } from '../../composables/useTrack';
 	import { useContextMenuBindings } from '../../composables/useContextMenu';
 	import FavoritableCover from './FavoritableCover.vue';
+	import type { HTMLAttributes } from 'vue';
 	import type { Track } from '../../types';
 
 	const props = withDefaults(
-		defineProps<{
-			track: Track | string;
-			contextSource?: string;
-			index?: number | null;
-			// Queue rows own their long-press-vs-swipe-to-delete touch logic
-			// themselves, so they set this to skip the default touch bindings.
-			contextMenuOnly?: boolean;
-		}>(),
+		defineProps<
+			{
+				track: Track | string;
+				contextSource?: string;
+				index?: number | null;
+				// Queue rows own their long-press-vs-swipe-to-delete touch logic
+				// themselves, so they set this to skip the default touch bindings.
+				contextMenuOnly?: boolean;
+				// Explicitly declare the camelCased data attributes for vue-tsc
+				dataHistoryPath?: string;
+				dataQueueIndex?: number;
+			} & /* @vue-ignore */ HTMLAttributes
+		>(),
 		{
 			contextSource: 'library',
 			index: null,
 			contextMenuOnly: false,
+			dataHistoryPath: undefined,
+			dataQueueIndex: undefined,
 		}
 	);
 

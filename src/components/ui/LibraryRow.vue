@@ -72,8 +72,8 @@
 			</span>
 		</div>
 
-		<div class="p-4 font-medium">
-			<span class="truncate">{{ displayTitle }}</span>
+		<div class="truncate p-4 font-medium">
+			{{ displayTitle }}
 		</div>
 
 		<div class="text-carpincho-muted truncate p-4">

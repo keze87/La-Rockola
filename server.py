@@ -2476,6 +2476,8 @@ async def handle_command(req: CommandRequest):
 			else:
 				cmd_payload = json.dumps({"command": ["seek", req.amount, "absolute"]})
 				await state.mpv._send(cmd_payload)
+				# Eagerly update state so the immediate broadcast is accurate
+				state.time_pos = req.amount
 	elif cmd == "toggle_favorite":
 		if req.path:
 			track_id = state.path_to_id.get(req.path, req.path)

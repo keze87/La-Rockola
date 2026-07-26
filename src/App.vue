@@ -16,7 +16,7 @@
 	import QueueTab from './components/QueueTab.vue';
 	import TopTab from './components/TopTab.vue';
 
-	const { seek } = usePlaybackControls();
+	const { seekAbsolute } = usePlaybackControls();
 
 	const {
 		_sendLocalPlayerUpdate,
@@ -26,7 +26,7 @@
 		duration,
 		getTrackInfo,
 		haptic,
-		ignoreServerTimeUntil,
+		pendingSeekTime,
 		isDraggingSeek,
 		isFogonMode,
 		isPlaying,
@@ -56,13 +56,13 @@
 		(val) => {
 			isDraggingSeek.value = false;
 			localTimePos.value = val;
-			ignoreServerTimeUntil.value = Date.now() + 2000;
+			pendingSeekTime.value = val;
 
 			if (listenLocally.value && localPlayerRef.value) {
 				localPlayerRef.value.currentTime = val;
 				_sendLocalPlayerUpdate({ time_pos: val });
 			} else {
-				seek(val);
+				seekAbsolute(val);
 			}
 		}
 	);

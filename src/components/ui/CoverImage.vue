@@ -1,13 +1,16 @@
 <script setup lang="ts">
 	import { useCover } from '../../composables/useCover';
+	import type { HTMLAttributes } from 'vue';
 
 	const props = withDefaults(
-		defineProps<{
-			path?: string | null;
-			size?: string;
-			rounded?: string;
-			iconSize?: string;
-		}>(),
+		defineProps<
+			{
+				path?: string | null;
+				size?: string;
+				rounded?: string;
+				iconSize?: string;
+			} & /* @vue-ignore */ HTMLAttributes
+		>(),
 		{
 			path: null,
 			size: 'h-10 w-10',

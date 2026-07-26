@@ -11,7 +11,6 @@ import {
 	duration,
 	favorites,
 	historyState,
-	ignoreServerTimeUntil,
 	isDraggingSeek,
 	isPaused,
 	isScanning,
@@ -21,6 +20,7 @@ import {
 	mpvVisible,
 	originalTracks,
 	pauseAfterPath,
+	pendingSeekTime,
 	queueState,
 	serverMuted,
 	setWsSend,
@@ -109,8 +109,19 @@ export function useSocket() {
 
 						if (state.time_pos !== undefined) {
 							timePos.value = state.time_pos;
-							if (!listenLocally.value && Date.now() > ignoreServerTimeUntil.value) {
-								if (!isDraggingSeek.value && Math.abs(localTimePos.value - timePos.value) > 1.5) {
+							if (!listenLocally.value) {
+								if (pendingSeekTime.value !== null) {
+									// A seek is in flight — ignore server ticks until the
+									// broadcast time lines up with what we asked for.
+									const drift = Math.abs(state.time_pos - pendingSeekTime.value);
+									if (drift <= 0.5) {
+										pendingSeekTime.value = null;
+										localTimePos.value = state.time_pos;
+									}
+								} else if (
+									!isDraggingSeek.value &&
+									Math.abs(localTimePos.value - timePos.value) > 1.5
+								) {
 									localTimePos.value = timePos.value;
 								}
 							}

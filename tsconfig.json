@@ -29,5 +29,8 @@
     "src/**/*.vue",
     "src/types/**/*.d.ts"
   ],
-  // "references": [{ "path": "./tsconfig.node.json" }]
+  "vueCompilerOptions": {
+    "target": 3.5,
+    "strictTemplates": true
+  }
 }

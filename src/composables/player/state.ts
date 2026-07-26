@@ -43,7 +43,7 @@ export const djSafeModeEnabled = ref<boolean>(false);
 
 // Local audio playback & Media Session
 export const duration = ref<number>(0);
-export const ignoreServerTimeUntil = ref<number>(0);
+export const pendingSeekTime = ref<number | null>(null);
 export const isDraggingSeek = ref<boolean>(false);
 export const listenLocally = ref<boolean>(false);
 export const localPlayerRef = ref<HTMLAudioElement | null>(null); // bound to the <audio> element in App.vue

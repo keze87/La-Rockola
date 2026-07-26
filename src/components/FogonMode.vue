@@ -16,7 +16,7 @@
 		djNextTrack,
 		duration,
 		haptic,
-		ignoreServerTimeUntil,
+		pendingSeekTime,
 		isDraggingSeek,
 		isFogonMode,
 		isPlaying,
@@ -48,7 +48,7 @@
 		(val) => {
 			isDraggingSeek.value = false;
 			localTimePos.value = val;
-			ignoreServerTimeUntil.value = Date.now() + 2000;
+			pendingSeekTime.value = val;
 
 			if (listenLocally.value && localPlayerRef.value) {
 				localPlayerRef.value.currentTime = val;

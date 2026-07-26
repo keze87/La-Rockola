@@ -6,7 +6,6 @@ import { usePlaybackControls } from '../usePlaybackControls';
 import {
 	currentTrackPath,
 	duration,
-	ignoreServerTimeUntil,
 	isDraggingSeek,
 	isPaused,
 	isPlaying,
@@ -14,6 +13,7 @@ import {
 	localPlayerRef,
 	localTimePos,
 	pauseAfterPath,
+	pendingSeekTime,
 	sendRaw,
 	volume,
 } from './state';
@@ -299,20 +299,20 @@ export function useLocalPlayback() {
 				navigator.mediaSession.setActionHandler('seekbackward', (details) => {
 					const amount = -(details.seekOffset ?? 10);
 					localTimePos.value = Math.max(0, localTimePos.value + amount);
-					ignoreServerTimeUntil.value = Date.now() + 2000;
+					pendingSeekTime.value = localTimePos.value;
 					seek(amount);
 				});
 				navigator.mediaSession.setActionHandler('seekforward', (details) => {
 					const amount = details.seekOffset ?? 10;
 					localTimePos.value = Math.min(duration.value, localTimePos.value + amount);
-					ignoreServerTimeUntil.value = Date.now() + 2000;
+					pendingSeekTime.value = localTimePos.value;
 					seek(amount);
 				});
 				try {
 					navigator.mediaSession.setActionHandler('seekto', (details) => {
 						if (details.seekTime !== undefined && details.seekTime !== null) {
 							localTimePos.value = details.seekTime;
-							ignoreServerTimeUntil.value = Date.now() + 2000;
+							pendingSeekTime.value = details.seekTime;
 							seekAbsolute(details.seekTime);
 						}
 					});

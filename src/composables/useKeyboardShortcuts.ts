@@ -51,7 +51,7 @@ export function useKeyboardShortcuts() {
 		} else {
 			const amount = 10;
 			player.localTimePos.value = Math.min(player.duration.value, player.localTimePos.value + amount);
-			player.ignoreServerTimeUntil.value = Date.now() + 2000;
+			player.pendingSeekTime.value = player.localTimePos.value;
 			seek(amount);
 		}
 
@@ -68,7 +68,7 @@ export function useKeyboardShortcuts() {
 		} else {
 			const amount = -10;
 			player.localTimePos.value = Math.max(0, player.localTimePos.value + amount);
-			player.ignoreServerTimeUntil.value = Date.now() + 2000;
+			player.pendingSeekTime.value = player.localTimePos.value;
 			seek(amount);
 		}
 
