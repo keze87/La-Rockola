@@ -2135,19 +2135,7 @@ app.add_middleware(
 	allow_headers=["*"],
 )
 
-# Definimos las rutas a la carpeta 'dist' que genera Vite
-base_dir = Path(__file__).resolve().parent
-frontend_dir = base_dir
-dist_dir = frontend_dir / "dist"
-assets_dir = dist_dir / "assets"
-
-# Montamos la carpeta de assets generada por Vite
-# Es fundamental montar "/assets" para que el index.html encuentre el CSS/JS
-if assets_dir.exists():
-	app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
-
-
-# 1. Automatizar 'npm run build' antes de que el servidor responda
+# Automatizar 'npm run build' antes de que el servidor responda
 def build_frontend():
 	if frontend_dir.exists() and (frontend_dir / "package.json").exists():
 		print("🦦 Preparando el frontend de La Rockola...")
@@ -2178,9 +2166,20 @@ def build_frontend():
 	else:
 		print("⚠️ No se encontró la carpeta del frontend o el package.json. Seguimos sin compilar el front.")
 
+# Definimos las rutas a la carpeta 'dist' que genera Vite
+base_dir = Path(__file__).resolve().parent
+frontend_dir = base_dir
+dist_dir = frontend_dir / "dist"
+assets_dir = dist_dir / "assets"
 
 # Corremos el build al levantar el script
 build_frontend()
+
+# Montamos la carpeta de assets sabiendo que ya existe
+if assets_dir.exists():
+	app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+else:
+	print("⚠️ Advertencia: La carpeta 'dist/assets' no se encontró después del build.")
 
 
 # Servimos el HTML principal
