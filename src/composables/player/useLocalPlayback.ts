@@ -1,4 +1,4 @@
-import { watch, watchEffect } from 'vue';
+import { ref, watch, watchEffect } from 'vue';
 import { useEventListener, useMediaControls, useTitle } from '@vueuse/core';
 import { useCommands } from './useCommands';
 import { useLibrary } from './useLibrary';
@@ -135,11 +135,31 @@ export function _sendLocalPlayerUpdate(payload: Record<string, unknown>) {
 // advancing to the next track mid-playback) would silently no-op.
 let mediaControls: ReturnType<typeof useMediaControls> | undefined;
 
+export const isChangingTrack = ref<boolean>(false);
+let changeTrackTimer: ReturnType<typeof setTimeout> | null = null;
+
+export function markTrackChanging() {
+	isChangingTrack.value = true;
+	if (changeTrackTimer) clearTimeout(changeTrackTimer);
+	changeTrackTimer = setTimeout(() => {
+		isChangingTrack.value = false;
+	}, 2000);
+}
+
+export function clearTrackChanging() {
+	isChangingTrack.value = false;
+	if (changeTrackTimer) {
+		clearTimeout(changeTrackTimer);
+		changeTrackTimer = null;
+	}
+}
+
 export function _startLocalPlayer(path: string) {
 	const lp = localPlayerRef.value;
 
 	if (!lp) return;
 
+	markTrackChanging();
 	lp.src = '/stream?path=' + encodeURIComponent(path);
 	lp.currentTime = 0;
 
@@ -156,6 +176,7 @@ export function _stopLocalPlayer() {
 
 	if (!lp) return;
 
+	markTrackChanging();
 	lp.pause();
 	lp.removeAttribute('src');
 	lp.load();
@@ -221,9 +242,17 @@ export function useLocalPlayback() {
 			if (listenLocally.value && isEnded) _sendLocalPlayerUpdate({ song_ended: true });
 		});
 
+		// Clear transition flag when audio starts playing or encounters error
+		useEventListener(localPlayerRef, 'playing', () => {
+			clearTrackChanging();
+		});
+		useEventListener(localPlayerRef, 'error', () => {
+			clearTrackChanging();
+		});
+
 		// 4. Handle OS Audio Focus Loss (e.g. another app starts playing or incoming call)
 		useEventListener(localPlayerRef, 'pause', () => {
-			if (!isPaused.value) {
+			if (listenLocally.value && !isChangingTrack.value && !isPaused.value) {
 				// Browser paused HTML5 audio due to lost focus -> sync state with server
 				pause();
 			}
@@ -349,6 +378,7 @@ export function useLocalPlayback() {
 			const lp = localPlayerRef.value;
 			if (!lp) return;
 
+			markTrackChanging();
 			if (listenLocally.value) {
 				lp.loop = false;
 				if (newPath && !newPath.startsWith('http')) _startLocalPlayer(newPath);
@@ -379,6 +409,7 @@ export function useLocalPlayback() {
 			const lp = localPlayerRef.value;
 			if (!lp) return;
 
+			markTrackChanging();
 			if (val) {
 				sendRaw({ type: 'local_player_claim' });
 				lp.loop = false;
@@ -412,6 +443,7 @@ export function useLocalPlayback() {
 
 			// Ensure we use the Blob URL if remote
 			if (!lp.src || (!lp.src.startsWith('blob:') && silentBlobUrl.startsWith('blob:'))) {
+				markTrackChanging();
 				lp.src = silentBlobUrl;
 				lp.loop = true;
 			}

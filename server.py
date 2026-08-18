@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-import sys
-import shutil
 import importlib.util
+import shutil
+import sys
 
 
 def check_dependencies():
@@ -48,11 +48,7 @@ def check_dependencies():
 		"mpv": (
 			"winget install mpv"
 			if is_win
-			else (
-				"brew install mpv"
-				if is_mac
-				else "sudo apt install mpv (o lo que use tu distro)"
-			)
+			else ("brew install mpv" if is_mac else "sudo apt install mpv (o lo que use tu distro)")
 		),
 	}
 
@@ -125,15 +121,16 @@ import sqlite3
 import subprocess
 import tempfile
 import time
-import uvicorn
 import warnings
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
+from pathlib import Path
+
+import uvicorn
+from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from mutagen import File as MutagenFile
-from pathlib import Path
 from pydantic import BaseModel
 
 # Aumentamos el límite de archivos abiertos al máximo posible para que
@@ -241,10 +238,10 @@ init_db()
 DBUS_AVAILABLE = False
 if sys.platform == "linux":
 	try:
-		from dbus_next.aio import MessageBus
-		from dbus_next.service import ServiceInterface, method, dbus_property, signal
-		from dbus_next.constants import PropertyAccess
 		from dbus_next import Variant
+		from dbus_next.aio import MessageBus
+		from dbus_next.constants import PropertyAccess
+		from dbus_next.service import ServiceInterface, dbus_property, method
 
 		DBUS_AVAILABLE = True
 	except ImportError:
@@ -307,12 +304,7 @@ def highlight_json(json_data):
 			key_str = match.group(1)
 			colon_idx = key_str.rfind(":")
 			# Color the key, but leave the colon default
-			return (
-				colors["key"]
-				+ key_str[:colon_idx]
-				+ colors["reset"]
-				+ key_str[colon_idx:]
-			)
+			return colors["key"] + key_str[:colon_idx] + colors["reset"] + key_str[colon_idx:]
 		elif match.group(2):  # String value
 			return colors["string"] + match.group(2) + colors["reset"]
 		elif match.group(3):  # Number
@@ -495,9 +487,7 @@ class Track:
 			import librosa
 			import numpy as np
 
-			y, sr = librosa.load(
-				str(self.path), sr=22050, mono=True, duration=60, offset=15
-			)
+			y, sr = librosa.load(str(self.path), sr=22050, mono=True, duration=60, offset=15)
 			if y.size == 0:
 				# Tema corto (menos de 15s): probamos de nuevo desde el arranque
 				y, sr = librosa.load(str(self.path), sr=22050, mono=True)
@@ -529,14 +519,10 @@ class Track:
 			self.energy = e
 			self.spectral_centroid = c
 		except concurrent.futures.TimeoutError:
-			logger.warning(
-				f"¡Se re colgó! Timeout de 25s sacando el mood a {self.path}"
-			)
+			logger.warning(f"¡Se re colgó! Timeout de 25s sacando el mood a {self.path}")
 			self.bpm, self.energy, self.spectral_centroid = -1.0, -1.0, -1.0
 		except Exception as exc:
-			logger.warning(
-				f"No le pude sacar el mood (bpm/energía) a {self.path}: {exc}"
-			)
+			logger.warning(f"No le pude sacar el mood (bpm/energía) a {self.path}: {exc}")
 			# Si falla feo (por archivo corrupto o falta de permisos) le mandamos -1.0
 			# Así diferenciamos los rotos de los que todavía no se analizaron (0.0)
 			self.bpm, self.energy, self.spectral_centroid = -1.0, -1.0, -1.0
@@ -659,9 +645,7 @@ class AsyncMpvController:
 					env=env,
 				)
 			except Exception:
-				logger.error(
-					"¡Uy! No se encontró a MPV instalado. El carpincho está triste."
-				)
+				logger.error("¡Uy! No se encontró a MPV instalado. El carpincho está triste.")
 				sys.exit(1)
 
 			for i in range(20):
@@ -684,9 +668,7 @@ class AsyncMpvController:
 				logger.info("Conectados al Named Pipe de Windows (pipa lista).")
 				asyncio.create_task(self._read_ipc_events_windows())
 			else:
-				self.reader, self.writer = await asyncio.open_unix_connection(
-					self.socket_path
-				)
+				self.reader, self.writer = await asyncio.open_unix_connection(self.socket_path)
 				logger.info("Conectados al socket Unix de MPV (todo legal).")
 				asyncio.create_task(self._read_ipc_events())
 
@@ -694,21 +676,11 @@ class AsyncMpvController:
 				not self.is_windows
 			):  # En Unix mandamos la suscripción por acá porque la conexión es única y no se cierra.
 				# Request MPV to broadcast volume and pause changes
-				await self._send(
-					json.dumps({"command": ["observe_property", 1, "volume"]})
-				)
-				await self._send(
-					json.dumps({"command": ["observe_property", 2, "pause"]})
-				)
-				await self._send(
-					json.dumps({"command": ["observe_property", 3, "time-pos"]})
-				)
-				await self._send(
-					json.dumps({"command": ["observe_property", 4, "duration"]})
-				)
-				await self._send(
-					json.dumps({"command": ["observe_property", 5, "mute"]})
-				)
+				await self._send(json.dumps({"command": ["observe_property", 1, "volume"]}))
+				await self._send(json.dumps({"command": ["observe_property", 2, "pause"]}))
+				await self._send(json.dumps({"command": ["observe_property", 3, "time-pos"]}))
+				await self._send(json.dumps({"command": ["observe_property", 4, "duration"]}))
+				await self._send(json.dumps({"command": ["observe_property", 5, "mute"]}))
 
 			# Si hay un callback de reinicio, avisamos que ya estamos listos para recibir los datos de nuevo
 			if "mpv_restarted" in self.callbacks:
@@ -724,7 +696,6 @@ class AsyncMpvController:
 			try:
 				# Cambiamos "rb" por "r+b" para poder leer y escribir
 				with open(self.socket_path, "r+b") as pipe:
-
 					# Nos suscribimos a los eventos en LA MISMA pipa que va a quedarse leyendo
 					pipe.write(b'{"command": ["observe_property", 1, "volume"]}\n')
 					pipe.write(b'{"command": ["observe_property", 2, "pause"]}\n')
@@ -738,9 +709,7 @@ class AsyncMpvController:
 						if not line:
 							break
 						# BUGFIX: Use the captured main_loop instead of get_running_loop()
-						asyncio.run_coroutine_threadsafe(
-							self._process_event_line(line), main_loop
-						)
+						asyncio.run_coroutine_threadsafe(self._process_event_line(line), main_loop)
 			except Exception as e:
 				logger.debug(f"Pifió algo leyendo la pipa en Windows: {e}")
 
@@ -758,9 +727,7 @@ class AsyncMpvController:
 				break
 
 		# Si llegamos acá es porque se cerró el socket (MPV murió o se cerró)
-		logger.debug(
-			"El socket Unix de MPV se cerró. Limpiando conexión para forzar reinicio..."
-		)
+		logger.debug("El socket Unix de MPV se cerró. Limpiando conexión para forzar reinicio...")
 		self.reader = None
 		if self.writer:
 			self.writer.close()
@@ -782,27 +749,15 @@ class AsyncMpvController:
 				prop_name = event_data.get("name")
 				prop_val = event_data.get("data")
 
-				if (
-					prop_name == "volume"
-					and prop_val is not None
-					and "volume_update" in self.callbacks
-				):
+				if prop_name == "volume" and prop_val is not None and "volume_update" in self.callbacks:
 					asyncio.create_task(self.callbacks["volume_update"](prop_val))
-				elif (
-					prop_name == "pause"
-					and prop_val is not None
-					and "pause_update" in self.callbacks
-				):
+				elif prop_name == "pause" and prop_val is not None and "pause_update" in self.callbacks:
 					asyncio.create_task(self.callbacks["pause_update"](prop_val))
 				elif prop_name == "time-pos" and "time_update" in self.callbacks:
 					asyncio.create_task(self.callbacks["time_update"](prop_val))
 				elif prop_name == "duration" and "duration_update" in self.callbacks:
 					asyncio.create_task(self.callbacks["duration_update"](prop_val))
-				elif (
-					prop_name == "mute"
-					and prop_val is not None
-					and "mute_update" in self.callbacks
-				):
+				elif prop_name == "mute" and prop_val is not None and "mute_update" in self.callbacks:
 					asyncio.create_task(self.callbacks["mute_update"](prop_val))
 		except json.JSONDecodeError:
 			pass
@@ -844,9 +799,7 @@ class AsyncMpvController:
 						self.writer.write(cmd_bytes)
 						await self.writer.drain()
 			except Exception as retry_e:
-				logger.error(
-					f"Pifió fiero. No quiso agarrar viaje ni reiniciando: {retry_e}"
-				)
+				logger.error(f"Pifió fiero. No quiso agarrar viaje ni reiniciando: {retry_e}")
 
 
 # --- DBUS / MPRIS Classes ---
@@ -934,16 +887,12 @@ if DBUS_AVAILABLE:
 		@method()
 		def Seek(self, Offset: "x"):  # type: ignore
 			amount = Offset / 1000000.0
-			asyncio.create_task(
-				handle_command(CommandRequest(cmd="seek", amount=amount))
-			)
+			asyncio.create_task(handle_command(CommandRequest(cmd="seek", amount=amount)))
 
 		@method()
 		def SetPosition(self, TrackId: "o", Position: "x"):  # type: ignore
 			amount = Position / 1000000.0
-			asyncio.create_task(
-				handle_command(CommandRequest(cmd="seek_absolute", amount=amount))
-			)
+			asyncio.create_task(handle_command(CommandRequest(cmd="seek_absolute", amount=amount)))
 
 		@method()
 		def OpenUri(self, Uri: "s"):  # type: ignore
@@ -970,11 +919,7 @@ if DBUS_AVAILABLE:
 		@dbus_property(access=PropertyAccess.READ)
 		def Metadata(self) -> "a{sv}":  # type: ignore
 			if not self.state.current_track:
-				return {
-					"mpris:trackid": Variant(
-						"o", "/org/mpris/MediaPlayer2/TrackList/NoTrack"
-					)
-				}
+				return {"mpris:trackid": Variant("o", "/org/mpris/MediaPlayer2/TrackList/NoTrack")}
 
 			title = "Desconocido"
 			artist = "Desconocido"
@@ -1006,9 +951,7 @@ if DBUS_AVAILABLE:
 				track_uri = ""
 
 			meta_dict = {
-				"mpris:trackid": Variant(
-					"o", "/org/mpris/MediaPlayer2/TrackList/Track0"
-				),
+				"mpris:trackid": Variant("o", "/org/mpris/MediaPlayer2/TrackList/Track0"),
 				"xesam:title": Variant("s", title),
 				"xesam:artist": Variant("as", [artist]),
 				"xesam:album": Variant("s", album),
@@ -1030,9 +973,7 @@ if DBUS_AVAILABLE:
 		@Volume.setter
 		def Volume(self, val: "d"):  # type: ignore
 			vollevel = int(val * 100)
-			asyncio.create_task(
-				handle_command(CommandRequest(cmd="set_volume", vollevel=vollevel))
-			)
+			asyncio.create_task(handle_command(CommandRequest(cmd="set_volume", vollevel=vollevel)))
 
 		@dbus_property(access=PropertyAccess.READ)
 		def Position(self) -> "x":  # type: ignore
@@ -1075,9 +1016,7 @@ if DBUS_AVAILABLE:
 class ConnectionManager:
 	def __init__(self):
 		self.active_connections: list[WebSocket] = []
-		self.local_player_ws: WebSocket | None = (
-			None  # El cliente que está reproduciendo localmente
-		)
+		self.local_player_ws: WebSocket | None = None  # El cliente que está reproduciendo localmente
 
 	async def connect(self, websocket: WebSocket):
 		await websocket.accept()
@@ -1106,9 +1045,7 @@ class ConnectionManager:
 	async def broadcast(self, message: dict):
 		log_msg = message.copy()
 		if "library" in log_msg:
-			log_msg["library"] = (
-				f"<Librería omitida del log ({len(log_msg['library'])} temas)>"
-			)
+			log_msg["library"] = f"<Librería omitida del log ({len(log_msg['library'])} temas)>"
 
 		logger.debug(f"AVISANDO A LA MUCHACHADA:\n{highlight_json(log_msg)}")
 		for connection in self.active_connections.copy():
@@ -1143,9 +1080,7 @@ class APIState:
 		self.time_pos = 0
 		self.duration = 0
 		self.last_time_broadcast = 0
-		self.last_seek_drift: float | None = (
-			None  # Última deriva con la que sincronizamos MPV
-		)
+		self.last_seek_drift: float | None = None  # Última deriva con la que sincronizamos MPV
 
 		# Files
 		self.track_cache_by_path = {}
@@ -1209,10 +1144,7 @@ class APIState:
 		if include_library:
 			# Lista limpia filtrando fingerprints y métricas de mood
 			keys_to_exclude = {"fingerprint", "bpm", "energy", "spectral_centroid"}
-			d["library"] = [
-				{k: v for k, v in track.items() if k not in keys_to_exclude}
-				for track in self.tracks_cache
-			]
+			d["library"] = [{k: v for k, v in track.items() if k not in keys_to_exclude} for track in self.tracks_cache]
 
 		return d
 
@@ -1328,17 +1260,13 @@ class APIState:
 
 			music_dir = Path(target_dir).expanduser()
 			if not music_dir.exists():
-				logger.warning(
-					f"Che, este lugar está más pelado que la nada misma: {music_dir}"
-				)
+				logger.warning(f"Che, este lugar está más pelado que la nada misma: {music_dir}")
 				continue
 
 			for ext in extensions:
 				raw_files.extend(list(music_dir.rglob(ext)))
 
-		logger.info(
-			f"Encontré {len(raw_files)} archivos en total. Revisando cuáles son nuevos o cambiaron..."
-		)
+		logger.info(f"Encontré {len(raw_files)} archivos en total. Revisando cuáles son nuevos o cambiaron...")
 		raw_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
 
 		# --- CARGAMOS LA CACHÉ DE LA DB AL PRINCIPIO ---
@@ -1375,9 +1303,7 @@ class APIState:
 						# Si estaba en NULL en la base de datos vieja, aseguramos que cargue como 0.0
 						"bpm": db_bpm if db_bpm is not None else 0.0,
 						"energy": db_energy if db_energy is not None else 0.0,
-						"spectral_centroid": (
-							db_centroid if db_centroid is not None else 0.0
-						),
+						"spectral_centroid": (db_centroid if db_centroid is not None else 0.0),
 						"fingerprint": db_fingerprint,
 					}
 		except Exception as e:
@@ -1387,9 +1313,7 @@ class APIState:
 		self.id_to_current_path.clear()
 		self.path_to_id.clear()
 		new_cache = {}
-		tracks_to_insert = (
-			[]
-		)  # Guardamos acá los nuevos para hacer un solo INSERT masivo
+		tracks_to_insert = []  # Guardamos acá los nuevos para hacer un solo INSERT masivo
 
 		seen_track_ids = set()
 		new_tracks_for_reconciliation = []
@@ -1410,10 +1334,7 @@ class APIState:
 				continue
 
 			# 1. Miramos si está en memoria (escaneo en caliente)
-			if (
-				file_str in self.track_cache_by_path
-				and self.track_cache_by_path[file_str]["mtime"] == current_mtime
-			):
+			if file_str in self.track_cache_by_path and self.track_cache_by_path[file_str]["mtime"] == current_mtime:
 				track_dict = self.track_cache_by_path[file_str]["data"]
 				track_hash = track_dict.get("track_hash")
 				seen_track_ids.add(track_hash)
@@ -1485,9 +1406,7 @@ class APIState:
 		# --- RECONCILIACIÓN DE HUELLAS ACÚSTICAS ---
 		# Si un archivo se reemplazó (ej. MP3 a FLAC) o se le metió una tapa (cambió tamaño),
 		# su viejo "track_hash" va a faltar y va a haber uno nuevo para la misma canción.
-		missing_db_tracks = [
-			t for t in db_cache.values() if t["track_hash"] not in seen_track_ids
-		]
+		missing_db_tracks = [t for t in db_cache.values() if t["track_hash"] not in seen_track_ids]
 
 		if missing_db_tracks and new_tracks_for_reconciliation:
 			logger.info(
@@ -1509,10 +1428,7 @@ class APIState:
 				if min_len < 10:
 					return 0.0
 
-				diff_bits = sum(
-					bin((fp1[i] ^ fp2[i]) & 0xFFFFFFFF).count("1")
-					for i in range(min_len)
-				)
+				diff_bits = sum(bin((fp1[i] ^ fp2[i]) & 0xFFFFFFFF).count("1") for i in range(min_len))
 				return 1.0 - (diff_bits / (min_len * 32))
 
 			for new_t in new_tracks_for_reconciliation:
@@ -1578,14 +1494,8 @@ class APIState:
 		if tracks:
 			# Filtramos los que dieron error (-1.0) para que no rompan las matemáticas de promedios
 			valid_bpms = [t.get("bpm", -1.0) for t in tracks if t.get("bpm", -1.0) > 0]
-			valid_energies = [
-				t.get("energy", -1.0) for t in tracks if t.get("energy", -1.0) > 0
-			]
-			valid_centroids = [
-				t.get("spectral_centroid", -1.0)
-				for t in tracks
-				if t.get("spectral_centroid", -1.0) > 0
-			]
+			valid_energies = [t.get("energy", -1.0) for t in tracks if t.get("energy", -1.0) > 0]
+			valid_centroids = [t.get("spectral_centroid", -1.0) for t in tracks if t.get("spectral_centroid", -1.0) > 0]
 
 			# Peso mayor al tempo, energía (RMS) le sigue de cerca, brillo espectral desempata
 			for t in tracks:
@@ -1616,9 +1526,7 @@ class APIState:
 						tracks_to_insert,
 					)
 					conn.commit()
-					logger.info(
-						f"Guardados {len(tracks_to_insert)} metadatos frescos en la base de datos."
-					)
+					logger.info(f"Guardados {len(tracks_to_insert)} metadatos frescos en la base de datos.")
 			except Exception as e:
 				logger.error(f"Error guardando tracks en la DB: {e}")
 
@@ -1690,9 +1598,7 @@ class APIState:
 	async def handle_mpv_restarted(self):
 		"""Si MPV se muere y revive, le devolvemos la memoria de lo que estaba sonando."""
 		if self.current_track:
-			logger.info(
-				"El MPV revivió. Volviéndole a cargar el temita que estaba sonando..."
-			)
+			logger.info("El MPV revivió. Volviéndole a cargar el temita que estaba sonando...")
 
 			self.last_track_change = time.time()
 
@@ -1704,19 +1610,11 @@ class APIState:
 				)
 			)
 			# Le devolvemos su estado de pausa y volumen
-			await self.mpv._send(
-				json.dumps({"command": ["set_property", "pause", self.mpv_paused]})
-			)
-			await self.mpv._send(
-				json.dumps({"command": ["set_property", "volume", self.volume]})
-			)
-			await self.mpv._send(
-				json.dumps({"command": ["set_property", "mute", self.server_muted]})
-			)
+			await self.mpv._send(json.dumps({"command": ["set_property", "pause", self.mpv_paused]}))
+			await self.mpv._send(json.dumps({"command": ["set_property", "volume", self.volume]}))
+			await self.mpv._send(json.dumps({"command": ["set_property", "mute", self.server_muted]}))
 			if self.time_pos > 0:
-				await self.mpv._send(
-					json.dumps({"command": ["seek", self.time_pos, "absolute"]})
-				)
+				await self.mpv._send(json.dumps({"command": ["seek", self.time_pos, "absolute"]}))
 
 	async def handle_track_stopped(self):
 		# Si cambiamos de tema hace menos de medio segundo,
@@ -1769,9 +1667,7 @@ class APIState:
 		if self.dj_countdown_task and not self.dj_countdown_task.done():
 			self.dj_countdown_task.cancel()
 			self.dj_countdown_task = None
-			logger.info(
-				"Countdown del DJ Carpincho cancelado por nueva acción del usuario."
-			)
+			logger.info("Countdown del DJ Carpincho cancelado por nueva acción del usuario.")
 
 		# Si MPV está cerrado o en coma, lo forzamos a arrancar ANTES de tocar el estado (current_track)
 		# Así evitamos que handle_mpv_restarted se maree y mande doble loadfile.
@@ -1792,9 +1688,7 @@ class APIState:
 			await self.mpv._send('{"command": ["set_property", "force-window", "yes"]}')
 
 		# Usamos json.dumps() con ensure_ascii=False para mandar acentos (ñ, tildes) en crudo y evitar marear a MPV
-		cmd_payload = json.dumps(
-			{"command": ["loadfile", str_path]}, ensure_ascii=False
-		)
+		cmd_payload = json.dumps({"command": ["loadfile", str_path]}, ensure_ascii=False)
 		await self.mpv._send(cmd_payload)
 		await self.mpv._send(json.dumps({"command": ["set_property", "pause", False]}))
 
@@ -1814,53 +1708,33 @@ class APIState:
 			self.current_track = None
 
 		# Verificamos si tocaba pausar después del track que acaba de terminar
-		should_pause = (self.pause_after_path is not None) and (
-			just_finished == self.pause_after_path
-		)
+		should_pause = (self.pause_after_path is not None) and (just_finished == self.pause_after_path)
 		if should_pause:
 			self.pause_after_path = None
 
 		if self.queue:
 			next_path = self.queue.pop(0)
-			self.dj_next_track = (
-				None  # Limpiamos (si la fila tenía temas, el DJ no pre-eligió)
-			)
+			self.dj_next_track = None  # Limpiamos (si la fila tenía temas, el DJ no pre-eligió)
 			await self.play_track(next_path)
 			if should_pause:
 				self.mpv_paused = True
-				await self.mpv._send(
-					json.dumps({"command": ["set_property", "pause", True]})
-				)
+				await self.mpv._send(json.dumps({"command": ["set_property", "pause", True]}))
 		elif self.dj_carpincho_enabled and self.tracks_cache:
 			# Usamos la pre-elección del DJ si existe; sino elegimos ahora
 			if self.dj_next_track:
 				chosen = self.dj_next_track
 			else:
 				played_paths = set(self.history)
-				unplayed = [
-					t for t in self.tracks_cache if t["path"] not in played_paths
-				]
+				unplayed = [t for t in self.tracks_cache if t["path"] not in played_paths]
 
 				if unplayed:
 					if self.dj_safe_mode:
-						favs = [
-							t
-							for t in unplayed
-							if self.path_to_id.get(t["path"]) in self.favorites
-						]
-						normals = [
-							t
-							for t in unplayed
-							if self.path_to_id.get(t["path"]) not in self.favorites
-						]
+						favs = [t for t in unplayed if self.path_to_id.get(t["path"]) in self.favorites]
+						normals = [t for t in unplayed if self.path_to_id.get(t["path"]) not in self.favorites]
 
 						if favs and normals:
 							# ¡90% de chances clavadas de sacar un temazo!
-							chosen = (
-								random.choice(favs)
-								if random.random() < 0.90
-								else random.choice(normals)
-							)
+							chosen = random.choice(favs) if random.random() < 0.90 else random.choice(normals)
 						elif favs:
 							chosen = random.choice(favs)
 						else:
@@ -1884,19 +1758,11 @@ class APIState:
 					# Guardamos el countdown como task cancelable
 					self.dj_countdown_task = asyncio.current_task()
 					try:
-						await self.mpv._send(
-							json.dumps({"command": ["set_property", "pause", True]})
-						)
-						await asyncio.sleep(
-							10
-						)  # Pausa de 10 segundos antes de que el DJ arranque
-						await self.mpv._send(
-							json.dumps({"command": ["set_property", "pause", False]})
-						)
+						await self.mpv._send(json.dumps({"command": ["set_property", "pause", True]}))
+						await asyncio.sleep(10)  # Pausa de 10 segundos antes de que el DJ arranque
+						await self.mpv._send(json.dumps({"command": ["set_property", "pause", False]}))
 					except asyncio.CancelledError:
-						logger.info(
-							"Countdown del DJ cancelado, no se reproduce el tema pre-elegido."
-						)
+						logger.info("Countdown del DJ cancelado, no se reproduce el tema pre-elegido.")
 						if self.dj_next_track == chosen:
 							self.dj_next_track = None
 						return
@@ -1906,16 +1772,12 @@ class APIState:
 					# Skip manual, tocamos de una (respetando si tocaba pausar)
 					await self.play_track(chosen["path"])
 
-				self.dj_next_track = (
-					None  # Ahora sí borramos: el tema está por arrancar
-				)
+				self.dj_next_track = None  # Ahora sí borramos: el tema está por arrancar
 
 				await self.play_track(chosen["path"])
 				if should_pause:
 					self.mpv_paused = True
-					await self.mpv._send(
-						json.dumps({"command": ["set_property", "pause", True]})
-					)
+					await self.mpv._send(json.dumps({"command": ["set_property", "pause", True]}))
 				# Pre-elegimos el siguiente para el front
 				self._pick_dj_next()
 				return
@@ -1925,9 +1787,7 @@ class APIState:
 				self.dj_next_track = None
 				self.current_track = None
 				await self.mpv._send('{"command": ["stop"]}')
-				await self.mpv._send(
-					'{"command": ["set_property", "force-window", "no"]}'
-				)
+				await self.mpv._send('{"command": ["set_property", "force-window", "no"]}')
 		else:
 			# Sin fila ni DJ: frena
 			self.dj_next_track = None
@@ -1961,23 +1821,11 @@ class APIState:
 
 			if unplayed:
 				if self.dj_safe_mode:
-					favs = [
-						t
-						for t in unplayed
-						if self.path_to_id.get(t["path"]) in self.favorites
-					]
-					normals = [
-						t
-						for t in unplayed
-						if self.path_to_id.get(t["path"]) not in self.favorites
-					]
+					favs = [t for t in unplayed if self.path_to_id.get(t["path"]) in self.favorites]
+					normals = [t for t in unplayed if self.path_to_id.get(t["path"]) not in self.favorites]
 
 					if favs and normals:
-						chosen = (
-							random.choice(favs)
-							if random.random() < 0.90
-							else random.choice(normals)
-						)
+						chosen = random.choice(favs) if random.random() < 0.90 else random.choice(normals)
 					elif favs:
 						chosen = random.choice(favs)
 					else:
@@ -2095,14 +1943,10 @@ async def lifespan(app: FastAPI):
 			state.mpris_player = MPRISPlayer(state)
 			bus.export("/org/mpris/MediaPlayer2", state.mpris_root)
 			bus.export("/org/mpris/MediaPlayer2", state.mpris_player)
-			await bus.request_name(
-				f"org.mpris.MediaPlayer2.carpincho.instance{os.getpid()}"
-			)
+			await bus.request_name(f"org.mpris.MediaPlayer2.carpincho.instance{os.getpid()}")
 			state.mpris_bus = bus
 			state.mpris_registered = True
-			logger.info(
-				"Carpincho registrado en DBus MPRIS. Podés controlarlo con las teclas multimedia."
-			)
+			logger.info("Carpincho registrado en DBus MPRIS. Podés controlarlo con las teclas multimedia.")
 		except Exception as e:
 			logger.warning(
 				f"No se pudo registrar DBus MPRIS (quizás corrés sin entorno de escritorio). MPV usará su sistema nativo. Error: {e}"
@@ -2135,6 +1979,7 @@ app.add_middleware(
 	allow_headers=["*"],
 )
 
+
 # Automatizar 'npm run build' antes de que el servidor responda
 def build_frontend():
 	if frontend_dir.exists() and (frontend_dir / "package.json").exists():
@@ -2165,6 +2010,7 @@ def build_frontend():
 			sys.exit(1)
 	else:
 		print("⚠️ No se encontró la carpeta del frontend o el package.json. Seguimos sin compilar el front.")
+
 
 # Definimos las rutas a la carpeta 'dist' que genera Vite
 base_dir = Path(__file__).resolve().parent
@@ -2206,7 +2052,7 @@ async def serve_favicon():
 		media_type="image/png",
 		headers={
 			"Cache-Control": "public, max-age=604800"  # Cacheado por 7 días
-		}
+		},
 	)
 
 
@@ -2239,10 +2085,7 @@ async def get_library():
 
 	# Creamos una versión limpia de la librería filtrando el fingerprint
 	keys_to_exclude = {"fingerprint", "bpm", "energy", "spectral_centroid"}
-	clean_library = [
-		{k: v for k, v in track.items() if k not in keys_to_exclude}
-		for track in state.tracks_cache
-	]
+	clean_library = [{k: v for k, v in track.items() if k not in keys_to_exclude} for track in state.tracks_cache]
 
 	return {"data": clean_library}
 
@@ -2250,9 +2093,7 @@ async def get_library():
 @app.get("/scan")
 async def scan_library(dir: str = None, dir2: str = None):
 	while state.is_scanning:
-		logger.info(
-			"Alguien pidió escanear pero ya hay un escaneo en curso, esperando un toque..."
-		)
+		logger.info("Alguien pidió escanear pero ya hay un escaneo en curso, esperando un toque...")
 		await asyncio.sleep(0.5)
 
 	target1_raw = dir or state.initial_dir or "~/Music"
@@ -2262,9 +2103,7 @@ async def scan_library(dir: str = None, dir2: str = None):
 	if target2_raw:
 		target_dirs.append(str(Path(target2_raw).expanduser().resolve()))
 
-	logger.info(
-		f"Escaneando {target_dirs} (Aprovechando el caché inteligente por archivo)..."
-	)
+	logger.info(f"Escaneando {target_dirs} (Aprovechando el caché inteligente por archivo)...")
 
 	# Prendemos el "Cargando" y le avisamos al front
 	state.is_scanning = True
@@ -2307,15 +2146,13 @@ async def serve_cover(path: str = Query(...)):
 					break
 			if not cover_data and "covr" in audio.tags:  # M4A Tag
 				cover_data = audio.tags["covr"][0]
-				mime_type = (
-					"image/jpeg" if cover_data.startswith(b"\xff\xd8") else "image/png"
-				)
+				mime_type = "image/jpeg" if cover_data.startswith(b"\xff\xd8") else "image/png"
 
 		if cover_data:
 			return Response(
 				content=cover_data,
 				media_type=mime_type,
-				headers={"Cache-Control": "public, max-age=604800"} # <-- Agregado para cachear por 7 días
+				headers={"Cache-Control": "public, max-age=604800"},  # <-- Agregado para cachear por 7 días
 			)
 	except Exception as e:
 		logger.debug(f"Pifió sacando la tapa de {path}: {e}")
@@ -2327,9 +2164,7 @@ async def serve_cover(path: str = Query(...)):
 async def stream_audio(path: str = Query(...)):
 	"""Endpoint para mandarle la música al navegador del cliente si quiere escuchar ahí."""
 	# Validar que el path exista en nuestra librería para no servir archivos confidenciales
-	if path not in state.path_to_id and not any(
-		t["path"] == path for t in state.tracks_cache
-	):
+	if path not in state.path_to_id and not any(t["path"] == path for t in state.tracks_cache):
 		return Response(status_code=404)
 	# FileResponse en Starlette maneja encabezados 'Range' si el browser los pide
 	return FileResponse(path)
@@ -2338,9 +2173,7 @@ async def stream_audio(path: str = Query(...)):
 @app.get("/lrc")
 async def serve_lrc(path: str = Query(...)):
 	"""Sirve el archivo .lrc local si existe junto a la pista original."""
-	if path not in state.path_to_id and not any(
-		t["path"] == path for t in state.tracks_cache
-	):
+	if path not in state.path_to_id and not any(t["path"] == path for t in state.tracks_cache):
 		return Response(status_code=404)
 
 	lrc_path = Path(path).with_suffix(".lrc")
@@ -2353,9 +2186,8 @@ async def serve_lrc(path: str = Query(...)):
 		media_type="text/plain",
 		headers={
 			"Cache-Control": "public, max-age=600, must-revalidate",
-		}
+		},
 	)
-
 
 
 class CommandRequest(BaseModel):
@@ -2387,9 +2219,7 @@ async def handle_command(req: CommandRequest):
 		else:
 			# Comportamiento normal: pausa o despausa el tema actual
 			state.mpv_paused = not state.mpv_paused
-			cmd_payload = json.dumps(
-				{"command": ["set_property", "pause", state.mpv_paused]}
-			)
+			cmd_payload = json.dumps({"command": ["set_property", "pause", state.mpv_paused]})
 			await state.mpv._send(cmd_payload)
 	elif cmd == "skip":
 		await state.play_next(skipped_by_user=True)
@@ -2418,16 +2248,12 @@ async def handle_command(req: CommandRequest):
 	elif cmd == "set_volume":
 		if req.vollevel is not None:
 			state.volume = max(0, min(110, req.vollevel))
-			cmd_payload = json.dumps(
-				{"command": ["set_property", "volume", state.volume]}
-			)
+			cmd_payload = json.dumps({"command": ["set_property", "volume", state.volume]})
 			await state.mpv._send(cmd_payload)
 	elif cmd == "set_mute":
 		if req.state is not None:
 			state.server_muted = req.state
-			cmd_payload = json.dumps(
-				{"command": ["set_property", "mute", state.server_muted]}
-			)
+			cmd_payload = json.dumps({"command": ["set_property", "mute", state.server_muted]})
 			await state.mpv._send(cmd_payload)
 	elif cmd == "fullscreen":
 		await state.mpv._send('{"command": ["cycle", "fullscreen"]}')
@@ -2468,9 +2294,7 @@ async def handle_command(req: CommandRequest):
 					}
 				)
 				# También buscamos en MPV para mantenerlo en sincronía
-				await state.mpv._send(
-					json.dumps({"command": ["seek", req.amount, "absolute"]})
-				)
+				await state.mpv._send(json.dumps({"command": ["seek", req.amount, "absolute"]}))
 				state.time_pos = req.amount
 			else:
 				cmd_payload = json.dumps({"command": ["seek", req.amount, "absolute"]})
@@ -2484,9 +2308,7 @@ async def handle_command(req: CommandRequest):
 				with sqlite3.connect(DB_PATH) as conn:
 					if track_id in state.favorites:
 						state.favorites.remove(track_id)
-						conn.execute(
-							"DELETE FROM favorites WHERE track_id = ?", (track_id,)
-						)
+						conn.execute("DELETE FROM favorites WHERE track_id = ?", (track_id,))
 					else:
 						state.favorites.append(track_id)
 						conn.execute(
@@ -2500,9 +2322,7 @@ async def handle_command(req: CommandRequest):
 		state.dj_carpincho_enabled = not state.dj_carpincho_enabled
 		logger.info(f"DJ Carpincho cambiado a: {state.dj_carpincho_enabled}")
 		if state.dj_carpincho_enabled and not state.current_track:
-			logger.info(
-				"DJ Carpincho se activó y no hay tema sonando, arrancando la música..."
-			)
+			logger.info("DJ Carpincho se activó y no hay tema sonando, arrancando la música...")
 			await state.play_next(skipped_by_user=True)
 		else:
 			state._pick_dj_next()  # Actualiza (o limpia) la pre-elección inmediatamente
@@ -2522,9 +2342,7 @@ async def handle_command(req: CommandRequest):
 			state._pick_dj_next()
 	elif cmd == "move_queue_item":
 		if req.index is not None and req.new_index is not None:
-			if 0 <= req.index < len(state.queue) and 0 <= req.new_index < len(
-				state.queue
-			):
+			if 0 <= req.index < len(state.queue) and 0 <= req.new_index < len(state.queue):
 				item = state.queue.pop(req.index)
 				state.queue.insert(req.new_index, item)
 			state._pick_dj_next()
@@ -2560,22 +2378,15 @@ async def websocket_endpoint(websocket: WebSocket):
 			if msg_type == "local_player_claim":
 				# El cliente quiere convertirse en el reproductor local
 				ok = manager.claim_local_player(websocket)
-				await websocket.send_json(
-					{"type": "local_player_claim_result", "ok": ok}
-				)
+				await websocket.send_json({"type": "local_player_claim_result", "ok": ok})
 				if not ok:
-					logger.info(
-						f"Rechazamos solicitud de reproductor local de {client_host}: ya hay otro."
-					)
+					logger.info(f"Rechazamos solicitud de reproductor local de {client_host}: ya hay otro.")
 
 			elif msg_type == "local_player_release":
 				# El cliente deja de reproducir localmente
 				manager.release_local_player(websocket)
 
-			elif (
-				msg_type == "local_player_update"
-				and manager.local_player_ws is websocket
-			):
+			elif msg_type == "local_player_update" and manager.local_player_ws is websocket:
 				# El reproductor local nos manda su estado — lo aplicamos al estado global
 				# y lo rebroadcasteamos a todos sin mandárselo al MPV.
 				changed = False
@@ -2588,19 +2399,12 @@ async def websocket_endpoint(websocket: WebSocket):
 					# Solo sincronizamos si la deriva *cambió* significativamente,
 					# para no spamear a MPV cuando la diferencia es estable.
 					if abs(state.time_pos - new_pos) > 5.0:
-						current_drift = (
-							new_pos - state.time_pos
-						)  # positivo = local va adelante
-						if (
-							state.last_seek_drift is None
-							or abs(current_drift - state.last_seek_drift) > 1.0
-						):
+						current_drift = new_pos - state.time_pos  # positivo = local va adelante
+						if state.last_seek_drift is None or abs(current_drift - state.last_seek_drift) > 1.0:
 							logger.debug(
 								f"Deriva cambiada (antes: {state.last_seek_drift}, ahora: {current_drift:.1f}s) — enviando seek a MPV..."
 							)
-							await state.mpv._send(
-								json.dumps({"command": ["seek", new_pos, "absolute"]})
-							)
+							await state.mpv._send(json.dumps({"command": ["seek", new_pos, "absolute"]}))
 							state.last_seek_drift = current_drift
 					else:
 						state.last_seek_drift = None  # Sincronizados, reseteamos
@@ -2620,9 +2424,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
 				if msg.get("song_ended"):
 					# La canción terminó en el browser — avanzamos la fila igual que cuando termina en MPV
-					logger.info(
-						"El reproductor local avisó que terminó la canción. Avanzando fila..."
-					)
+					logger.info("El reproductor local avisó que terminó la canción. Avanzando fila...")
 					if state.current_track:
 						state._register_play_stat(state.current_track)
 					await state.play_next(skipped_by_user=False)
@@ -2636,9 +2438,7 @@ async def websocket_endpoint(websocket: WebSocket):
 				logger.debug(f"WS Mensajito de {client_host}: {raw}")
 
 	except WebSocketDisconnect:
-		logger.info(
-			f"CLIENTE DESCONECTADO: Se nos fue {client_host}, se habrá quedado sin agua en el termo."
-		)
+		logger.info(f"CLIENTE DESCONECTADO: Se nos fue {client_host}, se habrá quedado sin agua en el termo.")
 		manager.disconnect(websocket)
 
 
