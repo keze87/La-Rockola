@@ -75,7 +75,7 @@ def check_dependencies():
 			print(f"  - [Opcional] {mod:<10} -> {fix}", file=sys.stderr)
 		for bin_name, fix in missing_opt_sys:
 			print(f"  - [Opcional] {bin_name:<10} -> {fix}", file=sys.stderr)
-		print("", file=sys.stderr)
+		print(file=sys.stderr)
 
 	# Si falta algo REQUERIDO, frenamos acá
 	if missing_req_py or missing_req_sys:
@@ -140,7 +140,7 @@ try:
 
 	soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
 	resource.setrlimit(resource.RLIMIT_NOFILE, (hard, hard))
-except Exception:
+except (ImportError, OSError, ValueError, AttributeError):
 	pass  # En Windows o si no hay permisos, seguimos viaje igual
 
 # --- 3. INICIALIZAMOS LA BASE DE DATOS (SQLITE) ---
@@ -365,8 +365,8 @@ def get_cover_art_uri(path: str) -> str:
 			with open(tmp_cover, "wb") as f:
 				f.write(cover_data)
 			return f"file://{tmp_cover}"
-	except Exception:
-		pass
+	except Exception as e:
+		logger.debug(f"Pifió extrayendo la portada: {e}")
 	return ""
 
 
@@ -468,6 +468,7 @@ class Track:
 					capture_output=True,
 					text=True,
 					timeout=10,
+					check=False,
 				)
 				for line in proc.stdout.splitlines():
 					if line.startswith("FINGERPRINT="):
@@ -566,7 +567,7 @@ class AsyncMpvController:
 			try:
 				self.process.kill()
 				await asyncio.wait_for(self.process.wait(), timeout=1.0)
-			except Exception:
+			except (ProcessLookupError, asyncio.TimeoutError, OSError):
 				pass
 
 	async def start(self):
@@ -803,6 +804,8 @@ class AsyncMpvController:
 
 
 # --- DBUS / MPRIS Classes ---
+b = s = d = x = o = str  # noqa: N816 - DBus signature aliases for static analysis
+
 if DBUS_AVAILABLE:
 
 	class MPRISRoot(ServiceInterface):
@@ -1186,7 +1189,7 @@ class APIState:
 
 	def _register_play_stat(self, path):
 		str_path = str(path)
-		if not (str_path.startswith("http://") or str_path.startswith("https://")):
+		if not str_path.startswith(("http://", "https://")):
 			track_id = self.path_to_id.get(str_path, str_path)
 			now = time.time()
 
@@ -1330,7 +1333,7 @@ class APIState:
 				stat = f.stat()
 				current_mtime = stat.st_mtime
 				current_size = stat.st_size
-			except Exception:
+			except OSError:
 				continue
 
 			# 1. Miramos si está en memoria (escaneo en caliente)
@@ -1418,7 +1421,7 @@ class APIState:
 					return None
 				try:
 					return [int(x) for x in fp_str.split(",")]
-				except:
+				except (ValueError, TypeError, AttributeError):
 					return None
 
 			def compare_fps(fp1, fp2):
@@ -1428,7 +1431,7 @@ class APIState:
 				if min_len < 10:
 					return 0.0
 
-				diff_bits = sum(bin((fp1[i] ^ fp2[i]) & 0xFFFFFFFF).count("1") for i in range(min_len))
+				diff_bits = sum(((fp1[i] ^ fp2[i]) & 0xFFFFFFFF).bit_count() for i in range(min_len))
 				return 1.0 - (diff_bits / (min_len * 32))
 
 			for new_t in new_tracks_for_reconciliation:
@@ -1680,7 +1683,7 @@ class APIState:
 		self.last_track_change = time.time()
 
 		str_path = str(path)
-		if str_path.startswith("http://") or str_path.startswith("https://"):
+		if str_path.startswith(("http://", "https://")):
 			# Si es un link de YouTube o internet, lo mandamos al log especial apenas arranca
 			self._log_url(str_path)
 
@@ -2091,7 +2094,7 @@ async def get_library():
 
 
 @app.get("/scan")
-async def scan_library(dir: str = None, dir2: str = None):
+async def scan_library(dir: str | None = None, dir2: str | None = None):
 	while state.is_scanning:
 		logger.info("Alguien pidió escanear pero ya hay un escaneo en curso, esperando un toque...")
 		await asyncio.sleep(0.5)
@@ -2192,13 +2195,13 @@ async def serve_lrc(path: str = Query(...)):
 
 class CommandRequest(BaseModel):
 	cmd: str
-	path: str = None
-	type: str = None
-	index: int = None
-	vollevel: int = None
-	new_index: int = None
-	amount: float = None
-	state: bool = None
+	path: str | None = None
+	type: str | None = None
+	index: int | None = None
+	vollevel: int | None = None
+	new_index: int | None = None
+	amount: float | None = None
+	state: bool | None = None
 
 
 @app.post("/command")
