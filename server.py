@@ -560,15 +560,22 @@ class AsyncMpvController:
 		self.callbacks = callbacks  # Dict mapping event names to async handlers
 		self._start_lock = asyncio.Lock()
 
+	@property
+	def is_running(self) -> bool:
+		return self.process is not None and self.process.returncode is None
+
 	async def stop(self):
-		"""Mata el proceso de MPV cuando cerramos el servidor."""
+		"""Mata el proceso de MPV cuando cerramos el servidor o se frena la música."""
 		if self.process and self.process.returncode is None:
-			logger.info("Apagando la Rockola... mandando a dormir al MPV.")
+			logger.info("Mandando a dormir al MPV.")
 			try:
 				self.process.kill()
 				await asyncio.wait_for(self.process.wait(), timeout=1.0)
 			except (ProcessLookupError, asyncio.TimeoutError, OSError):
 				pass
+		self.process = None
+		self.reader = None
+		self.writer = None
 
 	async def start(self):
 		# Si ya hay otro proceso reiniciando MPV, nos quedamos en el molde y salimos
@@ -764,6 +771,8 @@ class AsyncMpvController:
 			pass
 
 	async def _send(self, cmd_payload: str):
+		if not self.is_running:
+			return
 		# logger.debug(f"Tirándole comando al MPV: \n {highlight_json(cmd_payload)}")
 		cmd_bytes = (cmd_payload + "\n").encode("utf-8")
 
@@ -779,8 +788,9 @@ class AsyncMpvController:
 			else:
 				if not self.writer:
 					await self.start()
-				self.writer.write(cmd_bytes)
-				await self.writer.drain()
+				if self.writer:
+					self.writer.write(cmd_bytes)
+					await self.writer.drain()
 		except Exception as e:
 			logger.error(f"Se cortó la conexión con MPV ({e}). Reiniciando el motor...")
 			await self.start()
@@ -1101,6 +1111,8 @@ class APIState:
 		self.mpris_bus = None
 		self.mpris_root = None
 		self.mpris_player = None
+		self.mpris_registered = False
+		self._mpris_lock = asyncio.Lock()
 
 		self.mpv = AsyncMpvController(
 			{
@@ -1176,6 +1188,28 @@ class APIState:
 					self.mpris_player.emit_properties_changed(changed)
 			except Exception as e:
 				logger.debug(f"Pifió actualizando propiedades MPRIS: {e}")
+
+	async def ensure_mpris(self):
+		"""Registra MPRIS en DBus al reproducir el primer tema."""
+		if self.mpris_registered or not DBUS_AVAILABLE:
+			return
+		async with self._mpris_lock:
+			if self.mpris_registered or not DBUS_AVAILABLE:
+				return
+			try:
+				bus = await MessageBus().connect()
+				self.mpris_root = MPRISRoot()
+				self.mpris_player = MPRISPlayer(self)
+				bus.export("/org/mpris/MediaPlayer2", self.mpris_root)
+				bus.export("/org/mpris/MediaPlayer2", self.mpris_player)
+				await bus.request_name(f"org.mpris.MediaPlayer2.carpincho.instance{os.getpid()}")
+				self.mpris_bus = bus
+				self.mpris_registered = True
+				logger.info("Carpincho registrado en DBus MPRIS. Podés controlarlo con las teclas multimedia.")
+			except Exception as e:
+				logger.warning(
+					f"No se pudo registrar DBus MPRIS (quizás corrés sin entorno de escritorio). MPV usará su sistema nativo. Error: {e}"
+				)
 
 	def _load_favs_from_db(self):
 		try:
@@ -1672,9 +1706,11 @@ class APIState:
 			self.dj_countdown_task = None
 			logger.info("Countdown del DJ Carpincho cancelado por nueva acción del usuario.")
 
-		# Si MPV está cerrado o en coma, lo forzamos a arrancar ANTES de tocar el estado (current_track)
-		# Así evitamos que handle_mpv_restarted se maree y mande doble loadfile.
-		if not self.mpv.writer and not self.mpv.is_windows:
+		# Si aún no inicializamos MPRIS, lo registramos al reproducir la primera canción
+		await self.ensure_mpris()
+
+		# Si MPV no está corriendo, lo arrancamos acá al empezar a reproducir
+		if not self.mpv.is_running:
 			await self.mpv.start()
 
 		self.current_track = path
@@ -1937,27 +1973,6 @@ async def broadcast_state(include_library=False):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-	state.mpris_registered = False
-
-	if DBUS_AVAILABLE:
-		try:
-			bus = await MessageBus().connect()
-			state.mpris_root = MPRISRoot()
-			state.mpris_player = MPRISPlayer(state)
-			bus.export("/org/mpris/MediaPlayer2", state.mpris_root)
-			bus.export("/org/mpris/MediaPlayer2", state.mpris_player)
-			await bus.request_name(f"org.mpris.MediaPlayer2.carpincho.instance{os.getpid()}")
-			state.mpris_bus = bus
-			state.mpris_registered = True
-			logger.info("Carpincho registrado en DBus MPRIS. Podés controlarlo con las teclas multimedia.")
-		except Exception as e:
-			logger.warning(
-				f"No se pudo registrar DBus MPRIS (quizás corrés sin entorno de escritorio). MPV usará su sistema nativo. Error: {e}"
-			)
-
-	# Startup logic - Arrancamos MPV DESPUÉS de saber si DBus funciona para pasarle los flags correctos
-	await state.mpv.start()
-
 	# Hacemos el backup semanal de la base de datos (por si las moscas)
 	await asyncio.to_thread(backup_db)
 
@@ -2061,20 +2076,22 @@ async def serve_favicon():
 
 @app.post("/mpv/hide")
 async def mpv_hide():
-	"""Reinicia MPV con la ventana oculta."""
+	"""Reinicia MPV con la ventana oculta si está activo."""
 	state.mpv_visible = False
-	logger.info("Reiniciando MPV para ocultar la ventana...")
-	await state.mpv.start()  # start() matará el proceso viejo y leerá mpv_visible
+	if state.mpv.is_running:
+		logger.info("Reiniciando MPV para ocultar la ventana...")
+		await state.mpv.start()
 	await broadcast_state()
 	return {"status": "ok"}
 
 
 @app.post("/mpv/show")
 async def mpv_show():
-	"""Reinicia MPV con la ventana visible."""
+	"""Reinicia MPV con la ventana visible si está activo."""
 	state.mpv_visible = True
-	logger.info("Reiniciando MPV para mostrar la ventana...")
-	await state.mpv.start()  # start() matará el proceso viejo y leerá mpv_visible
+	if state.mpv.is_running:
+		logger.info("Reiniciando MPV para mostrar la ventana...")
+		await state.mpv.start()
 	await broadcast_state()
 	return {"status": "ok"}
 
