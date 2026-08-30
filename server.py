@@ -577,7 +577,7 @@ class AsyncMpvController:
 		self.reader = None
 		self.writer = None
 
-	async def start(self):
+	async def start(self, is_restart: bool = False):
 		# Si ya hay otro proceso reiniciando MPV, nos quedamos en el molde y salimos
 		if self._start_lock.locked():
 			async with self._start_lock:
@@ -690,8 +690,8 @@ class AsyncMpvController:
 				await self._send(json.dumps({"command": ["observe_property", 4, "duration"]}))
 				await self._send(json.dumps({"command": ["observe_property", 5, "mute"]}))
 
-			# Si hay un callback de reinicio, avisamos que ya estamos listos para recibir los datos de nuevo
-			if "mpv_restarted" in self.callbacks:
+			# Si hay un callback de reinicio y fue un reinicio explícito, avisamos que ya estamos listos para recibir los datos de nuevo
+			if is_restart and "mpv_restarted" in self.callbacks:
 				asyncio.create_task(self.callbacks["mpv_restarted"]())
 
 	async def _read_ipc_events_windows(self):
@@ -793,7 +793,7 @@ class AsyncMpvController:
 					await self.writer.drain()
 		except Exception as e:
 			logger.error(f"Se cortó la conexión con MPV ({e}). Reiniciando el motor...")
-			await self.start()
+			await self.start(is_restart=True)
 
 			# ¡REINTENTO! Para no perder el comando que estábamos por mandar
 			try:
@@ -1678,11 +1678,11 @@ class APIState:
 				await self.mpv._send(json.dumps({"command": ["seek", self.time_pos, "absolute"]}))
 
 	async def handle_track_stopped(self):
-		# Si cambiamos de tema hace menos de medio segundo,
+		# Si cambiamos de tema hace menos de 1.5 segundos,
 		# este "stop" es del tema viejo muriendo. Lo ignoramos.
-		if time.time() - getattr(self, "last_track_change", 0) < 0.5:
+		if time.time() - getattr(self, "last_track_change", 0) < 1.5:
 			logger.info(
-				"Recibí un 'stop' pero el tema cambió hace menos de 0.5s, asumo que es el viejo muriendo, ignoro."
+				"Recibí un 'stop' pero el tema cambió hace menos de 1.5s, asumo que es el viejo muriendo, ignoro."
 			)
 			return
 		self.current_track = None
@@ -2106,7 +2106,7 @@ async def mpv_hide():
 	state.mpv_visible = False
 	if state.mpv.is_running:
 		logger.info("Reiniciando MPV para ocultar la ventana...")
-		await state.mpv.start()
+		await state.mpv.start(is_restart=True)
 	await broadcast_state()
 	return {"status": "ok"}
 
@@ -2117,7 +2117,7 @@ async def mpv_show():
 	state.mpv_visible = True
 	if state.mpv.is_running:
 		logger.info("Reiniciando MPV para mostrar la ventana...")
-		await state.mpv.start()
+		await state.mpv.start(is_restart=True)
 	await broadcast_state()
 	return {"status": "ok"}
 

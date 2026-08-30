@@ -253,9 +253,17 @@ export function useLocalPlayback() {
 
 		// 4. Handle OS Audio Focus Loss (e.g. another app starts playing or incoming call)
 		useEventListener(localPlayerRef, 'pause', () => {
-			if (listenLocally.value && !isChangingTrack.value && !isPaused.value) {
+			const lp = localPlayerRef.value;
+			if (
+				listenLocally.value &&
+				!isChangingTrack.value &&
+				!isPaused.value &&
+				lp &&
+				!lp.ended &&
+				(lp.duration ? lp.currentTime < lp.duration - 0.5 : true)
+			) {
 				// Browser paused HTML5 audio due to lost focus -> sync state with server
-				pause();
+				_sendLocalPlayerUpdate({ paused: true });
 			}
 		});
 
