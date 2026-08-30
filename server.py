@@ -407,6 +407,26 @@ def generate_smart_hash(filepath, chunk_size=1024 * 1024):
 		return hashlib.md5(str(filepath).encode("utf-8")).hexdigest()
 
 
+def parse_fp(fp_str: str | None) -> list[int] | None:
+	if not fp_str:
+		return None
+	try:
+		return [int(x) for x in fp_str.split(",")]
+	except (ValueError, TypeError, AttributeError):
+		return None
+
+
+def compare_fps(fp1: list[int] | None, fp2: list[int] | None) -> float:
+	if not fp1 or not fp2:
+		return 0.0
+	min_len = min(len(fp1), len(fp2))
+	if min_len < 10:
+		return 0.0
+
+	diff_bits = sum(((fp1[i] ^ fp2[i]) & 0xFFFFFFFF).bit_count() for i in range(min_len))
+	return 1.0 - (diff_bits / (min_len * 32))
+
+
 class Track:
 	"""Guarda la data y la ruta del temita."""
 
@@ -1473,24 +1493,6 @@ class APIState:
 			logger.info(
 				f"🔎 Reconciliando {len(new_tracks_for_reconciliation)} temas nuevos con {len(missing_db_tracks)} temas desaparecidos..."
 			)
-
-			def parse_fp(fp_str):
-				if not fp_str:
-					return None
-				try:
-					return [int(x) for x in fp_str.split(",")]
-				except (ValueError, TypeError, AttributeError):
-					return None
-
-			def compare_fps(fp1, fp2):
-				if not fp1 or not fp2:
-					return 0.0
-				min_len = min(len(fp1), len(fp2))
-				if min_len < 10:
-					return 0.0
-
-				diff_bits = sum(((fp1[i] ^ fp2[i]) & 0xFFFFFFFF).bit_count() for i in range(min_len))
-				return 1.0 - (diff_bits / (min_len * 32))
 
 			for new_t in new_tracks_for_reconciliation:
 				new_fp = parse_fp(new_t.get("fingerprint"))
