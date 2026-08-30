@@ -1642,6 +1642,11 @@ class APIState:
 
 	# Event handlers update the state, which clients will see on their next poll
 	async def handle_song_ended(self):
+		# Si hay un reproductor local activo, ÉL es quien manda el evento de canción terminada.
+		# Ignoramos el EOF de MPV para no avanzar la cola dos veces.
+		if manager.local_player_ws is not None:
+			return
+
 		# Si MPV nos mandó múltiples "canción terminada" al mismo tiempo, los ignoramos
 		if getattr(self, "processing_eof", False):
 			logger.debug("Ignorando evento EOF concurrente para no sumar puntos doble.")
@@ -1678,6 +1683,10 @@ class APIState:
 				await self.mpv._send(json.dumps({"command": ["seek", self.time_pos, "absolute"]}))
 
 	async def handle_track_stopped(self):
+		# Si hay un reproductor local activo, el cliente maneja el ciclo de vida
+		if manager.local_player_ws is not None:
+			return
+
 		# Si cambiamos de tema hace menos de 1.5 segundos,
 		# este "stop" es del tema viejo muriendo. Lo ignoramos.
 		if time.time() - getattr(self, "last_track_change", 0) < 1.5:

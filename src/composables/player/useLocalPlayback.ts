@@ -322,7 +322,9 @@ export function useLocalPlayback() {
 
 		// 3. Notify server when track ends (ONLY if listening locally)
 		watch(ended, (isEnded) => {
-			if (listenLocally.value && isEnded) _sendLocalPlayerUpdate({ song_ended: true });
+			if (listenLocally.value && isEnded && !isChangingTrack.value) {
+				_sendLocalPlayerUpdate({ song_ended: true });
+			}
 		});
 
 		// Clear transition flag when audio starts playing or encounters error
