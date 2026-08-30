@@ -1058,7 +1058,25 @@ class ConnectionManager:
 	async def broadcast(self, message: dict):
 		log_msg = message.copy()
 		if "library" in log_msg:
-			log_msg["library"] = f"<Librería omitida del log ({len(log_msg['library'])} temas)>"
+			count = len(log_msg["library"]) if isinstance(log_msg["library"], (list, dict)) else ""
+			log_msg["library"] = (
+				f"<Librería omitida del log ({count} temas)>" if count != "" else "<Librería omitida del log>"
+			)
+
+		if "top_played" in log_msg:
+			count = len(log_msg["top_played"]) if isinstance(log_msg["top_played"], (list, dict)) else ""
+			log_msg["top_played"] = (
+				f"<Top temas omitido del log ({count} temas)>" if count != "" else "<Top temas omitido del log>"
+			)
+
+		if "fingerprint" in log_msg:
+			log_msg["fingerprint"] = "<Fingerprint omitido del log>"
+
+		if "dj_next_track" in log_msg and isinstance(log_msg["dj_next_track"], dict):
+			dj_copy = log_msg["dj_next_track"].copy()
+			if "fingerprint" in dj_copy:
+				dj_copy["fingerprint"] = "<Fingerprint omitido del log>"
+			log_msg["dj_next_track"] = dj_copy
 
 		logger.debug(f"AVISANDO A LA MUCHACHADA:\n{highlight_json(log_msg)}")
 		for connection in self.active_connections.copy():
@@ -1136,11 +1154,18 @@ class APIState:
 			else:
 				active_favs.append(fav_id)
 
+		keys_to_exclude = {"fingerprint", "bpm", "energy", "spectral_centroid"}
+		clean_dj_next = (
+			{k: v for k, v in self.dj_next_track.items() if k not in keys_to_exclude}
+			if isinstance(self.dj_next_track, dict)
+			else self.dj_next_track
+		)
+
 		d = {
 			"current_track": self.current_track,
 			"dj_carpincho_enabled": self.dj_carpincho_enabled,
 			"dj_safe_mode": self.dj_safe_mode,
-			"dj_next_track": self.dj_next_track,
+			"dj_next_track": clean_dj_next,
 			"duration": self.duration,
 			"favorites": active_favs,
 			"history": list(self.history),
@@ -1158,7 +1183,6 @@ class APIState:
 
 		if include_library:
 			# Lista limpia filtrando fingerprints y métricas de mood
-			keys_to_exclude = {"fingerprint", "bpm", "energy", "spectral_centroid"}
 			d["library"] = [{k: v for k, v in track.items() if k not in keys_to_exclude} for track in self.tracks_cache]
 
 		return d
