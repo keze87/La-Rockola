@@ -1,4 +1,5 @@
 import { ref, computed, type Ref } from 'vue';
+import { apiUrl } from './useApi';
 
 interface LyricLine {
 	time: number;
@@ -26,7 +27,7 @@ export function useLyrics(player: { localTimePos: Ref<number> }) {
 		if (!path || path.startsWith('http')) return;
 
 		try {
-			const res = await fetch('/lrc?path=' + encodeURIComponent(path));
+			const res = await fetch(apiUrl('/lrc?path=' + encodeURIComponent(path)));
 
 			if (res.ok) {
 				const text = await res.text();

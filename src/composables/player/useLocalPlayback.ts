@@ -1,5 +1,6 @@
 import { ref, watch, watchEffect } from 'vue';
 import { useEventListener, useMediaControls, useTitle } from '@vueuse/core';
+import { apiUrl } from '../useApi';
 import { useCommands } from './useCommands';
 import { useLibrary } from './useLibrary';
 import { usePlaybackControls } from '../usePlaybackControls';
@@ -160,7 +161,7 @@ export function _startLocalPlayer(path: string) {
 	if (!lp) return;
 
 	markTrackChanging();
-	lp.src = '/stream?path=' + encodeURIComponent(path);
+	lp.src = apiUrl('/stream?path=' + encodeURIComponent(path));
 	lp.currentTime = 0;
 
 	if (!isPaused.value) {
@@ -277,7 +278,7 @@ export function useLocalPlayback() {
 			if (currentTrackPath.value) {
 				const info = getTrackInfo(currentTrackPath.value);
 				const artworkSrc = !currentTrackPath.value.startsWith('http')
-					? `${window.location.origin}/cover?path=${encodeURIComponent(currentTrackPath.value)}`
+					? `${window.location.origin}${apiUrl(`/cover?path=${encodeURIComponent(currentTrackPath.value)}`)}`
 					: null;
 
 				navigator.mediaSession.metadata = new MediaMetadata({

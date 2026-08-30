@@ -2061,6 +2061,8 @@ async def serve_index():
 @app.get("/favicon.png", include_in_schema=False)
 async def serve_favicon():
 	favicon_path = dist_dir / "favicon.png"
+	if not favicon_path.exists():
+		favicon_path = frontend_dir / "public" / "favicon.png"
 
 	if not favicon_path.exists():
 		return {"error": f"No encuentro el favicon en {favicon_path}"}
@@ -2475,4 +2477,4 @@ if __name__ == "__main__":
 	if args.dir2:
 		state.secondary_dir = args.dir2
 
-	uvicorn.run(app, host=args.host, port=args.port)
+	uvicorn.run(app, host=args.host, port=args.port, proxy_headers=True, forwarded_allow_ips="*")

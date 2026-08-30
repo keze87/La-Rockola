@@ -1,29 +1,32 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
+	<head>
+		<meta charset="UTF-8" />
+		<meta
+			name="viewport"
+			content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no"
+		/>
+		<!-- Tells the browser the page is in dark mode -->
+		<meta name="color-scheme" content="dark" />
+		<meta name="theme-color" content="#2b2622" />
 
-<head>
-	<meta charset="UTF-8" />
-	<meta name="viewport"
-		content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
-	<!-- Tells the browser the page is in dark mode -->
-	<meta name="color-scheme" content="dark" />
-	<meta name="theme-color" content="#2b2622">
+		<title>La Rockola del Carpincho 🦦🧉</title>
+		<link rel="icon" type="image/png" href="./favicon.png" />
 
-	<title>La Rockola del Carpincho 🦦🧉</title>
+		<!-- External Fonts & Icons -->
+		<link
+			href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,400;0,500;0,700;1,400;1,700&display=swap"
+			rel="stylesheet"
+		/>
+		<link href="https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap" rel="stylesheet" />
+		<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
+	</head>
 
-	<!-- External Fonts & Icons -->
-	<link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,400;0,500;0,700;1,400;1,700&display=swap"
-		rel="stylesheet">
-	<link href="https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap" rel="stylesheet">
-	<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-</head>
+	<body class="text-carpincho-text font-sans antialiased">
+		<!-- Vue attaches your application here -->
+		<div id="app"></div>
 
-<body class="text-carpincho-text font-sans antialiased">
-	<!-- Vue attaches your application here -->
-	<div id="app"></div>
-
-	<!-- Vite injects the compiled application through this module -->
-	<script type="module" src="/src/main.ts"></script>
-</body>
-
+		<!-- Vite injects the compiled application through this module -->
+		<script type="module" src="/src/main.ts"></script>
+	</body>
 </html>

@@ -1,4 +1,5 @@
 import { ref, computed, toValue, type MaybeRefOrGetter } from 'vue';
+import { apiUrl } from './useApi';
 import type { Track } from '../types';
 
 // Shared global caches across the entire app
@@ -23,7 +24,7 @@ export function useCover(trackOrPath: MaybeRefOrGetter<Track | string | null>) {
 			return coverBlobCache.get(currentPath);
 		}
 
-		return `/cover?path=${encodeURIComponent(currentPath)}`;
+		return apiUrl(`/cover?path=${encodeURIComponent(currentPath)}`);
 	});
 
 	function onCoverError() {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 	import { computed, onMounted } from 'vue';
 	import { Toaster } from 'vue-sonner';
+	import { apiUrl } from './composables/useApi';
 	import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts';
 	import { useLyrics } from './composables/useLyrics';
 	import { usePlaybackControls } from './composables/usePlaybackControls';
@@ -160,7 +161,7 @@
 
 			<img
 				v-if="currentTrackPath && !currentTrackPath.startsWith('http') && !isScanning"
-				:src="'/cover?path=' + encodeURIComponent(currentTrackPath)"
+				:src="apiUrl('/cover?path=' + encodeURIComponent(currentTrackPath))"
 				class="h-10 w-10 shrink-0 rounded object-cover shadow-sm"
 				@error="hideBrokenCover"
 			/>

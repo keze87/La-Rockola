@@ -1,6 +1,7 @@
 import { _startLocalPlayer, applyRemoteSeek } from './useLocalPlayback';
 import { usePlaybackControls } from '../usePlaybackControls';
 import { useToasts } from './useToasts';
+import { getWsUrl } from '../useApi';
 import { useWebSocket } from '@vueuse/core';
 import {
 	currentTrackPath,
@@ -40,8 +41,7 @@ export function useSocket() {
 		// Evitamos abrir múltiples conexiones si ya está instanciado
 		if (isSocketConnected()) return;
 
-		const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-		const wsUrl = `${protocol}//${window.location.host}/ws`;
+		const wsUrl = getWsUrl('/ws');
 
 		// VueUse se encarga del auto-reconnect, backoff exponencial y limpieza
 		const { send } = useWebSocket(wsUrl, {
