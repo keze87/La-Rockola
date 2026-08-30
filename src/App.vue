@@ -101,7 +101,7 @@
 
 <template>
 	<!-- Reproductor interno para escuchar en el cliente -->
-	<audio ref="localPlayerRef" style="display: none" />
+	<audio ref="localPlayerRef" preload="auto" style="display: none" />
 
 	<!-- TOASTS -->
 	<Toaster

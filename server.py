@@ -2213,7 +2213,20 @@ async def stream_audio(path: str = Query(...)):
 	if path not in state.path_to_id and not any(t["path"] == path for t in state.tracks_cache):
 		return Response(status_code=404)
 	# FileResponse en Starlette maneja encabezados 'Range' si el browser los pide
-	return FileResponse(path)
+	return FileResponse(
+		path,
+		headers={
+			# Allow clients (like browsers or audio players) to request partial content.
+			# This is essential for streaming audio and resuming playback.
+			"Accept-Ranges": "bytes",
+			# Cache-Control directives:
+			# "public" → allows caching by browsers and CDNs.
+			# "max-age=86400" → cache the audio file for 1 day (86400 seconds).
+			# "stale-while-revalidate=172800" → if the cache is stale, clients can
+			# still serve it for up to 2 days (172800 seconds) while revalidating in the background.
+			"Cache-Control": "public, max-age=86400, stale-while-revalidate=172800",
+		},
+	)
 
 
 @app.get("/lrc")

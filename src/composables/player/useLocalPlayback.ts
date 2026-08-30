@@ -6,6 +6,8 @@ import { useLibrary } from './useLibrary';
 import { usePlaybackControls } from '../usePlaybackControls';
 import {
 	currentTrackPath,
+	djCarpinchoEnabled,
+	djNextTrack,
 	duration,
 	isDraggingSeek,
 	isPaused,
@@ -15,6 +17,7 @@ import {
 	localTimePos,
 	pauseAfterPath,
 	pendingSeekTime,
+	queueState,
 	sendRaw,
 	volume,
 } from './state';
@@ -155,20 +158,94 @@ export function clearTrackChanging() {
 	}
 }
 
+export function getBufferedAhead(lp: HTMLAudioElement): number {
+	const current = lp.currentTime || 0;
+	for (let i = 0; i < lp.buffered.length; i++) {
+		if (lp.buffered.start(i) <= current && current <= lp.buffered.end(i)) {
+			return lp.buffered.end(i) - current;
+		}
+	}
+	return 0;
+}
+
+let bufferWaitCleanup: (() => void) | null = null;
+
+export function playWhenBuffered(lp: HTMLAudioElement, minBufferSeconds = 6, maxWaitMs = 2500) {
+	if (bufferWaitCleanup) {
+		bufferWaitCleanup();
+		bufferWaitCleanup = null;
+	}
+
+	if (isPaused.value) return;
+
+	let started = false;
+
+	const doPlay = () => {
+		if (started || isPaused.value) return;
+		started = true;
+		if (bufferWaitCleanup) {
+			bufferWaitCleanup();
+			bufferWaitCleanup = null;
+		}
+		lp.play().catch(() => {});
+	};
+
+	const checkBuffer = () => {
+		if (started || isPaused.value) return;
+		const dur = lp.duration || 0;
+		const ahead = getBufferedAhead(lp);
+		const target = dur > 0 ? Math.min(minBufferSeconds, dur) : minBufferSeconds;
+
+		if (ahead >= target) {
+			doPlay();
+		}
+	};
+
+	const onCanPlayThrough = () => {
+		doPlay();
+	};
+
+	const onProgress = () => {
+		checkBuffer();
+	};
+
+	const onLoadedMetadata = () => {
+		checkBuffer();
+	};
+
+	// Fallback safety timeout: never stall indefinitely if the connection is slow
+	const timeout = setTimeout(() => {
+		doPlay();
+	}, maxWaitMs);
+
+	bufferWaitCleanup = () => {
+		clearTimeout(timeout);
+		lp.removeEventListener('progress', onProgress);
+		lp.removeEventListener('canplaythrough', onCanPlayThrough);
+		lp.removeEventListener('loadedmetadata', onLoadedMetadata);
+	};
+
+	lp.addEventListener('progress', onProgress);
+	lp.addEventListener('canplaythrough', onCanPlayThrough);
+	lp.addEventListener('loadedmetadata', onLoadedMetadata);
+
+	// Check immediately if already buffered from cache
+	checkBuffer();
+}
+
 export function _startLocalPlayer(path: string) {
 	const lp = localPlayerRef.value;
 
 	if (!lp) return;
 
 	markTrackChanging();
+	lp.preload = 'auto';
 	lp.src = apiUrl('/stream?path=' + encodeURIComponent(path));
 	lp.currentTime = 0;
+	lp.load();
 
 	if (!isPaused.value) {
-		lp.play().catch(() => {
-			// const { showToast } = useToasts();
-			// showToast('Tocá la pantalla para arrancar el audio local', 'warning');
-		});
+		playWhenBuffered(lp, 6, 2500);
 	}
 }
 
@@ -176,6 +253,11 @@ export function _stopLocalPlayer() {
 	const lp = localPlayerRef.value;
 
 	if (!lp) return;
+
+	if (bufferWaitCleanup) {
+		bufferWaitCleanup();
+		bufferWaitCleanup = null;
+	}
 
 	markTrackChanging();
 	lp.pause();
@@ -480,6 +562,41 @@ export function useLocalPlayback() {
 
 		useEventListener(document, 'click', unlockAudio, { capture: true });
 		useEventListener(document, 'touchend', unlockAudio, { capture: true });
+
+		// 12. Smart Next-Track Pre-caching into browser cache
+		function prefetchNextTrack(path: string | null | undefined) {
+			if (!path || path.startsWith('http')) return;
+			const url = apiUrl('/stream?path=' + encodeURIComponent(path));
+			// Preload the first 4MB of the upcoming track so it's warm in cache
+			fetch(url, { headers: { Range: 'bytes=0-4194303' } }).catch(() => {});
+		}
+
+		watch(
+			[queueState, djNextTrack, listenLocally, currentTrackPath],
+			() => {
+				if (!listenLocally.value) return;
+
+				let nextPath: string | null = null;
+				if (queueState.value.length > 0) {
+					nextPath = queueState.value[0];
+				} else if (djCarpinchoEnabled.value && djNextTrack.value) {
+					nextPath = djNextTrack.value.path;
+				}
+
+				if (nextPath && nextPath !== currentTrackPath.value) {
+					prefetchNextTrack(nextPath);
+				}
+			},
+			{ deep: true }
+		);
+
+		// 13. Anti-stutter re-buffering (if network dips mid-song)
+		useEventListener(localPlayerRef, 'waiting', () => {
+			const lp = localPlayerRef.value;
+			if (listenLocally.value && !isPaused.value && !isChangingTrack.value && lp && !lp.ended) {
+				playWhenBuffered(lp, 4, 3000);
+			}
+		});
 	}
 
 	return { _sendLocalPlayerUpdate, setVolume };
