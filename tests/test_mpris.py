@@ -7,9 +7,6 @@ import server
 
 def test_mpris_root_properties():
 	"""Test MPRISRoot metadata and interface properties."""
-	if not server.DBUS_AVAILABLE:
-		pytest.skip("DBus not available on this platform")
-
 	root = server.MPRISRoot()
 	assert root.Identity == "La Rockola del Carpincho"
 	assert root.DesktopEntry == "carpincho"
@@ -29,9 +26,6 @@ def test_mpris_root_properties():
 @pytest.mark.asyncio
 async def test_mpris_player_playback_status_and_properties(clean_state):
 	"""Test MPRISPlayer properties reflecting state."""
-	if not server.DBUS_AVAILABLE:
-		pytest.skip("DBus not available on this platform")
-
 	state = clean_state
 	player = server.MPRISPlayer(state)
 
@@ -69,9 +63,6 @@ async def test_mpris_player_playback_status_and_properties(clean_state):
 @pytest.mark.asyncio
 async def test_mpris_player_metadata_formatting(clean_state):
 	"""Test MPRISPlayer Metadata formatting with TrackList and cover URI."""
-	if not server.DBUS_AVAILABLE:
-		pytest.skip("DBus not available on this platform")
-
 	state = clean_state
 	player = server.MPRISPlayer(state)
 
@@ -103,9 +94,6 @@ async def test_mpris_player_metadata_formatting(clean_state):
 @pytest.mark.asyncio
 async def test_mpris_player_control_methods(clean_state):
 	"""Test MPRISPlayer action methods dispatching commands."""
-	if not server.DBUS_AVAILABLE:
-		pytest.skip("DBus not available on this platform")
-
 	state = clean_state
 	player = server.MPRISPlayer(state)
 

@@ -264,6 +264,30 @@ if not DBUS_AVAILABLE:
 				return self.signature == other.signature and self.value == other.value
 			return False
 
+	class PropertyAccess:  # type: ignore
+		READ = "read"
+		WRITE = "write"
+		READWRITE = "readwrite"
+
+	def dbus_property(access=None):  # type: ignore
+		def decorator(fn):
+			if hasattr(fn, "setter"):
+				return fn
+			prop = property(fn)
+			return prop
+
+		return decorator
+
+	def method():  # type: ignore
+		def decorator(fn):
+			return fn
+
+		return decorator
+
+	class ServiceInterface:  # type: ignore
+		def __init__(self, name: str):
+			self.name = name
+
 
 logging.basicConfig(
 	level=logging.DEBUG,  # Set to DEBUG to see everything
@@ -913,167 +937,167 @@ class AsyncMpvController:
 # --- DBUS / MPRIS Classes ---
 b = s = d = x = o = str  # noqa: N816 - DBus signature aliases for static analysis
 
-if DBUS_AVAILABLE:
 
-	class MPRISRoot(ServiceInterface):
-		def __init__(self):
-			super().__init__("org.mpris.MediaPlayer2")
+class MPRISRoot(ServiceInterface):
+	def __init__(self):
+		super().__init__("org.mpris.MediaPlayer2")
 
-		@method()
-		def Quit(self):  # type: ignore
-			pass
+	@method()
+	def Quit(self):  # type: ignore
+		pass
 
-		@method()
-		def Raise(self):  # type: ignore
-			pass
+	@method()
+	def Raise(self):  # type: ignore
+		pass
 
-		@dbus_property(access=PropertyAccess.READ)
-		def CanQuit(self) -> "b":  # type: ignore
-			return False
+	@dbus_property(access=PropertyAccess.READ)
+	def CanQuit(self) -> "b":  # type: ignore
+		return False
 
-		@dbus_property(access=PropertyAccess.READ)
-		def Fullscreen(self) -> "b":  # type: ignore
-			return False
+	@dbus_property(access=PropertyAccess.READ)
+	def Fullscreen(self) -> "b":  # type: ignore
+		return False
 
-		@dbus_property(access=PropertyAccess.READ)
-		def CanSetFullscreen(self) -> "b":  # type: ignore
-			return False
+	@dbus_property(access=PropertyAccess.READ)
+	def CanSetFullscreen(self) -> "b":  # type: ignore
+		return False
 
-		@dbus_property(access=PropertyAccess.READ)
-		def CanRaise(self) -> "b":  # type: ignore
-			return False
+	@dbus_property(access=PropertyAccess.READ)
+	def CanRaise(self) -> "b":  # type: ignore
+		return False
 
-		@dbus_property(access=PropertyAccess.READ)
-		def HasTrackList(self) -> "b":  # type: ignore
-			return False
+	@dbus_property(access=PropertyAccess.READ)
+	def HasTrackList(self) -> "b":  # type: ignore
+		return False
 
-		@dbus_property(access=PropertyAccess.READ)
-		def Identity(self) -> "s":  # type: ignore
-			return "La Rockola del Carpincho"
+	@dbus_property(access=PropertyAccess.READ)
+	def Identity(self) -> "s":  # type: ignore
+		return "La Rockola del Carpincho"
 
-		@dbus_property(access=PropertyAccess.READ)
-		def DesktopEntry(self) -> "s":  # type: ignore
-			return "carpincho"
+	@dbus_property(access=PropertyAccess.READ)
+	def DesktopEntry(self) -> "s":  # type: ignore
+		return "carpincho"
 
-		@dbus_property(access=PropertyAccess.READ)
-		def SupportedUriSchemes(self) -> "as":  # type: ignore
-			return ["file", "http", "https"]
+	@dbus_property(access=PropertyAccess.READ)
+	def SupportedUriSchemes(self) -> "as":  # type: ignore
+		return ["file", "http", "https"]
 
-		@dbus_property(access=PropertyAccess.READ)
-		def SupportedMimeTypes(self) -> "as":  # type: ignore
-			return ["audio/mpeg", "audio/x-flac", "audio/ogg"]
+	@dbus_property(access=PropertyAccess.READ)
+	def SupportedMimeTypes(self) -> "as":  # type: ignore
+		return ["audio/mpeg", "audio/x-flac", "audio/ogg"]
 
-	class MPRISPlayer(ServiceInterface):
-		def __init__(self, state_ref):
-			super().__init__("org.mpris.MediaPlayer2.Player")
-			self.state = state_ref
 
-		@method()
-		def Next(self):  # type: ignore
-			asyncio.create_task(handle_command(CommandRequest(cmd="skip")))
+class MPRISPlayer(ServiceInterface):
+	def __init__(self, state_ref):
+		super().__init__("org.mpris.MediaPlayer2.Player")
+		self.state = state_ref
 
-		@method()
-		def Previous(self):  # type: ignore
-			asyncio.create_task(handle_command(CommandRequest(cmd="prev")))
+	@method()
+	def Next(self):  # type: ignore
+		asyncio.create_task(handle_command(CommandRequest(cmd="skip")))
 
-		@method()
-		def Pause(self):  # type: ignore
-			if not self.state.mpv_paused:
-				asyncio.create_task(handle_command(CommandRequest(cmd="pause")))
+	@method()
+	def Previous(self):  # type: ignore
+		asyncio.create_task(handle_command(CommandRequest(cmd="prev")))
 
-		@method()
-		def PlayPause(self):  # type: ignore
+	@method()
+	def Pause(self):  # type: ignore
+		if not self.state.mpv_paused:
 			asyncio.create_task(handle_command(CommandRequest(cmd="pause")))
 
-		@method()
-		def Stop(self):  # type: ignore
-			asyncio.create_task(handle_command(CommandRequest(cmd="stop")))
+	@method()
+	def PlayPause(self):  # type: ignore
+		asyncio.create_task(handle_command(CommandRequest(cmd="pause")))
 
-		@method()
-		def Play(self):  # type: ignore
-			if self.state.mpv_paused:
-				asyncio.create_task(handle_command(CommandRequest(cmd="pause")))
+	@method()
+	def Stop(self):  # type: ignore
+		asyncio.create_task(handle_command(CommandRequest(cmd="stop")))
 
-		@method()
-		def Seek(self, Offset: "x"):  # type: ignore
-			amount = Offset / 1000000.0
-			asyncio.create_task(handle_command(CommandRequest(cmd="seek", amount=amount)))
+	@method()
+	def Play(self):  # type: ignore
+		if self.state.mpv_paused:
+			asyncio.create_task(handle_command(CommandRequest(cmd="pause")))
 
-		@method()
-		def SetPosition(self, TrackId: "o", Position: "x"):  # type: ignore
-			amount = Position / 1000000.0
-			asyncio.create_task(handle_command(CommandRequest(cmd="seek_absolute", amount=amount)))
+	@method()
+	def Seek(self, Offset: "x"):  # type: ignore
+		amount = Offset / 1000000.0
+		asyncio.create_task(handle_command(CommandRequest(cmd="seek", amount=amount)))
 
-		@method()
-		def OpenUri(self, Uri: "s"):  # type: ignore
-			asyncio.create_task(handle_command(CommandRequest(cmd="play", path=Uri)))
+	@method()
+	def SetPosition(self, TrackId: "o", Position: "x"):  # type: ignore
+		amount = Position / 1000000.0
+		asyncio.create_task(handle_command(CommandRequest(cmd="seek_absolute", amount=amount)))
 
-		@dbus_property(access=PropertyAccess.READ)
-		def PlaybackStatus(self) -> "s":  # type: ignore
-			if not self.state.current_track:
-				return "Stopped"
-			return "Paused" if self.state.mpv_paused else "Playing"
+	@method()
+	def OpenUri(self, Uri: "s"):  # type: ignore
+		asyncio.create_task(handle_command(CommandRequest(cmd="play", path=Uri)))
 
-		@dbus_property(access=PropertyAccess.READ)
-		def LoopStatus(self) -> "s":  # type: ignore
-			return "None"
+	@dbus_property(access=PropertyAccess.READ)
+	def PlaybackStatus(self) -> "s":  # type: ignore
+		if not self.state.current_track:
+			return "Stopped"
+		return "Paused" if self.state.mpv_paused else "Playing"
 
-		@dbus_property(access=PropertyAccess.READ)
-		def Rate(self) -> "d":  # type: ignore
-			return 1.0
+	@dbus_property(access=PropertyAccess.READ)
+	def LoopStatus(self) -> "s":  # type: ignore
+		return "None"
 
-		@dbus_property(access=PropertyAccess.READ)
-		def Shuffle(self) -> "b":  # type: ignore
-			return False
+	@dbus_property(access=PropertyAccess.READ)
+	def Rate(self) -> "d":  # type: ignore
+		return 1.0
 
-		@dbus_property(access=PropertyAccess.READ)
-		def Metadata(self) -> "a{sv}":  # type: ignore
-			return build_mpris_metadata(self.state, Variant)
+	@dbus_property(access=PropertyAccess.READ)
+	def Shuffle(self) -> "b":  # type: ignore
+		return False
 
-		@dbus_property(access=PropertyAccess.READWRITE)
-		def Volume(self) -> "d":  # type: ignore
-			return self.state.volume / 100.0
+	@dbus_property(access=PropertyAccess.READ)
+	def Metadata(self) -> "a{sv}":  # type: ignore
+		return build_mpris_metadata(self.state, Variant)
 
-		@Volume.setter
-		def Volume(self, val: "d"):  # type: ignore
-			vollevel = int(val * 100)
-			asyncio.create_task(handle_command(CommandRequest(cmd="set_volume", vollevel=vollevel)))
+	@dbus_property(access=PropertyAccess.READWRITE)
+	def Volume(self) -> "d":  # type: ignore
+		return self.state.volume / 100.0
 
-		@dbus_property(access=PropertyAccess.READ)
-		def Position(self) -> "x":  # type: ignore
-			return int(self.state.time_pos * 1000000)
+	@Volume.setter
+	def Volume(self, val: "d"):  # type: ignore
+		vollevel = int(val * 100)
+		asyncio.create_task(handle_command(CommandRequest(cmd="set_volume", vollevel=vollevel)))
 
-		@dbus_property(access=PropertyAccess.READ)
-		def MinimumRate(self) -> "d":  # type: ignore
-			return 1.0
+	@dbus_property(access=PropertyAccess.READ)
+	def Position(self) -> "x":  # type: ignore
+		return int(self.state.time_pos * 1000000)
 
-		@dbus_property(access=PropertyAccess.READ)
-		def MaximumRate(self) -> "d":  # type: ignore
-			return 1.0
+	@dbus_property(access=PropertyAccess.READ)
+	def MinimumRate(self) -> "d":  # type: ignore
+		return 1.0
 
-		@dbus_property(access=PropertyAccess.READ)
-		def CanGoNext(self) -> "b":  # type: ignore
-			return True
+	@dbus_property(access=PropertyAccess.READ)
+	def MaximumRate(self) -> "d":  # type: ignore
+		return 1.0
 
-		@dbus_property(access=PropertyAccess.READ)
-		def CanGoPrevious(self) -> "b":  # type: ignore
-			return True
+	@dbus_property(access=PropertyAccess.READ)
+	def CanGoNext(self) -> "b":  # type: ignore
+		return True
 
-		@dbus_property(access=PropertyAccess.READ)
-		def CanPlay(self) -> "b":  # type: ignore
-			return True
+	@dbus_property(access=PropertyAccess.READ)
+	def CanGoPrevious(self) -> "b":  # type: ignore
+		return True
 
-		@dbus_property(access=PropertyAccess.READ)
-		def CanPause(self) -> "b":  # type: ignore
-			return True
+	@dbus_property(access=PropertyAccess.READ)
+	def CanPlay(self) -> "b":  # type: ignore
+		return True
 
-		@dbus_property(access=PropertyAccess.READ)
-		def CanSeek(self) -> "b":  # type: ignore
-			return True
+	@dbus_property(access=PropertyAccess.READ)
+	def CanPause(self) -> "b":  # type: ignore
+		return True
 
-		@dbus_property(access=PropertyAccess.READ)
-		def CanControl(self) -> "b":  # type: ignore
-			return True
+	@dbus_property(access=PropertyAccess.READ)
+	def CanSeek(self) -> "b":  # type: ignore
+		return True
+
+	@dbus_property(access=PropertyAccess.READ)
+	def CanControl(self) -> "b":  # type: ignore
+		return True
 
 
 # --- Websocket Connection Manager ---
