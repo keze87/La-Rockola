@@ -10,6 +10,7 @@
 		"lint": "eslint . --ext .ts,.vue --max-warnings 0",
 		"preview": "vite preview",
 		"test": "vitest run",
+		"test:coverage": "vitest run --coverage",
 		"test:watch": "vitest",
 		"watch": "vite build --watch"
 	},
@@ -27,6 +28,7 @@
 		"@tailwindcss/vite": "^4.3.3",
 		"@types/node": "^26.1.1",
 		"@vitejs/plugin-vue": "^6.0.8",
+		"@vitest/coverage-v8": "^4.1.11",
 		"@vue/test-utils": "^2.5.0",
 		"@vue/tsconfig": "^0.9.1",
 		"eslint": "^10.8.0",

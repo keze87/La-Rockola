@@ -13,5 +13,15 @@ export default defineConfig({
 		environment: 'happy-dom',
 		globals: true,
 		include: ['src/**/*.{test,spec}.ts', 'tests/frontend/**/*.{test,spec}.ts'],
+		coverage: {
+			provider: 'v8',
+			reporter: ['text', 'json', 'html'],
+			thresholds: {
+				statements: 50,
+				branches: 30,
+				functions: 40,
+				lines: 50,
+			},
+		},
 	},
 });
