@@ -11,6 +11,12 @@
 		<meta name="theme-color" content="#2b2622" />
 
 		<title>La Rockola del Carpincho 🦦🧉</title>
+		<script>
+			// Ensure trailing slash for directory subpaths (e.g. /rockola -> /rockola/) so relative assets resolve properly
+			if (!window.location.pathname.endsWith('/') && !window.location.pathname.split('/').pop().includes('.')) {
+				window.location.replace(window.location.pathname + '/' + window.location.search + window.location.hash);
+			}
+		</script>
 		<link rel="icon" type="image/png" href="./favicon.png" />
 
 		<!-- External Fonts & Icons -->
