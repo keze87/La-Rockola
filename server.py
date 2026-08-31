@@ -247,6 +247,24 @@ if sys.platform == "linux":
 	except ImportError:
 		pass
 
+if not DBUS_AVAILABLE:
+
+	class Variant:  # type: ignore
+		"""Fallback Variant para cuando dbus_next no está instalado."""
+
+		def __init__(self, signature: str, value: object):
+			self.signature = signature
+			self.value = value
+
+		def __repr__(self):
+			return f"Variant('{self.signature}', {self.value!r})"
+
+		def __eq__(self, other):
+			if hasattr(other, "signature") and hasattr(other, "value"):
+				return self.signature == other.signature and self.value == other.value
+			return False
+
+
 logging.basicConfig(
 	level=logging.DEBUG,  # Set to DEBUG to see everything
 	format="%(asctime)s - %(levelname)s - [%(funcName)s] %(message)s",
@@ -368,6 +386,65 @@ def get_cover_art_uri(path: str) -> str:
 	except Exception as e:
 		logger.debug(f"Pifió extrayendo la portada: {e}")
 	return ""
+
+
+def build_mpris_metadata(state_obj, variant_cls=None) -> dict:
+	"""
+	Construye el diccionario de metadatos para la interfaz MPRIS (MediaPlayer2.Player.Metadata).
+	Funciona de forma pura/independiente a si DBus está disponible o no.
+	"""
+	v_cls = variant_cls or Variant
+
+	if not state_obj.current_track:
+		return {"mpris:trackid": v_cls("o", "/org/mpris/MediaPlayer2/TrackList/NoTrack")}
+
+	title = "Desconocido"
+	artist = "Desconocido"
+	album = "La Rockola del Carpincho"
+	dur_usec = 0
+
+	for t in state_obj.tracks_cache:
+		if t["path"] == state_obj.current_track:
+			title = t.get("display_title", title)
+			artist = t.get("display_artist", artist)
+			album = t.get("album", album)
+			break
+
+	if state_obj.current_track in state_obj.url_metadata:
+		meta = state_obj.url_metadata[state_obj.current_track]
+		title = meta.get("display_title", title)
+		artist = meta.get("display_artist", artist)
+		album = meta.get("album", album)
+
+	if state_obj.duration:
+		dur_usec = int(state_obj.duration * 1000000)
+
+	cover_uri = get_cover_art_uri(state_obj.current_track)
+
+	track_uri = state_obj.current_track
+	if track_uri and not track_uri.startswith("http"):
+		try:
+			track_uri = Path(track_uri).absolute().as_uri()
+		except Exception:
+			pass
+	elif not track_uri:
+		track_uri = ""
+
+	meta_dict = {
+		"mpris:trackid": v_cls("o", "/org/mpris/MediaPlayer2/TrackList/Track0"),
+		"xesam:title": v_cls("s", title),
+		"xesam:artist": v_cls("as", [artist]),
+		"xesam:album": v_cls("s", album),
+		"mpris:length": v_cls("x", dur_usec),
+	}
+
+	if track_uri:
+		meta_dict["xesam:url"] = v_cls("s", track_uri)
+
+	if cover_uri:
+		meta_dict["mpris:artUrl"] = v_cls("s", cover_uri)
+
+	return meta_dict
 
 
 def generate_smart_hash(filepath, chunk_size=1024 * 1024):
@@ -951,53 +1028,7 @@ if DBUS_AVAILABLE:
 
 		@dbus_property(access=PropertyAccess.READ)
 		def Metadata(self) -> "a{sv}":  # type: ignore
-			if not self.state.current_track:
-				return {"mpris:trackid": Variant("o", "/org/mpris/MediaPlayer2/TrackList/NoTrack")}
-
-			title = "Desconocido"
-			artist = "Desconocido"
-			album = "La Rockola del Carpincho"
-			dur_usec = 0
-
-			for t in self.state.tracks_cache:
-				if t["path"] == self.state.current_track:
-					title = t.get("display_title", title)
-					artist = t.get("display_artist", artist)
-					album = t.get("album", album)
-					break
-
-			if self.state.current_track in self.state.url_metadata:
-				meta = self.state.url_metadata[self.state.current_track]
-				title = meta.get("display_title", title)
-				artist = meta.get("display_artist", artist)
-				album = meta.get("album", album)
-
-			if self.state.duration:
-				dur_usec = int(self.state.duration * 1000000)
-
-			cover_uri = get_cover_art_uri(self.state.current_track)
-
-			track_uri = self.state.current_track
-			if track_uri and not track_uri.startswith("http"):
-				track_uri = Path(track_uri).absolute().as_uri()
-			elif not track_uri:
-				track_uri = ""
-
-			meta_dict = {
-				"mpris:trackid": Variant("o", "/org/mpris/MediaPlayer2/TrackList/Track0"),
-				"xesam:title": Variant("s", title),
-				"xesam:artist": Variant("as", [artist]),
-				"xesam:album": Variant("s", album),
-				"mpris:length": Variant("x", dur_usec),
-			}
-
-			if track_uri:
-				meta_dict["xesam:url"] = Variant("s", track_uri)
-
-			if cover_uri:
-				meta_dict["mpris:artUrl"] = Variant("s", cover_uri)
-
-			return meta_dict
+			return build_mpris_metadata(self.state, Variant)
 
 		@dbus_property(access=PropertyAccess.READWRITE)
 		def Volume(self) -> "d":  # type: ignore

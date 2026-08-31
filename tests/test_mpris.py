@@ -123,3 +123,85 @@ async def test_mpris_player_control_methods(clean_state):
 
 		await asyncio.sleep(0.02)
 		assert mock_cmd.call_count >= 7
+
+
+def test_build_mpris_metadata_no_track(clean_state):
+	"""Test build_mpris_metadata returns NoTrack when no current track."""
+	clean_state.current_track = None
+	meta = server.build_mpris_metadata(clean_state)
+
+	assert "mpris:trackid" in meta
+	assert meta["mpris:trackid"].value == "/org/mpris/MediaPlayer2/TrackList/NoTrack"
+	assert meta["mpris:trackid"].signature == "o"
+
+
+def test_build_mpris_metadata_local_track_with_cache_and_cover(clean_state):
+	"""Test build_mpris_metadata for local track in cache with cover art."""
+	clean_state.current_track = "/music/tango.mp3"
+	clean_state.duration = 152.5
+	clean_state.tracks_cache = [
+		{
+			"path": "/music/tango.mp3",
+			"display_title": "Por una Cabeza",
+			"display_artist": "Carlos Gardel",
+			"album": "Tango Classics",
+		}
+	]
+
+	with patch("server.get_cover_art_uri", return_value="file:///tmp/cover.jpg"):
+		meta = server.build_mpris_metadata(clean_state)
+
+		assert meta["mpris:trackid"].value == "/org/mpris/MediaPlayer2/TrackList/Track0"
+		assert meta["xesam:title"].value == "Por una Cabeza"
+		assert meta["xesam:artist"].value == ["Carlos Gardel"]
+		assert meta["xesam:album"].value == "Tango Classics"
+		assert meta["mpris:length"].value == 152500000
+		assert meta["xesam:url"].value.startswith("file://")
+		assert meta["xesam:url"].value.endswith("tango.mp3")
+		assert meta["mpris:artUrl"].value == "file:///tmp/cover.jpg"
+
+
+def test_build_mpris_metadata_url_track_youtube(clean_state):
+	"""Test build_mpris_metadata for URL/YouTube track using url_metadata."""
+	clean_state.current_track = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+	clean_state.duration = 212.0
+	clean_state.url_metadata = {
+		"https://www.youtube.com/watch?v=dQw4w9WgXcQ": {
+			"display_title": "Never Gonna Give You Up",
+			"display_artist": "Rick Astley",
+			"album": "Whenever You Need Somebody",
+		}
+	}
+
+	with patch("server.get_cover_art_uri", return_value=""):
+		meta = server.build_mpris_metadata(clean_state)
+
+		assert meta["xesam:title"].value == "Never Gonna Give You Up"
+		assert meta["xesam:artist"].value == ["Rick Astley"]
+		assert meta["xesam:album"].value == "Whenever You Need Somebody"
+		assert meta["mpris:length"].value == 212000000
+		assert meta["xesam:url"].value == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+		assert "mpris:artUrl" not in meta
+
+
+def test_build_mpris_metadata_defaults_and_custom_variant(clean_state):
+	"""Test build_mpris_metadata fallback defaults when uncached, and custom variant class."""
+	clean_state.current_track = "/music/unknown.mp3"
+	clean_state.tracks_cache = []
+	clean_state.url_metadata = {}
+	clean_state.duration = 0.0
+
+	class CustomVariant:
+		def __init__(self, sig, val):
+			self.sig = sig
+			self.val = val
+
+	with patch("server.get_cover_art_uri", return_value=""):
+		meta = server.build_mpris_metadata(clean_state, variant_cls=CustomVariant)
+
+		assert meta["xesam:title"].val == "Desconocido"
+		assert meta["xesam:artist"].val == ["Desconocido"]
+		assert meta["xesam:album"].val == "La Rockola del Carpincho"
+		assert meta["mpris:length"].val == 0
+		assert meta["xesam:url"].val.startswith("file://")
+		assert "mpris:artUrl" not in meta
