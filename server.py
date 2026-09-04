@@ -143,35 +143,75 @@ try:
 except (ImportError, OSError, ValueError, AttributeError):
 	pass  # En Windows o si no hay permisos, seguimos viaje igual
 
+
 # --- 3. INICIALIZAMOS LA BASE DE DATOS (SQLITE) ---
-DB_PATH = Path.home() / ".carpincho.db"
+def get_carpincho_data_dir() -> Path:
+	"""Directorio estándar multiplataforma para la suite Carpincho (~/.local/share/carpincho)."""
+	if sys.platform == "win32":
+		base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+	elif sys.platform == "darwin":
+		base = Path.home() / "Library" / "Application Support"
+	else:
+		base = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+	data_dir = base / "carpincho"
+	data_dir.mkdir(parents=True, exist_ok=True)
+	return data_dir
+
+
+DATA_DIR = get_carpincho_data_dir()
+DB_PATH = DATA_DIR / "rockola.db"
+
+# Migración automática desde ~/.carpincho.db
+_LEGACY_DB = Path.home() / ".carpincho.db"
+if _LEGACY_DB.exists() and not DB_PATH.exists():
+	try:
+		shutil.copy2(_LEGACY_DB, DB_PATH)
+	except Exception:
+		pass
 
 
 def backup_db():
-	"""Arma un backup semanal de la base de datos para no perder todo el historial y moods."""
+	"""Arma un backup atómico semanal de la base de datos conservando las últimas 8 semanas."""
 	try:
-		backup_dir = DB_PATH.parent / ".carpincho_backups"
-		backup_dir.mkdir(exist_ok=True)
+		if not DB_PATH.exists():
+			return
+
+		backup_dir = DB_PATH.parent / "backups"
+		backup_dir.mkdir(parents=True, exist_ok=True)
 
 		now = time.time()
-		backups = list(backup_dir.glob("carpincho_backup_*.db"))
+		backups = sorted(backup_dir.glob("rockola_backup_*.db"), key=lambda p: p.name, reverse=True)
 
 		if backups:
-			latest_backup = max(backups, key=os.path.getmtime)
+			latest_backup = backups[0]
 			if now - os.path.getmtime(latest_backup) < 7 * 24 * 3600:
 				return  # Ya hay backup fresquito de esta semana
 
-		# Armamos backup nuevo
-		backup_name = f"carpincho_backup_{time.strftime('%Y-%m-%d')}.db"
+		# Armamos backup nuevo de manera atómica con la API de SQLite
+		backup_name = f"rockola_backup_{time.strftime('%Y-%m-%d')}.db"
 		backup_path = backup_dir / backup_name
-		shutil.copy2(DB_PATH, backup_path)
-		logger.info(f"Copia de seguridad de la DB armada joya: {backup_name}")
+		temp_backup = backup_dir / f".tmp_{backup_name}"
 
-		# Dejamos solo los últimos 4 backups (1 mes aprox) para no reventar el disco
-		# backups = sorted(backup_dir.glob("carpincho_backup_*.db"), key=os.path.getmtime)
-		# if len(backups) > 4:
-		# 	for old_backup in backups[:-4]:
-		# 		old_backup.unlink()
+		src_uri = f"file:{DB_PATH.resolve().as_posix()}?mode=ro"
+		src_conn = sqlite3.connect(src_uri, uri=True, timeout=10.0)
+		dst_conn = sqlite3.connect(temp_backup)
+		try:
+			with dst_conn:
+				src_conn.backup(dst_conn, pages=100)
+		finally:
+			dst_conn.close()
+			src_conn.close()
+
+		temp_backup.replace(backup_path)
+		logger.info(f"Copia de seguridad atómica de la DB armada joya: {backup_name}")
+
+		# Rotación: mantenemos las últimas 8 semanas
+		all_backups = sorted(backup_dir.glob("rockola_backup_*.db"), key=lambda p: p.name, reverse=True)
+		for old_backup in all_backups[8:]:
+			try:
+				old_backup.unlink(missing_ok=True)
+			except Exception:
+				pass
 	except Exception as e:
 		logger.error(f"Error armando el backup semanal de la DB: {e}")
 

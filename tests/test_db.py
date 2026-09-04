@@ -38,16 +38,16 @@ def test_init_db_creates_tables(temp_db):
 
 def test_backup_db(temp_db, tmp_path, monkeypatch):
 	"""Test DB backup creation and 7-day throttling."""
-	backup_dir = temp_db.parent / ".carpincho_backups"
+	backup_dir = temp_db.parent / "backups"
 
 	# Initial backup
 	server.backup_db()
-	backups = list(backup_dir.glob("carpincho_backup_*.db"))
+	backups = list(backup_dir.glob("rockola_backup_*.db"))
 	assert len(backups) == 1
 
 	# Immediate second backup should not duplicate due to recent timestamp
 	server.backup_db()
-	backups = list(backup_dir.glob("carpincho_backup_*.db"))
+	backups = list(backup_dir.glob("rockola_backup_*.db"))
 	assert len(backups) == 1
 
 
