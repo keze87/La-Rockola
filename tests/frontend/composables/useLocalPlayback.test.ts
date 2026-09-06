@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { nextTick } from 'vue';
 import {
 	useLocalPlayback,
 	_startLocalPlayer,
@@ -7,6 +8,7 @@ import {
 } from '@/composables/player/useLocalPlayback';
 import {
 	volume,
+	serverMuted,
 	listenLocally,
 	currentTrackPath,
 	localPlayerRef,
@@ -19,6 +21,7 @@ describe('useLocalPlayback', () => {
 
 	beforeEach(() => {
 		volume.value = 80;
+		serverMuted.value = false;
 		listenLocally.value = false;
 		currentTrackPath.value = null;
 		localTimePos.value = 0;
@@ -108,5 +111,44 @@ describe('useLocalPlayback', () => {
 		expect(localTimePos.value).toBe(90.0);
 		const sent2 = JSON.parse(wsSendMock.mock.calls[0][0]);
 		expect(sent2.time_pos).toBe(90.0);
+	});
+
+	it('_startLocalPlayer initializes volume and muted on audio element', () => {
+		volume.value = 65;
+		serverMuted.value = true;
+		useLocalPlayback();
+
+		_startLocalPlayer('/music/test_song.flac');
+
+		expect(mockAudioEl.volume).toBe(0.65);
+		expect(mockAudioEl.muted).toBe(true);
+	});
+
+	it('reactively updates audio element volume and muted properties', async () => {
+		useLocalPlayback();
+
+		// Update volume
+		volume.value = 40;
+		await nextTick();
+		expect(mockAudioEl.volume).toBe(0.4);
+
+		// Clamp volume above 100 to 1.0
+		volume.value = 110;
+		await nextTick();
+		expect(mockAudioEl.volume).toBe(1.0);
+
+		// Clamp volume below 0 to 0.0
+		volume.value = -10;
+		await nextTick();
+		expect(mockAudioEl.volume).toBe(0.0);
+
+		// Toggle mute
+		serverMuted.value = true;
+		await nextTick();
+		expect(mockAudioEl.muted).toBe(true);
+
+		serverMuted.value = false;
+		await nextTick();
+		expect(mockAudioEl.muted).toBe(false);
 	});
 });

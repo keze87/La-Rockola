@@ -19,6 +19,7 @@ import {
 	pendingSeekTime,
 	queueState,
 	sendRaw,
+	serverMuted,
 	volume,
 } from './state';
 
@@ -242,6 +243,8 @@ export function _startLocalPlayer(path: string) {
 	lp.preload = 'auto';
 	lp.src = apiUrl('/stream?path=' + encodeURIComponent(path));
 	lp.currentTime = 0;
+	lp.volume = Number.isFinite(volume.value) ? Math.max(0, Math.min(1, volume.value / 100)) : 1;
+	lp.muted = Boolean(serverMuted.value);
 	lp.load();
 
 	if (!isPaused.value) {
@@ -285,8 +288,9 @@ export function useLocalPlayback() {
 	const { pause, setMute, skip, prev, seek, seekAbsolute } = usePlaybackControls();
 	const { getTrackInfo } = useLibrary();
 
-	function setVolume() {
-		sendCmd('set_volume', { vollevel: parseInt(volume.value.toString()) });
+	function setVolume(vollevel?: number) {
+		const targetVol = vollevel !== undefined ? vollevel : parseInt(volume.value.toString());
+		sendCmd('set_volume', { vollevel: targetVol });
 	}
 
 	if (!initialized) {
@@ -297,6 +301,17 @@ export function useLocalPlayback() {
 
 		mediaControls = useMediaControls(localPlayerRef);
 		const { currentTime, duration: elementDuration, ended } = mediaControls;
+
+		// Sync volume and mute state to the local <audio> element
+		watch(
+			[localPlayerRef, volume, serverMuted],
+			([lp, newVol, newMuted]) => {
+				if (!lp) return;
+				lp.volume = Number.isFinite(newVol) ? Math.max(0, Math.min(1, newVol / 100)) : 1;
+				lp.muted = Boolean(newMuted);
+			},
+			{ immediate: true }
+		);
 
 		// 1. Report duration (ONLY if listening locally so we don't broadcast the blob's 100s duration)
 		watch(elementDuration, (d) => {
@@ -511,7 +526,6 @@ export function useLocalPlayback() {
 				}
 			} else {
 				sendRaw({ type: 'local_player_release' });
-				setMute(false);
 				if (currentTrackPath.value) {
 					lp.src = silentBlobUrl;
 					lp.loop = true;

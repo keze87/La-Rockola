@@ -1156,12 +1156,14 @@ class ConnectionManager:
 		await websocket.accept()
 		self.active_connections.append(websocket)
 
-	def disconnect(self, websocket: WebSocket):
+	def disconnect(self, websocket: WebSocket) -> bool:
+		was_local = self.local_player_ws is websocket
 		if websocket in self.active_connections:
 			self.active_connections.remove(websocket)
-		if self.local_player_ws is websocket:
+		if was_local:
 			self.local_player_ws = None
 			logger.info("El cliente reproductor local se desconectó.")
+		return was_local
 
 	def claim_local_player(self, websocket: WebSocket) -> bool:
 		"""Intenta registrar este WS como el reproductor local. Devuelve True si lo logró."""
@@ -1171,10 +1173,12 @@ class ConnectionManager:
 		logger.info("Nuevo cliente registrado como reproductor local.")
 		return True
 
-	def release_local_player(self, websocket: WebSocket):
+	def release_local_player(self, websocket: WebSocket) -> bool:
 		if self.local_player_ws is websocket:
 			self.local_player_ws = None
 			logger.info("Cliente liberó el rol de reproductor local.")
+			return True
+		return False
 
 	async def broadcast(self, message: dict):
 		log_msg = message.copy()
@@ -1781,7 +1785,8 @@ class APIState:
 			# Le devolvemos su estado de pausa y volumen
 			await self.mpv._send(json.dumps({"command": ["set_property", "pause", self.mpv_paused]}))
 			await self.mpv._send(json.dumps({"command": ["set_property", "volume", self.volume]}))
-			await self.mpv._send(json.dumps({"command": ["set_property", "mute", self.server_muted]}))
+			mpv_mute = True if manager.local_player_ws is not None else self.server_muted
+			await self.mpv._send(json.dumps({"command": ["set_property", "mute", mpv_mute]}))
 			if self.time_pos > 0:
 				await self.mpv._send(json.dumps({"command": ["seek", self.time_pos, "absolute"]}))
 
@@ -1804,6 +1809,8 @@ class APIState:
 		await broadcast_state()
 
 	async def handle_volume_update(self, vol):
+		if manager.local_player_ws is not None:
+			return
 		self.volume = vol
 		await broadcast_state()
 
@@ -1832,6 +1839,8 @@ class APIState:
 		await broadcast_state()
 
 	async def handle_mute_update(self, is_muted):
+		if manager.local_player_ws is not None:
+			return
 		self.server_muted = is_muted
 		await broadcast_state()
 
@@ -1866,6 +1875,10 @@ class APIState:
 		cmd_payload = json.dumps({"command": ["loadfile", str_path]}, ensure_ascii=False)
 		await self.mpv._send(cmd_payload)
 		await self.mpv._send(json.dumps({"command": ["set_property", "pause", False]}))
+		if manager.local_player_ws is not None:
+			await self.mpv._send('{"command": ["set_property", "mute", true]}')
+		else:
+			await self.mpv._send(json.dumps({"command": ["set_property", "mute", self.server_muted]}))
 
 	async def play_next(self, skipped_by_user=False):
 		# Si hay un countdown del DJ corriendo en otra task que no sea esta, lo matamos
@@ -2424,8 +2437,11 @@ async def handle_command(req: CommandRequest):
 	elif cmd == "set_mute":
 		if req.state is not None:
 			state.server_muted = req.state
-			cmd_payload = json.dumps({"command": ["set_property", "mute", state.server_muted]})
-			await state.mpv._send(cmd_payload)
+			if manager.local_player_ws is not None:
+				await state.mpv._send('{"command": ["set_property", "mute", true]}')
+			else:
+				cmd_payload = json.dumps({"command": ["set_property", "mute", state.server_muted]})
+				await state.mpv._send(cmd_payload)
 	elif cmd == "fullscreen":
 		await state.mpv._send('{"command": ["cycle", "fullscreen"]}')
 	elif cmd == "toggle_queue":
@@ -2550,12 +2566,17 @@ async def websocket_endpoint(websocket: WebSocket):
 				# El cliente quiere convertirse en el reproductor local
 				ok = manager.claim_local_player(websocket)
 				await websocket.send_json({"type": "local_player_claim_result", "ok": ok})
-				if not ok:
+				if ok:
+					logger.info(f"Cliente registrado como reproductor local ({client_host}). Silenciando MPV en el servidor...")
+					await state.mpv._send('{"command": ["set_property", "mute", true]}')
+				else:
 					logger.info(f"Rechazamos solicitud de reproductor local de {client_host}: ya hay otro.")
 
 			elif msg_type == "local_player_release":
 				# El cliente deja de reproducir localmente
-				manager.release_local_player(websocket)
+				if manager.release_local_player(websocket):
+					logger.info(f"Restaurando mute de MPV a {state.server_muted}...")
+					await state.mpv._send(json.dumps({"command": ["set_property", "mute", state.server_muted]}))
 
 			elif msg_type == "local_player_update" and manager.local_player_ws is websocket:
 				# El reproductor local nos manda su estado — lo aplicamos al estado global
@@ -2610,7 +2631,13 @@ async def websocket_endpoint(websocket: WebSocket):
 
 	except WebSocketDisconnect:
 		logger.info(f"CLIENTE DESCONECTADO: Se nos fue {client_host}, se habrá quedado sin agua en el termo.")
-		manager.disconnect(websocket)
+	finally:
+		if manager.disconnect(websocket):
+			logger.info("El reproductor local se desconectó. Restaurando mute de MPV...")
+			try:
+				await state.mpv._send(json.dumps({"command": ["set_property", "mute", state.server_muted]}))
+			except Exception:
+				pass
 
 
 if __name__ == "__main__":

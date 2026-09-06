@@ -31,6 +31,23 @@
 		volume,
 	} = usePlayer();
 
+	let lastVolSent = 0;
+	let volThrottleTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function throttledSetVolume() {
+		const now = Date.now();
+		if (now - lastVolSent >= 150) {
+			lastVolSent = now;
+			setVolume();
+		} else if (!volThrottleTimer) {
+			volThrottleTimer = setTimeout(() => {
+				volThrottleTimer = null;
+				lastVolSent = Date.now();
+				setVolume();
+			}, 150);
+		}
+	}
+
 	const {
 		progressPercent: volPercent,
 		startDrag: startVol,
@@ -45,8 +62,13 @@
 			if (serverMuted.value && volume.value > 0) {
 				setMute(false);
 			}
+			throttledSetVolume();
 		},
 		onCommit: (val) => {
+			if (volThrottleTimer) {
+				clearTimeout(volThrottleTimer);
+				volThrottleTimer = null;
+			}
 			volume.value = Math.round(val);
 			setVolume();
 		},

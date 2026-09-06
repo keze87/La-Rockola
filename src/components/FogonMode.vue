@@ -62,12 +62,39 @@
 	const formattedTimePos = computed(() => formatTime(dragTimePos.value));
 	const formattedDuration = computed(() => formatTime(duration.value));
 
+	let lastVolSent = 0;
+	let volThrottleTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function throttledSetVolume() {
+		const now = Date.now();
+		if (now - lastVolSent >= 150) {
+			lastVolSent = now;
+			setVolume();
+		} else if (!volThrottleTimer) {
+			volThrottleTimer = setTimeout(() => {
+				volThrottleTimer = null;
+				lastVolSent = Date.now();
+				setVolume();
+			}, 150);
+		}
+	}
+
 	function handleVolumeUpdate(val: number) {
 		volume.value = Math.round(val);
 
 		if (serverMuted.value && volume.value > 0) {
 			setMute(false);
 		}
+		throttledSetVolume();
+	}
+
+	function handleVolumeCommit(val: number) {
+		if (volThrottleTimer) {
+			clearTimeout(volThrottleTimer);
+			volThrottleTimer = null;
+		}
+		volume.value = Math.round(val);
+		setVolume();
 	}
 
 	// Pass the global player instance to our lyrics composable to sync localTimePos
@@ -304,7 +331,7 @@
 						:model-value="volume"
 						:max="110"
 						@update:model-value="handleVolumeUpdate"
-						@commit="setVolume"
+						@commit="handleVolumeCommit"
 					/>
 					<i class="material-icons text-sm" aria-hidden="true">volume_up</i>
 				</div>

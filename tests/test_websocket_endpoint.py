@@ -33,6 +33,9 @@ def test_websocket_initial_state_push(clean_state):
 
 def test_websocket_local_player_claim_and_release(clean_state, clean_manager):
 	"""Test claiming local player, rejecting duplicate claims, and releasing."""
+	clean_state.server_muted = False
+	clean_state.mpv._send.reset_mock()
+
 	client = TestClient(server.app)
 	with client.websocket_connect("/ws") as ws1:
 		ws1.receive_json()  # Consume initial state
@@ -42,6 +45,7 @@ def test_websocket_local_player_claim_and_release(clean_state, clean_manager):
 		res1 = ws1.receive_json()
 		assert res1 == {"type": "local_player_claim_result", "ok": True}
 		assert clean_manager.local_player_ws is not None
+		clean_state.mpv._send.assert_called_with('{"command": ["set_property", "mute", true]}')
 
 		# 2. Second client attempts to claim while first is active -> rejected
 		with client.websocket_connect("/ws") as ws2:
@@ -51,10 +55,12 @@ def test_websocket_local_player_claim_and_release(clean_state, clean_manager):
 			assert res2 == {"type": "local_player_claim_result", "ok": False}
 
 		# 3. First client releases local player
+		clean_state.mpv._send.reset_mock()
 		ws1.send_json({"type": "local_player_release"})
 		# Send a ping/dummy to ensure release processed
 		ws1.send_json({"type": "dummy_ping"})
 		assert clean_manager.local_player_ws is None
+		clean_state.mpv._send.assert_called_with(json.dumps({"command": ["set_property", "mute", False]}))
 
 
 def test_websocket_local_player_time_drift_reconciliation(clean_state, clean_manager):
@@ -169,7 +175,8 @@ def test_websocket_non_json_messages_and_unclaimed_updates(clean_state, clean_ma
 
 
 def test_websocket_disconnect_cleanup(clean_state, clean_manager):
-	"""Test client disconnect triggers manager.disconnect and frees local player claim."""
+	"""Test client disconnect triggers manager.disconnect, frees local player claim, and restores MPV mute."""
+	clean_state.server_muted = False
 	client = TestClient(server.app)
 	with client.websocket_connect("/ws") as ws:
 		ws.receive_json()
@@ -177,7 +184,35 @@ def test_websocket_disconnect_cleanup(clean_state, clean_manager):
 		ws.receive_json()
 		assert len(clean_manager.active_connections) == 1
 		assert clean_manager.local_player_ws is not None
+		clean_state.mpv._send.reset_mock()
 
 	# Upon context exit, websocket disconnects
 	assert len(clean_manager.active_connections) == 0
 	assert clean_manager.local_player_ws is None
+	clean_state.mpv._send.assert_called_with(json.dumps({"command": ["set_property", "mute", False]}))
+
+
+@pytest.mark.asyncio
+async def test_local_player_ignores_mpv_mute_and_volume_events(clean_state, clean_manager):
+	"""Test that MPV mute and volume updates are ignored while a local player is active."""
+	clean_state.server_muted = False
+	clean_state.volume = 80
+	mock_ws = MagicMock()
+	clean_manager.local_player_ws = mock_ws
+
+	# 1. MPV sends mute event while local player is active -> ignored
+	await clean_state.handle_mute_update(True)
+	assert clean_state.server_muted is False
+
+	# 2. MPV sends volume event while local player is active -> ignored
+	await clean_state.handle_volume_update(20)
+	assert clean_state.volume == 80
+
+	# 3. Once local player is released, MPV updates are processed
+	clean_manager.local_player_ws = None
+	await clean_state.handle_mute_update(True)
+	assert clean_state.server_muted is True
+
+	await clean_state.handle_volume_update(50)
+	assert clean_state.volume == 50
+

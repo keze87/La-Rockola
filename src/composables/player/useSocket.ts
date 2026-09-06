@@ -1,5 +1,4 @@
 import { _startLocalPlayer, applyRemoteSeek } from './useLocalPlayback';
-import { usePlaybackControls } from '../usePlaybackControls';
 import { useToasts } from './useToasts';
 import { getWsUrl } from '../useApi';
 import { useWebSocket } from '@vueuse/core';
@@ -34,7 +33,6 @@ import {
 import type { PlayerState, Track } from '../../types';
 
 export function useSocket() {
-	const { setMute } = usePlaybackControls();
 	const { showToast } = useToasts();
 
 	function connectWebSocket() {
@@ -73,9 +71,7 @@ export function useSocket() {
 
 					if (data.type === 'local_player_claim_result') {
 						if (data.ok) {
-							// El servidor aceptó nuestro rol — mutear MPV y arrancar el reproductor local
-							setMute(true);
-
+							// El servidor aceptó nuestro rol — arrancar el reproductor local (el servidor silencia MPV directamente)
 							if (currentTrackPath.value && !currentTrackPath.value.startsWith('http')) {
 								_startLocalPlayer(currentTrackPath.value);
 							}
