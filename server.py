@@ -1,4 +1,16 @@
 #!/usr/bin/env python3
+"""
+server.py — Servidor Principal y Motor de Reproducción de La Rockola del Carpincho.
+
+Backend en FastAPI + WebSockets que gestiona la biblioteca musical, indexación de archivos,
+extracción de metadatos/portadas, análisis acústico (BPM, energía, huellas chromaprint),
+reproducción nativa con MPV, integración MPRIS y sincronización en tiempo real para clientes web.
+
+Uso:
+  $ cd "La Rockola del Carpincho"
+  $ python3 server.py                       # Inicia el servidor en http://0.0.0.0:8000
+"""
+
 import importlib.util
 import shutil
 import sys

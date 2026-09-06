@@ -37,7 +37,7 @@ Traditional desktop media players and modern streaming apps suffer from several 
 * **Audio Engine:** `mpv` integration
 * **Notifications:** `vue-sonner` toast notifications
 * **Backend Server:** Python 3 with FastAPI and Uvicorn
-* **Database:** SQLite (for history, favorites, and mood tracking)
+* **Database:** SQLite (`DB/rockola.db` for history, favorites, and mood tracking)
 
 ## 📁 Project Structure
 
