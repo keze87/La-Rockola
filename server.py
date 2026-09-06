@@ -146,16 +146,10 @@ except (ImportError, OSError, ValueError, AttributeError):
 
 # --- 3. INICIALIZAMOS LA BASE DE DATOS (SQLITE) ---
 def get_carpincho_data_dir() -> Path:
-	"""Directorio estándar multiplataforma para la suite Carpincho (~/.local/share/carpincho)."""
-	if sys.platform == "win32":
-		base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
-	elif sys.platform == "darwin":
-		base = Path.home() / "Library" / "Application Support"
-	else:
-		base = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
-	data_dir = base / "carpincho"
-	data_dir.mkdir(parents=True, exist_ok=True)
-	return data_dir
+	"""Directorio de base de datos relativo a la carpeta DB en la raíz del repositorio."""
+	db_dir = Path(__file__).resolve().parents[1] / "DB"
+	db_dir.mkdir(parents=True, exist_ok=True)
+	return db_dir
 
 
 DATA_DIR = get_carpincho_data_dir()
