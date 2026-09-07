@@ -2122,9 +2122,6 @@ async def broadcast_state(include_library=False):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-	# Hacemos el backup semanal de la base de datos (por si las moscas)
-	await asyncio.to_thread(backup_db)
-
 	# Le metemos un escaneo de fondo para que ya tenga todo cacheado al inicio
 	asyncio.create_task(scan_library())
 

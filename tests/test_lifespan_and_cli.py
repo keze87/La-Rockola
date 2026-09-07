@@ -15,7 +15,7 @@ async def test_lifespan_startup_and_shutdown(clean_state, monkeypatch):
 	with patch("server.backup_db") as mock_backup, patch("server.scan_library", new_callable=AsyncMock) as mock_scan:
 		# Use async context manager
 		async with server.lifespan(server.app):
-			mock_backup.assert_called_once()
+			mock_backup.assert_not_called()
 
 		mock_bus.disconnect.assert_called_once()
 		clean_state.mpv.stop.assert_called_once()
