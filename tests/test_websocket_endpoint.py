@@ -1,11 +1,12 @@
 import json
 import sqlite3
 import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
-import server
 from starlette.testclient import TestClient
+
+import server
 
 
 @pytest.fixture(autouse=True)

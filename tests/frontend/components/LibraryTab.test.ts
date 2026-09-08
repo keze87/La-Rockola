@@ -131,7 +131,7 @@ describe('LibraryTab.vue', () => {
 		const input = wrapper.find('input[type="text"]');
 
 		await input.setValue('NonexistentSongQueryXYZ');
-		expect(wrapper.text()).toContain("No hay nada por acá con ese nombre, fiera.");
+		expect(wrapper.text()).toContain('No hay nada por acá con ese nombre, fiera.');
 	});
 
 	it('handles track row click by sending toggle_queue or play', async () => {

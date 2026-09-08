@@ -1,8 +1,6 @@
-import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
-import server
 
 
 @pytest.mark.asyncio

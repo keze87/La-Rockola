@@ -52,10 +52,7 @@ describe('useContextMenu.ts', () => {
 		document.body.appendChild(trigger);
 		const focusSpy = vi.spyOn(trigger, 'focus');
 
-		openCtxMenu(
-			{ clientX: 10, clientY: 10, currentTarget: trigger } as unknown as MouseEvent,
-			sampleTrack
-		);
+		openCtxMenu({ clientX: 10, clientY: 10, currentTarget: trigger } as unknown as MouseEvent, sampleTrack);
 		expect(ctxMenu.visible).toBe(true);
 
 		closeCtxMenu();

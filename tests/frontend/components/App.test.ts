@@ -1,14 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import App from '@/App.vue';
-import {
-	activeTab,
-	currentTrackPath,
-	isFogonMode,
-	isScanning,
-	queueState,
-	trackMap,
-} from '@/composables/player/state';
+import { activeTab, currentTrackPath, isFogonMode, isScanning, queueState, trackMap } from '@/composables/player/state';
 import * as api from '@/composables/useApi';
 
 describe('App.vue', () => {

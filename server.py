@@ -981,7 +981,7 @@ class AsyncMpvController:
 
 
 # --- DBUS / MPRIS Classes ---
-b = s = d = x = o = str  # noqa: N816 - DBus signature aliases for static analysis
+b = s = d = x = o = str
 
 
 class MPRISRoot(ServiceInterface):

@@ -62,7 +62,9 @@ describe('ControlsTab.vue', () => {
 	it('dispatches stop command when "Cortala de una" is clicked', async () => {
 		const wrapper = mount(ControlsTab);
 
-		const stopBtn = wrapper.findAllComponents({ name: 'PillButton' }).find((w) => w.text().includes('Cortala de una'));
+		const stopBtn = wrapper
+			.findAllComponents({ name: 'PillButton' })
+			.find((w) => w.text().includes('Cortala de una'));
 		expect(stopBtn).toBeDefined();
 		await stopBtn!.trigger('click');
 

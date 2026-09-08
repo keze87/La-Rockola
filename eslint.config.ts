@@ -39,6 +39,24 @@ export default [
 		},
 	},
 
+	{
+		files: ['tests/**/*.ts', 'tests/**/*.js'],
+		rules: {
+			// Allows mocking and testing invalid inputs without boilerplate
+			'@typescript-eslint/no-explicit-any': 'off',
+
+			// Catches forgotten assertions, but allows intentional unused params/vars prefixed with _
+			'@typescript-eslint/no-unused-vars': [
+				'warn',
+				{
+					argsIgnorePattern: '^_',
+					varsIgnorePattern: '^_',
+					caughtErrorsIgnorePattern: '^_',
+				},
+			],
+		},
+	},
+
 	// MUST BE LAST: This turns off conflicting ESLint layout rules
 	// and flags formatting errors as ESLint issues automatically.
 	eslintPluginPrettierRecommended,

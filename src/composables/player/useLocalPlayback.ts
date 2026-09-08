@@ -285,7 +285,7 @@ let initialized = false;
 
 export function useLocalPlayback() {
 	const { sendCmd } = useCommands();
-	const { pause, setMute, skip, prev, seek, seekAbsolute } = usePlaybackControls();
+	const { pause, skip, prev, seek, seekAbsolute } = usePlaybackControls();
 	const { getTrackInfo } = useLibrary();
 
 	function setVolume(vollevel?: number) {

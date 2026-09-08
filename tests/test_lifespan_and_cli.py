@@ -1,7 +1,7 @@
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 import server
 
 
@@ -12,7 +12,7 @@ async def test_lifespan_startup_and_shutdown(clean_state, monkeypatch):
 	mock_bus = MagicMock()
 	clean_state.mpris_bus = mock_bus
 
-	with patch("server.backup_db") as mock_backup, patch("server.scan_library", new_callable=AsyncMock) as mock_scan:
+	with patch("server.backup_db") as mock_backup, patch("server.scan_library", new_callable=AsyncMock):
 		# Use async context manager
 		async with server.lifespan(server.app):
 			mock_backup.assert_not_called()

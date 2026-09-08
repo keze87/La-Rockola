@@ -1,0 +1,9 @@
+line-length = 120
+indent-width = 4
+
+# [lint]
+# ignore = ["BLE001", "S110", "SIM117", "ASYNC230"]
+
+[format]
+quote-style = "double"
+indent-style = "tab"

@@ -121,9 +121,7 @@ describe('useSocket.ts', () => {
 			data: JSON.stringify({ type: 'local_player_seek', mode: 'relative', amount: 10 }),
 		});
 
-		expect(applySeekSpy).toHaveBeenCalledWith(
-			expect.objectContaining({ type: 'local_player_seek', amount: 10 })
-		);
+		expect(applySeekSpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'local_player_seek', amount: 10 }));
 	});
 
 	it('handles local_player_claim_result accepted vs rejected', () => {
@@ -169,9 +167,7 @@ describe('useSocket.ts', () => {
 			url_metadata: { 'https://youtube.com/watch?v=1': { display_title: 'Web Song' } },
 			volume: 95,
 			time_pos: 45.0,
-			library: [
-				{ path: '/music/spinetta.mp3', display_title: 'Barro Tal Vez', artist: 'Spinetta' },
-			],
+			library: [{ path: '/music/spinetta.mp3', display_title: 'Barro Tal Vez', artist: 'Spinetta' }],
 		};
 
 		capturedOptions.onMessage(null, { data: JSON.stringify(payload) });

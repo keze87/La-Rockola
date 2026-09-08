@@ -122,7 +122,9 @@ describe('ContextMenu.vue', () => {
 		ctxMenu.track = sampleTrack;
 
 		const wrapper = mount(ContextMenu);
-		const filterArtistBtn = wrapper.findAll('.ctx-menu-item').find((b) => b.text().includes('Chusmear más del artista'));
+		const filterArtistBtn = wrapper
+			.findAll('.ctx-menu-item')
+			.find((b) => b.text().includes('Chusmear más del artista'));
 		expect(filterArtistBtn).toBeDefined();
 		await filterArtistBtn!.trigger('click');
 		await flushPromises();
@@ -138,7 +140,9 @@ describe('ContextMenu.vue', () => {
 		pauseAfterPath.value = null;
 
 		const wrapper = mount(ContextMenu);
-		const pauseAfterBtn = wrapper.findAll('.ctx-menu-item').find((b) => b.text().includes('Frenar la chata tras este tema'));
+		const pauseAfterBtn = wrapper
+			.findAll('.ctx-menu-item')
+			.find((b) => b.text().includes('Frenar la chata tras este tema'));
 		expect(pauseAfterBtn).toBeDefined();
 		await pauseAfterBtn!.trigger('click');
 		await flushPromises();
@@ -157,7 +161,9 @@ describe('ContextMenu.vue', () => {
 		pauseAfterPath.value = sampleTrack.path;
 
 		const wrapper = mount(ContextMenu);
-		const pauseAfterBtn = wrapper.findAll('.ctx-menu-item').find((b) => b.text().includes('Frenar la chata tras este tema'));
+		const pauseAfterBtn = wrapper
+			.findAll('.ctx-menu-item')
+			.find((b) => b.text().includes('Frenar la chata tras este tema'));
 		expect(pauseAfterBtn).toBeDefined();
 		await pauseAfterBtn!.trigger('click');
 		await flushPromises();
