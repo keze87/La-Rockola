@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { useContextMenu, useContextMenuBindings, menuRef } from '@/composables/useContextMenu';
+import { useContextMenu, useContextMenuBindings } from '@/composables/useContextMenu';
 import type { Track } from '@/types';
 
 describe('useContextMenu.ts', () => {

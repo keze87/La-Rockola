@@ -134,7 +134,7 @@ import subprocess
 import tempfile
 import time
 import warnings
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 import uvicorn
@@ -170,10 +170,8 @@ DB_PATH = DATA_DIR / "rockola.db"
 # Migración automática desde ~/.carpincho.db
 _LEGACY_DB = Path.home() / ".carpincho.db"
 if _LEGACY_DB.exists() and not DB_PATH.exists():
-	try:
+	with suppress(OSError):
 		shutil.copy2(_LEGACY_DB, DB_PATH)
-	except Exception:
-		pass
 
 
 def backup_db():
@@ -216,8 +214,8 @@ def backup_db():
 		for old_backup in all_backups[8:]:
 			try:
 				old_backup.unlink(missing_ok=True)
-			except Exception:
-				pass
+			except Exception as e:
+				logger.debug(f"No se pudo eliminar backup viejo {old_backup}: {e}")
 	except Exception as e:
 		logger.error(f"Error armando el backup semanal de la DB: {e}")
 
@@ -495,8 +493,8 @@ def build_mpris_metadata(state_obj, variant_cls=None) -> dict:
 	if track_uri and not track_uri.startswith("http"):
 		try:
 			track_uri = Path(track_uri).absolute().as_uri()
-		except Exception:
-			pass
+		except Exception as e:
+			logger.debug(f"Pifió convirtiendo track_uri a file URI: {e}")
 	elif not track_uri:
 		track_uri = ""
 
@@ -744,6 +742,14 @@ class AsyncMpvController:
 		self.reader = None
 		self.writer = None
 
+	def _check_windows_pipe(self) -> bool:
+		"""Verifica si el named pipe de Windows ya está disponible intentando abrirlo."""
+		try:
+			with open(self.socket_path, "r+b"):
+				return True
+		except OSError:
+			return False
+
 	async def start(self, is_restart: bool = False):
 		# Si ya hay otro proceso reiniciando MPV, nos quedamos en el molde y salimos
 		if self._start_lock.locked():
@@ -826,11 +832,8 @@ class AsyncMpvController:
 			for i in range(20):
 				if self.is_windows:
 					# Named pipes appear instantly in the OS namespace if MPV created it successfully
-					try:
-						with open(self.socket_path, "r+b"):
-							break
-					except FileNotFoundError:
-						pass
+					if await asyncio.to_thread(self._check_windows_pipe):
+						break
 				elif os.path.exists(self.socket_path):
 					break
 				await asyncio.sleep(0.3)
@@ -2633,8 +2636,8 @@ async def websocket_endpoint(websocket: WebSocket):
 			logger.info("El reproductor local se desconectó. Restaurando mute de MPV...")
 			try:
 				await state.mpv._send(json.dumps({"command": ["set_property", "mute", state.server_muted]}))
-			except Exception:
-				pass
+			except Exception as e:
+				logger.debug(f"Pifió restaurando mute de MPV: {e}")
 
 
 if __name__ == "__main__":

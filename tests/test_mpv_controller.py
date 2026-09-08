@@ -106,3 +106,26 @@ async def test_mpv_start_is_restart_behavior():
 		await mpv.start(is_restart=True)
 		await asyncio.sleep(0.01)
 		callbacks["mpv_restarted"].assert_called_once()
+
+
+def test_mpv_check_windows_pipe_success():
+	"""Verify _check_windows_pipe returns True when the named pipe is successfully opened."""
+	mpv = server.AsyncMpvController({})
+	mpv.socket_path = r"\\.\pipe\test_pipe"
+
+	with patch("builtins.open") as mock_open:
+		assert mpv._check_windows_pipe() is True
+		mock_open.assert_called_once_with(r"\\.\pipe\test_pipe", "r+b")
+
+
+def test_mpv_check_windows_pipe_failure():
+	"""Verify _check_windows_pipe returns False when opening the pipe raises FileNotFoundError or OSError."""
+	mpv = server.AsyncMpvController({})
+	mpv.socket_path = r"\\.\pipe\test_pipe"
+
+	with patch("builtins.open", side_effect=FileNotFoundError):
+		assert mpv._check_windows_pipe() is False
+
+	with patch("builtins.open", side_effect=OSError("Pipe busy")):
+		assert mpv._check_windows_pipe() is False
+

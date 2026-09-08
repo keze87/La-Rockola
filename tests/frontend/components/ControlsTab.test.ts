@@ -10,7 +10,6 @@ import {
 	serverMuted,
 	volume,
 } from '@/composables/player/state';
-import * as api from '@/composables/useApi';
 
 describe('ControlsTab.vue', () => {
 	let fetchMock: any;

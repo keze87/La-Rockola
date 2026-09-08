@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import TopTab from '@/components/TopTab.vue';
 import { topPlayedState, trackMap } from '@/composables/player/state';
-import * as api from '@/composables/useApi';
 
 describe('TopTab.vue', () => {
 	let fetchMock: any;

@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import FavoritableCover from '@/components/ui/FavoritableCover.vue';
 import { favorites, trackMap } from '@/composables/player/state';
-import * as api from '@/composables/useApi';
 
 describe('FavoritableCover.vue', () => {
 	const mockTrack = {

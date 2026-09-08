@@ -59,20 +59,22 @@ def test_track_class_metadata_extraction(tmp_path):
 		"album": ["A Night at the Opera"],
 	}
 
-	with patch("server.MutagenFile", return_value=mock_audio):
-		with patch.object(server.Track, "_extract_fingerprint", return_value=None):
-			with patch.object(server.Track, "_extract_mood", return_value=None):
-				track = server.Track(test_file)
-				data = track.to_dict()
+	with (
+		patch("server.MutagenFile", return_value=mock_audio),
+		patch.object(server.Track, "_extract_fingerprint", return_value=None),
+		patch.object(server.Track, "_extract_mood", return_value=None),
+	):
+		track = server.Track(test_file)
+		data = track.to_dict()
 
-				assert data["title"] == "Bohemian Rhapsody"
-				assert data["artist"] == "Queen"
-				assert data["album"] == "A Night at the Opera"
-				assert data["duration_str"] == "5:54"
-				assert data["display_title"] == "Bohemian Rhapsody"
-				assert data["display_artist"] == "Queen"
-				assert "queen" in data["search_string"]
-				assert "bohemian" in data["search_string"]
+		assert data["title"] == "Bohemian Rhapsody"
+		assert data["artist"] == "Queen"
+		assert data["album"] == "A Night at the Opera"
+		assert data["duration_str"] == "5:54"
+		assert data["display_title"] == "Bohemian Rhapsody"
+		assert data["display_artist"] == "Queen"
+		assert "queen" in data["search_string"]
+		assert "bohemian" in data["search_string"]
 
 
 def test_track_class_fallback_filename(tmp_path):
@@ -80,16 +82,18 @@ def test_track_class_fallback_filename(tmp_path):
 	test_file = tmp_path / "Soda Stereo - De Música Ligera.flac"
 	test_file.write_bytes(b"TEST_AUDIO_CONTENT")
 
-	with patch("server.MutagenFile", return_value=None):
-		with patch.object(server.Track, "_extract_fingerprint", return_value=None):
-			with patch.object(server.Track, "_extract_mood", return_value=None):
-				track = server.Track(test_file)
-				data = track.to_dict()
+	with (
+		patch("server.MutagenFile", return_value=None),
+		patch.object(server.Track, "_extract_fingerprint", return_value=None),
+		patch.object(server.Track, "_extract_mood", return_value=None),
+	):
+		track = server.Track(test_file)
+		data = track.to_dict()
 
-				assert data["display_title"] == "Soda Stereo - De Música Ligera"
-				assert data["display_artist"] == "Desconocido"
-				assert data["album"] == "Desconocido"
-				assert data["duration_str"] == "0:00"
+		assert data["display_title"] == "Soda Stereo - De Música Ligera"
+		assert data["display_artist"] == "Desconocido"
+		assert data["album"] == "Desconocido"
+		assert data["duration_str"] == "0:00"
 
 
 def test_parse_fp():
