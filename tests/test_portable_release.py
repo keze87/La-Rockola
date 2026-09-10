@@ -83,18 +83,14 @@ def test_get_config_path_custom(tmp_path):
 	assert server.get_config_path(str(custom)) == custom.resolve()
 
 
-def test_get_config_path_frozen_writable(tmp_path, monkeypatch):
-	"""Test get_config_path in frozen mode when exe dir is writable."""
-	exe_dir = tmp_path / "app_dir"
-	exe_dir.mkdir()
-	fake_exe = exe_dir / "larockola.exe"
-	fake_exe.write_text("fake")
-
-	monkeypatch.setattr(sys, "frozen", True, raising=False)
-	monkeypatch.setattr(sys, "executable", str(fake_exe))
+def test_get_config_path_in_data_dir(tmp_path, monkeypatch):
+	"""Test get_config_path resolves to rockola_config.json inside DATA_DIR."""
+	data_dir = tmp_path / "my_db_dir"
+	data_dir.mkdir()
+	monkeypatch.setattr(server, "DATA_DIR", data_dir)
 
 	config_path = server.get_config_path()
-	assert config_path == exe_dir / "rockola_config.json"
+	assert config_path == data_dir / "rockola_config.json"
 
 
 def test_load_and_save_config(tmp_path):

@@ -398,21 +398,27 @@ DEFAULT_CONFIG = {
 
 
 def get_config_path(custom_path: str | None = None) -> Path:
-	"""Determina la ruta del archivo de configuración rockola_config.json."""
+	"""Determina la ruta del archivo de configuración rockola_config.json dentro de la carpeta de la base de datos (DATA_DIR)."""
 	if custom_path:
 		return Path(custom_path).expanduser().resolve()
 
-	if getattr(sys, "frozen", False):
-		exe_dir = Path(sys.executable).parent
-		try:
-			test_file = exe_dir / ".carpincho_write_test"
-			test_file.touch(exist_ok=True)
-			test_file.unlink(missing_ok=True)
-			return exe_dir / "rockola_config.json"
-		except OSError:
-			return DATA_DIR / "rockola_config.json"
+	target_path = DATA_DIR / "rockola_config.json"
 
-	return Path(__file__).resolve().parent / "rockola_config.json"
+	# Migración automática si existía un config previo en la raíz o al lado del ejecutable
+	if not target_path.exists():
+		legacy_candidates = [
+			Path(__file__).resolve().parent / "rockola_config.json",
+		]
+		if getattr(sys, "frozen", False):
+			legacy_candidates.append(Path(sys.executable).parent / "rockola_config.json")
+
+		for leg in legacy_candidates:
+			if leg.is_file() and leg != target_path:
+				with suppress(OSError):
+					shutil.copy2(leg, target_path)
+				break
+
+	return target_path
 
 
 def load_config(config_path: Path | None = None) -> dict:

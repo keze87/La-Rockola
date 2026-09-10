@@ -92,17 +92,16 @@ def run_pyinstaller():
 		env = os.environ.copy()
 		env["WINEDEBUG"] = "-all"
 
-	subprocess.run(cmd, cwd=str(ROOT_DIR), env=env, check=True)
+	res = subprocess.run(cmd, cwd=str(ROOT_DIR), env=env)
 
 	exe_path = dist_exe_dir / "larockola.exe"
 	if not exe_path.exists():
-		# En Linux a veces el nombre queda sin extensión o con ella
 		alt_path = dist_exe_dir / "larockola"
 		if alt_path.exists():
 			shutil.move(alt_path, exe_path)
 
 	if not exe_path.exists():
-		print(f"❌ Error: No se encontró el ejecutable en {exe_path}", file=sys.stderr)
+		print(f"❌ Error: No se encontró el ejecutable en {exe_path} (código de salida: {res.returncode})", file=sys.stderr)
 		sys.exit(1)
 
 	log(f"Ejecutable Windows generado correctamente: {exe_path} ({exe_path.stat().st_size / (1024*1024):.1f} MB)")
