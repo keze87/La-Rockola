@@ -88,7 +88,7 @@ async def test_mpv_start_is_restart_behavior():
 
 	with (
 		patch("asyncio.create_subprocess_exec") as mock_exec,
-		patch("asyncio.open_unix_connection", return_value=(mock_reader, mock_writer)),
+		patch("asyncio.open_unix_connection", return_value=(mock_reader, mock_writer), create=True),
 		patch("os.path.exists", return_value=True),
 		patch.object(mpv, "_send", new_callable=AsyncMock),
 	):

@@ -178,7 +178,7 @@ pause
 	log(f"Comprimiendo {zip_path.name}...")
 	with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
 		for item in package_dir.rglob("*"):
-			arcname = item.relative_to(RELEASE_DIR)
+			arcname = item.relative_to(package_dir)
 			zf.write(item, arcname)
 
 	log(f"Paquete de lanzamiento listo: {zip_path} ({zip_path.stat().st_size / (1024*1024):.1f} MB)")

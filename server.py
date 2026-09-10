@@ -33,14 +33,23 @@ def find_binary(bin_name: str) -> str | None:
 	return shutil.which(bin_name)
 
 
-def check_dependencies():
+_dependencies_checked = False
+
+
+def check_dependencies(force: bool = False):
 	"""
 	Revisa que esté todo piola para arrancar la Rockola del Carpincho.
 	Falla temprano pero con buena onda si falta algo.
 	"""
+	global _dependencies_checked
+	if _dependencies_checked and not force:
+		return
+
 	# Si se invoca con --help o -h, permitimos que argparse muestre la ayuda sin frenar por dependencias
 	if any(arg in sys.argv for arg in ("-h", "--help")):
 		return
+
+	_dependencies_checked = True
 
 	missing_req_py = []
 	missing_opt_py = []
@@ -448,6 +457,131 @@ def save_config(config_path: Path, cfg: dict) -> None:
 		logger.error(f"Error guardando la configuración en {config_path}: {e}")
 
 
+def _select_folder_powershell(title: str, initial_dir: str | None = None) -> str | None:
+	"""Abre el diálogo nativo de Windows (FolderBrowserDialog) usando PowerShell."""
+	ps_code = (
+		"[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; "
+		"Add-Type -AssemblyName System.Windows.Forms; "
+		"$d = New-Object System.Windows.Forms.FolderBrowserDialog; "
+		f"$d.Description = '{title}'; "
+		"$d.ShowNewFolderButton = $true; "
+	)
+	if initial_dir and Path(initial_dir).is_dir():
+		safe_dir = str(Path(initial_dir).resolve()).replace("'", "''")
+		ps_code += f"$d.SelectedPath = '{safe_dir}'; "
+	ps_code += (
+		"$top = New-Object System.Windows.Forms.Form; "
+		"$top.TopMost = $true; "
+		"$res = $d.ShowDialog($top); "
+		"if ($res -eq [System.Windows.Forms.DialogResult]::OK) { "
+		"  [Console]::Out.WriteLine($d.SelectedPath) "
+		"} "
+		"$top.Dispose(); $d.Dispose();"
+	)
+	flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if sys.platform == "win32" else 0
+	try:
+		res = subprocess.run(
+			["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_code],
+			capture_output=True,
+			text=True,
+			encoding="utf-8",
+			creationflags=flags,
+			timeout=180,
+		)
+		out = res.stdout.strip()
+		if out and Path(out).is_dir():
+			return out
+	except Exception:
+		pass
+	return None
+
+
+def _select_folder_tkinter(title: str, initial_dir: str | None = None) -> str | None:
+	"""Abre el diálogo de carpetas mediante Tkinter si está disponible."""
+	try:
+		import tkinter as tk
+		from tkinter import filedialog
+
+		root = tk.Tk()
+		root.withdraw()
+		root.attributes("-topmost", True)
+		init_path = str(Path(initial_dir).resolve()) if initial_dir and Path(initial_dir).is_dir() else str(Path.home())
+		chosen = filedialog.askdirectory(title=title, initialdir=init_path)
+		root.destroy()
+		if chosen and Path(chosen).is_dir():
+			return chosen
+	except Exception:
+		pass
+	return None
+
+
+def _select_folder_macos(title: str, initial_dir: str | None = None) -> str | None:
+	"""Abre el diálogo nativo de macOS usando AppleScript."""
+	try:
+		safe_title = title.replace('"', '\\"')
+		script = f'POSIX path of (choose folder with prompt "{safe_title}")'
+		res = subprocess.run(
+			["osascript", "-e", script],
+			capture_output=True,
+			text=True,
+			timeout=180,
+		)
+		out = res.stdout.strip()
+		if out and Path(out).is_dir():
+			return out
+	except Exception:
+		pass
+	return None
+
+
+def _select_folder_linux(title: str, initial_dir: str | None = None) -> str | None:
+	"""Abre el diálogo de carpetas en Linux mediante zenity o kdialog."""
+	if shutil.which("zenity"):
+		try:
+			cmd = ["zenity", "--file-selection", "--directory", f"--title={title}"]
+			if initial_dir and Path(initial_dir).is_dir():
+				cmd.append(f"--filename={Path(initial_dir).resolve()}/")
+			res = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+			out = res.stdout.strip()
+			if out and Path(out).is_dir():
+				return out
+		except Exception:
+			pass
+	if shutil.which("kdialog"):
+		try:
+			start = str(Path(initial_dir).resolve()) if initial_dir and Path(initial_dir).is_dir() else str(Path.home())
+			cmd = ["kdialog", "--getexistingdirectory", start, f"--title={title}"]
+			res = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+			out = res.stdout.strip()
+			if out and Path(out).is_dir():
+				return out
+		except Exception:
+			pass
+	return None
+
+
+def select_folder_dialog(title: str = "Seleccioná la carpeta de música", initial_dir: str | None = None) -> str | None:
+	"""
+	Abre un diálogo gráfico nativo según el sistema operativo para seleccionar una carpeta.
+	Retorna la ruta elegida como string o None si se canceló o falló.
+	"""
+	if sys.platform == "win32":
+		res = _select_folder_powershell(title, initial_dir)
+		if res:
+			return res
+		return _select_folder_tkinter(title, initial_dir)
+	elif sys.platform == "darwin":
+		res = _select_folder_macos(title, initial_dir)
+		if res:
+			return res
+		return _select_folder_tkinter(title, initial_dir)
+	else:
+		res = _select_folder_linux(title, initial_dir)
+		if res:
+			return res
+		return _select_folder_tkinter(title, initial_dir)
+
+
 def run_interactive_wizard(config_path: Path, current_config: dict | None = None) -> dict:
 	"""Asistente interactivo en consola para la primera ejecución o reconfiguración."""
 	cfg = dict(current_config or load_config(config_path))
@@ -460,14 +594,46 @@ def run_interactive_wizard(config_path: Path, current_config: dict | None = None
 
 	# 1. Carpeta de música principal
 	default_dir = cfg.get("music_dir") or "~/Music"
+	default_resolved = str(Path(default_dir).expanduser().resolve())
+
+	print("📁 Carpeta principal de música:")
+	print(f"  [1] Usar por defecto: {default_dir} ({default_resolved})")
+	print("  [2] 📂 Abrir selector de carpetas... (Examinar)")
+	print("  [3] Escribir ruta manualmente\n")
+
 	while True:
 		try:
-			val = input(f"📁 Carpeta principal de música [default: {default_dir}]: ").strip()
+			choice = input("Elegí una opción [1-3] o escribí la ruta [default: 1]: ").strip()
 		except (EOFError, KeyboardInterrupt):
 			print("\nOperación cancelada. Usando valores actuales.")
 			return cfg
 
-		chosen_dir = val if val else default_dir
+		if choice == "" or choice == "1":
+			chosen_dir = default_dir
+		elif choice in ("2", "b", "e", "examinar", "browse", "selector"):
+			print("⏳ Abriendo selector de carpetas...")
+			selected = select_folder_dialog(
+				title="Seleccioná la carpeta principal de música",
+				initial_dir=default_resolved if Path(default_resolved).is_dir() else None,
+			)
+			if selected:
+				print(f"✅ Carpeta seleccionada: {selected}")
+				chosen_dir = selected
+			else:
+				print("⚠️  No se seleccionó ninguna carpeta (o se canceló el diálogo).")
+				continue
+		elif choice == "3":
+			try:
+				manual_val = input("📁 Ingresá la ruta de la carpeta: ").strip()
+			except (EOFError, KeyboardInterrupt):
+				manual_val = ""
+			if not manual_val:
+				continue
+			chosen_dir = manual_val
+		else:
+			# Si el usuario pegó o escribió directamente una ruta
+			chosen_dir = choice
+
 		expanded = Path(chosen_dir).expanduser().resolve()
 		if not expanded.is_dir():
 			print(f"⚠️  La carpeta '{expanded}' no existe actualmente.")
@@ -481,34 +647,73 @@ def run_interactive_wizard(config_path: Path, current_config: dict | None = None
 					cfg["music_dir"] = str(expanded)
 					break
 				except Exception as e:
-					print(f"❌ No se pudo crear la carpeta: {e}. Probemos otra ruta.")
+					print(f"❌ No se pudo crear la carpeta: {e}. Probemos otra opción.")
 			else:
-				print("Probemos indicando otra ruta.")
+				print("Probemos indicando otra opción o ruta.")
 		else:
 			cfg["music_dir"] = str(expanded)
 			break
 
 	# 2. Carpeta de música secundaria (opcional)
 	default_dir2 = cfg.get("music_dir2") or ""
-	prompt2 = (
-		f"📁 Carpeta secundaria de música (opcional, Enter para omitir) [{default_dir2}]: "
-		if default_dir2
-		else "📁 Carpeta secundaria de música (opcional, Enter para omitir): "
-	)
-	try:
-		val2 = input(prompt2).strip()
-	except (EOFError, KeyboardInterrupt):
-		val2 = ""
-
-	if val2:
-		expanded2 = Path(val2).expanduser().resolve()
-		if not expanded2.is_dir():
-			print(f"⚠️  Nota: '{expanded2}' no existe actualmente, pero la guardamos igual.")
-		cfg["music_dir2"] = str(expanded2)
-	elif default_dir2:
-		cfg["music_dir2"] = default_dir2
+	print("\n📁 Carpeta secundaria de música (opcional):")
+	if default_dir2:
+		print(f"  [1] Mantener actual: {default_dir2}")
+		print("  [2] 📂 Abrir selector de carpetas... (Examinar)")
+		print("  [3] Escribir ruta manualmente")
+		print("  [4] Omitir / quitar carpeta secundaria\n")
 	else:
-		cfg["music_dir2"] = None
+		print("  [1] Omitir (Enter para no configurar carpeta secundaria)")
+		print("  [2] 📂 Abrir selector de carpetas... (Examinar)")
+		print("  [3] Escribir ruta manualmente\n")
+
+	while True:
+		try:
+			choice2 = input("Elegí una opción o escribí la ruta [default: 1]: ").strip()
+		except (EOFError, KeyboardInterrupt):
+			choice2 = "1"
+
+		if choice2 == "" or choice2 == "1":
+			if default_dir2:
+				cfg["music_dir2"] = default_dir2
+			else:
+				cfg["music_dir2"] = None
+			break
+		elif choice2 in ("2", "b", "e", "examinar", "browse", "selector"):
+			print("⏳ Abriendo selector de carpetas...")
+			selected2 = select_folder_dialog(
+				title="Seleccioná la carpeta secundaria de música",
+				initial_dir=default_dir2 if default_dir2 and Path(default_dir2).is_dir() else None,
+			)
+			if selected2:
+				print(f"✅ Carpeta secundaria seleccionada: {selected2}")
+				cfg["music_dir2"] = str(Path(selected2).expanduser().resolve())
+				break
+			else:
+				print("⚠️  No se seleccionó ninguna carpeta.")
+				continue
+		elif choice2 == "3":
+			try:
+				manual_val2 = input("📁 Ingresá la ruta de la carpeta secundaria: ").strip()
+			except (EOFError, KeyboardInterrupt):
+				manual_val2 = ""
+			if not manual_val2:
+				continue
+			expanded2 = Path(manual_val2).expanduser().resolve()
+			if not expanded2.is_dir():
+				print(f"⚠️  Nota: '{expanded2}' no existe actualmente, pero la guardamos igual.")
+			cfg["music_dir2"] = str(expanded2)
+			break
+		elif choice2 == "4" and default_dir2:
+			cfg["music_dir2"] = None
+			print("Carpeta secundaria omitida.")
+			break
+		else:
+			expanded2 = Path(choice2).expanduser().resolve()
+			if not expanded2.is_dir():
+				print(f"⚠️  Nota: '{expanded2}' no existe actualmente, pero la guardamos igual.")
+			cfg["music_dir2"] = str(expanded2)
+			break
 
 	# 3. Puerto
 	default_port = cfg.get("port") or 1729

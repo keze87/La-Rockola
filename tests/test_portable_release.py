@@ -151,3 +151,107 @@ def test_run_interactive_wizard_create_dir_and_invalid_port(tmp_path):
 	assert new_music_folder.is_dir()
 	assert cfg["music_dir"] == str(new_music_folder.resolve())
 
+
+def test_check_dependencies_no_duplicate_warning():
+	"""Test that check_dependencies only executes once when _dependencies_checked is True."""
+	server._dependencies_checked = True
+	with patch("server.importlib.util.find_spec") as mock_find:
+		server.check_dependencies(force=False)
+		mock_find.assert_not_called()
+
+	# When force=True, it should execute
+	with patch("server.importlib.util.find_spec", return_value=True) as mock_find2, patch(
+		"server.find_binary", return_value="/usr/bin/dummy"
+	):
+		server.check_dependencies(force=True)
+		assert mock_find2.called
+
+
+def test_select_folder_dialog_powershell(tmp_path):
+	"""Test select_folder_dialog with PowerShell provider on Windows."""
+	target_folder = tmp_path / "MyMusicFolder"
+	target_folder.mkdir()
+
+	with patch("sys.platform", "win32"):
+		with patch("subprocess.run") as mock_run:
+			mock_run.return_value.stdout = f"{str(target_folder)}\n"
+			mock_run.return_value.return_code = 0
+			res = server.select_folder_dialog(title="Test", initial_dir=str(tmp_path))
+			assert res == str(target_folder)
+
+
+def test_select_folder_dialog_cancel(tmp_path):
+	"""Test select_folder_dialog returns None when user cancels the dialog."""
+	with patch("sys.platform", "win32"):
+		with patch("server._select_folder_powershell", return_value=None), patch(
+			"server._select_folder_tkinter", return_value=None
+		):
+			res = server.select_folder_dialog(title="Test", initial_dir=str(tmp_path))
+			assert res is None
+
+
+def test_run_interactive_wizard_using_selector_dialog(tmp_path):
+	"""Test choosing option 2 (folder selector dialog) in the wizard."""
+	cfg_file = tmp_path / "rockola_config.json"
+	picked_folder = tmp_path / "PickedMusic"
+	picked_folder.mkdir()
+
+	picked_secondary = tmp_path / "SecondaryMusic"
+	picked_secondary.mkdir()
+
+	# Choice 2 for primary (calls dialog), choice 2 for secondary (calls dialog), port default "", host default ""
+	inputs = ["2", "2", "", ""]
+
+	with patch("server.select_folder_dialog", side_effect=[str(picked_folder), str(picked_secondary)]):
+		with patch("builtins.input", side_effect=inputs):
+			cfg = server.run_interactive_wizard(cfg_file)
+
+	assert cfg["music_dir"] == str(picked_folder.resolve())
+	assert cfg["music_dir2"] == str(picked_secondary.resolve())
+	assert cfg["port"] == 1729
+	assert cfg["host"] == "0.0.0.0"
+
+
+def test_run_interactive_wizard_using_default_option(tmp_path):
+	"""Test choosing option 1 (or pressing Enter) to use the default ~/Music."""
+	cfg_file = tmp_path / "rockola_config.json"
+	default_folder = tmp_path / "DefaultMusic"
+	default_folder.mkdir()
+
+	initial_cfg = {"music_dir": str(default_folder)}
+
+	# Enter (option 1 default), Enter (skip secondary), Enter (default port), Enter (default host)
+	inputs = ["", "", "", ""]
+
+	with patch("builtins.input", side_effect=inputs):
+		cfg = server.run_interactive_wizard(cfg_file, current_config=initial_cfg)
+
+	assert cfg["music_dir"] == str(default_folder.resolve())
+	assert cfg["music_dir2"] is None
+
+
+def test_build_windows_zip_structure(tmp_path, monkeypatch):
+	"""Test that build_windows.py creates a ZIP with files at root (relative to package_dir)."""
+	import zipfile
+	from scripts import build_windows
+
+	fake_release = tmp_path / "release"
+	monkeypatch.setattr(build_windows, "RELEASE_DIR", fake_release)
+
+	fake_exe = tmp_path / "larockola.exe"
+	fake_exe.write_text("fake binary")
+
+	build_windows.create_release_package(fake_exe)
+
+	zip_path = fake_release / "larockola-windows-x86_64.zip"
+	assert zip_path.is_file()
+
+	with zipfile.ZipFile(zip_path, "r") as zf:
+		names = zf.namelist()
+		# Files must be at root of zip, NOT starting with 'larockola-windows-x86_64/'
+		assert "larockola.exe" in names
+		assert "LEEME.txt" in names
+		assert "iniciar_rockola.bat" in names
+		assert not any(name.startswith("larockola-windows-x86_64/") for name in names)
+
+

@@ -43,11 +43,16 @@ jobs:
         run: |
           python scripts/build_windows.py
 
+      - name: Set artifact date
+        id: artifact-date
+        shell: pwsh
+        run: echo "date=$(Get-Date -Format 'yyyy-MM-dd')" >> $env:GITHUB_OUTPUT
+
       - name: Upload Windows Release Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: larockola-windows-x86_64
-          path: release/larockola-windows-x86_64.zip
+          name: larockola-windows-x86_64-${{ steps.artifact-date.outputs.date }}
+          path: release/larockola-windows-x86_64
 
       - name: Publish GitHub Release (if tagged)
         if: startsWith(github.ref, 'refs/tags/v')
