@@ -24,7 +24,7 @@ SPEC_FILE = ROOT_DIR / "larockola.spec"
 
 
 def log(msg: str):
-	print(f"🦦 {msg}")
+	print(f"[build] {msg}")
 
 
 def ensure_icon():
@@ -77,7 +77,7 @@ def run_pyinstaller():
 		# En Linux usamos Wine
 		wine_bin = shutil.which("wine")
 		if not wine_bin:
-			print("❌ Error: No se encontró 'wine' para compilar el ejecutable de Windows en Linux.", file=sys.stderr)
+			print("Error: No se encontró 'wine' para compilar el ejecutable de Windows en Linux.", file=sys.stderr)
 			sys.exit(1)
 		cmd = [
 			"wine",
@@ -92,7 +92,7 @@ def run_pyinstaller():
 		env = os.environ.copy()
 		env["WINEDEBUG"] = "-all"
 
-	res = subprocess.run(cmd, cwd=str(ROOT_DIR), env=env)
+	res = subprocess.run(cmd, cwd=str(ROOT_DIR), env=env, check=False)
 
 	exe_path = dist_exe_dir / "larockola.exe"
 	if not exe_path.exists():
@@ -101,7 +101,7 @@ def run_pyinstaller():
 			shutil.move(alt_path, exe_path)
 
 	if not exe_path.exists():
-		print(f"❌ Error: No se encontró el ejecutable en {exe_path} (código de salida: {res.returncode})", file=sys.stderr)
+		print(f"Error: No se encontró el ejecutable en {exe_path} (código de salida: {res.returncode})", file=sys.stderr)
 		sys.exit(1)
 
 	log(f"Ejecutable Windows generado correctamente: {exe_path} ({exe_path.stat().st_size / (1024*1024):.1f} MB)")
@@ -181,7 +181,7 @@ pause
 			arcname = item.relative_to(RELEASE_DIR)
 			zf.write(item, arcname)
 
-	log(f"✅ ¡Paquete de lanzamiento listo! {zip_path} ({zip_path.stat().st_size / (1024*1024):.1f} MB)")
+	log(f"Paquete de lanzamiento listo: {zip_path} ({zip_path.stat().st_size / (1024*1024):.1f} MB)")
 
 
 def main():
@@ -200,7 +200,7 @@ def main():
 	build_frontend(force=args.rebuild_frontend)
 	exe_path = run_pyinstaller()
 	create_release_package(exe_path)
-	log("🎉 Proceso finalizado con éxito.")
+	log("Proceso finalizado con éxito.")
 
 
 if __name__ == "__main__":
