@@ -12,8 +12,25 @@ Uso:
 """
 
 import importlib.util
+import os
 import shutil
 import sys
+from pathlib import Path
+
+
+def find_binary(bin_name: str) -> str | None:
+	"""Busca un binario en la carpeta del ejecutable/script, subdirectorios bin/ o mpv/, o en el PATH del sistema."""
+	base = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+	exts = [".exe", ""] if (sys.platform == "win32" or os.name == "nt") else [""]
+	for ext in exts:
+		for candidate in [
+			base / f"{bin_name}{ext}",
+			base / "bin" / f"{bin_name}{ext}",
+			base / bin_name / f"{bin_name}{ext}",
+		]:
+			if candidate.is_file():
+				return str(candidate)
+	return shutil.which(bin_name)
 
 
 def check_dependencies():
@@ -21,6 +38,10 @@ def check_dependencies():
 	Revisa que esté todo piola para arrancar la Rockola del Carpincho.
 	Falla temprano pero con buena onda si falta algo.
 	"""
+	# Si se invoca con --help o -h, permitimos que argparse muestre la ayuda sin frenar por dependencias
+	if any(arg in sys.argv for arg in ("-h", "--help")):
+		return
+
 	missing_req_py = []
 	missing_opt_py = []
 
@@ -58,7 +79,7 @@ def check_dependencies():
 	# El reproductor es sí o sí
 	required_system = {
 		"mpv": (
-			"winget install mpv"
+			"winget install mpv (o descargá mpv.exe y ponelo al lado de larockola.exe)"
 			if is_win
 			else ("brew install mpv" if is_mac else "sudo apt install mpv (o lo que use tu distro)")
 		),
@@ -66,15 +87,19 @@ def check_dependencies():
 
 	# yt-dlp es solo si querés reproducir cosas de YouTube
 	optional_system = {
-		"yt-dlp": "pip install yt-dlp (para reproducir temas de YouTube/Internet)",
+		"yt-dlp": (
+			"winget install yt-dlp (o poné yt-dlp.exe al lado de larockola.exe)"
+			if is_win
+			else "pip install yt-dlp (para reproducir temas de YouTube/Internet)"
+		),
 	}
 
 	for bin_name, fix in required_system.items():
-		if shutil.which(bin_name) is None:
+		if find_binary(bin_name) is None:
 			missing_req_sys.append((bin_name, fix))
 
 	for bin_name, fix in optional_system.items():
-		if shutil.which(bin_name) is None:
+		if find_binary(bin_name) is None:
 			missing_opt_sys.append((bin_name, fix))
 
 	# Tiramos un aviso si falta algo opcional, pero seguimos adelante
@@ -126,7 +151,6 @@ import gc
 import hashlib
 import json
 import logging
-import os
 import random
 import re
 import sqlite3
@@ -135,7 +159,6 @@ import tempfile
 import time
 import warnings
 from contextlib import asynccontextmanager, suppress
-from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
@@ -158,8 +181,26 @@ except (ImportError, OSError, ValueError, AttributeError):
 
 # --- 3. INICIALIZAMOS LA BASE DE DATOS (SQLITE) ---
 def get_carpincho_data_dir() -> Path:
-	"""Directorio de base de datos relativo a la carpeta DB en la raíz del repositorio."""
-	db_dir = Path(__file__).resolve().parents[1] / "DB"
+	"""Directorio de base de datos relativo a la carpeta DB en la raíz del repositorio o portable."""
+	if getattr(sys, "frozen", False):
+		exe_dir = Path(sys.executable).parent
+		# Si la carpeta del ejecutable es escribible, guardamos en DB portable
+		try:
+			test_file = exe_dir / ".carpincho_write_test"
+			test_file.touch(exist_ok=True)
+			test_file.unlink(missing_ok=True)
+			db_dir = exe_dir / "DB"
+		except OSError:
+			# Si está en una ruta de solo lectura (ej. C:\Program Files), fallback a datos de usuario
+			if sys.platform == "win32":
+				base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+			elif sys.platform == "darwin":
+				base = Path.home() / "Library" / "Application Support"
+			else:
+				base = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+			db_dir = base / "carpincho" / "DB"
+	else:
+		db_dir = Path(__file__).resolve().parents[1] / "DB"
 	db_dir.mkdir(parents=True, exist_ok=True)
 	return db_dir
 
@@ -790,8 +831,10 @@ class AsyncMpvController:
 			mpris_opt = "no" if own_mpris_active else "yes"
 			keys_opt = "no" if own_mpris_active else "yes"
 
+			mpv_bin = find_binary("mpv") or "mpv"
+
 			mpv_args = [
-				"mpv",
+				mpv_bin,
 				"--autofit=33%x33%",
 				# "--fs",
 				"--geometry=-20-40",
@@ -2149,6 +2192,10 @@ app.add_middleware(
 
 # Automatizar 'npm run build' antes de que el servidor responda
 def build_frontend():
+	if getattr(sys, "frozen", False):
+		# El ejecutable portable compilado ya incluye la carpeta 'dist' del frontend
+		return
+
 	if frontend_dir.exists() and (frontend_dir / "package.json").exists():
 		print("🦦 Preparando el frontend de La Rockola...")
 
@@ -2180,9 +2227,24 @@ def build_frontend():
 
 
 # Definimos las rutas a la carpeta 'dist' que genera Vite
-base_dir = Path(__file__).resolve().parent
-frontend_dir = base_dir
-dist_dir = frontend_dir / "dist"
+if getattr(sys, "frozen", False):
+	# Si está empaquetado, buscamos 'dist' adentro del bundle temporal (_MEIPASS) o al lado del ejecutable
+	exe_dir = Path(sys.executable).parent
+	if (exe_dir / "dist").is_dir():
+		dist_dir = exe_dir / "dist"
+		frontend_dir = exe_dir
+	elif hasattr(sys, "_MEIPASS") and (Path(sys._MEIPASS) / "dist").is_dir():
+		dist_dir = Path(sys._MEIPASS) / "dist"
+		frontend_dir = Path(sys._MEIPASS)
+	else:
+		dist_dir = exe_dir / "dist"
+		frontend_dir = exe_dir
+	base_dir = frontend_dir
+else:
+	base_dir = Path(__file__).resolve().parent
+	frontend_dir = base_dir
+	dist_dir = frontend_dir / "dist"
+
 assets_dir = dist_dir / "assets"
 
 # Corremos el build al levantar el script
@@ -2212,6 +2274,8 @@ async def serve_favicon():
 	favicon_path = dist_dir / "favicon.png"
 	if not favicon_path.exists():
 		favicon_path = frontend_dir / "public" / "favicon.png"
+	if not favicon_path.exists() and hasattr(sys, "_MEIPASS"):
+		favicon_path = Path(sys._MEIPASS) / "public" / "favicon.png"
 
 	if not favicon_path.exists():
 		return {"error": f"No encuentro el favicon en {favicon_path}"}
@@ -2641,16 +2705,24 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 if __name__ == "__main__":
-	parser = argparse.ArgumentParser()
-	parser.add_argument("--host", type=str, default="0.0.0.0")
-	parser.add_argument("--port", type=int, default=1729)
-	parser.add_argument("--dir", type=str, default=None)
-	parser.add_argument("--dir2", type=str, default=None)
+	import multiprocessing
+
+	multiprocessing.freeze_support()
+
+	parser = argparse.ArgumentParser(description="La Rockola del Carpincho - Servidor de música y reproductor")
+	parser.add_argument("--host", type=str, default="0.0.0.0", help="Dirección host (default: 0.0.0.0)")
+	parser.add_argument("--port", type=int, default=1729, help="Puerto del servidor (default: 1729)")
+	parser.add_argument("--dir", type=str, default=None, help="Directorio principal de música")
+	parser.add_argument("--dir2", type=str, default=None, help="Directorio secundario de música")
 	args = parser.parse_args()
+
+	# Re-ejecutamos check_dependencies por si fue omitido para mostrar --help
+	check_dependencies()
 
 	if args.dir:
 		state.initial_dir = args.dir
 	if args.dir2:
 		state.secondary_dir = args.dir2
 
+	logger.info(f"🦦 Iniciando La Rockola del Carpincho en http://{args.host}:{args.port}")
 	uvicorn.run(app, host=args.host, port=args.port, proxy_headers=True, forwarded_allow_ips="*")
