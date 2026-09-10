@@ -123,31 +123,31 @@ def test_run_interactive_wizard(tmp_path):
 	music_folder = tmp_path / "RockolaMusic"
 	music_folder.mkdir()
 
-	# Inputs: primary dir, empty secondary, port 9000, empty host (default)
-	inputs = [str(music_folder), "", "9000", ""]
+	# Input: primary dir only
+	inputs = [str(music_folder)]
 
 	with patch("builtins.input", side_effect=inputs):
 		cfg = server.run_interactive_wizard(cfg_file)
 
-	assert cfg["port"] == 9000
+	assert cfg["port"] == 1729
 	assert cfg["music_dir"] == str(music_folder.resolve())
 	assert cfg["music_dir2"] is None
 	assert cfg["host"] == "0.0.0.0"
 	assert cfg_file.is_file()
 
 
-def test_run_interactive_wizard_create_dir_and_invalid_port(tmp_path):
-	"""Test wizard creating a non-existent directory and handling invalid port retries."""
+def test_run_interactive_wizard_create_dir(tmp_path):
+	"""Test wizard creating a non-existent directory."""
 	cfg_file = tmp_path / "rockola_config.json"
 	new_music_folder = tmp_path / "BrandNewMusic"
 
-	inputs = [str(new_music_folder), "s", "", "invalid", "999999", "1800", "192.168.1.50"]
+	inputs = [str(new_music_folder), "s"]
 
 	with patch("builtins.input", side_effect=inputs):
 		cfg = server.run_interactive_wizard(cfg_file)
 
-	assert cfg["port"] == 1800
-	assert cfg["host"] == "192.168.1.50"
+	assert cfg["port"] == 1729
+	assert cfg["host"] == "0.0.0.0"
 	assert new_music_folder.is_dir()
 	assert cfg["music_dir"] == str(new_music_folder.resolve())
 
@@ -196,18 +196,15 @@ def test_run_interactive_wizard_using_selector_dialog(tmp_path):
 	picked_folder = tmp_path / "PickedMusic"
 	picked_folder.mkdir()
 
-	picked_secondary = tmp_path / "SecondaryMusic"
-	picked_secondary.mkdir()
+	# Choice 2 for primary folder dialog
+	inputs = ["2"]
 
-	# Choice 2 for primary (calls dialog), choice 2 for secondary (calls dialog), port default "", host default ""
-	inputs = ["2", "2", "", ""]
-
-	with patch("server.select_folder_dialog", side_effect=[str(picked_folder), str(picked_secondary)]):
+	with patch("server.select_folder_dialog", return_value=str(picked_folder)):
 		with patch("builtins.input", side_effect=inputs):
 			cfg = server.run_interactive_wizard(cfg_file)
 
 	assert cfg["music_dir"] == str(picked_folder.resolve())
-	assert cfg["music_dir2"] == str(picked_secondary.resolve())
+	assert cfg["music_dir2"] is None
 	assert cfg["port"] == 1729
 	assert cfg["host"] == "0.0.0.0"
 
@@ -220,8 +217,8 @@ def test_run_interactive_wizard_using_default_option(tmp_path):
 
 	initial_cfg = {"music_dir": str(default_folder)}
 
-	# Enter (option 1 default), Enter (skip secondary), Enter (default port), Enter (default host)
-	inputs = ["", "", "", ""]
+	# Enter (option 1 default)
+	inputs = [""]
 
 	with patch("builtins.input", side_effect=inputs):
 		cfg = server.run_interactive_wizard(cfg_file, current_config=initial_cfg)

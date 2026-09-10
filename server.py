@@ -584,19 +584,19 @@ def select_folder_dialog(title: str = "Seleccioná la carpeta de música", initi
 
 def run_interactive_wizard(config_path: Path, current_config: dict | None = None) -> dict:
 	"""Asistente interactivo en consola para la primera ejecución o reconfiguración."""
-	cfg = dict(current_config or load_config(config_path))
+	cfg = {**DEFAULT_CONFIG, **(current_config or load_config(config_path))}
 
 	print("\n" + "=" * 62)
 	print("  🦦 BIENVENIDO A LA ROCKOLA DEL CARPINCHO 🧉")
 	print("        Asistente de Configuración Inicial")
 	print("=" * 62)
-	print("Configuremos un par de cositas para dejar La Rockola lista:\n")
+	print("Configuremos la carpeta de música para dejar La Rockola lista:\n")
 
-	# 1. Carpeta de música principal
+	# Carpeta de música principal
 	default_dir = cfg.get("music_dir") or "~/Music"
 	default_resolved = str(Path(default_dir).expanduser().resolve())
 
-	print("📁 Carpeta principal de música:")
+	print("📁 Carpeta de música:")
 	print(f"  [1] Usar por defecto: {default_dir} ({default_resolved})")
 	print("  [2] 📂 Abrir selector de carpetas... (Examinar)")
 	print("  [3] Escribir ruta manualmente\n")
@@ -653,95 +653,6 @@ def run_interactive_wizard(config_path: Path, current_config: dict | None = None
 		else:
 			cfg["music_dir"] = str(expanded)
 			break
-
-	# 2. Carpeta de música secundaria (opcional)
-	default_dir2 = cfg.get("music_dir2") or ""
-	print("\n📁 Carpeta secundaria de música (opcional):")
-	if default_dir2:
-		print(f"  [1] Mantener actual: {default_dir2}")
-		print("  [2] 📂 Abrir selector de carpetas... (Examinar)")
-		print("  [3] Escribir ruta manualmente")
-		print("  [4] Omitir / quitar carpeta secundaria\n")
-	else:
-		print("  [1] Omitir (Enter para no configurar carpeta secundaria)")
-		print("  [2] 📂 Abrir selector de carpetas... (Examinar)")
-		print("  [3] Escribir ruta manualmente\n")
-
-	while True:
-		try:
-			choice2 = input("Elegí una opción o escribí la ruta [default: 1]: ").strip()
-		except (EOFError, KeyboardInterrupt):
-			choice2 = "1"
-
-		if choice2 == "" or choice2 == "1":
-			if default_dir2:
-				cfg["music_dir2"] = default_dir2
-			else:
-				cfg["music_dir2"] = None
-			break
-		elif choice2 in ("2", "b", "e", "examinar", "browse", "selector"):
-			print("⏳ Abriendo selector de carpetas...")
-			selected2 = select_folder_dialog(
-				title="Seleccioná la carpeta secundaria de música",
-				initial_dir=default_dir2 if default_dir2 and Path(default_dir2).is_dir() else None,
-			)
-			if selected2:
-				print(f"✅ Carpeta secundaria seleccionada: {selected2}")
-				cfg["music_dir2"] = str(Path(selected2).expanduser().resolve())
-				break
-			else:
-				print("⚠️  No se seleccionó ninguna carpeta.")
-				continue
-		elif choice2 == "3":
-			try:
-				manual_val2 = input("📁 Ingresá la ruta de la carpeta secundaria: ").strip()
-			except (EOFError, KeyboardInterrupt):
-				manual_val2 = ""
-			if not manual_val2:
-				continue
-			expanded2 = Path(manual_val2).expanduser().resolve()
-			if not expanded2.is_dir():
-				print(f"⚠️  Nota: '{expanded2}' no existe actualmente, pero la guardamos igual.")
-			cfg["music_dir2"] = str(expanded2)
-			break
-		elif choice2 == "4" and default_dir2:
-			cfg["music_dir2"] = None
-			print("Carpeta secundaria omitida.")
-			break
-		else:
-			expanded2 = Path(choice2).expanduser().resolve()
-			if not expanded2.is_dir():
-				print(f"⚠️  Nota: '{expanded2}' no existe actualmente, pero la guardamos igual.")
-			cfg["music_dir2"] = str(expanded2)
-			break
-
-	# 3. Puerto
-	default_port = cfg.get("port") or 1729
-	while True:
-		try:
-			port_val = input(f"🔌 Puerto del servidor [default: {default_port}]: ").strip()
-		except (EOFError, KeyboardInterrupt):
-			break
-		if not port_val:
-			cfg["port"] = int(default_port)
-			break
-		try:
-			p = int(port_val)
-			if 1 <= p <= 65535:
-				cfg["port"] = p
-				break
-			else:
-				print("❌ El puerto debe ser un número entre 1 y 65535.")
-		except ValueError:
-			print("❌ Ingresá un número de puerto válido.")
-
-	# 4. Host
-	default_host = cfg.get("host") or "0.0.0.0"
-	try:
-		host_val = input(f"🌐 Dirección host [default: {default_host}]: ").strip()
-	except (EOFError, KeyboardInterrupt):
-		host_val = ""
-	cfg["host"] = host_val if host_val else default_host
 
 	# Guardar configuración
 	save_config(config_path, cfg)

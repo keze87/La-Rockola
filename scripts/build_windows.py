@@ -133,7 +133,7 @@ Este paquete es 100% portable y no requiere instalación previa.
 CÓMO USAR:
 1. Hacé doble clic en 'iniciar_rockola.bat' (o ejecutá 'larockola.exe').
 2. La primera vez que lo abras, un asistente interactivo en la consola te
-   preguntará dónde tenés tu música y qué puerto preferís (por defecto 1729).
+   permitirá seleccionar la carpeta donde tenés tu música.
 3. Tus opciones quedan guardadas automáticamente en 'rockola_config.json'
    para que en las próximas ejecuciones arranque al toque sin preguntar nada.
 4. Para cambiar la configuración más adelante, podés editar 'rockola_config.json'
