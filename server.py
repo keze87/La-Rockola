@@ -388,6 +388,159 @@ logging.getLogger("llvmlite").setLevel(logging.WARNING)
 warnings.filterwarnings("ignore", category=UserWarning, module="librosa")
 warnings.filterwarnings("ignore", category=FutureWarning, module="librosa")
 
+# --- CONFIGURACIÓN PERSISTENTE (rockola_config.json) ---
+DEFAULT_CONFIG = {
+	"music_dir": "~/Music",
+	"music_dir2": None,
+	"port": 1729,
+	"host": "0.0.0.0",
+}
+
+
+def get_config_path(custom_path: str | None = None) -> Path:
+	"""Determina la ruta del archivo de configuración rockola_config.json."""
+	if custom_path:
+		return Path(custom_path).expanduser().resolve()
+
+	if getattr(sys, "frozen", False):
+		exe_dir = Path(sys.executable).parent
+		try:
+			test_file = exe_dir / ".carpincho_write_test"
+			test_file.touch(exist_ok=True)
+			test_file.unlink(missing_ok=True)
+			return exe_dir / "rockola_config.json"
+		except OSError:
+			return DATA_DIR / "rockola_config.json"
+
+	return Path(__file__).resolve().parent / "rockola_config.json"
+
+
+def load_config(config_path: Path | None = None) -> dict:
+	"""Carga la configuración desde JSON o devuelve los valores por defecto."""
+	path = config_path or get_config_path()
+	cfg = dict(DEFAULT_CONFIG)
+	if path.is_file():
+		try:
+			with open(path, "r", encoding="utf-8") as f:
+				data = json.load(f)
+				if isinstance(data, dict):
+					cfg.update(data)
+		except Exception as e:
+			logger.warning(f"No se pudo leer {path}, usando valores por defecto: {e}")
+	return cfg
+
+
+def save_config(config_path: Path, cfg: dict) -> None:
+	"""Guarda la configuración en formato JSON de manera segura."""
+	try:
+		config_path.parent.mkdir(parents=True, exist_ok=True)
+		temp_file = config_path.parent / f".tmp_{config_path.name}"
+		with open(temp_file, "w", encoding="utf-8") as f:
+			json.dump(cfg, f, indent=4, ensure_ascii=False)
+		temp_file.replace(config_path)
+	except Exception as e:
+		logger.error(f"Error guardando la configuración en {config_path}: {e}")
+
+
+def run_interactive_wizard(config_path: Path, current_config: dict | None = None) -> dict:
+	"""Asistente interactivo en consola para la primera ejecución o reconfiguración."""
+	cfg = dict(current_config or load_config(config_path))
+
+	print("\n" + "=" * 62)
+	print("  🦦 BIENVENIDO A LA ROCKOLA DEL CARPINCHO 🧉")
+	print("        Asistente de Configuración Inicial")
+	print("=" * 62)
+	print("Configuremos un par de cositas para dejar La Rockola lista:\n")
+
+	# 1. Carpeta de música principal
+	default_dir = cfg.get("music_dir") or "~/Music"
+	while True:
+		try:
+			val = input(f"📁 Carpeta principal de música [default: {default_dir}]: ").strip()
+		except (EOFError, KeyboardInterrupt):
+			print("\nOperación cancelada. Usando valores actuales.")
+			return cfg
+
+		chosen_dir = val if val else default_dir
+		expanded = Path(chosen_dir).expanduser().resolve()
+		if not expanded.is_dir():
+			print(f"⚠️  La carpeta '{expanded}' no existe actualmente.")
+			try:
+				create = input("¿Querés crearla ahora? [S/n]: ").strip().lower()
+			except (EOFError, KeyboardInterrupt):
+				create = "n"
+			if create in ("", "s", "si", "y", "yes"):
+				try:
+					expanded.mkdir(parents=True, exist_ok=True)
+					cfg["music_dir"] = str(expanded)
+					break
+				except Exception as e:
+					print(f"❌ No se pudo crear la carpeta: {e}. Probemos otra ruta.")
+			else:
+				print("Probemos indicando otra ruta.")
+		else:
+			cfg["music_dir"] = str(expanded)
+			break
+
+	# 2. Carpeta de música secundaria (opcional)
+	default_dir2 = cfg.get("music_dir2") or ""
+	prompt2 = (
+		f"📁 Carpeta secundaria de música (opcional, Enter para omitir) [{default_dir2}]: "
+		if default_dir2
+		else "📁 Carpeta secundaria de música (opcional, Enter para omitir): "
+	)
+	try:
+		val2 = input(prompt2).strip()
+	except (EOFError, KeyboardInterrupt):
+		val2 = ""
+
+	if val2:
+		expanded2 = Path(val2).expanduser().resolve()
+		if not expanded2.is_dir():
+			print(f"⚠️  Nota: '{expanded2}' no existe actualmente, pero la guardamos igual.")
+		cfg["music_dir2"] = str(expanded2)
+	elif default_dir2:
+		cfg["music_dir2"] = default_dir2
+	else:
+		cfg["music_dir2"] = None
+
+	# 3. Puerto
+	default_port = cfg.get("port") or 1729
+	while True:
+		try:
+			port_val = input(f"🔌 Puerto del servidor [default: {default_port}]: ").strip()
+		except (EOFError, KeyboardInterrupt):
+			break
+		if not port_val:
+			cfg["port"] = int(default_port)
+			break
+		try:
+			p = int(port_val)
+			if 1 <= p <= 65535:
+				cfg["port"] = p
+				break
+			else:
+				print("❌ El puerto debe ser un número entre 1 y 65535.")
+		except ValueError:
+			print("❌ Ingresá un número de puerto válido.")
+
+	# 4. Host
+	default_host = cfg.get("host") or "0.0.0.0"
+	try:
+		host_val = input(f"🌐 Dirección host [default: {default_host}]: ").strip()
+	except (EOFError, KeyboardInterrupt):
+		host_val = ""
+	cfg["host"] = host_val if host_val else default_host
+
+	# Guardar configuración
+	save_config(config_path, cfg)
+	print("\n✨ ¡Listo el pollo y pelada la gallina! Configuración guardada en:")
+	print(f"   {config_path}\n")
+	print("Podés volver a ejecutar este asistente cuando quieras con '--setup'.")
+	print("=" * 62 + "\n")
+
+	return cfg
+
 
 def truncate_text(text: str, max_len: int) -> str:
 	text = str(text)
@@ -2710,19 +2863,48 @@ if __name__ == "__main__":
 	multiprocessing.freeze_support()
 
 	parser = argparse.ArgumentParser(description="La Rockola del Carpincho - Servidor de música y reproductor")
-	parser.add_argument("--host", type=str, default="0.0.0.0", help="Dirección host (default: 0.0.0.0)")
-	parser.add_argument("--port", type=int, default=1729, help="Puerto del servidor (default: 1729)")
+	parser.add_argument("--host", type=str, default=None, help="Dirección host (default: del config o 0.0.0.0)")
+	parser.add_argument("--port", type=int, default=None, help="Puerto del servidor (default: del config o 1729)")
 	parser.add_argument("--dir", type=str, default=None, help="Directorio principal de música")
 	parser.add_argument("--dir2", type=str, default=None, help="Directorio secundario de música")
+	parser.add_argument("--config", type=str, default=None, help="Ruta personalizada a rockola_config.json")
+	parser.add_argument("--setup", action="store_true", help="Ejecutar asistente interactivo de configuración")
+	parser.add_argument(
+		"--no-interactive", action="store_true", help="No ejecutar asistente interactivo automáticamente"
+	)
 	args = parser.parse_args()
 
 	# Re-ejecutamos check_dependencies por si fue omitido para mostrar --help
 	check_dependencies()
 
-	if args.dir:
-		state.initial_dir = args.dir
-	if args.dir2:
-		state.secondary_dir = args.dir2
+	config_path = get_config_path(args.config)
+	config_exists = config_path.is_file()
 
-	logger.info(f"🦦 Iniciando La Rockola del Carpincho en http://{args.host}:{args.port}")
-	uvicorn.run(app, host=args.host, port=args.port, proxy_headers=True, forwarded_allow_ips="*")
+	# Cargar configuración existente o por defecto
+	config = load_config(config_path)
+
+	# Ejecutar asistente si es la primera vez (en terminal interactivo) o si se pidió --setup
+	should_run_wizard = args.setup or (not config_exists and not args.no_interactive and sys.stdin.isatty())
+
+	if should_run_wizard:
+		config = run_interactive_wizard(config_path, config)
+	elif not config_exists:
+		# Si no es interactivo pero no existía config, guardamos la configuración inicial
+		save_config(config_path, config)
+
+	# Los argumentos pasados explícitamente por CLI tienen prioridad sobre el archivo de configuración
+	final_host = args.host if args.host is not None else config.get("host", "0.0.0.0")
+	final_port = args.port if args.port is not None else config.get("port", 1729)
+	final_dir = args.dir if args.dir is not None else config.get("music_dir")
+	final_dir2 = args.dir2 if args.dir2 is not None else config.get("music_dir2")
+
+	if final_dir:
+		state.initial_dir = final_dir
+	if final_dir2:
+		state.secondary_dir = final_dir2
+
+	logger.info(f"📁 Carpeta de música: {final_dir or '~/Music'}")
+	if final_dir2:
+		logger.info(f"📁 Carpeta secundaria: {final_dir2}")
+	logger.info(f"🦦 Iniciando La Rockola del Carpincho en http://{final_host}:{final_port}")
+	uvicorn.run(app, host=final_host, port=final_port, proxy_headers=True, forwarded_allow_ips="*")

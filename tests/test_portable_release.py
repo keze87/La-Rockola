@@ -75,3 +75,83 @@ def test_check_dependencies_bypasses_on_help():
 	with patch("sys.argv", ["server.py", "--help"]), patch("sys.exit") as mock_exit:
 		server.check_dependencies()
 		mock_exit.assert_not_called()
+
+
+def test_get_config_path_custom(tmp_path):
+	"""Test get_config_path with a custom path."""
+	custom = tmp_path / "my_custom_config.json"
+	assert server.get_config_path(str(custom)) == custom.resolve()
+
+
+def test_get_config_path_frozen_writable(tmp_path, monkeypatch):
+	"""Test get_config_path in frozen mode when exe dir is writable."""
+	exe_dir = tmp_path / "app_dir"
+	exe_dir.mkdir()
+	fake_exe = exe_dir / "larockola.exe"
+	fake_exe.write_text("fake")
+
+	monkeypatch.setattr(sys, "frozen", True, raising=False)
+	monkeypatch.setattr(sys, "executable", str(fake_exe))
+
+	config_path = server.get_config_path()
+	assert config_path == exe_dir / "rockola_config.json"
+
+
+def test_load_and_save_config(tmp_path):
+	"""Test loading default config, saving modified config, and reloading."""
+	cfg_file = tmp_path / "test_config.json"
+	# Initial load when not exists
+	initial = server.load_config(cfg_file)
+	assert initial["port"] == 1729
+	assert initial["host"] == "0.0.0.0"
+
+	# Save custom config
+	custom = {
+		"music_dir": str(tmp_path / "my_music"),
+		"music_dir2": None,
+		"port": 8080,
+		"host": "127.0.0.1",
+	}
+	server.save_config(cfg_file, custom)
+	assert cfg_file.is_file()
+
+	loaded = server.load_config(cfg_file)
+	assert loaded["port"] == 8080
+	assert loaded["host"] == "127.0.0.1"
+	assert loaded["music_dir"] == str(tmp_path / "my_music")
+
+
+def test_run_interactive_wizard(tmp_path):
+	"""Test standard interactive wizard flow with valid inputs."""
+	cfg_file = tmp_path / "rockola_config.json"
+	music_folder = tmp_path / "RockolaMusic"
+	music_folder.mkdir()
+
+	# Inputs: primary dir, empty secondary, port 9000, empty host (default)
+	inputs = [str(music_folder), "", "9000", ""]
+
+	with patch("builtins.input", side_effect=inputs):
+		cfg = server.run_interactive_wizard(cfg_file)
+
+	assert cfg["port"] == 9000
+	assert cfg["music_dir"] == str(music_folder.resolve())
+	assert cfg["music_dir2"] is None
+	assert cfg["host"] == "0.0.0.0"
+	assert cfg_file.is_file()
+
+
+def test_run_interactive_wizard_create_dir_and_invalid_port(tmp_path):
+	"""Test wizard creating a non-existent directory and handling invalid port retries."""
+	cfg_file = tmp_path / "rockola_config.json"
+	new_music_folder = tmp_path / "BrandNewMusic"
+
+	inputs = [str(new_music_folder), "s", "", "invalid", "999999", "1800", "192.168.1.50"]
+
+	with patch("builtins.input", side_effect=inputs):
+		cfg = server.run_interactive_wizard(cfg_file)
+
+	assert cfg["port"] == 1800
+	assert cfg["host"] == "192.168.1.50"
+	assert new_music_folder.is_dir()
+	assert cfg["music_dir"] == str(new_music_folder.resolve())
+

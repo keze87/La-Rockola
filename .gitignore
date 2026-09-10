@@ -33,3 +33,4 @@ coverage
 build/
 dist_bin/
 release/
+rockola_config.json

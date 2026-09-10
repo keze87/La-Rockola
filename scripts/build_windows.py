@@ -129,15 +129,19 @@ def create_release_package(exe_path: Path):
 ============================================================
 
 ¡Bienvenido a La Rockola del Carpincho!
-Este paquete es 100% portable y no requiere instalación.
+Este paquete es 100% portable y no requiere instalación previa.
 
 CÓMO USAR:
-1. Hacé doble clic en 'larockola.exe' (o ejecutá 'iniciar_rockola.bat').
-2. Se abrirá la consola mostrando el servidor iniciado y la dirección local:
-   http://localhost:1729
-3. Abrí esa dirección en tu navegador preferido.
-4. Para controlar la música desde tu celular, conectate a la misma red Wi-Fi
-   e ingresá a la IP que figura en la pantalla (o escaneá el código QR en la app).
+1. Hacé doble clic en 'iniciar_rockola.bat' (o ejecutá 'larockola.exe').
+2. La primera vez que lo abras, un asistente interactivo en la consola te
+   preguntará dónde tenés tu música y qué puerto preferís (por defecto 1729).
+3. Tus opciones quedan guardadas automáticamente en 'rockola_config.json'
+   para que en las próximas ejecuciones arranque al toque sin preguntar nada.
+4. Para cambiar la configuración más adelante, podés editar 'rockola_config.json'
+   directamente con el Bloc de notas o ejecutar 'larockola.exe --setup'.
+5. Abrí la dirección en tu navegador (ej. http://localhost:1729).
+6. Para controlar la música desde tu celular, conectate a la misma red Wi-Fi
+   e ingresá a la IP que figura en la consola (o escaneá el código QR en la app).
 
 REQUISITOS DEL SISTEMA:
 - MPV Media Player:
@@ -151,8 +155,9 @@ REQUISITOS DEL SISTEMA:
   junto a larockola.exe o instalarlo con: winget install yt-dlp
 
 DATOS Y CONFIGURACIÓN:
-- Todo el historial, canciones favoritas y análisis se guardan de forma
-  portable en la carpeta 'DB/' de este mismo directorio.
+- Configuración: Se almacena en 'rockola_config.json'.
+- Base de datos: El historial, favoritos y análisis acústico se guardan
+  en la carpeta 'DB/' de este mismo directorio de manera 100% portable.
 
 ¡Que disfrutes de la música y unos buenos mates! 🧉🦦
 """
