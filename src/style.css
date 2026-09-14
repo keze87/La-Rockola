@@ -1,5 +1,6 @@
 @import 'tailwindcss';
 @import 'vue-sonner/style.css';
+@import './assets/fonts/fonts.css';
 
 @theme {
 	--color-carpincho-bg: #2b2622;
