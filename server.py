@@ -511,6 +511,7 @@ def _select_folder_powershell(title: str, initial_dir: str | None = None) -> str
 			encoding="utf-8",
 			creationflags=flags,
 			timeout=180,
+			check=False,
 		)
 		out = res.stdout.strip()
 		if out and Path(out).is_dir():
@@ -549,6 +550,7 @@ def _select_folder_macos(title: str, initial_dir: str | None = None) -> str | No
 			capture_output=True,
 			text=True,
 			timeout=180,
+			check=False,
 		)
 		out = res.stdout.strip()
 		if out and Path(out).is_dir():
@@ -565,7 +567,7 @@ def _select_folder_linux(title: str, initial_dir: str | None = None) -> str | No
 			cmd = ["zenity", "--file-selection", "--directory", f"--title={title}"]
 			if initial_dir and Path(initial_dir).is_dir():
 				cmd.append(f"--filename={Path(initial_dir).resolve()}/")
-			res = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+			res = subprocess.run(cmd, capture_output=True, text=True, timeout=180, check=False)
 			out = res.stdout.strip()
 			if out and Path(out).is_dir():
 				return out
@@ -575,7 +577,7 @@ def _select_folder_linux(title: str, initial_dir: str | None = None) -> str | No
 		try:
 			start = str(Path(initial_dir).resolve()) if initial_dir and Path(initial_dir).is_dir() else str(Path.home())
 			cmd = ["kdialog", "--getexistingdirectory", start, f"--title={title}"]
-			res = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+			res = subprocess.run(cmd, capture_output=True, text=True, timeout=180, check=False)
 			out = res.stdout.strip()
 			if out and Path(out).is_dir():
 				return out
