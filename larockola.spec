@@ -41,6 +41,10 @@ hiddenimports = [
     "ytdlp_installer",
 ]
 
+import sys
+if sys.platform != "win32":
+    hiddenimports.extend(["dbus_next", "dbus_next.aio", "dbus_next.service"])
+
 a = Analysis(
     ["server.py"],
     pathex=[],

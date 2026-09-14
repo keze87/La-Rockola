@@ -24,22 +24,26 @@ def find_binary(bin_name: str) -> str | None:
 	exts = [".exe", ""] if (sys.platform == "win32" or os.name == "nt") else [""]
 	candidates = []
 	for ext in exts:
-		candidates.extend([
-			base / f"{bin_name}{ext}",
-			base / "bin" / f"{bin_name}{ext}",
-			base / "mpv" / f"{bin_name}{ext}",
-			base / bin_name / f"{bin_name}{ext}",
-		])
+		candidates.extend(
+			[
+				base / f"{bin_name}{ext}",
+				base / "bin" / f"{bin_name}{ext}",
+				base / "mpv" / f"{bin_name}{ext}",
+				base / bin_name / f"{bin_name}{ext}",
+			]
+		)
 		if "DATA_DIR" in globals() and isinstance(globals()["DATA_DIR"], Path):
 			d = globals()["DATA_DIR"]
-			candidates.extend([
-				d / f"{bin_name}{ext}",
-				d / "bin" / f"{bin_name}{ext}",
-				d / "mpv" / f"{bin_name}{ext}",
-				d / bin_name / f"{bin_name}{ext}",
-				d.parent / "mpv" / f"{bin_name}{ext}",
-				d.parent / bin_name / f"{bin_name}{ext}",
-			])
+			candidates.extend(
+				[
+					d / f"{bin_name}{ext}",
+					d / "bin" / f"{bin_name}{ext}",
+					d / "mpv" / f"{bin_name}{ext}",
+					d / bin_name / f"{bin_name}{ext}",
+					d.parent / "mpv" / f"{bin_name}{ext}",
+					d.parent / bin_name / f"{bin_name}{ext}",
+				]
+			)
 	for candidate in candidates:
 		if candidate.is_file():
 			return str(candidate)
@@ -54,6 +58,14 @@ def check_dependencies(force: bool = False):
 	Revisa que esté todo piola para arrancar la Rockola del Carpincho.
 	Falla temprano pero con buena onda si falta algo.
 	"""
+	import multiprocessing
+
+	try:
+		if multiprocessing.current_process().name != "MainProcess":
+			return
+	except Exception:
+		pass
+
 	global _dependencies_checked
 	if _dependencies_checked and not force:
 		return
@@ -67,6 +79,8 @@ def check_dependencies(force: bool = False):
 	missing_req_py = []
 	missing_opt_py = []
 
+	is_frozen = getattr(sys, "frozen", False)
+
 	# Paquetes vitales para que el servidor exista
 	required_python = {
 		"fastapi": "pip install fastapi",
@@ -77,7 +91,11 @@ def check_dependencies(force: bool = False):
 
 	# Paquetes que suman magia pero no son de vida o muerte
 	optional_python = {
-		"librosa": "pip install librosa (para el análisis de mood/BPM)",
+		"librosa": (
+			"no incluido en la versión portable para mantenerla liviana (análisis de mood/BPM)"
+			if is_frozen
+			else "pip install librosa (para el análisis de mood/BPM)"
+		),
 	}
 
 	is_win = sys.platform == "win32"
@@ -85,7 +103,11 @@ def check_dependencies(force: bool = False):
 
 	# Solo en Linux pedimos DBus para controlar los botones multimedia
 	if not is_win and not is_mac:
-		optional_python["dbus_next"] = "pip install dbus-next (para teclas multimedia)"
+		optional_python["dbus_next"] = (
+			"no incluido en este build de Linux (para teclas multimedia)"
+			if is_frozen
+			else "pip install dbus-next (para teclas multimedia)"
+		)
 
 	for module, fix in required_python.items():
 		if importlib.util.find_spec(module) is None:
@@ -518,6 +540,41 @@ def save_config(config_path: Path, cfg: dict) -> None:
 		logger.error(f"Error guardando la configuración en {config_path}: {e}")
 
 
+def get_clean_env() -> dict:
+	"""
+	Retorna una copia de os.environ con las variables alteradas por PyInstaller/AppImage
+	restauradas a sus valores originales o eliminadas.
+	Esto evita que herramientas del sistema como kdialog, zenity, yad o powershell
+	fallen por incompatibilidad de librerías dinámicas cargadas desde el bundle.
+	"""
+	env = os.environ.copy()
+	for var in ("LD_LIBRARY_PATH", "LD_PRELOAD", "PYTHONPATH", "PYTHONHOME"):
+		orig = f"{var}_ORIG"
+		if orig in env:
+			env[var] = env[orig]
+		elif var in env:
+			del env[var]
+	return env
+
+
+def _parse_selected_dir(raw_out: str | None) -> str | None:
+	"""Limpia y valida la salida devuelta por selectores de carpetas nativos."""
+	if not raw_out:
+		return None
+	out = raw_out.strip()
+	if out.startswith("file://"):
+		from urllib.parse import unquote, urlparse
+
+		parsed = urlparse(out)
+		out = unquote(parsed.path)
+	out = out.strip("\"'")
+	if out != "/" and out.endswith("/"):
+		out = out.rstrip("/")
+	if out and Path(out).is_dir():
+		return out
+	return None
+
+
 def _select_folder_powershell(title: str, initial_dir: str | None = None) -> str | None:
 	"""Abre el diálogo nativo de Windows (FolderBrowserDialog) usando PowerShell."""
 	ps_code = (
@@ -543,6 +600,7 @@ def _select_folder_powershell(title: str, initial_dir: str | None = None) -> str
 	try:
 		res = subprocess.run(
 			["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_code],
+			env=get_clean_env(),
 			capture_output=True,
 			text=True,
 			encoding="utf-8",
@@ -550,9 +608,7 @@ def _select_folder_powershell(title: str, initial_dir: str | None = None) -> str
 			timeout=180,
 			check=False,
 		)
-		out = res.stdout.strip()
-		if out and Path(out).is_dir():
-			return out
+		return _parse_selected_dir(res.stdout)
 	except Exception:
 		pass
 	return None
@@ -570,8 +626,7 @@ def _select_folder_tkinter(title: str, initial_dir: str | None = None) -> str | 
 		init_path = str(Path(initial_dir).resolve()) if initial_dir and Path(initial_dir).is_dir() else str(Path.home())
 		chosen = filedialog.askdirectory(title=title, initialdir=init_path)
 		root.destroy()
-		if chosen and Path(chosen).is_dir():
-			return chosen
+		return _parse_selected_dir(chosen)
 	except Exception:
 		pass
 	return None
@@ -584,42 +639,58 @@ def _select_folder_macos(title: str, initial_dir: str | None = None) -> str | No
 		script = f'POSIX path of (choose folder with prompt "{safe_title}")'
 		res = subprocess.run(
 			["osascript", "-e", script],
+			env=get_clean_env(),
 			capture_output=True,
 			text=True,
 			timeout=180,
 			check=False,
 		)
-		out = res.stdout.strip()
-		if out and Path(out).is_dir():
-			return out
+		return _parse_selected_dir(res.stdout)
 	except Exception:
 		pass
 	return None
 
 
 def _select_folder_linux(title: str, initial_dir: str | None = None) -> str | None:
-	"""Abre el diálogo de carpetas en Linux mediante zenity o kdialog."""
+	"""Abre el diálogo de carpetas en Linux mediante zenity, kdialog o yad con entorno limpio."""
+	env = get_clean_env()
+	start = str(Path(initial_dir).resolve()) if initial_dir and Path(initial_dir).is_dir() else str(Path.home())
+
+	# 1. Probar con zenity (común en GNOME, XFCE, Cinnamon)
 	if shutil.which("zenity"):
 		try:
 			cmd = ["zenity", "--file-selection", "--directory", f"--title={title}"]
 			if initial_dir and Path(initial_dir).is_dir():
-				cmd.append(f"--filename={Path(initial_dir).resolve()}/")
-			res = subprocess.run(cmd, capture_output=True, text=True, timeout=180, check=False)
-			out = res.stdout.strip()
-			if out and Path(out).is_dir():
-				return out
+				cmd.append(f"--filename={start}/")
+			res = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=180, check=False)
+			parsed = _parse_selected_dir(res.stdout)
+			if parsed:
+				return parsed
 		except Exception:
 			pass
+
+	# 2. Probar con kdialog (nativo de KDE Plasma)
 	if shutil.which("kdialog"):
 		try:
-			start = str(Path(initial_dir).resolve()) if initial_dir and Path(initial_dir).is_dir() else str(Path.home())
-			cmd = ["kdialog", "--getexistingdirectory", start, f"--title={title}"]
-			res = subprocess.run(cmd, capture_output=True, text=True, timeout=180, check=False)
-			out = res.stdout.strip()
-			if out and Path(out).is_dir():
-				return out
+			cmd = ["kdialog", f"--title={title}", "--getexistingdirectory", start]
+			res = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=180, check=False)
+			parsed = _parse_selected_dir(res.stdout)
+			if parsed:
+				return parsed
 		except Exception:
 			pass
+
+	# 3. Probar con yad (alternativa moderna e independiente de toolkit)
+	if shutil.which("yad"):
+		try:
+			cmd = ["yad", "--file", "--directory", f"--title={title}", f"--filename={start}/"]
+			res = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=180, check=False)
+			parsed = _parse_selected_dir(res.stdout)
+			if parsed:
+				return parsed
+		except Exception:
+			pass
+
 	return None
 
 
@@ -645,8 +716,80 @@ def select_folder_dialog(title: str = "Seleccioná la carpeta de música", initi
 		return _select_folder_tkinter(title, initial_dir)
 
 
+def setup_readline_completion():
+	"""Habilita autocompletado de rutas con tecla Tab en la terminal si readline está disponible."""
+	try:
+		import glob
+		import readline
+
+		def path_completer(text: str, state: int):
+			exp = os.path.expanduser(text)
+			matches = glob.glob(exp + "*")
+			matches = [m + "/" if os.path.isdir(m) else m for m in matches]
+			if state < len(matches):
+				return matches[state]
+			return None
+
+		readline.set_completer_delims(" \t\n")
+		readline.set_completer(path_completer)
+		readline.parse_and_bind("tab: complete")
+	except Exception:
+		pass
+
+
+def select_folder_terminal(initial_dir: str | None = None) -> str | None:
+	"""
+	Navegador interactivo de carpetas en consola (TUI liviano y nativo en Python).
+	Funciona como fallback confiable en cualquier terminal o sistema sin interfaz gráfica.
+	"""
+	current = Path(initial_dir or Path.home()).expanduser().resolve()
+	if not current.is_dir():
+		current = Path.home().resolve()
+
+	while True:
+		subdirs = []
+		try:
+			for item in sorted(current.iterdir(), key=lambda p: p.name.lower()):
+				if item.is_dir() and not item.name.startswith("."):
+					subdirs.append(item)
+		except PermissionError:
+			print(f"\n⚠️  Sin permisos para leer: {current}")
+
+		print("\n" + "-" * 55)
+		print(f"📂 Navegador de carpetas: {current}")
+		print("-" * 55)
+		print("  [0]  ✅ Seleccionar esta carpeta actual")
+		if current.parent != current:
+			print("  [..] ⬆️  Subir al directorio superior")
+
+		for idx, d in enumerate(subdirs[:25], start=1):
+			print(f"  [{idx:<2}] 📁 {d.name}/")
+		if len(subdirs) > 25:
+			print(f"  ... y {len(subdirs) - 25} carpetas más.")
+
+		print("  [q]  ❌ Cancelar y volver al menú anterior")
+
+		try:
+			ans = input("\nElegí un número [0=confirmar, ..=subir, q=cancelar]: ").strip()
+		except (EOFError, KeyboardInterrupt):
+			return None
+
+		if ans.lower() in ("q", "quit", "cancel", "cancelar", "salir"):
+			return None
+		if ans == "0":
+			return str(current)
+		if ans == ".." and current.parent != current:
+			current = current.parent
+			continue
+		if ans.isdigit() and 1 <= int(ans) <= len(subdirs):
+			current = subdirs[int(ans) - 1].resolve()
+		else:
+			print("⚠️  Opción no válida. Ingresá un número de la lista o [0] para confirmar.")
+
+
 def run_interactive_wizard(config_path: Path, current_config: dict | None = None) -> dict:
 	"""Asistente interactivo en consola para la primera ejecución o reconfiguración."""
+	setup_readline_completion()
 	cfg = {**DEFAULT_CONFIG, **(current_config or load_config(config_path))}
 
 	print("\n" + "=" * 62)
@@ -661,8 +804,8 @@ def run_interactive_wizard(config_path: Path, current_config: dict | None = None
 
 	print("📁 Carpeta de música:")
 	print(f"  [1] Usar por defecto: {default_dir} ({default_resolved})")
-	print("  [2] 📂 Abrir selector de carpetas... (Examinar)")
-	print("  [3] Escribir ruta manualmente\n")
+	print("  [2] 📂 Abrir selector de carpetas... (Gráfico / Terminal)")
+	print("  [3] Escribir ruta manualmente (con soporte para tecla Tab)\n")
 
 	while True:
 		try:
@@ -683,11 +826,28 @@ def run_interactive_wizard(config_path: Path, current_config: dict | None = None
 				print(f"✅ Carpeta seleccionada: {selected}")
 				chosen_dir = selected
 			else:
-				print("⚠️  No se seleccionó ninguna carpeta (o se canceló el diálogo).")
-				continue
+				print("⚠️  No se seleccionó ninguna carpeta en el selector gráfico.")
+				try:
+					explore_tui = input(
+						"   ¿Querés explorar las carpetas acá en la terminal? [S/n / o pegá la ruta]: "
+					).strip()
+					if explore_tui.lower() in ("", "s", "si", "y", "yes"):
+						tui_selected = select_folder_terminal(initial_dir=default_resolved)
+						if tui_selected:
+							print(f"✅ Carpeta seleccionada: {tui_selected}")
+							chosen_dir = tui_selected
+						else:
+							continue
+					elif explore_tui.lower() in ("n", "no"):
+						continue
+					else:
+						# Si ingresó directamente una ruta
+						chosen_dir = explore_tui
+				except (EOFError, KeyboardInterrupt):
+					continue
 		elif choice == "3":
 			try:
-				manual_val = input("📁 Ingresá la ruta de la carpeta: ").strip()
+				manual_val = input("📁 Ingresá la ruta de la carpeta (podés usar Tab para autocompletar): ").strip()
 			except (EOFError, KeyboardInterrupt):
 				manual_val = ""
 			if not manual_val:
@@ -2998,7 +3158,9 @@ async def websocket_endpoint(websocket: WebSocket):
 				ok = manager.claim_local_player(websocket)
 				await websocket.send_json({"type": "local_player_claim_result", "ok": ok})
 				if ok:
-					logger.info(f"Cliente registrado como reproductor local ({client_host}). Silenciando MPV en el servidor...")
+					logger.info(
+						f"Cliente registrado como reproductor local ({client_host}). Silenciando MPV en el servidor..."
+					)
 					await state.mpv._send('{"command": ["set_property", "mute", true]}')
 				else:
 					logger.info(f"Rechazamos solicitud de reproductor local de {client_host}: ya hay otro.")

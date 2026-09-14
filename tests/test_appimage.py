@@ -43,7 +43,7 @@ def test_create_appdir_structure(tmp_path):
 	apprun = appdir / "AppRun"
 	assert apprun.stat().st_mode & stat.S_IXUSR
 	apprun_text = apprun.read_text(encoding="utf-8")
-	assert "exec \"${HERE}/usr/bin/larockola\" \"$@\"" in apprun_text
+	assert 'exec "${HERE}/usr/bin/larockola" "$@"' in apprun_text
 	assert "LD_LIBRARY_PATH" in apprun_text
 
 	# Standard desktop file location
@@ -95,7 +95,9 @@ def test_get_carpincho_data_dir_appimage_fallback_to_xdg(tmp_path, monkeypatch):
 
 
 def test_ensure_appimagetool_found_in_path(monkeypatch):
-	monkeypatch.setattr(build_appimage.shutil, "which", lambda cmd: "/usr/bin/appimagetool" if cmd == "appimagetool" else None)
+	monkeypatch.setattr(
+		build_appimage.shutil, "which", lambda cmd: "/usr/bin/appimagetool" if cmd == "appimagetool" else None
+	)
 	tool = build_appimage.ensure_appimagetool()
 	assert tool == Path("/usr/bin/appimagetool")
 
@@ -111,8 +113,9 @@ def test_ensure_appimagetool_download(tmp_path, monkeypatch):
 	mock_resp.__enter__.return_value = mock_resp
 	mock_resp.read.side_effect = [fake_content, b""]
 
-	with patch("urllib.request.urlopen", return_value=mock_resp), patch(
-		"shutil.copyfileobj", side_effect=lambda src, dst: dst.write(fake_content)
+	with (
+		patch("urllib.request.urlopen", return_value=mock_resp),
+		patch("shutil.copyfileobj", side_effect=lambda src, dst: dst.write(fake_content)),
 	):
 		tool = build_appimage.ensure_appimagetool()
 		assert tool == fake_build / "tools" / "appimagetool"
@@ -171,3 +174,116 @@ def test_run_pyinstaller_skip(tmp_path, monkeypatch):
 		mock_run.assert_not_called()
 
 
+def test_get_clean_env(monkeypatch):
+	monkeypatch.setenv("LD_LIBRARY_PATH", "/tmp/_MEI123456")
+	monkeypatch.setenv("LD_LIBRARY_PATH_ORIG", "/usr/lib:/usr/local/lib")
+	monkeypatch.setenv("PYTHONPATH", "/tmp/bundle")
+	monkeypatch.delenv("PYTHONPATH_ORIG", raising=False)
+
+	clean = server.get_clean_env()
+	assert clean["LD_LIBRARY_PATH"] == "/usr/lib:/usr/local/lib"
+	assert "PYTHONPATH" not in clean
+
+
+def test_parse_selected_dir(tmp_path):
+	test_dir = tmp_path / "music_folder"
+	test_dir.mkdir()
+
+	# Normal path
+	assert server._parse_selected_dir(str(test_dir)) == str(test_dir)
+	# Trailing slash
+	assert server._parse_selected_dir(str(test_dir) + "/") == str(test_dir)
+	# File URL scheme
+	assert server._parse_selected_dir(f"file://{test_dir}") == str(test_dir)
+	# None or empty
+	assert server._parse_selected_dir(None) is None
+	assert server._parse_selected_dir("") is None
+	# Non-existent path
+	assert server._parse_selected_dir("/non/existent/path/for/carpincho") is None
+
+
+def test_select_folder_linux_kdialog(tmp_path, monkeypatch):
+	test_dir = tmp_path / "kdialog_music"
+	test_dir.mkdir()
+
+	monkeypatch.setattr(server.shutil, "which", lambda cmd: "/usr/bin/kdialog" if cmd == "kdialog" else None)
+
+	mock_proc = MagicMock()
+	mock_proc.returncode = 0
+	mock_proc.stdout = f"{test_dir}\n"
+	mock_proc.stderr = ""
+
+	with patch("subprocess.run", return_value=mock_proc) as mock_run:
+		res = server._select_folder_linux(title="Test Title", initial_dir=str(tmp_path))
+		assert res == str(test_dir)
+		mock_run.assert_called_once()
+		called_cmd = mock_run.call_args[0][0]
+		assert called_cmd[0] == "kdialog"
+		assert "--getexistingdirectory" in called_cmd
+
+
+def test_select_folder_linux_yad_fallback(tmp_path, monkeypatch):
+	test_dir = tmp_path / "yad_music"
+	test_dir.mkdir()
+
+	monkeypatch.setattr(server.shutil, "which", lambda cmd: "/usr/bin/yad" if cmd == "yad" else None)
+
+	mock_proc = MagicMock()
+	mock_proc.returncode = 0
+	mock_proc.stdout = f"{test_dir}\n"
+	mock_proc.stderr = ""
+
+	with patch("subprocess.run", return_value=mock_proc) as mock_run:
+		res = server._select_folder_linux(title="Yad Title", initial_dir=str(tmp_path))
+		assert res == str(test_dir)
+		mock_run.assert_called_once()
+		called_cmd = mock_run.call_args[0][0]
+		assert called_cmd[0] == "yad"
+		assert "--directory" in called_cmd
+
+
+def test_check_dependencies_frozen_message(monkeypatch, capsys):
+	monkeypatch.setattr(server.sys, "frozen", True, raising=False)
+	monkeypatch.setattr(server, "_dependencies_checked", False)
+	monkeypatch.setattr(
+		server.importlib.util,
+		"find_spec",
+		lambda m: None if m in ("librosa", "dbus_next") else MagicMock(),
+	)
+
+	server.check_dependencies(force=True)
+	captured = capsys.readouterr()
+	# In frozen mode, it should not say pip install librosa
+	assert "no incluido en la versión portable" in captured.err
+	assert "pip install librosa" not in captured.err
+	assert "no incluido en este build de Linux" in captured.err
+
+
+def test_select_folder_terminal_confirm_and_cancel(tmp_path, monkeypatch):
+	sub = tmp_path / "subdir"
+	sub.mkdir()
+
+	# Test 1: Confirm current dir with '0'
+	monkeypatch.setattr("builtins.input", lambda prompt: "0")
+	res = server.select_folder_terminal(initial_dir=str(tmp_path))
+	assert res == str(tmp_path)
+
+	# Test 2: Cancel with 'q'
+	monkeypatch.setattr("builtins.input", lambda prompt: "q")
+	res = server.select_folder_terminal(initial_dir=str(tmp_path))
+	assert res is None
+
+
+def test_select_folder_terminal_navigate(tmp_path, monkeypatch):
+	sub = tmp_path / "rockola_music"
+	sub.mkdir()
+
+	inputs = iter(["1", "0"])  # Select first subdir, then confirm with 0
+	monkeypatch.setattr("builtins.input", lambda prompt: next(inputs))
+	res = server.select_folder_terminal(initial_dir=str(tmp_path))
+	assert res == str(sub)
+
+
+def test_setup_readline_completion():
+	# Verify that calling setup_readline_completion runs without error
+	server.setup_readline_completion()

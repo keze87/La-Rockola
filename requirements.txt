@@ -3,3 +3,4 @@ uvicorn
 mutagen
 pydantic
 websockets
+dbus-next; sys_platform == 'linux'
