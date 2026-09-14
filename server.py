@@ -133,6 +133,16 @@ def check_dependencies(force: bool = False):
 
 	for bin_name, fix in optional_system.items():
 		if find_binary(bin_name) is None:
+			if bin_name == "yt-dlp" and (is_win or getattr(sys, "frozen", False) or is_mac):
+				try:
+					import ytdlp_installer
+
+					installed = ytdlp_installer.install_ytdlp(log_fn=lambda m: print(f"  {m}", file=sys.stderr))
+					if installed and find_binary("yt-dlp"):
+						print("🦦 ¡yt-dlp instalado con éxito para temas de YouTube! 🧉🎶\n", file=sys.stderr)
+						continue
+				except Exception as e:
+					print(f"⚠️ Aviso al intentar auto-instalar yt-dlp: {e}", file=sys.stderr)
 			missing_opt_sys.append((bin_name, fix))
 
 	# Tiramos un aviso si falta algo opcional, pero seguimos adelante
@@ -2053,10 +2063,26 @@ class APIState:
 		if url in self.url_metadata:
 			return
 
+		ytdlp_bin = find_binary("yt-dlp")
+		if not ytdlp_bin:
+			try:
+				import ytdlp_installer
+
+				logger.info("yt-dlp no encontrado para procesar link de YouTube. Intentando instalar...")
+				loop = asyncio.get_running_loop()
+				installed = await loop.run_in_executor(None, ytdlp_installer.ensure_ytdlp)
+				if installed:
+					ytdlp_bin = installed
+			except Exception as e:
+				logger.error(f"No se pudo instalar yt-dlp en tiempo de ejecución: {e}")
+
+		if not ytdlp_bin:
+			ytdlp_bin = "yt-dlp"
+
 		try:
 			logger.info(f"Che yt-dlp, averiguate la data de este link: {url}")
 			proc = await asyncio.create_subprocess_exec(
-				"yt-dlp",
+				ytdlp_bin,
 				"--dump-json",
 				"--no-warnings",
 				"--no-playlist",
@@ -2471,6 +2497,19 @@ async def broadcast_state(include_library=False):
 async def lifespan(app: FastAPI):
 	# Le metemos un escaneo de fondo para que ya tenga todo cacheado al inicio
 	asyncio.create_task(scan_library())
+
+	# Actualización en segundo plano de yt-dlp para mantener compatibilidad con YouTube
+	async def _bg_update_ytdlp():
+		try:
+			import ytdlp_installer
+
+			loop = asyncio.get_running_loop()
+			await loop.run_in_executor(None, ytdlp_installer.update_ytdlp)
+		except Exception as e:
+			logger.debug(f"Aviso en actualización de yt-dlp: {e}")
+
+	if find_binary("yt-dlp"):
+		asyncio.create_task(_bg_update_ytdlp())
 
 	yield  # Acá el servidor se queda corriendo y escuchando a los clientes
 

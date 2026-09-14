@@ -38,6 +38,7 @@ hiddenimports = [
     "fastapi",
     "starlette",
     "mpv_installer",
+    "ytdlp_installer",
 ]
 
 a = Analysis(
