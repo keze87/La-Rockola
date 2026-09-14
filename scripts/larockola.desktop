@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=La Rockola del Carpincho
+GenericName=Music Player & Server
+Comment=Reproductor y servidor de música con alma de campo y sabor a mate
+Exec=larockola %F
+Icon=larockola
+Terminal=true
+Categories=AudioVideo;Audio;Player;
+Keywords=music;audio;player;carpincho;rockola;mate;
+StartupWMClass=larockola

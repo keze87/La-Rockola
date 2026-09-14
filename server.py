@@ -239,6 +239,20 @@ except (ImportError, OSError, ValueError, AttributeError):
 def get_carpincho_data_dir() -> Path:
 	"""Directorio de base de datos relativo a la carpeta DB en la raíz del repositorio o portable."""
 	if getattr(sys, "frozen", False):
+		# Si se ejecuta desde un AppImage, chequear si el directorio del .AppImage tiene carpeta DB portable
+		appimage_path = os.environ.get("APPIMAGE")
+		if appimage_path:
+			appimage_dir = Path(appimage_path).resolve().parent
+			try:
+				test_file = appimage_dir / ".carpincho_write_test"
+				test_file.touch(exist_ok=True)
+				test_file.unlink(missing_ok=True)
+				portable_db = appimage_dir / "DB"
+				if portable_db.is_dir():
+					return portable_db
+			except OSError:
+				pass
+
 		exe_dir = Path(sys.executable).parent
 		# Si la carpeta del ejecutable es escribible, guardamos en DB portable
 		try:
@@ -247,7 +261,7 @@ def get_carpincho_data_dir() -> Path:
 			test_file.unlink(missing_ok=True)
 			db_dir = exe_dir / "DB"
 		except OSError:
-			# Si está en una ruta de solo lectura (ej. C:\Program Files), fallback a datos de usuario
+			# Si está en una ruta de solo lectura (ej. C:\Program Files o AppDir), fallback a datos de usuario
 			if sys.platform == "win32":
 				base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
 			elif sys.platform == "darwin":
