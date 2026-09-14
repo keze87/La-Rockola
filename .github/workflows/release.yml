@@ -39,15 +39,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller pillow
 
-      - name: Pre-download yt-dlp release binary
-        uses: robinraju/release-downloader@v1
-        continue-on-error: true
-        with:
-          repository: "yt-dlp/yt-dlp"
-          latest: true
-          fileName: "yt-dlp.exe"
-          out-file-path: "dist_bin/mpv"
-
       - name: Build Windows Portable Executable
         run: |
           python scripts/build_windows.py

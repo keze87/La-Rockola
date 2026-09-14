@@ -108,98 +108,7 @@ def run_pyinstaller():
 	return exe_path
 
 
-def ensure_release_mpv(package_dir: Path, skip_mpv: bool = False):
-	"""Asegura que mpv.exe (y sus dependencias) estén en package_dir / 'mpv'."""
-	if skip_mpv or os.environ.get("ROCKOLA_SKIP_MPV_DOWNLOAD") == "1":
-		log("Omitiendo inclusión de MPV (--skip-mpv activado).")
-		return
-
-	mpv_target_dir = package_dir / "mpv"
-	if (mpv_target_dir / "mpv.exe").is_file() or (package_dir / "mpv.exe").is_file():
-		log("MPV ya se encuentra presente en el paquete.")
-		return
-
-	# Revisar caché local en dist_bin/mpv
-	cache_dir = ROOT_DIR / "dist_bin" / "mpv"
-	if (cache_dir / "mpv.exe").is_file():
-		log(f"Copiando MPV desde caché local ({cache_dir})...")
-		shutil.copytree(cache_dir, mpv_target_dir, dirs_exist_ok=True)
-		return
-
-	# Si no está en caché, descargarlo con mpv_installer
-	log("MPV no encontrado localmente. Intentando descargar la versión más reciente desde GitHub...")
-	if str(ROOT_DIR) not in sys.path:
-		sys.path.insert(0, str(ROOT_DIR))
-	try:
-		import mpv_installer
-
-		installed = mpv_installer.install_mpv(
-			target_dir=mpv_target_dir,
-			platform_name="windows",
-			arch="x86_64",
-			log_fn=log,
-		)
-		if installed and (mpv_target_dir / "mpv.exe").is_file():
-			log(f"MPV empaquetado correctamente en {mpv_target_dir}.")
-			# Guardar copia en caché local para acelerar builds futuros
-			try:
-				cache_dir.parent.mkdir(parents=True, exist_ok=True)
-				shutil.copytree(mpv_target_dir, cache_dir, dirs_exist_ok=True)
-			except Exception as e:
-				log(f"No se pudo cachear MPV en dist_bin/mpv: {e}")
-		else:
-			log("ADVERTENCIA: No se pudo descargar MPV durante el armado del release. El usuario podrá autoinstalarlo al iniciar.")
-	except Exception as e:
-		log(f"ADVERTENCIA: Error al intentar descargar MPV: {e}")
-
-
-def ensure_release_ytdlp(package_dir: Path, skip_ytdlp: bool = False):
-	"""Asegura que yt-dlp.exe esté en package_dir / 'mpv' (junto a mpv.exe)."""
-	if skip_ytdlp or os.environ.get("ROCKOLA_SKIP_MPV_DOWNLOAD") == "1":
-		log("Omitiendo inclusión de yt-dlp.")
-		return
-
-	mpv_target_dir = package_dir / "mpv"
-	ytdlp_target = mpv_target_dir / "yt-dlp.exe"
-	if ytdlp_target.is_file():
-		log("yt-dlp ya se encuentra presente en el paquete.")
-		return
-
-	# Revisar caché local en dist_bin/mpv
-	cache_file = ROOT_DIR / "dist_bin" / "mpv" / "yt-dlp.exe"
-	if cache_file.is_file():
-		log(f"Copiando yt-dlp desde caché local ({cache_file})...")
-		mpv_target_dir.mkdir(parents=True, exist_ok=True)
-		shutil.copy2(cache_file, ytdlp_target)
-		return
-
-	# Si no está en caché, descargarlo con ytdlp_installer
-	log("yt-dlp no encontrado localmente. Descargando última versión desde GitHub...")
-	if str(ROOT_DIR) not in sys.path:
-		sys.path.insert(0, str(ROOT_DIR))
-	try:
-		import ytdlp_installer
-
-		installed = ytdlp_installer.install_ytdlp(
-			target_dir=mpv_target_dir,
-			platform_name="windows",
-			arch="x86_64",
-			log_fn=log,
-		)
-		if installed and ytdlp_target.is_file():
-			log(f"yt-dlp empaquetado correctamente en {ytdlp_target}.")
-			try:
-				cache_file.parent.mkdir(parents=True, exist_ok=True)
-				shutil.copy2(ytdlp_target, cache_file)
-			except Exception as e:
-				log(f"No se pudo cachear yt-dlp en dist_bin/mpv: {e}")
-		else:
-			log("ADVERTENCIA: No se pudo descargar yt-dlp durante el armado del release. La Rockola lo descargará al iniciar.")
-	except Exception as e:
-		log(f"ADVERTENCIA: Error al intentar descargar yt-dlp: {e}")
-
-
-def create_release_package(exe_path: Path, skip_mpv: bool = False, skip_ytdlp: bool = False):
+def create_release_package(exe_path: Path):
 	log("Preparando paquete de distribución en carpeta release/...")
 	RELEASE_DIR.mkdir(parents=True, exist_ok=True)
 	package_dir = RELEASE_DIR / "larockola-windows-x86_64"
@@ -210,10 +119,6 @@ def create_release_package(exe_path: Path, skip_mpv: bool = False, skip_ytdlp: b
 	# Copiar ejecutable principal
 	shutil.copy2(exe_path, package_dir / "larockola.exe")
 
-	# Asegurar MPV y yt-dlp en la carpeta mpv/
-	ensure_release_mpv(package_dir, skip_mpv=skip_mpv)
-	ensure_release_ytdlp(package_dir, skip_ytdlp=skip_ytdlp or skip_mpv)
-
 	# Crear carpeta DB local para modo portable
 	(package_dir / "DB").mkdir(exist_ok=True)
 
@@ -223,7 +128,7 @@ def create_release_package(exe_path: Path, skip_mpv: bool = False, skip_ytdlp: b
 ============================================================
 
 ¡Bienvenido a La Rockola del Carpincho!
-Este paquete es 100% portable y no requiere instalación previa.
+Este paquete es 100% portable y no requiere configuración previa.
 
 CÓMO USAR:
 1. Hacé doble clic en 'iniciar_rockola.bat' (o ejecutá 'larockola.exe').
@@ -239,14 +144,15 @@ CÓMO USAR:
 
 REQUISITOS DEL SISTEMA:
 - MPV Media Player:
-  ¡Ya viene incluido en la carpeta 'mpv/'! No necesitás instalar nada.
-  (Si alguna vez lo eliminás, La Rockola intentará descargarlo automáticamente
-  o podés instalarlo en tu sistema con: winget install mpv).
+  Es el reproductor de audio nativo. Si no lo tenés instalado en tu sistema,
+  La Rockola lo descargará e instalará automáticamente en la carpeta 'mpv/'
+  al iniciar por primera vez.
+  (También podés instalarlo en tu sistema con: winget install mpv).
 
-- YT-DLP:
-  ¡Ya viene incluido en la carpeta 'mpv/' junto a MPV!
-  La Rockola lo mantendrá actualizado automáticamente para que siempre puedas
-  reproducir temas desde YouTube / Internet sin problemas.
+- YT-DLP (Opcional):
+  Permite reproducir temas desde YouTube / Internet. Si no lo tenés,
+  La Rockola lo descargará automáticamente en la carpeta 'mpv/' la primera
+  vez que reproduzcas un link de YouTube y lo mantendrá actualizado para vos.
 
 DATOS Y CONFIGURACIÓN:
 - Configuración: Se almacena en 'rockola_config.json'.
@@ -283,8 +189,6 @@ def main():
 	parser = argparse.ArgumentParser(description="Compila la versión portable de La Rockola para Windows")
 	parser.add_argument("--rebuild-frontend", action="store_true", help="Fuerza la recompilación del frontend con Vite")
 	parser.add_argument("--clean", action="store_true", help="Limpia temporales antes de compilar")
-	parser.add_argument("--skip-mpv", action="store_true", help="No incluye ni descarga MPV en el paquete de distribución")
-	parser.add_argument("--skip-ytdlp", action="store_true", help="No incluye ni descarga yt-dlp en el paquete de distribución")
 	args = parser.parse_args()
 
 	if args.clean:
@@ -296,7 +200,7 @@ def main():
 	ensure_icon()
 	build_frontend(force=args.rebuild_frontend)
 	exe_path = run_pyinstaller()
-	create_release_package(exe_path, skip_mpv=args.skip_mpv, skip_ytdlp=args.skip_ytdlp)
+	create_release_package(exe_path)
 	log("Proceso finalizado con éxito.")
 
 
