@@ -153,7 +153,53 @@ def ensure_release_mpv(package_dir: Path, skip_mpv: bool = False):
 		log(f"ADVERTENCIA: Error al intentar descargar MPV: {e}")
 
 
-def create_release_package(exe_path: Path, skip_mpv: bool = False):
+def ensure_release_ytdlp(package_dir: Path, skip_ytdlp: bool = False):
+	"""Asegura que yt-dlp.exe esté en package_dir / 'mpv' (junto a mpv.exe)."""
+	if skip_ytdlp or os.environ.get("ROCKOLA_SKIP_MPV_DOWNLOAD") == "1":
+		log("Omitiendo inclusión de yt-dlp.")
+		return
+
+	mpv_target_dir = package_dir / "mpv"
+	ytdlp_target = mpv_target_dir / "yt-dlp.exe"
+	if ytdlp_target.is_file():
+		log("yt-dlp ya se encuentra presente en el paquete.")
+		return
+
+	# Revisar caché local en dist_bin/mpv
+	cache_file = ROOT_DIR / "dist_bin" / "mpv" / "yt-dlp.exe"
+	if cache_file.is_file():
+		log(f"Copiando yt-dlp desde caché local ({cache_file})...")
+		mpv_target_dir.mkdir(parents=True, exist_ok=True)
+		shutil.copy2(cache_file, ytdlp_target)
+		return
+
+	# Si no está en caché, descargarlo con ytdlp_installer
+	log("yt-dlp no encontrado localmente. Descargando última versión desde GitHub...")
+	if str(ROOT_DIR) not in sys.path:
+		sys.path.insert(0, str(ROOT_DIR))
+	try:
+		import ytdlp_installer
+
+		installed = ytdlp_installer.install_ytdlp(
+			target_dir=mpv_target_dir,
+			platform_name="windows",
+			arch="x86_64",
+			log_fn=log,
+		)
+		if installed and ytdlp_target.is_file():
+			log(f"yt-dlp empaquetado correctamente en {ytdlp_target}.")
+			try:
+				cache_file.parent.mkdir(parents=True, exist_ok=True)
+				shutil.copy2(ytdlp_target, cache_file)
+			except Exception as e:
+				log(f"No se pudo cachear yt-dlp en dist_bin/mpv: {e}")
+		else:
+			log("ADVERTENCIA: No se pudo descargar yt-dlp durante el armado del release. La Rockola lo descargará al iniciar.")
+	except Exception as e:
+		log(f"ADVERTENCIA: Error al intentar descargar yt-dlp: {e}")
+
+
+def create_release_package(exe_path: Path, skip_mpv: bool = False, skip_ytdlp: bool = False):
 	log("Preparando paquete de distribución en carpeta release/...")
 	RELEASE_DIR.mkdir(parents=True, exist_ok=True)
 	package_dir = RELEASE_DIR / "larockola-windows-x86_64"
@@ -164,8 +210,9 @@ def create_release_package(exe_path: Path, skip_mpv: bool = False):
 	# Copiar ejecutable principal
 	shutil.copy2(exe_path, package_dir / "larockola.exe")
 
-	# Asegurar MPV en el paquete release
+	# Asegurar MPV y yt-dlp en la carpeta mpv/
 	ensure_release_mpv(package_dir, skip_mpv=skip_mpv)
+	ensure_release_ytdlp(package_dir, skip_ytdlp=skip_ytdlp or skip_mpv)
 
 	# Crear carpeta DB local para modo portable
 	(package_dir / "DB").mkdir(exist_ok=True)
@@ -196,9 +243,10 @@ REQUISITOS DEL SISTEMA:
   (Si alguna vez lo eliminás, La Rockola intentará descargarlo automáticamente
   o podés instalarlo en tu sistema con: winget install mpv).
 
-- YT-DLP (Opcional):
-  Si querés reproducir temas desde YouTube / Internet, podés pegar 'yt-dlp.exe'
-  junto a larockola.exe o instalarlo con: winget install yt-dlp
+- YT-DLP:
+  ¡Ya viene incluido en la carpeta 'mpv/' junto a MPV!
+  La Rockola lo mantendrá actualizado automáticamente para que siempre puedas
+  reproducir temas desde YouTube / Internet sin problemas.
 
 DATOS Y CONFIGURACIÓN:
 - Configuración: Se almacena en 'rockola_config.json'.
@@ -236,6 +284,7 @@ def main():
 	parser.add_argument("--rebuild-frontend", action="store_true", help="Fuerza la recompilación del frontend con Vite")
 	parser.add_argument("--clean", action="store_true", help="Limpia temporales antes de compilar")
 	parser.add_argument("--skip-mpv", action="store_true", help="No incluye ni descarga MPV en el paquete de distribución")
+	parser.add_argument("--skip-ytdlp", action="store_true", help="No incluye ni descarga yt-dlp en el paquete de distribución")
 	args = parser.parse_args()
 
 	if args.clean:
@@ -247,7 +296,7 @@ def main():
 	ensure_icon()
 	build_frontend(force=args.rebuild_frontend)
 	exe_path = run_pyinstaller()
-	create_release_package(exe_path, skip_mpv=args.skip_mpv)
+	create_release_package(exe_path, skip_mpv=args.skip_mpv, skip_ytdlp=args.skip_ytdlp)
 	log("Proceso finalizado con éxito.")
 
 

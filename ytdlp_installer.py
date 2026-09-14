@@ -74,30 +74,70 @@ def get_ytdlp_download_url(platform_name: str | None = None, arch: str | None = 
 
 
 def get_default_install_dir() -> Path:
-	"""Determina el directorio donde ubicar yt-dlp (base de la app o datos de usuario)."""
-	base = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
-
-	# Si base es escribible, guardamos junto al ejecutable o en mpv/
+	"""Determina el directorio donde ubicar yt-dlp (en el mismo directorio que mpv para que lo reconozca)."""
+	# 1. Si MPV ya está instalado, ubicar yt-dlp en el mismo directorio que mpv
 	try:
-		test_file = base / ".carpincho_write_test"
-		test_file.touch(exist_ok=True)
-		test_file.unlink(missing_ok=True)
-		# Si existe la carpeta mpv/, podemos ponerlo allí para que MPV lo detecte de una
-		if (base / "mpv").is_dir():
-			return base / "mpv"
-		return base
-	except OSError:
+		import server
+
+		mpv_path = server.find_binary("mpv")
+		if mpv_path:
+			mpv_dir = Path(mpv_path).parent
+			try:
+				test_file = mpv_dir / ".carpincho_write_test"
+				test_file.touch(exist_ok=True)
+				test_file.unlink(missing_ok=True)
+				return mpv_dir
+			except OSError:
+				pass
+	except Exception:
 		pass
 
-	# Si es de solo lectura (ej. C:\\Program Files), usar AppData/Local o similar
-	if sys.platform == "win32":
-		app_data = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
-	elif sys.platform == "darwin":
-		app_data = Path.home() / "Library" / "Application Support"
-	else:
-		app_data = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+	# 2. Si no, consultar el directorio por defecto de mpv_installer (mpv/ o datos de usuario)
+	try:
+		import mpv_installer
 
-	return app_data / "carpincho" / "bin"
+		return mpv_installer.get_default_install_dir()
+	except Exception:
+		pass
+
+	base = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+	if (base / "mpv").is_dir():
+		return base / "mpv"
+	return base
+
+
+def is_rockola_managed(bin_path: str | Path) -> bool:
+	"""
+	Verifica si un binario de yt-dlp fue descargado/gestionado por La Rockola.
+	Solo se deben actualizar binarios gestionados por La Rockola, nunca instalaciones del sistema.
+	"""
+	path = Path(bin_path).resolve()
+	parent = path.parent
+
+	# 1. Marcador explícito
+	if (parent / ".rockola_managed_ytdlp").is_file():
+		return True
+
+	# 2. Ubicado dentro del directorio base de la aplicación (ej. en mpv/)
+	base = (Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent).resolve()
+	try:
+		path.relative_to(base)
+		return True
+	except ValueError:
+		pass
+
+	# 3. Ubicado dentro de los datos de usuario de Rockola
+	try:
+		import server
+
+		data_dir = getattr(server, "DATA_DIR", None)
+		if data_dir:
+			path.relative_to(Path(data_dir).resolve().parent)
+			return True
+	except Exception:
+		pass
+
+	return False
 
 
 def download_file(url: str, dest_path: Path, log_fn=default_logger):
@@ -160,6 +200,12 @@ def install_ytdlp(
 			# Mover al destino final
 			shutil.move(str(tmp_download), str(final_path))
 
+			# Dejar constancia de que fue instalado por La Rockola
+			try:
+				(dest_dir / ".rockola_managed_ytdlp").touch(exist_ok=True)
+			except Exception:
+				pass
+
 			# Asignar permisos de ejecución en POSIX
 			if sys.platform != "win32":
 				try:
@@ -197,7 +243,7 @@ def ensure_ytdlp(log_fn=default_logger) -> str | None:
 def update_ytdlp(bin_path: str | None = None, log_fn=default_logger) -> bool:
 	"""
 	Actualiza yt-dlp en caliente usando su comando nativo -U.
-	Retorna True si la actualización se completó con éxito.
+	Solo se ejecuta si yt-dlp fue descargado y gestionado por La Rockola.
 	"""
 	if not bin_path:
 		try:
@@ -209,6 +255,11 @@ def update_ytdlp(bin_path: str | None = None, log_fn=default_logger) -> bool:
 
 	if not bin_path or not Path(bin_path).is_file():
 		log_fn("No se encontró yt-dlp para actualizar.")
+		return False
+
+	# Solo actualizar si es gestionado por La Rockola
+	if not is_rockola_managed(bin_path):
+		log_fn(f"yt-dlp ({bin_path}) es una instalación externa del sistema; se omite la auto-actualización.")
 		return False
 
 	log_fn(f"Buscando actualizaciones para yt-dlp ({bin_path})...")

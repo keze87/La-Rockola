@@ -27,6 +27,7 @@ def find_binary(bin_name: str) -> str | None:
 		candidates.extend([
 			base / f"{bin_name}{ext}",
 			base / "bin" / f"{bin_name}{ext}",
+			base / "mpv" / f"{bin_name}{ext}",
 			base / bin_name / f"{bin_name}{ext}",
 		])
 		if "DATA_DIR" in globals() and isinstance(globals()["DATA_DIR"], Path):
@@ -34,7 +35,9 @@ def find_binary(bin_name: str) -> str | None:
 			candidates.extend([
 				d / f"{bin_name}{ext}",
 				d / "bin" / f"{bin_name}{ext}",
+				d / "mpv" / f"{bin_name}{ext}",
 				d / bin_name / f"{bin_name}{ext}",
+				d.parent / "mpv" / f"{bin_name}{ext}",
 				d.parent / bin_name / f"{bin_name}{ext}",
 			])
 	for candidate in candidates:

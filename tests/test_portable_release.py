@@ -294,8 +294,8 @@ def test_ensure_release_mpv_download(tmp_path, monkeypatch):
 		assert (tmp_path / "dist_bin" / "mpv" / "mpv.exe").is_file()
 
 
-def test_create_release_package_includes_mpv(tmp_path, monkeypatch):
-	"""Test that create_release_package packages mpv/ folder inside the zip."""
+def test_create_release_package_includes_mpv_and_ytdlp(tmp_path, monkeypatch):
+	"""Test that create_release_package packages mpv/ folder with mpv.exe and yt-dlp.exe inside the zip."""
 	import zipfile
 
 	from scripts import build_windows
@@ -307,12 +307,19 @@ def test_create_release_package_includes_mpv(tmp_path, monkeypatch):
 	fake_exe = tmp_path / "larockola.exe"
 	fake_exe.write_text("fake binary")
 
-	def fake_install(target_dir, platform_name, arch, log_fn=None):
+	def fake_install_mpv(target_dir, platform_name, arch, log_fn=None):
 		target_dir.mkdir(parents=True, exist_ok=True)
 		(target_dir / "mpv.exe").write_text("downloaded mpv")
 		return target_dir
 
-	with patch("mpv_installer.install_mpv", side_effect=fake_install):
+	def fake_install_ytdlp(target_dir, platform_name, arch, log_fn=None):
+		target_dir.mkdir(parents=True, exist_ok=True)
+		(target_dir / "yt-dlp.exe").write_text("downloaded yt-dlp")
+		return target_dir / "yt-dlp.exe"
+
+	with patch("mpv_installer.install_mpv", side_effect=fake_install_mpv), patch(
+		"ytdlp_installer.install_ytdlp", side_effect=fake_install_ytdlp
+	):
 		build_windows.create_release_package(fake_exe, skip_mpv=False)
 
 	zip_path = fake_release / "larockola-windows-x86_64.zip"
@@ -322,5 +329,6 @@ def test_create_release_package_includes_mpv(tmp_path, monkeypatch):
 		names = zf.namelist()
 		assert "larockola.exe" in names
 		assert any(name.replace("\\", "/") == "mpv/mpv.exe" for name in names)
+		assert any(name.replace("\\", "/") == "mpv/yt-dlp.exe" for name in names)
 
 

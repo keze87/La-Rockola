@@ -51,9 +51,38 @@ def test_ensure_ytdlp_installs_when_missing(tmp_path):
 		assert res == str(fake_bin)
 
 
+def test_get_default_install_dir_uses_mpv_dir(tmp_path):
+	fake_mpv = tmp_path / "mpv_folder" / "mpv.exe"
+	fake_mpv.parent.mkdir(parents=True, exist_ok=True)
+	fake_mpv.write_text("mpv")
+
+	with patch("server.find_binary", return_value=str(fake_mpv)):
+		target_dir = ytdlp_installer.get_default_install_dir()
+		assert target_dir == fake_mpv.parent
+
+
+def test_is_rockola_managed(tmp_path):
+	# Case 1: Has explicit marker
+	managed_dir = tmp_path / "managed"
+	managed_dir.mkdir()
+	(managed_dir / ".rockola_managed_ytdlp").touch()
+	bin1 = managed_dir / "yt-dlp"
+	bin1.touch()
+	assert ytdlp_installer.is_rockola_managed(bin1) is True
+
+	# Case 2: External system binary without marker
+	sys_dir = tmp_path / "usr" / "bin"
+	sys_dir.mkdir(parents=True)
+	bin2 = sys_dir / "yt-dlp"
+	bin2.touch()
+	assert ytdlp_installer.is_rockola_managed(bin2) is False
+
+
 def test_update_ytdlp_success(tmp_path):
 	fake_bin = tmp_path / "yt-dlp"
 	fake_bin.write_text("dummy")
+	# Mark as managed by Rockola
+	(tmp_path / ".rockola_managed_ytdlp").touch()
 
 	with patch("subprocess.run") as mock_run:
 		mock_run.return_value = MagicMock(returncode=0, stdout="Updated", stderr="")
@@ -61,6 +90,17 @@ def test_update_ytdlp_success(tmp_path):
 		assert ok is True
 		mock_run.assert_called_once()
 		assert mock_run.call_args[0][0] == [str(fake_bin), "-U"]
+
+
+def test_update_ytdlp_skips_unmanaged(tmp_path):
+	fake_bin = tmp_path / "system_bin" / "yt-dlp"
+	fake_bin.parent.mkdir()
+	fake_bin.write_text("system binary")
+
+	with patch("subprocess.run") as mock_run:
+		ok = ytdlp_installer.update_ytdlp(bin_path=str(fake_bin))
+		assert ok is False
+		mock_run.assert_not_called()
 
 
 def test_update_ytdlp_not_found():
