@@ -22,14 +22,24 @@ def find_binary(bin_name: str) -> str | None:
 	"""Busca un binario en la carpeta del ejecutable/script, subdirectorios bin/ o mpv/, o en el PATH del sistema."""
 	base = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 	exts = [".exe", ""] if (sys.platform == "win32" or os.name == "nt") else [""]
+	candidates = []
 	for ext in exts:
-		for candidate in [
+		candidates.extend([
 			base / f"{bin_name}{ext}",
 			base / "bin" / f"{bin_name}{ext}",
 			base / bin_name / f"{bin_name}{ext}",
-		]:
-			if candidate.is_file():
-				return str(candidate)
+		])
+		if "DATA_DIR" in globals() and isinstance(globals()["DATA_DIR"], Path):
+			d = globals()["DATA_DIR"]
+			candidates.extend([
+				d / f"{bin_name}{ext}",
+				d / "bin" / f"{bin_name}{ext}",
+				d / bin_name / f"{bin_name}{ext}",
+				d.parent / bin_name / f"{bin_name}{ext}",
+			])
+	for candidate in candidates:
+		if candidate.is_file():
+			return str(candidate)
 	return shutil.which(bin_name)
 
 
@@ -105,6 +115,20 @@ def check_dependencies(force: bool = False):
 
 	for bin_name, fix in required_system.items():
 		if find_binary(bin_name) is None:
+			if bin_name == "mpv" and (is_win or getattr(sys, "frozen", False) or is_mac):
+				try:
+					print(
+						"🦦 ¡Opa! No se encontró MPV instalado. Intentando descargarlo automáticamente...",
+						file=sys.stderr,
+					)
+					import mpv_installer
+
+					installed = mpv_installer.install_mpv(log_fn=lambda m: print(f"  {m}", file=sys.stderr))
+					if installed and find_binary("mpv"):
+						print("🦦 ¡MPV instalado con éxito! Siguiendo con la música... 🧉🎶\n", file=sys.stderr)
+						continue
+				except Exception as e:
+					print(f"⚠️ Falló la descarga automática de MPV: {e}", file=sys.stderr)
 			missing_req_sys.append((bin_name, fix))
 
 	for bin_name, fix in optional_system.items():

@@ -37,6 +37,7 @@ hiddenimports = [
     "pydantic",
     "fastapi",
     "starlette",
+    "mpv_installer",
 ]
 
 a = Analysis(

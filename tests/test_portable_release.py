@@ -174,7 +174,7 @@ def test_select_folder_dialog_powershell(tmp_path):
 
 	with patch("sys.platform", "win32"):
 		with patch("subprocess.run") as mock_run:
-			mock_run.return_value.stdout = f"{str(target_folder)}\n"
+			mock_run.return_value.stdout = f"{target_folder!s}\n"
 			mock_run.return_value.return_code = 0
 			res = server.select_folder_dialog(title="Test", initial_dir=str(tmp_path))
 			assert res == str(target_folder)
@@ -230,6 +230,7 @@ def test_run_interactive_wizard_using_default_option(tmp_path):
 def test_build_windows_zip_structure(tmp_path, monkeypatch):
 	"""Test that build_windows.py creates a ZIP with files at root (relative to package_dir)."""
 	import zipfile
+
 	from scripts import build_windows
 
 	fake_release = tmp_path / "release"
@@ -238,7 +239,7 @@ def test_build_windows_zip_structure(tmp_path, monkeypatch):
 	fake_exe = tmp_path / "larockola.exe"
 	fake_exe.write_text("fake binary")
 
-	build_windows.create_release_package(fake_exe)
+	build_windows.create_release_package(fake_exe, skip_mpv=True)
 
 	zip_path = fake_release / "larockola-windows-x86_64.zip"
 	assert zip_path.is_file()
@@ -250,5 +251,76 @@ def test_build_windows_zip_structure(tmp_path, monkeypatch):
 		assert "LEEME.txt" in names
 		assert "iniciar_rockola.bat" in names
 		assert not any(name.startswith("larockola-windows-x86_64/") for name in names)
+
+
+def test_ensure_release_mpv_from_cache(tmp_path, monkeypatch):
+	"""Test copying MPV from dist_bin/mpv cache."""
+	from scripts import build_windows
+
+	package_dir = tmp_path / "package"
+	package_dir.mkdir()
+
+	fake_cache = tmp_path / "dist_bin" / "mpv"
+	fake_cache.mkdir(parents=True)
+	(fake_cache / "mpv.exe").write_text("cached mpv")
+	(fake_cache / "test.dll").write_text("dll")
+
+	monkeypatch.setattr(build_windows, "ROOT_DIR", tmp_path)
+
+	build_windows.ensure_release_mpv(package_dir, skip_mpv=False)
+	assert (package_dir / "mpv" / "mpv.exe").is_file()
+	assert (package_dir / "mpv" / "test.dll").is_file()
+
+
+def test_ensure_release_mpv_download(tmp_path, monkeypatch):
+	"""Test ensure_release_mpv calling mpv_installer when not cached."""
+	from scripts import build_windows
+
+	package_dir = tmp_path / "package"
+	package_dir.mkdir()
+
+	monkeypatch.setattr(build_windows, "ROOT_DIR", tmp_path)
+
+	def fake_install(target_dir, platform_name, arch, log_fn=None):
+		target_dir.mkdir(parents=True, exist_ok=True)
+		(target_dir / "mpv.exe").write_text("downloaded mpv")
+		return target_dir
+
+	with patch("mpv_installer.install_mpv", side_effect=fake_install) as mock_inst:
+		build_windows.ensure_release_mpv(package_dir, skip_mpv=False)
+		assert mock_inst.called
+		assert (package_dir / "mpv" / "mpv.exe").is_file()
+		# Also verify it got cached to dist_bin/mpv
+		assert (tmp_path / "dist_bin" / "mpv" / "mpv.exe").is_file()
+
+
+def test_create_release_package_includes_mpv(tmp_path, monkeypatch):
+	"""Test that create_release_package packages mpv/ folder inside the zip."""
+	import zipfile
+
+	from scripts import build_windows
+
+	fake_release = tmp_path / "release"
+	monkeypatch.setattr(build_windows, "RELEASE_DIR", fake_release)
+	monkeypatch.setattr(build_windows, "ROOT_DIR", tmp_path)
+
+	fake_exe = tmp_path / "larockola.exe"
+	fake_exe.write_text("fake binary")
+
+	def fake_install(target_dir, platform_name, arch, log_fn=None):
+		target_dir.mkdir(parents=True, exist_ok=True)
+		(target_dir / "mpv.exe").write_text("downloaded mpv")
+		return target_dir
+
+	with patch("mpv_installer.install_mpv", side_effect=fake_install):
+		build_windows.create_release_package(fake_exe, skip_mpv=False)
+
+	zip_path = fake_release / "larockola-windows-x86_64.zip"
+	assert zip_path.is_file()
+
+	with zipfile.ZipFile(zip_path, "r") as zf:
+		names = zf.namelist()
+		assert "larockola.exe" in names
+		assert any(name.replace("\\", "/") == "mpv/mpv.exe" for name in names)
 
 
