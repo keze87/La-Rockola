@@ -9,9 +9,12 @@ oficiales de mpv-player/mpv en GitHub cuando no se encuentra instalado en el sis
 import json
 import os
 import platform
+import re
 import shutil
+import subprocess
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.request
 import zipfile
@@ -20,6 +23,7 @@ from pathlib import Path
 GITHUB_API_LATEST = "https://api.github.com/repos/mpv-player/mpv/releases/latest"
 GITHUB_HTML_LATEST = "https://github.com/mpv-player/mpv/releases/latest"
 USER_AGENT = "LaRockola-MPV-Installer/1.0"
+COOLDOWN_SECONDS = 24 * 60 * 60 * 7  # 1 semana entre chequeos automáticos
 
 
 def default_logger(msg: str):
@@ -51,6 +55,85 @@ def resolve_platform_and_arch(platform_name: str | None = None, arch: str | None
 			arch = mach
 
 	return platform_name, arch
+
+
+def _parse_version(v_str: str | None) -> tuple[int, ...]:
+	"""Convierte una cadena de versión como 'v0.41.0' o '0.38' en una tupla de enteros (0, 41, 0)."""
+	if not v_str:
+		return (0,)
+	nums = re.findall(r"\d+", v_str)
+	return tuple(int(x) for x in nums) if nums else (0,)
+
+
+def get_installed_mpv_version(bin_path: str | Path) -> str | None:
+	"""
+	Obtiene la versión instalada de MPV ejecutando `mpv --version`.
+	Retorna la versión como texto (ej. '0.41.0') o None si no se pudo determinar.
+	"""
+	p = Path(bin_path)
+	if p.is_dir():
+		ext = ".exe" if (sys.platform == "win32" or os.name == "nt") else ""
+		candidate = p / f"mpv{ext}"
+		if candidate.is_file():
+			p = candidate
+		elif (p / "mpv.exe").is_file():
+			p = p / "mpv.exe"
+		elif (p / "mpv").is_file():
+			p = p / "mpv"
+
+	if not p.is_file():
+		return None
+
+	try:
+		res = subprocess.run(
+			[str(p), "--version"],
+			capture_output=True,
+			text=True,
+			timeout=5,
+			check=False,
+		)
+		output = res.stdout or res.stderr or ""
+		match = re.search(r"mpv\s+(v?[\d\.]+)", output, re.IGNORECASE)
+		if match:
+			return match.group(1).lstrip("vV")
+	except Exception:
+		pass
+
+	return None
+
+
+def is_rockola_managed(bin_path: str | Path) -> bool:
+	"""
+	Verifica si un binario o directorio de MPV fue descargado/gestionado por La Rockola.
+	Solo se deben actualizar binarios gestionados por La Rockola, nunca instalaciones del sistema.
+	"""
+	path = Path(bin_path).resolve()
+	target_dir = path if path.is_dir() else path.parent
+
+	# 1. Marcador explícito en la carpeta de mpv
+	if (target_dir / ".rockola_managed_mpv").is_file():
+		return True
+
+	# 2. Ubicado dentro del directorio base de la aplicación (ej. en base / "mpv")
+	base = (Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent).resolve()
+	try:
+		path.relative_to(base)
+		return True
+	except ValueError:
+		pass
+
+	# 3. Ubicado dentro de los datos de usuario de Rockola
+	try:
+		import server
+
+		data_dir = getattr(server, "DATA_DIR", None)
+		if data_dir:
+			path.relative_to(Path(data_dir).resolve().parent)
+			return True
+	except Exception:
+		pass
+
+	return False
 
 
 def fetch_release_info(timeout: int = 10) -> dict:
@@ -309,6 +392,11 @@ def install_mpv(
 
 			success = extract_mpv_zip(download_path, dest_dir, log_fn=log_fn)
 			if success:
+				try:
+					(dest_dir / ".rockola_managed_mpv").touch(exist_ok=True)
+					(dest_dir / ".last_mpv_update_check").write_text(str(time.time()))
+				except Exception:
+					pass
 				log_fn(f"¡MPV instalado exitosamente en {dest_dir}!")
 				return dest_dir
 			else:
@@ -334,7 +422,90 @@ def ensure_mpv(
 	return install_mpv(target_dir=dest_dir, platform_name=platform_name, arch=arch, log_fn=log_fn)
 
 
+def update_mpv(
+	bin_path: str | Path | None = None,
+	force: bool = False,
+	cooldown: int = COOLDOWN_SECONDS,
+	log_fn=default_logger,
+) -> bool:
+	"""
+	Verifica y actualiza MPV si hay una nueva versión disponible en GitHub Releases.
+	Solo se ejecuta si el binario de MPV es gestionado por La Rockola.
+	Aplica un cooldown de 1 semana por defecto para no ralentizar el inicio del servidor.
+	"""
+	if not bin_path:
+		try:
+			import server
+
+			bin_path = server.find_binary("mpv")
+		except Exception:
+			bin_path = shutil.which("mpv")
+
+	if not bin_path:
+		log_fn("No se encontró MPV para actualizar.")
+		return False
+
+	p = Path(bin_path).resolve()
+	target_dir = p if p.is_dir() else p.parent
+
+	if not is_rockola_managed(p):
+		log_fn(f"MPV ({p}) es una instalación externa del sistema; se omite la auto-actualización.")
+		return False
+
+	plat, _ = resolve_platform_and_arch()
+	if plat not in ("windows", "macos"):
+		log_fn(f"La actualización automática de MPV no está soportada para la plataforma '{plat}'.")
+		return False
+
+	timestamp_file = target_dir / ".last_mpv_update_check"
+	if not force and timestamp_file.is_file():
+		try:
+			last_check = float(timestamp_file.read_text().strip())
+			if time.time() - last_check < cooldown:
+				return True
+		except Exception:
+			pass
+
+	cur_ver_str = get_installed_mpv_version(p)
+	log_fn(f"Buscando actualizaciones para MPV (versión instalada: {cur_ver_str or 'desconocida'})...")
+
+	try:
+		info = fetch_release_info(timeout=5)
+	except Exception as e:
+		log_fn(f"No se pudo consultar actualizaciones de MPV: {e}")
+		return False
+
+	# Actualizar el timestamp del chequeo
+	try:
+		timestamp_file.write_text(str(time.time()))
+	except Exception:
+		pass
+
+	tag = info.get("tag", "")
+	remote_ver = _parse_version(tag)
+	installed_ver = _parse_version(cur_ver_str) if cur_ver_str else (0,)
+
+	if remote_ver > installed_ver:
+		log_fn(f"Hay una nueva versión de MPV disponible ({tag} > {cur_ver_str or 'desconocida'}). Actualizando...")
+		result = install_mpv(target_dir=target_dir, log_fn=log_fn)
+		if result:
+			log_fn(f"¡MPV actualizado con éxito a la versión {tag}!")
+			return True
+		else:
+			log_fn("Falló la actualización de MPV.")
+			return False
+	else:
+		log_fn(f"MPV está al día (versión {cur_ver_str or tag}).")
+		return True
+
+
 if __name__ == "__main__":
+	if "--update" in sys.argv:
+		sys.argv.remove("--update")
+		target = Path(sys.argv[1]) if len(sys.argv) > 1 else None
+		res = update_mpv(bin_path=target, force=True)
+		sys.exit(0 if res else 1)
+
 	target = Path(sys.argv[1]) if len(sys.argv) > 1 else None
 	res = install_mpv(target_dir=target)
 	if res:

@@ -117,7 +117,8 @@ def check_dependencies(force: bool = False):
 	}
 
 	for bin_name, fix in required_system.items():
-		if find_binary(bin_name) is None:
+		mpv_bin = find_binary(bin_name)
+		if mpv_bin is None:
 			if bin_name == "mpv" and (is_win or getattr(sys, "frozen", False) or is_mac):
 				try:
 					print(
@@ -133,6 +134,15 @@ def check_dependencies(force: bool = False):
 				except Exception as e:
 					print(f"⚠️ Falló la descarga automática de MPV: {e}", file=sys.stderr)
 			missing_req_sys.append((bin_name, fix))
+		else:
+			if bin_name == "mpv" and (is_win or getattr(sys, "frozen", False) or is_mac):
+				try:
+					import mpv_installer
+
+					if mpv_installer.is_rockola_managed(mpv_bin):
+						mpv_installer.update_mpv(bin_path=mpv_bin, log_fn=lambda m: print(f"  {m}", file=sys.stderr))
+				except Exception as e:
+					print(f"⚠️ Aviso al verificar actualizaciones de MPV: {e}", file=sys.stderr)
 
 	for bin_name, fix in optional_system.items():
 		if find_binary(bin_name) is None:

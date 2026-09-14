@@ -226,3 +226,138 @@ def test_server_check_dependencies_triggers_mpv_install(monkeypatch, tmp_path):
 		server.check_dependencies(force=True)
 		mock_install.assert_called_once()
 		mock_exit.assert_not_called()
+
+
+def test_parse_version():
+	assert mpv_installer._parse_version("v0.41.0") == (0, 41, 0)
+	assert mpv_installer._parse_version("0.38.1") == (0, 38, 1)
+	assert mpv_installer._parse_version("v0.42") == (0, 42)
+	assert mpv_installer._parse_version("") == (0,)
+	assert mpv_installer._parse_version(None) == (0,)
+
+
+def test_get_installed_mpv_version_success(tmp_path):
+	fake_bin = tmp_path / "mpv"
+	fake_bin.write_text("binary")
+
+	mock_proc = MagicMock()
+	mock_proc.stdout = "mpv v0.41.0-w64 Copyright (C) 2000-2025 mpv/MPlayer/mplayer2 projects"
+	mock_proc.stderr = ""
+	mock_proc.returncode = 0
+
+	with patch("subprocess.run", return_value=mock_proc):
+		ver = mpv_installer.get_installed_mpv_version(fake_bin)
+		assert ver == "0.41.0"
+
+
+def test_get_installed_mpv_version_missing_or_error(tmp_path):
+	assert mpv_installer.get_installed_mpv_version(tmp_path / "nonexistent") is None
+
+	fake_bin = tmp_path / "mpv"
+	fake_bin.write_text("binary")
+	with patch("subprocess.run", side_effect=OSError("Exec error")):
+		assert mpv_installer.get_installed_mpv_version(fake_bin) is None
+
+
+def test_is_rockola_managed(tmp_path):
+	# Path with .rockola_managed_mpv
+	managed_dir = tmp_path / "my_rockola_mpv"
+	managed_dir.mkdir()
+	(managed_dir / ".rockola_managed_mpv").touch()
+	bin_path = managed_dir / "mpv.exe"
+	bin_path.touch()
+
+	assert mpv_installer.is_rockola_managed(bin_path) is True
+	assert mpv_installer.is_rockola_managed(managed_dir) is True
+
+	# External path without marker
+	external_dir = tmp_path / "external_bin"
+	external_dir.mkdir()
+	external_bin = external_dir / "mpv"
+	external_bin.touch()
+	assert mpv_installer.is_rockola_managed(external_bin) is False
+
+
+def test_update_mpv_skips_unmanaged(tmp_path):
+	external_bin = tmp_path / "system_mpv" / "mpv"
+	external_bin.parent.mkdir()
+	external_bin.touch()
+
+	logged = []
+	res = mpv_installer.update_mpv(bin_path=external_bin, log_fn=logged.append)
+	assert res is False
+	assert any("externa" in m for m in logged)
+
+
+def test_update_mpv_cooldown(tmp_path, monkeypatch):
+	monkeypatch.setattr(mpv_installer, "resolve_platform_and_arch", lambda *a: ("windows", "x86_64"))
+	managed_dir = tmp_path / "mpv"
+	managed_dir.mkdir()
+	(managed_dir / ".rockola_managed_mpv").touch()
+	fake_bin = managed_dir / "mpv.exe"
+	fake_bin.touch()
+
+	import time
+
+	(managed_dir / ".last_mpv_update_check").write_text(str(time.time()))
+
+	with patch("mpv_installer.fetch_release_info") as mock_fetch:
+		# Within cooldown, force=False -> returns True immediately without network call
+		assert mpv_installer.update_mpv(bin_path=fake_bin, force=False) is True
+		mock_fetch.assert_not_called()
+
+		# force=True -> bypasses cooldown and calls fetch_release_info
+		mock_fetch.return_value = {"tag": "v0.41.0", "assets": []}
+		with patch("mpv_installer.get_installed_mpv_version", return_value="0.41.0"):
+			assert mpv_installer.update_mpv(bin_path=fake_bin, force=True) is True
+			mock_fetch.assert_called_once()
+
+
+def test_update_mpv_already_up_to_date(tmp_path, monkeypatch):
+	monkeypatch.setattr(mpv_installer, "resolve_platform_and_arch", lambda *a: ("windows", "x86_64"))
+	managed_dir = tmp_path / "mpv"
+	managed_dir.mkdir()
+	(managed_dir / ".rockola_managed_mpv").touch()
+	fake_bin = managed_dir / "mpv.exe"
+	fake_bin.touch()
+
+	with patch("mpv_installer.get_installed_mpv_version", return_value="0.41.0"), patch(
+		"mpv_installer.fetch_release_info", return_value={"tag": "v0.41.0", "assets": []}
+	), patch("mpv_installer.install_mpv") as mock_install:
+		res = mpv_installer.update_mpv(bin_path=fake_bin, force=True)
+		assert res is True
+		mock_install.assert_not_called()
+
+
+def test_update_mpv_triggers_install_on_newer_version(tmp_path, monkeypatch):
+	monkeypatch.setattr(mpv_installer, "resolve_platform_and_arch", lambda *a: ("windows", "x86_64"))
+	managed_dir = tmp_path / "mpv"
+	managed_dir.mkdir()
+	(managed_dir / ".rockola_managed_mpv").touch()
+	fake_bin = managed_dir / "mpv.exe"
+	fake_bin.touch()
+
+	with patch("mpv_installer.get_installed_mpv_version", return_value="0.40.0"), patch(
+		"mpv_installer.fetch_release_info", return_value={"tag": "v0.41.0", "assets": []}
+	), patch("mpv_installer.install_mpv", return_value=managed_dir) as mock_install:
+		res = mpv_installer.update_mpv(bin_path=fake_bin, force=True)
+		assert res is True
+		mock_install.assert_called_once_with(target_dir=managed_dir, log_fn=mpv_installer.default_logger)
+
+
+def test_server_check_dependencies_triggers_mpv_update(monkeypatch, tmp_path):
+	monkeypatch.setattr(server, "_dependencies_checked", False)
+	monkeypatch.setattr(sys, "platform", "win32")
+
+	managed_dir = tmp_path / "mpv"
+	managed_dir.mkdir()
+	(managed_dir / ".rockola_managed_mpv").touch()
+	fake_mpv = managed_dir / "mpv.exe"
+	fake_mpv.touch()
+
+	monkeypatch.setattr(server, "find_binary", lambda b: str(fake_mpv) if b == "mpv" else None)
+	monkeypatch.setattr("server.importlib.util.find_spec", lambda mod: True)
+
+	with patch("mpv_installer.update_mpv") as mock_update:
+		server.check_dependencies(force=True)
+		mock_update.assert_called_once()
