@@ -65,6 +65,24 @@ def _parse_version(v_str: str | None) -> tuple[int, ...]:
 	return tuple(int(x) for x in nums) if nums else (0,)
 
 
+def _get_clean_env() -> dict:
+	env = os.environ.copy()
+	for var in ("LD_LIBRARY_PATH", "LD_PRELOAD", "PYTHONPATH", "PYTHONHOME", "DYLD_LIBRARY_PATH"):
+		orig = f"{var}_ORIG"
+		if orig in env and env[orig].strip():
+			env[var] = env[orig]
+		elif var in env:
+			del env[var]
+	if "LD_LIBRARY_PATH" in env:
+		parts = [p.strip() for p in env["LD_LIBRARY_PATH"].split(":") if p.strip()]
+		clean_parts = [p for p in parts if "_MEI" not in p and ".mount_" not in p]
+		if clean_parts:
+			env["LD_LIBRARY_PATH"] = ":".join(clean_parts)
+		else:
+			del env["LD_LIBRARY_PATH"]
+	return env
+
+
 def get_installed_mpv_version(bin_path: str | Path) -> str | None:
 	"""
 	Obtiene la versión instalada de MPV ejecutando `mpv --version`.
@@ -91,6 +109,7 @@ def get_installed_mpv_version(bin_path: str | Path) -> str | None:
 			text=True,
 			timeout=5,
 			check=False,
+			env=_get_clean_env(),
 		)
 		output = res.stdout or res.stderr or ""
 		match = re.search(r"mpv\s+(v?[\d\.]+)", output, re.IGNORECASE)

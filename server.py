@@ -17,6 +17,10 @@ import shutil
 import sys
 from pathlib import Path
 
+if __name__ == "__main__":
+	sys.modules["server"] = sys.modules[__name__]
+
+
 
 def find_binary(bin_name: str) -> str | None:
 	"""Busca un binario en la carpeta del ejecutable/script, subdirectorios bin/ o mpv/, o en el PATH del sistema."""
@@ -544,16 +548,40 @@ def get_clean_env() -> dict:
 	"""
 	Retorna una copia de os.environ con las variables alteradas por PyInstaller/AppImage
 	restauradas a sus valores originales o eliminadas.
-	Esto evita que herramientas del sistema como kdialog, zenity, yad o powershell
+	Esto evita que herramientas del sistema como kdialog, zenity, yad, powershell, mpv o yt-dlp
 	fallen por incompatibilidad de librerías dinámicas cargadas desde el bundle.
 	"""
 	env = os.environ.copy()
-	for var in ("LD_LIBRARY_PATH", "LD_PRELOAD", "PYTHONPATH", "PYTHONHOME"):
+	for var in ("LD_LIBRARY_PATH", "LD_PRELOAD", "PYTHONPATH", "PYTHONHOME", "DYLD_LIBRARY_PATH"):
 		orig = f"{var}_ORIG"
-		if orig in env:
+		if orig in env and env[orig].strip():
 			env[var] = env[orig]
 		elif var in env:
 			del env[var]
+
+	# Filtrar cualquier rastro de PyInstaller (_MEI*) o AppImage (/tmp/.mount_*) de LD_LIBRARY_PATH
+	if "LD_LIBRARY_PATH" in env:
+		parts = env["LD_LIBRARY_PATH"].split(":")
+		clean_parts = []
+		appdir = os.environ.get("APPDIR", "")
+		meipass = getattr(sys, "_MEIPASS", "")
+		for p in parts:
+			p_str = p.strip()
+			if not p_str:
+				continue
+			if meipass and p_str.startswith(str(meipass)):
+				continue
+			if appdir and p_str.startswith(str(appdir)):
+				continue
+			if ".mount_" in p_str or "_MEI" in p_str:
+				continue
+			clean_parts.append(p_str)
+
+		if clean_parts:
+			env["LD_LIBRARY_PATH"] = ":".join(clean_parts)
+		else:
+			del env["LD_LIBRARY_PATH"]
+
 	return env
 
 
@@ -1299,13 +1327,15 @@ class AsyncMpvController:
 			# Cleanup any zombie process if it exists
 			await self.stop()
 
-			env = os.environ.copy()
+			env = get_clean_env()
 
 			# 1. Handle OS-Specific IPC Socket Paths
 			if self.is_windows:
 				self.socket_path = rf"\\.\pipe\mpv_server_{id(self)}"
 			else:
-				if "WAYLAND_DISPLAY" not in env:
+				if "WAYLAND_DISPLAY" not in env and os.environ.get("WAYLAND_DISPLAY"):
+					env["WAYLAND_DISPLAY"] = os.environ["WAYLAND_DISPLAY"]
+				elif "WAYLAND_DISPLAY" not in env and os.environ.get("XDG_SESSION_TYPE") == "wayland":
 					env["WAYLAND_DISPLAY"] = "wayland-0"
 				tmp_dir = os.environ.get("TMPDIR", "/tmp")
 				self.socket_path = os.path.join(tmp_dir, f"mpv_server_{id(self)}.sock")
@@ -1363,14 +1393,29 @@ class AsyncMpvController:
 					*mpv_args,
 					stdin=asyncio.subprocess.DEVNULL,
 					stdout=asyncio.subprocess.DEVNULL,
-					stderr=asyncio.subprocess.DEVNULL,
+					stderr=asyncio.subprocess.PIPE,
 					env=env,
 				)
-			except Exception:
-				logger.error("¡Uy! No se encontró a MPV instalado. El carpincho está triste.")
+			except Exception as e:
+				logger.error(f"¡Uy! No se encontró a MPV instalado o falló al ejecutar: {e}")
 				sys.exit(1)
 
 			for i in range(20):
+				if self.process.returncode is not None:
+					err_msg = ""
+					if self.process.stderr:
+						try:
+							raw_err = await self.process.stderr.read()
+							err_msg = raw_err.decode("utf-8", errors="replace").strip()
+						except Exception:
+							pass
+					logger.error(
+						f"MPV finalizó inesperadamente con código {self.process.returncode}. Detalle: {err_msg or 'Sin salida de error'}"
+					)
+					raise RuntimeError(
+						f"MPV falló al iniciar (código {self.process.returncode}): {err_msg or 'proceso terminado'}"
+					)
+
 				if self.is_windows:
 					# Named pipes appear instantly in the OS namespace if MPV created it successfully
 					if await asyncio.to_thread(self._check_windows_pipe):
@@ -1379,8 +1424,27 @@ class AsyncMpvController:
 					break
 				await asyncio.sleep(0.3)
 
+			if self.process.returncode is not None:
+				err_msg = ""
+				if self.process.stderr:
+					try:
+						raw_err = await self.process.stderr.read()
+						err_msg = raw_err.decode("utf-8", errors="replace").strip()
+					except Exception:
+						pass
+				logger.error(
+					f"MPV finalizó inesperadamente con código {self.process.returncode}. Detalle: {err_msg or 'Sin salida de error'}"
+				)
+				raise RuntimeError(
+					f"MPV falló al iniciar (código {self.process.returncode}): {err_msg or 'proceso terminado'}"
+				)
+
 			if not self.is_windows and not os.path.exists(self.socket_path):
 				raise RuntimeError("MPV se quedó dormido y no armó el socket a tiempo.")
+
+			# Drenar stderr de MPV en segundo plano para no saturar el buffer del pipe
+			if self.process and self.process.stderr:
+				asyncio.create_task(self._drain_stderr())
 
 			# 2. Handle OS-Specific Socket Connections
 			if self.is_windows:
@@ -1404,6 +1468,17 @@ class AsyncMpvController:
 			# Si hay un callback de reinicio y fue un reinicio explícito, avisamos que ya estamos listos para recibir los datos de nuevo
 			if is_restart and "mpv_restarted" in self.callbacks:
 				asyncio.create_task(self.callbacks["mpv_restarted"]())
+
+	async def _drain_stderr(self):
+		"""Drena stderr de MPV en segundo plano para evitar saturar el buffer del pipe."""
+		try:
+			while self.process and self.process.returncode is None and self.process.stderr:
+				line = await self.process.stderr.readline()
+				if not line:
+					break
+				logger.debug(f"[MPV stderr] {line.decode('utf-8', errors='replace').rstrip()}")
+		except Exception:
+			pass
 
 	async def _read_ipc_events_windows(self):
 		"""Threaded reader for Windows Named Pipes to prevent blocking."""
@@ -2276,6 +2351,7 @@ class APIState:
 				url,
 				stdout=asyncio.subprocess.PIPE,
 				stderr=asyncio.subprocess.DEVNULL,
+				env=get_clean_env(),
 			)
 			stdout, _ = await proc.communicate()
 

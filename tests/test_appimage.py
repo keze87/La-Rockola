@@ -185,6 +185,30 @@ def test_get_clean_env(monkeypatch):
 	assert "PYTHONPATH" not in clean
 
 
+def test_get_clean_env_filters_mei_and_mount(monkeypatch):
+	monkeypatch.setenv("LD_LIBRARY_PATH", "/tmp/_MEI123456")
+	monkeypatch.setenv("LD_LIBRARY_PATH_ORIG", "/tmp/_MEI123456:/tmp/.mount_abc123/usr/lib:/usr/lib")
+
+	clean = server.get_clean_env()
+	assert clean["LD_LIBRARY_PATH"] == "/usr/lib"
+
+
+def test_get_clean_env_removes_var_when_only_internal_paths(monkeypatch):
+	monkeypatch.setenv("LD_LIBRARY_PATH", "/tmp/_MEI123456")
+	monkeypatch.setenv("LD_LIBRARY_PATH_ORIG", "/tmp/_MEI123456:/tmp/.mount_abc123/usr/lib")
+
+	clean = server.get_clean_env()
+	assert "LD_LIBRARY_PATH" not in clean
+
+
+def test_get_clean_env_empty_orig(monkeypatch):
+	monkeypatch.setenv("LD_LIBRARY_PATH", "/tmp/_MEI123456")
+	monkeypatch.setenv("LD_LIBRARY_PATH_ORIG", "   ")
+
+	clean = server.get_clean_env()
+	assert "LD_LIBRARY_PATH" not in clean
+
+
 def test_parse_selected_dir(tmp_path):
 	test_dir = tmp_path / "music_folder"
 	test_dir.mkdir()

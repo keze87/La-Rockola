@@ -129,3 +129,49 @@ def test_mpv_check_windows_pipe_failure():
 	with patch("builtins.open", side_effect=OSError("Pipe busy")):
 		assert mpv._check_windows_pipe() is False
 
+
+@pytest.mark.asyncio
+async def test_mpv_start_fails_fast_on_process_exit():
+	"""Verify start() raises RuntimeError immediately when MPV exits with non-zero code during startup."""
+	mpv = server.AsyncMpvController({})
+	mock_proc = MagicMock()
+	mock_proc.returncode = 127
+	mock_proc.stderr = AsyncMock()
+	mock_proc.stderr.read = AsyncMock(return_value=b"/bin/bash: symbol lookup error: undefined symbol")
+
+	with (
+		patch("asyncio.create_subprocess_exec", return_value=mock_proc),
+		patch("os.path.exists", return_value=False),
+	):
+		with pytest.raises(RuntimeError) as exc_info:
+			await mpv.start()
+
+		assert "127" in str(exc_info.value)
+		assert "symbol lookup error" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_mpv_start_passes_clean_env():
+	"""Verify start() passes clean environment to create_subprocess_exec."""
+	mpv = server.AsyncMpvController({})
+	mock_proc = MagicMock()
+	mock_proc.returncode = None
+	mock_proc.stderr = AsyncMock()
+
+	mock_reader = MagicMock()
+	mock_reader.readline = AsyncMock(return_value=b"")
+	mock_writer = MagicMock()
+	mock_writer.drain = AsyncMock()
+
+	with (
+		patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec,
+		patch("asyncio.open_unix_connection", return_value=(mock_reader, mock_writer), create=True),
+		patch("os.path.exists", return_value=True),
+		patch.object(mpv, "_send", new_callable=AsyncMock),
+		patch("server.get_clean_env", return_value={"MOCK_CLEAN_ENV": "1"}) as mock_clean,
+	):
+		await mpv.start()
+		mock_clean.assert_called()
+		assert mock_exec.call_args[1]["env"]["MOCK_CLEAN_ENV"] == "1"
+
+

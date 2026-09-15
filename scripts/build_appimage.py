@@ -113,7 +113,9 @@ def create_appdir(binary_path: Path, appdir: Path = APPDIR_PATH) -> Path:
 set -e
 HERE="$(dirname "$(readlink -f "${0}")")"
 export PATH="${HERE}/usr/bin:${PATH}"
-export LD_LIBRARY_PATH="${HERE}/usr/lib:${LD_LIBRARY_PATH}"
+if [ -d "${HERE}/usr/lib" ]; then
+    export LD_LIBRARY_PATH="${HERE}/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+fi
 export XDG_DATA_DIRS="${HERE}/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
 
 exec "${HERE}/usr/bin/larockola" "$@"

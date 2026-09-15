@@ -240,6 +240,24 @@ def ensure_ytdlp(log_fn=default_logger) -> str | None:
 	return str(installed) if installed else None
 
 
+def _get_clean_env() -> dict:
+	env = os.environ.copy()
+	for var in ("LD_LIBRARY_PATH", "LD_PRELOAD", "PYTHONPATH", "PYTHONHOME", "DYLD_LIBRARY_PATH"):
+		orig = f"{var}_ORIG"
+		if orig in env and env[orig].strip():
+			env[var] = env[orig]
+		elif var in env:
+			del env[var]
+	if "LD_LIBRARY_PATH" in env:
+		parts = [p.strip() for p in env["LD_LIBRARY_PATH"].split(":") if p.strip()]
+		clean_parts = [p for p in parts if "_MEI" not in p and ".mount_" not in p]
+		if clean_parts:
+			env["LD_LIBRARY_PATH"] = ":".join(clean_parts)
+		else:
+			del env["LD_LIBRARY_PATH"]
+	return env
+
+
 def update_ytdlp(bin_path: str | None = None, log_fn=default_logger) -> bool:
 	"""
 	Actualiza yt-dlp en caliente usando su comando nativo -U.
@@ -270,6 +288,7 @@ def update_ytdlp(bin_path: str | None = None, log_fn=default_logger) -> bool:
 			text=True,
 			timeout=60,
 			check=False,
+			env=_get_clean_env(),
 		)
 		stdout = res.stdout.strip()
 		if stdout:
