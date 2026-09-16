@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ControlsTab from '@/components/ControlsTab.vue';
+import QRCode from 'qrcode.vue';
 import {
 	currentTracks,
 	djCarpinchoEnabled,
@@ -8,6 +9,7 @@ import {
 	listenLocally,
 	mpvVisible,
 	serverMuted,
+	serverUrl,
 	volume,
 } from '@/composables/player/state';
 
@@ -27,6 +29,7 @@ describe('ControlsTab.vue', () => {
 		listenLocally.value = false;
 		mpvVisible.value = true;
 		serverMuted.value = false;
+		serverUrl.value = null;
 		volume.value = 80;
 	});
 
@@ -93,5 +96,13 @@ describe('ControlsTab.vue', () => {
 				body: JSON.stringify({ cmd: 'toggle_dj_carpincho', state: true }),
 			})
 		);
+	});
+
+	it('uses serverUrl for QR code when opened on localhost', () => {
+		serverUrl.value = 'http://192.168.1.100:1729';
+		const wrapper = mount(ControlsTab);
+		const qrCode = wrapper.findComponent(QRCode);
+		expect(qrCode.exists()).toBe(true);
+		expect(qrCode.props('value')).toBe('http://192.168.1.100:1729');
 	});
 });

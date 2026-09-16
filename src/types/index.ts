@@ -20,11 +20,13 @@ export interface PlayerState {
 	history?: string[];
 	is_scanning?: boolean;
 	library?: Track[];
+	local_ip?: string;
 	mpv_visible?: boolean;
 	pause_after_path?: string | null;
 	paused?: boolean;
 	queue?: string[];
 	server_muted?: boolean;
+	server_url?: string;
 	time_pos?: number;
 	top_played?: Track[];
 	url_metadata?: Record<string, Track>;

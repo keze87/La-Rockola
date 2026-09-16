@@ -136,11 +136,15 @@ CÓMO USAR:
    permitirá seleccionar la carpeta donde tenés tu música.
 3. Tus opciones quedan guardadas automáticamente en 'rockola_config.json'
    para que en las próximas ejecuciones arranque al toque sin preguntar nada.
-4. Para cambiar la configuración más adelante, podés editar 'rockola_config.json'
+4. Al iniciar, La Rockola abrirá automáticamente la web en tu navegador
+   predeterminado usando la dirección de tu red local (ej. http://192.168.X.Y:1729).
+   (Podés iniciar sin abrir el navegador ejecutando: larockola.exe --no-browser).
+5. Para controlar la música desde tu celular o con amigos, conectate a la
+   misma red Wi-Fi e ingresá a la IP que figura en la consola (¡o escaneá el
+   código QR desde la pestaña 'Controles' en la app!).
+6. Para cambiar la configuración más adelante, podés editar 'rockola_config.json'
    directamente con el Bloc de notas o ejecutar 'larockola.exe --setup'.
-5. Abrí la dirección en tu navegador (ej. http://localhost:1729).
-6. Para controlar la música desde tu celular, conectate a la misma red Wi-Fi
-   e ingresá a la IP que figura en la consola (o escaneá el código QR en la app).
+7. Para ver todas las opciones de línea de comandos, ejecutá 'larockola.exe --help'.
 
 REQUISITOS DEL SISTEMA:
 - MPV Media Player:

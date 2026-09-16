@@ -1,5 +1,7 @@
 <script setup lang="ts">
+	import { computed } from 'vue';
 	import { apiUrl } from '../composables/useApi';
+	import { serverUrl } from '../composables/player/state';
 	import { useDragSlider } from '../composables/useDragSlider';
 	import { useFullscreen } from '@vueuse/core';
 	import { usePlaybackControls } from '../composables/usePlaybackControls';
@@ -74,7 +76,20 @@
 		},
 	});
 
-	const currentUrl = window.location.href; // Easy access to the current URL
+	const currentUrl = computed(() => {
+		// Si el usuario abrió la app desde localhost o 127.0.0.1 pero el servidor
+		// conoce la IP de la red local, usamos la URL de red para que el código QR
+		// sirva para escanear desde celulares conectados al mismo Wi-Fi.
+		const isLocalhost =
+			window.location.hostname === 'localhost' ||
+			window.location.hostname === '127.0.0.1' ||
+			window.location.hostname === '::1';
+
+		if (isLocalhost && serverUrl.value) {
+			return serverUrl.value;
+		}
+		return window.location.href;
+	});
 
 	// --- Toggles ---
 	function toggleDjCarpincho() {

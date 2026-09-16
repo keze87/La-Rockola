@@ -117,4 +117,4 @@ python server.py --port 8080 --dir "C:\Users\UserName\Music"
 > * **macOS/Linux:** Run the command with `sudo` (e.g., `sudo python server.py --port 80`). Alternatively, on Linux, to avoid running the entire server as root, you can use `authbind` (e.g., `authbind python server.py --port 80`) after configuring it for your user account.
 >
 
-4. Once the server is running, open your web browser and navigate to `http://localhost:1729` (or your custom port) to access the player. To control it remotely from your phone, connect to the same Wi-Fi network and navigate to your computer's local IP address (e.g., `http://192.168.X.Y:1729`).
+4. Once the server is running, La Rockola automatically opens the player in your default browser using your local network IP (e.g., `http://192.168.X.Y:1729`). You can also start without opening the browser by passing `--no-browser`. To control the music from your phone or with friends, connect to the same Wi-Fi network and navigate to the local IP displayed in the console or scan the QR code located in the **Controles** tab. Run `python server.py --help` to see all available CLI options.

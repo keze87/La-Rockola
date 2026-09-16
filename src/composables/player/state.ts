@@ -59,6 +59,10 @@ export const mpvVisible = ref<boolean>(true);
 export const isFogonMode = ref<boolean>(false);
 export const showFogonVolume = ref<boolean>(false);
 
+// Server Network & URLs
+export const serverUrl = ref<string | null>(null);
+export const localIp = ref<string | null>(null);
+
 export const isPlaying = computed(() => !!currentTrackPath.value && !isPaused.value);
 export const volIcon = computed(() => {
 	if (serverMuted.value || volume.value == 0) return 'volume_off';

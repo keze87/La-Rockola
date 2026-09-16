@@ -16,6 +16,7 @@ import {
 	isScanning,
 	isSocketConnected,
 	listenLocally,
+	localIp,
 	localTimePos,
 	mpvVisible,
 	originalTracks,
@@ -23,6 +24,7 @@ import {
 	pendingSeekTime,
 	queueState,
 	serverMuted,
+	serverUrl,
 	setWsSend,
 	timePos,
 	topPlayedState,
@@ -99,6 +101,8 @@ export function useSocket() {
 						if (state.paused !== undefined) isPaused.value = state.paused;
 						if (state.queue !== undefined) queueState.value = state.queue;
 						if (state.server_muted !== undefined) serverMuted.value = state.server_muted;
+						if (state.server_url !== undefined) serverUrl.value = state.server_url;
+						if (state.local_ip !== undefined) localIp.value = state.local_ip;
 						if (state.top_played) topPlayedState.value = state.top_played;
 						if (state.url_metadata) urlMetadata.value = state.url_metadata;
 						if (state.volume !== undefined) volume.value = state.volume;

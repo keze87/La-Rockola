@@ -235,11 +235,13 @@ import json
 import logging
 import random
 import re
+import socket
 import sqlite3
 import subprocess
 import tempfile
 import time
 import warnings
+import webbrowser
 from contextlib import asynccontextmanager, suppress
 
 import uvicorn
@@ -490,6 +492,7 @@ DEFAULT_CONFIG = {
 	"music_dir2": None,
 	"port": 1729,
 	"host": "0.0.0.0",
+	"open_browser": True,
 }
 
 
@@ -542,6 +545,113 @@ def save_config(config_path: Path, cfg: dict) -> None:
 		temp_file.replace(config_path)
 	except Exception as e:
 		logger.error(f"Error guardando la configuración en {config_path}: {e}")
+
+
+def get_local_ip() -> str:
+	"""
+	Obtiene la dirección IP de la máquina en la red local (LAN).
+	Permite que otros dispositivos (celulares, tablets, otras PCs) se conecten
+	a La Rockola sin tener que adivinar la IP.
+	"""
+	s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+	try:
+		# No envía paquetes reales a través de internet;
+		# el kernel selecciona la interfaz primaria de salida.
+		s.connect(("8.8.8.8", 80))
+		ip = s.getsockname()[0]
+	except Exception:
+		try:
+			ip = socket.gethostbyname(socket.gethostname())
+		except Exception:
+			ip = "127.0.0.1"
+	finally:
+		s.close()
+	return ip
+
+
+def get_server_urls(host: str, port: int) -> dict:
+	"""
+	Calcula las URLs disponibles para acceder al servidor.
+	Devuelve un dict con:
+	  - 'local_ip': IP detectada en la red local.
+	  - 'local_url': URL recomendada para abrir en la máquina local (usando IP local o localhost).
+	  - 'network_url': URL accesible desde otros dispositivos en la red LAN.
+	  - 'loopback_url': URL local estándar (http://localhost:port o http://127.0.0.1:port).
+	"""
+	local_ip = get_local_ip()
+	loopback_url = f"http://localhost:{port}"
+
+	if host in ("0.0.0.0", ""):
+		display_ip = local_ip if local_ip != "127.0.0.1" else "localhost"
+		local_url = f"http://{display_ip}:{port}"
+		network_url = f"http://{local_ip}:{port}" if local_ip != "127.0.0.1" else None
+	elif host in ("127.0.0.1", "localhost"):
+		local_url = loopback_url
+		network_url = None
+	else:
+		local_url = f"http://{host}:{port}"
+		network_url = f"http://{host}:{port}"
+
+	return {
+		"local_ip": local_ip,
+		"local_url": local_url,
+		"network_url": network_url,
+		"loopback_url": loopback_url,
+	}
+
+
+def print_startup_banner(
+	host: str,
+	port: int,
+	music_dir: str | None,
+	music_dir2: str | None,
+	open_browser: bool,
+	config_path: Path | None = None,
+) -> None:
+	"""Imprime una pantalla de bienvenida e instrucciones claras en la consola al iniciar."""
+	urls = get_server_urls(host, port)
+	local_url = urls["local_url"]
+	network_url = urls["network_url"]
+	resolved_dir = str(Path(music_dir or "~/Music").expanduser().resolve())
+	resolved_dir2 = str(Path(music_dir2).expanduser().resolve()) if music_dir2 else None
+
+	border = "=" * 70
+	print(f"\n{border}")
+	print("             🦦  LA ROCKOLA DEL CARPINCHO  🧉")
+	print("   Reproductor y servidor de música con alma de campo y sabor a mate")
+	print(f"{border}\n")
+
+	print("  📻 DIRECCIONES DE ACCESO:")
+	print(f"     • En esta PC:          {local_url}")
+	if urls["loopback_url"] != local_url:
+		print(f"       (o también en:       {urls['loopback_url']})")
+	if network_url:
+		print(f"     • Desde tu celular:    {network_url}  (misma red Wi-Fi)")
+		print("       (¡o escaneá el código QR en la pestaña 'Controles'!)")
+	else:
+		print("     • Red local:           Modo solo local (127.0.0.1)")
+
+	print("\n  📁 CARPETA DE MÚSICA:")
+	print(f"     • Principal:           {resolved_dir}")
+	if resolved_dir2:
+		print(f"     • Secundaria:          {resolved_dir2}")
+
+	print("\n  💡 GUÍA RÁPIDA DE USO:")
+	if open_browser:
+		print("     1. 🌐 La web se abrirá automáticamente en tu navegador predeterminado.")
+	else:
+		print(f"     1. 🌐 Abrí tu navegador en: {local_url}")
+	print("     2. 📱 Para controlar la música desde tu celular o con amigos, conectate")
+	print("        al mismo Wi-Fi y entrá a la dirección de red (¡o escaneá el QR!).")
+	print("     3. 🎵 Poné tus temas (MP3, FLAC, OGG, WAV) en la carpeta de música o")
+	print("        pegá enlaces de YouTube directamente en la barra de búsqueda.")
+	print("     4. ⚙️  Para cambiar opciones o carpetas, ejecutá con '--setup' o editá:")
+	if config_path:
+		print(f"        {config_path}")
+	else:
+		print("        rockola_config.json")
+	print("     5. ⏹️  Para detener La Rockola, presioná Ctrl+C en esta consola.\n")
+	print(f"{border}\n")
 
 
 def get_clean_env() -> dict:
@@ -1870,6 +1980,13 @@ class APIState:
 
 		self.favorites = self._load_favs_from_db()
 
+		# Server network & browser state
+		self.open_browser = True
+		self.server_host = "0.0.0.0"
+		self.server_port = 1729
+		self.local_ip = "127.0.0.1"
+		self.server_url = "http://localhost:1729"
+
 		self.mpris_bus = None
 		self.mpris_root = None
 		self.mpris_player = None
@@ -1914,11 +2031,13 @@ class APIState:
 			"favorites": active_favs,
 			"history": list(self.history),
 			"is_scanning": self.is_scanning,
+			"local_ip": self.local_ip,
 			"mpv_visible": self.mpv_visible,
 			"pause_after_path": self.pause_after_path,
 			"paused": self.mpv_paused,
 			"queue": list(self.queue),
 			"server_muted": self.server_muted,
+			"server_url": self.server_url,
 			"time_pos": self.time_pos,
 			"top_played": self.get_top_played(),
 			"url_metadata": dict(self.url_metadata),
@@ -2774,6 +2893,33 @@ async def lifespan(app: FastAPI):
 	if find_binary("yt-dlp"):
 		asyncio.create_task(_bg_update_ytdlp())
 
+	# Abrir navegador automáticamente si está configurado (y no estamos corriendo tests)
+	async def _bg_open_browser(target_url: str, port: int, host: str):
+		try:
+			bind_ip = "127.0.0.1" if host in ("0.0.0.0", "") else host
+			# Esperamos a que el puerto del servidor acepte conexiones (hasta 3 segundos)
+			for _ in range(30):
+				await asyncio.sleep(0.1)
+				with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+					s.settimeout(0.2)
+					if s.connect_ex((bind_ip, port)) == 0:
+						break
+
+			logger.info(f"🌐 Abriendo La Rockola en tu navegador: {target_url}")
+			loop = asyncio.get_running_loop()
+			await loop.run_in_executor(None, webbrowser.open, target_url)
+		except Exception as e:
+			logger.debug(f"Aviso al abrir el navegador automáticamente: {e}")
+
+	if getattr(state, "open_browser", False) and "PYTEST_CURRENT_TEST" not in os.environ:
+		asyncio.create_task(
+			_bg_open_browser(
+				state.server_url,
+				getattr(state, "server_port", 1729),
+				getattr(state, "server_host", "0.0.0.0"),
+			)
+		)
+
 	yield  # Acá el servidor se queda corriendo y escuchando a los clientes
 
 	# Shutdown logic: Todo lo que pasa acá abajo es cuando apretás Ctrl+C
@@ -2797,6 +2943,9 @@ app.add_middleware(
 def build_frontend():
 	if getattr(sys, "frozen", False):
 		# El ejecutable portable compilado ya incluye la carpeta 'dist' del frontend
+		return
+
+	if any(arg in sys.argv for arg in ("-h", "--help")):
 		return
 
 	if frontend_dir.exists() and (frontend_dir / "package.json").exists():
@@ -3314,15 +3463,70 @@ if __name__ == "__main__":
 
 	multiprocessing.freeze_support()
 
-	parser = argparse.ArgumentParser(description="La Rockola del Carpincho - Servidor de música y reproductor")
-	parser.add_argument("--host", type=str, default=None, help="Dirección host (default: del config o 0.0.0.0)")
-	parser.add_argument("--port", type=int, default=None, help="Puerto del servidor (default: del config o 1729)")
-	parser.add_argument("--dir", type=str, default=None, help="Directorio principal de música")
-	parser.add_argument("--dir2", type=str, default=None, help="Directorio secundario de música")
-	parser.add_argument("--config", type=str, default=None, help="Ruta personalizada a rockola_config.json")
-	parser.add_argument("--setup", action="store_true", help="Ejecutar asistente interactivo de configuración")
+	parser = argparse.ArgumentParser(
+		description="🦦 La Rockola del Carpincho — Servidor de música y reproductor con alma de campo y sabor a mate.",
+		epilog="""Ejemplos de uso:
+  larockola                              Inicia el servidor y abre el navegador en la IP local
+  larockola --no-browser                 Inicia sin abrir el navegador automáticamente
+  larockola --setup                      Ejecuta el asistente interactivo para elegir carpetas
+  larockola --dir ~/Musica --port 8080   Usa una carpeta y un puerto específicos
+  larockola --host 127.0.0.1             Modo solo local (sin acceso desde la red Wi-Fi)
+""",
+		formatter_class=argparse.RawDescriptionHelpFormatter,
+	)
 	parser.add_argument(
-		"--no-interactive", action="store_true", help="No ejecutar asistente interactivo automáticamente"
+		"--host",
+		type=str,
+		default=None,
+		help="Dirección IP de escucha (default: del config o 0.0.0.0 para red local y local)",
+	)
+	parser.add_argument(
+		"--port",
+		type=int,
+		default=None,
+		help="Puerto del servidor web (default: del config o 1729)",
+	)
+	parser.add_argument(
+		"--dir",
+		type=str,
+		default=None,
+		help="Directorio principal con archivos de música",
+	)
+	parser.add_argument(
+		"--dir2",
+		type=str,
+		default=None,
+		help="Directorio secundario con archivos de música",
+	)
+	parser.add_argument(
+		"--config",
+		type=str,
+		default=None,
+		help="Ruta personalizada a rockola_config.json",
+	)
+	parser.add_argument(
+		"--setup",
+		action="store_true",
+		help="Ejecutar asistente interactivo de configuración de carpetas",
+	)
+	parser.add_argument(
+		"--no-interactive",
+		action="store_true",
+		help="No ejecutar asistente interactivo automáticamente en la primera ejecución",
+	)
+	parser.add_argument(
+		"--open-browser",
+		dest="open_browser",
+		action="store_true",
+		default=None,
+		help="Abre automáticamente el navegador web al iniciar el servidor (predeterminado)",
+	)
+	parser.add_argument(
+		"--no-browser",
+		dest="open_browser",
+		action="store_false",
+		default=None,
+		help="No abre el navegador web automáticamente al iniciar",
 	)
 	args = parser.parse_args()
 
@@ -3349,14 +3553,30 @@ if __name__ == "__main__":
 	final_port = args.port if args.port is not None else config.get("port", 1729)
 	final_dir = args.dir if args.dir is not None else config.get("music_dir")
 	final_dir2 = args.dir2 if args.dir2 is not None else config.get("music_dir2")
+	if args.open_browser is not None:
+		final_open_browser = args.open_browser
+	else:
+		final_open_browser = bool(config.get("open_browser", True))
 
 	if final_dir:
 		state.initial_dir = final_dir
 	if final_dir2:
 		state.secondary_dir = final_dir2
 
-	logger.info(f"📁 Carpeta de música: {final_dir or '~/Music'}")
-	if final_dir2:
-		logger.info(f"📁 Carpeta secundaria: {final_dir2}")
-	logger.info(f"🦦 Iniciando La Rockola del Carpincho en http://{final_host}:{final_port}")
+	urls = get_server_urls(final_host, final_port)
+	state.server_host = final_host
+	state.server_port = final_port
+	state.local_ip = urls["local_ip"]
+	state.server_url = urls["local_url"]
+	state.open_browser = final_open_browser
+
+	print_startup_banner(
+		host=final_host,
+		port=final_port,
+		music_dir=final_dir,
+		music_dir2=final_dir2,
+		open_browser=final_open_browser,
+		config_path=config_path,
+	)
+
 	uvicorn.run(app, host=final_host, port=final_port, proxy_headers=True, forwarded_allow_ips="*")
