@@ -21,6 +21,35 @@ if __name__ == "__main__":
 	sys.modules["server"] = sys.modules[__name__]
 
 
+def enable_system_site_packages() -> None:
+	"""
+	En ejecutable congelado (PyInstaller/AppImage), permite utilizar librerías
+	instaladas en el sistema anfitrión (como librosa, numba, dbus_next, etc.).
+	"""
+	if not getattr(sys, "frozen", False):
+		return
+
+	import site
+
+	# 1. Agregar site-packages de usuario
+	try:
+		user_site = site.getusersitepackages()
+		if isinstance(user_site, str) and user_site not in sys.path and Path(user_site).is_dir():
+			sys.path.append(user_site)
+	except Exception:
+		pass
+
+	# 2. Agregar site-packages estándar del sistema
+	try:
+		for sp in site.getsitepackages():
+			if isinstance(sp, str) and sp not in sys.path and Path(sp).is_dir():
+				sys.path.append(sp)
+	except Exception:
+		pass
+
+
+enable_system_site_packages()
+
 
 def find_binary(bin_name: str) -> str | None:
 	"""Busca un binario en la carpeta del ejecutable/script, subdirectorios bin/ o mpv/, o en el PATH del sistema."""
@@ -493,6 +522,7 @@ DEFAULT_CONFIG = {
 	"port": 1729,
 	"host": "0.0.0.0",
 	"open_browser": True,
+	"url": None,
 }
 
 
@@ -569,19 +599,47 @@ def get_local_ip() -> str:
 	return ip
 
 
-def get_server_urls(host: str, port: int) -> dict:
+def normalize_url(url: str | None) -> str | None:
+	"""Normaliza una URL asegurando el esquema http:// o https:// y eliminando barras finales."""
+	if not url:
+		return None
+	url = str(url).strip()
+	if not url:
+		return None
+	if not re.match(r"^https?://", url, re.IGNORECASE):
+		url = f"http://{url}"
+	return url.rstrip("/")
+
+
+def get_url_subpath(url: str | None) -> str:
+	"""Extrae el subpath de una URL (por ejemplo '/rockola' de 'http://server.local/rockola')."""
+	norm = normalize_url(url)
+	if not norm:
+		return ""
+	from urllib.parse import urlparse
+
+	path = urlparse(norm).path.rstrip("/")
+	return path if (path.startswith("/") or not path) else f"/{path}"
+
+
+def get_server_urls(host: str, port: int, custom_url: str | None = None) -> dict:
 	"""
 	Calcula las URLs disponibles para acceder al servidor.
 	Devuelve un dict con:
+	  - 'custom_url': URL personalizada normalizada si fue configurada.
 	  - 'local_ip': IP detectada en la red local.
-	  - 'local_url': URL recomendada para abrir en la máquina local (usando IP local o localhost).
+	  - 'local_url': URL recomendada para abrir en el navegador.
 	  - 'network_url': URL accesible desde otros dispositivos en la red LAN.
 	  - 'loopback_url': URL local estándar (http://localhost:port o http://127.0.0.1:port).
 	"""
 	local_ip = get_local_ip()
 	loopback_url = f"http://localhost:{port}"
+	norm_custom = normalize_url(custom_url)
 
-	if host in ("0.0.0.0", ""):
+	if norm_custom:
+		local_url = norm_custom
+		network_url = norm_custom
+	elif host in ("0.0.0.0", ""):
 		display_ip = local_ip if local_ip != "127.0.0.1" else "localhost"
 		local_url = f"http://{display_ip}:{port}"
 		network_url = f"http://{local_ip}:{port}" if local_ip != "127.0.0.1" else None
@@ -593,6 +651,7 @@ def get_server_urls(host: str, port: int) -> dict:
 		network_url = f"http://{host}:{port}"
 
 	return {
+		"custom_url": norm_custom,
 		"local_ip": local_ip,
 		"local_url": local_url,
 		"network_url": network_url,
@@ -607,9 +666,10 @@ def print_startup_banner(
 	music_dir2: str | None,
 	open_browser: bool,
 	config_path: Path | None = None,
+	custom_url: str | None = None,
 ) -> None:
 	"""Imprime una pantalla de bienvenida e instrucciones claras en la consola al iniciar."""
-	urls = get_server_urls(host, port)
+	urls = get_server_urls(host, port, custom_url=custom_url)
 	local_url = urls["local_url"]
 	network_url = urls["network_url"]
 	resolved_dir = str(Path(music_dir or "~/Music").expanduser().resolve())
@@ -622,14 +682,20 @@ def print_startup_banner(
 	print(f"{border}\n")
 
 	print("  📻 DIRECCIONES DE ACCESO:")
-	print(f"     • En esta PC:          {local_url}")
-	if urls["loopback_url"] != local_url:
-		print(f"       (o también en:       {urls['loopback_url']})")
-	if network_url:
-		print(f"     • Desde tu celular:    {network_url}  (misma red Wi-Fi)")
-		print("       (¡o escaneá el código QR en la pestaña 'Controles'!)")
+	if urls.get("custom_url"):
+		print(f"     • URL configurada:     {urls['custom_url']}")
+		print(f"     • Dirección local:     http://{urls['local_ip']}:{port}  (o {urls['loopback_url']})")
+		print(f"     • Desde tu celular:    {urls['custom_url']}  (o http://{urls['local_ip']}:{port})")
 	else:
-		print("     • Red local:           Modo solo local (127.0.0.1)")
+		print(f"     • En esta PC:          {local_url}")
+		if urls["loopback_url"] != local_url:
+			print(f"       (o también en:       {urls['loopback_url']})")
+		if network_url:
+			print(f"     • Desde tu celular:    {network_url}  (misma red Wi-Fi)")
+		else:
+			print("     • Red local:           Modo solo local (127.0.0.1)")
+
+	print("       (¡o escaneá el código QR en la pestaña 'Controles'!)")
 
 	print("\n  📁 CARPETA DE MÚSICA:")
 	print(f"     • Principal:           {resolved_dir}")
@@ -638,7 +704,7 @@ def print_startup_banner(
 
 	print("\n  💡 GUÍA RÁPIDA DE USO:")
 	if open_browser:
-		print("     1. 🌐 La web se abrirá automáticamente en tu navegador predeterminado.")
+		print(f"     1. 🌐 La web se abrirá automáticamente en: {local_url}")
 	else:
 		print(f"     1. 🌐 Abrí tu navegador en: {local_url}")
 	print("     2. 📱 Para controlar la música desde tu celular o con amigos, conectate")
@@ -1984,6 +2050,8 @@ class APIState:
 		self.open_browser = True
 		self.server_host = "0.0.0.0"
 		self.server_port = 1729
+		self.configured_url = None
+		self.subpath = ""
 		self.local_ip = "127.0.0.1"
 		self.server_url = "http://localhost:1729"
 
@@ -2929,8 +2997,56 @@ async def lifespan(app: FastAPI):
 	await state.mpv.stop()
 
 
+class SubpathMiddleware:
+	"""
+	Permite que La Rockola responda tanto en la raíz '/' como en un subpath configurable
+	(por ejemplo '/rockola' cuando se accede via 'http://server.local/rockola').
+	Soporta tanto peticiones HTTP como conexiones WebSocket.
+	"""
+
+	def __init__(self, app):
+		self.app = app
+
+	async def __call__(self, scope, receive, send):
+		subpath = getattr(state, "subpath", "")
+		if subpath and scope.get("type") in ("http", "websocket"):
+			path = scope.get("path", "")
+			if path == subpath and scope.get("type") == "http":
+				# Redirección 307 a subpath/ para que los assets relativos './assets/...' resuelvan bien
+				query_str = scope.get("query_string", b"").decode("latin1")
+				location = f"{subpath}/" + (f"?{query_str}" if query_str else "")
+				response_headers = [
+					(b"location", location.encode("latin1")),
+					(b"content-length", b"0"),
+				]
+				await send(
+					{
+						"type": "http.response.start",
+						"status": 307,
+						"headers": response_headers,
+					}
+				)
+				await send(
+					{
+						"type": "http.response.body",
+						"body": b"",
+					}
+				)
+				return
+			elif path.startswith(f"{subpath}/"):
+				# Quitamos el prefijo subpath para que coincida con las rutas estándar del app
+				new_path = path[len(subpath) :] or "/"
+				scope = dict(scope)
+				scope["path"] = new_path
+				current_root = scope.get("root_path", "")
+				scope["root_path"] = f"{current_root}{subpath}"
+
+		await self.app(scope, receive, send)
+
+
 app = FastAPI(lifespan=lifespan)
 
+app.add_middleware(SubpathMiddleware)
 app.add_middleware(
 	CORSMiddleware,
 	allow_origins=["*"],
@@ -3487,6 +3603,12 @@ if __name__ == "__main__":
 		help="Puerto del servidor web (default: del config o 1729)",
 	)
 	parser.add_argument(
+		"--url",
+		type=str,
+		default=None,
+		help="URL predeterminada del servidor (ej. http://server.local/rockola o http://server.local:1729)",
+	)
+	parser.add_argument(
 		"--dir",
 		type=str,
 		default=None,
@@ -3553,6 +3675,7 @@ if __name__ == "__main__":
 	final_port = args.port if args.port is not None else config.get("port", 1729)
 	final_dir = args.dir if args.dir is not None else config.get("music_dir")
 	final_dir2 = args.dir2 if args.dir2 is not None else config.get("music_dir2")
+	final_url = args.url if args.url is not None else config.get("url")
 	if args.open_browser is not None:
 		final_open_browser = args.open_browser
 	else:
@@ -3563,9 +3686,11 @@ if __name__ == "__main__":
 	if final_dir2:
 		state.secondary_dir = final_dir2
 
-	urls = get_server_urls(final_host, final_port)
+	urls = get_server_urls(final_host, final_port, custom_url=final_url)
 	state.server_host = final_host
 	state.server_port = final_port
+	state.configured_url = urls["custom_url"]
+	state.subpath = get_url_subpath(urls["custom_url"])
 	state.local_ip = urls["local_ip"]
 	state.server_url = urls["local_url"]
 	state.open_browser = final_open_browser
@@ -3577,6 +3702,7 @@ if __name__ == "__main__":
 		music_dir2=final_dir2,
 		open_browser=final_open_browser,
 		config_path=config_path,
+		custom_url=final_url,
 	)
 
 	uvicorn.run(app, host=final_host, port=final_port, proxy_headers=True, forwarded_allow_ips="*")

@@ -138,7 +138,83 @@ async def test_lifespan_browser_opening(clean_state, monkeypatch):
 
 				async with server.lifespan(server.app):
 					import asyncio
+
 					await asyncio.sleep(0.15)
 
 				mock_browser_open.assert_called_once_with("http://192.168.1.50:1729")
 
+
+def test_normalize_url_and_subpath():
+	"""Verify normalize_url and get_url_subpath handle schemes and subpaths properly."""
+	assert server.normalize_url("http://server.local/rockola") == "http://server.local/rockola"
+	assert server.normalize_url("http://server.local/rockola/") == "http://server.local/rockola"
+	assert server.normalize_url("server.local/rockola") == "http://server.local/rockola"
+	assert server.normalize_url("https://myrockola.com") == "https://myrockola.com"
+	assert server.normalize_url(None) is None
+	assert server.normalize_url("   ") is None
+
+	assert server.get_url_subpath("http://server.local/rockola") == "/rockola"
+	assert server.get_url_subpath("http://server.local/rockola/") == "/rockola"
+	assert server.get_url_subpath("http://server.local:1729") == ""
+	assert server.get_url_subpath("http://server.local") == ""
+	assert server.get_url_subpath(None) == ""
+
+
+def test_get_server_urls_with_custom_url():
+	"""Verify get_server_urls prioritizes custom configured URL."""
+	with patch("server.get_local_ip", return_value="192.168.1.100"):
+		urls = server.get_server_urls("0.0.0.0", 1729, custom_url="http://server.local/rockola")
+		assert urls["custom_url"] == "http://server.local/rockola"
+		assert urls["local_url"] == "http://server.local/rockola"
+		assert urls["network_url"] == "http://server.local/rockola"
+		assert urls["loopback_url"] == "http://localhost:1729"
+		assert urls["local_ip"] == "192.168.1.100"
+
+
+@pytest.mark.asyncio
+async def test_subpath_middleware(clean_state, monkeypatch):
+	"""Verify SubpathMiddleware handles subpath prefix stripping and trailing slash redirect."""
+	clean_state.subpath = "/rockola"
+	monkeypatch.setattr(server, "state", clean_state)
+
+	# 1. Test redirect when path == subpath
+	async def mock_app(scope, receive, send):
+		pass
+
+	middleware = server.SubpathMiddleware(mock_app)
+
+	sent_events = []
+
+	async def mock_send(event):
+		sent_events.append(event)
+
+	scope_redir = {"type": "http", "path": "/rockola", "query_string": b""}
+	await middleware(scope_redir, None, mock_send)
+	assert sent_events[0]["status"] == 307
+	assert dict(sent_events[0]["headers"])[b"location"] == b"/rockola/"
+
+	# 2. Test path stripping when path.startswith("/rockola/")
+	forwarded_scope = {}
+
+	async def capturing_app(scope, receive, send):
+		forwarded_scope.update(scope)
+
+	middleware2 = server.SubpathMiddleware(capturing_app)
+	scope_api = {"type": "http", "path": "/rockola/library", "root_path": ""}
+	await middleware2(scope_api, None, mock_send)
+	assert forwarded_scope["path"] == "/library"
+	assert forwarded_scope["root_path"] == "/rockola"
+
+
+def test_enable_system_site_packages(monkeypatch, tmp_path):
+	"""Verify enable_system_site_packages dynamically appends system paths when frozen."""
+	fake_site_dir = str(tmp_path / "site-packages")
+	Path(fake_site_dir).mkdir()
+
+	monkeypatch.setattr(server.sys, "frozen", True, raising=False)
+	with patch("site.getusersitepackages", return_value=fake_site_dir):
+		with patch("site.getsitepackages", return_value=[]):
+			if fake_site_dir in server.sys.path:
+				server.sys.path.remove(fake_site_dir)
+			server.enable_system_site_packages()
+			assert fake_site_dir in server.sys.path
