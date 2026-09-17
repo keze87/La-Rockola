@@ -2443,7 +2443,11 @@ class APIState:
 				continue
 
 			# 1. Miramos si está en memoria (escaneo en caliente)
-			if file_str in self.track_cache_by_path and self.track_cache_by_path[file_str]["mtime"] == current_mtime:
+			if (
+				file_str in self.track_cache_by_path
+				and self.track_cache_by_path[file_str]["mtime"] == current_mtime
+				and self.track_cache_by_path[file_str]["data"].get("bpm", 0.0) > 0.0
+			):
 				track_dict = self.track_cache_by_path[file_str]["data"]
 				track_hash = track_dict.get("track_hash")
 				seen_track_ids.add(track_hash)
@@ -2454,9 +2458,8 @@ class APIState:
 				and db_cache[file_str]["mtime"] == current_mtime
 				and db_cache[file_str]["file_size"] == current_size
 				and db_cache[file_str].get("bpm") is not None
-				# Chequeo mágico: si el BPM es 0.0, es porque antes se rompió por los archivos
-				# abiertos o el usuario apenas había creado las columnas. Obligamos a recalcular.
-				and db_cache[file_str].get("bpm") != 0.0
+				# Chequeo mágico: si el BPM es <= 0.0 (error -1.0 o no procesado 0.0), obligamos a recalcular.
+				and db_cache[file_str].get("bpm") > 0.0
 				and db_cache[file_str].get("fingerprint") is not None
 			):
 				cached = db_cache[file_str]

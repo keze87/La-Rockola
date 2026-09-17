@@ -166,3 +166,64 @@ def test_scan_directory_reconciliation_negative_dissimilar(clean_state, temp_db,
 		assert state.path_to_id[str(new_file)] == new_id
 		assert state.id_to_current_path[new_id] == str(new_file)
 		assert old_id not in state.id_to_current_path
+
+
+def test_scan_directory_reanalyzes_invalid_bpm(clean_state, temp_db, tmp_path):
+	"""Test that tracks with bpm <= 0.0 (-1.0 failed mood or 0.0 unanalyzed) are re-analyzed on scan."""
+	music_dir = tmp_path / "Music"
+	music_dir.mkdir()
+
+	file1 = music_dir / "track_mood_retry.mp3"
+	file1.write_bytes(b"TRACK_FOR_MOOD_RETRY_TEST_BYTES")
+
+	state = clean_state
+
+	# Step 1: Simulate first scan where mood extraction fails and sets bpm = -1.0
+	def mock_mood_failed(self):
+		self.bpm = -1.0
+		self.energy = -1.0
+		self.spectral_centroid = -1.0
+
+	def mock_fp(self):
+		self.fingerprint = "1001,1002,1003,1004,1005,1006,1007,1008,1009,1010,1011"
+
+	with (
+		patch.object(server.Track, "_extract_mood", mock_mood_failed),
+		patch.object(server.Track, "_extract_fingerprint", mock_fp),
+	):
+		tracks = state.scan_directory([str(music_dir)])
+		assert len(tracks) == 1
+		assert tracks[0]["bpm"] == -1.0
+
+		with sqlite3.connect(temp_db) as conn:
+			row = conn.execute(
+				"SELECT bpm, energy, spectral_centroid FROM tracks WHERE path = ?", (str(file1),)
+			).fetchone()
+			assert row is not None
+			assert row[0] == -1.0
+
+	# Step 2: Second scan where mood extraction succeeds (e.g. librosa is now available or issue resolved).
+	# It should NOT use the -1.0 DB or in-memory cache, but re-extract and update DB.
+	def mock_mood_success(self):
+		self.bpm = 124.0
+		self.energy = 0.8
+		self.spectral_centroid = 2200.0
+
+	with (
+		patch.object(server.Track, "_extract_mood", mock_mood_success),
+		patch.object(server.Track, "_extract_fingerprint", mock_fp),
+	):
+		tracks_after = state.scan_directory([str(music_dir)])
+		assert len(tracks_after) == 1
+		assert tracks_after[0]["bpm"] == 124.0
+		assert tracks_after[0]["energy"] == 0.8
+		assert tracks_after[0]["spectral_centroid"] == 2200.0
+
+		with sqlite3.connect(temp_db) as conn:
+			row = conn.execute(
+				"SELECT bpm, energy, spectral_centroid FROM tracks WHERE path = ?", (str(file1),)
+			).fetchone()
+			assert row is not None
+			assert row[0] == 124.0
+			assert row[1] == 0.8
+			assert row[2] == 2200.0
