@@ -160,38 +160,120 @@ def find_system_librosa_python(force: bool = False) -> str | None:
 
 
 def find_binary(bin_name: str) -> str | None:
-	"""Busca un binario en la carpeta del ejecutable/script, subdirectorios bin/ o mpv/, o en el PATH del sistema."""
+	"""Busca un binario en la carpeta del ejecutable/script, subdirectorios locales o en el PATH del sistema."""
 	base = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 	exts = [".exe", ""] if (sys.platform == "win32" or os.name == "nt") else [""]
-	candidates = []
-	for ext in exts:
-		candidates.extend(
-			[
-				base / f"{bin_name}{ext}",
-				base / "bin" / f"{bin_name}{ext}",
-				base / "mpv" / f"{bin_name}{ext}",
-				base / bin_name / f"{bin_name}{ext}",
-			]
-		)
-		if "DATA_DIR" in globals() and isinstance(globals()["DATA_DIR"], Path):
-			d = globals()["DATA_DIR"]
-			candidates.extend(
-				[
-					d / f"{bin_name}{ext}",
-					d / "bin" / f"{bin_name}{ext}",
-					d / "mpv" / f"{bin_name}{ext}",
-					d / bin_name / f"{bin_name}{ext}",
-					d.parent / "mpv" / f"{bin_name}{ext}",
-					d.parent / bin_name / f"{bin_name}{ext}",
-				]
-			)
-	for candidate in candidates:
-		if candidate.is_file():
-			return str(candidate)
+
+	dirs = [base, base / "bin", base / "mpv", base / bin_name]
+	if "DATA_DIR" in globals() and isinstance(globals()["DATA_DIR"], Path):
+		d = globals()["DATA_DIR"]
+		dirs.extend([d, d / "bin", d / "mpv", d / bin_name, d.parent / "mpv", d.parent / bin_name])
+
+	for d in dirs:
+		for ext in exts:
+			cand = d / f"{bin_name}{ext}"
+			if cand.is_file():
+				return str(cand)
+
 	return shutil.which(bin_name)
 
 
 _dependencies_checked = False
+
+
+def _check_python_packages(is_frozen: bool, force: bool = False) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+	"""Verifica los módulos de Python requeridos y opcionales."""
+	missing_req = []
+	missing_opt = []
+
+	# Paquetes requeridos
+	for mod in ("fastapi", "uvicorn", "mutagen", "pydantic", "websockets"):
+		if importlib.util.find_spec(mod) is None:
+			missing_req.append((mod, f"pip install {mod}"))
+
+	# Paquetes opcionales
+	has_librosa = importlib.util.find_spec("librosa") is not None or find_system_librosa_python(force=force) is not None
+	if not has_librosa:
+		fix = (
+			"no incluido en la versión portable (instalá 'pip install librosa' en tu sistema para análisis de mood/BPM)"
+			if is_frozen
+			else "pip install librosa (para el análisis de mood/BPM)"
+		)
+		missing_opt.append(("librosa", fix))
+
+	if sys.platform not in ("win32", "darwin") and importlib.util.find_spec("dbus_next") is None:
+		fix = (
+			"no incluido en este build de Linux (para teclas multimedia)"
+			if is_frozen
+			else "pip install dbus-next (para teclas multimedia)"
+		)
+		missing_opt.append(("dbus_next", fix))
+
+	return missing_req, missing_opt
+
+
+def _check_mpv(is_win: bool, is_mac: bool, is_frozen: bool) -> tuple[str, str] | None:
+	"""Verifica la presencia de MPV, gestionando instalación o actualizaciones automáticas."""
+	mpv_bin = find_binary("mpv")
+	is_portable = is_win or is_mac or is_frozen
+
+	if mpv_bin is None:
+		if is_portable:
+			try:
+				print(
+					"🦦 ¡Opa! No se encontró MPV instalado. Intentando descargarlo automáticamente...",
+					file=sys.stderr,
+				)
+				import mpv_installer
+
+				installed = mpv_installer.install_mpv(log_fn=lambda m: print(f"  {m}", file=sys.stderr))
+				if installed and find_binary("mpv"):
+					print("🦦 ¡MPV instalado con éxito! Siguiendo con la música... 🧉🎶\n", file=sys.stderr)
+					return None
+			except Exception as e:
+				print(f"⚠️ Falló la descarga automática de MPV: {e}", file=sys.stderr)
+		fix = (
+			"winget install mpv (o descargá mpv.exe y ponelo al lado de larockola.exe)"
+			if is_win
+			else ("brew install mpv" if is_mac else "sudo apt install mpv (o lo que use tu distro)")
+		)
+		return ("mpv", fix)
+
+	if is_portable:
+		try:
+			import mpv_installer
+
+			if mpv_installer.is_rockola_managed(mpv_bin):
+				mpv_installer.update_mpv(bin_path=mpv_bin, log_fn=lambda m: print(f"  {m}", file=sys.stderr))
+		except Exception as e:
+			print(f"⚠️ Aviso al verificar actualizaciones de MPV: {e}", file=sys.stderr)
+
+	return None
+
+
+def _check_ytdlp(is_win: bool, is_mac: bool, is_frozen: bool) -> tuple[str, str] | None:
+	"""Verifica la presencia de yt-dlp, gestionando instalación automática si está disponible."""
+	if find_binary("yt-dlp") is not None:
+		return None
+
+	is_portable = is_win or is_mac or is_frozen
+	if is_portable:
+		try:
+			import ytdlp_installer
+
+			installed = ytdlp_installer.install_ytdlp(log_fn=lambda m: print(f"  {m}", file=sys.stderr))
+			if installed and find_binary("yt-dlp"):
+				print("🦦 ¡yt-dlp instalado con éxito para temas de YouTube! 🧉🎶\n", file=sys.stderr)
+				return None
+		except Exception as e:
+			print(f"⚠️ Aviso al intentar auto-instalar yt-dlp: {e}", file=sys.stderr)
+
+	fix = (
+		"winget install yt-dlp (o poné yt-dlp.exe al lado de larockola.exe)"
+		if is_win
+		else "pip install yt-dlp (para reproducir temas de YouTube/Internet)"
+	)
+	return ("yt-dlp", fix)
 
 
 def check_dependencies(force: bool = False):
@@ -216,120 +298,23 @@ def check_dependencies(force: bool = False):
 		return
 
 	_dependencies_checked = True
-
-	missing_req_py = []
-	missing_opt_py = []
-
 	is_frozen = getattr(sys, "frozen", False)
-
-	# Paquetes vitales para que el servidor exista
-	required_python = {
-		"fastapi": "pip install fastapi",
-		"uvicorn": "pip install uvicorn",
-		"mutagen": "pip install mutagen",
-		"pydantic": "pip install pydantic",
-	}
-
-	# Paquetes que suman magia pero no son de vida o muerte
-	optional_python = {}
-
-	# Librosa: ver si está disponible en proceso o vía subproceso en el Python del sistema
-	has_librosa = importlib.util.find_spec("librosa") is not None or find_system_librosa_python(force=force) is not None
-	if not has_librosa:
-		missing_opt_py.append(
-			(
-				"librosa",
-				(
-					"no incluido en la versión portable (instalá 'pip install librosa' en tu sistema para análisis de mood/BPM)"
-					if is_frozen
-					else "pip install librosa (para el análisis de mood/BPM)"
-				),
-			)
-		)
-
 	is_win = sys.platform == "win32"
 	is_mac = sys.platform == "darwin"
 
-	# Solo en Linux pedimos DBus para controlar los botones multimedia
-	if not is_win and not is_mac:
-		optional_python["dbus_next"] = (
-			"no incluido en este build de Linux (para teclas multimedia)"
-			if is_frozen
-			else "pip install dbus-next (para teclas multimedia)"
-		)
-
-	for module, fix in required_python.items():
-		if importlib.util.find_spec(module) is None:
-			missing_req_py.append((module, fix))
-
-	for module, fix in optional_python.items():
-		if importlib.util.find_spec(module) is None:
-			missing_opt_py.append((module, fix))
-
+	missing_req_py, missing_opt_py = _check_python_packages(is_frozen, force=force)
 	missing_req_sys = []
 	missing_opt_sys = []
 
-	# El reproductor es sí o sí
-	required_system = {
-		"mpv": (
-			"winget install mpv (o descargá mpv.exe y ponelo al lado de larockola.exe)"
-			if is_win
-			else ("brew install mpv" if is_mac else "sudo apt install mpv (o lo que use tu distro)")
-		),
-	}
+	mpv_missing = _check_mpv(is_win, is_mac, is_frozen)
+	if mpv_missing:
+		missing_req_sys.append(mpv_missing)
 
-	# yt-dlp es solo si querés reproducir cosas de YouTube
-	optional_system = {
-		"yt-dlp": (
-			"winget install yt-dlp (o poné yt-dlp.exe al lado de larockola.exe)"
-			if is_win
-			else "pip install yt-dlp (para reproducir temas de YouTube/Internet)"
-		),
-	}
+	ytdlp_missing = _check_ytdlp(is_win, is_mac, is_frozen)
+	if ytdlp_missing:
+		missing_opt_sys.append(ytdlp_missing)
 
-	for bin_name, fix in required_system.items():
-		mpv_bin = find_binary(bin_name)
-		if mpv_bin is None:
-			if bin_name == "mpv" and (is_win or getattr(sys, "frozen", False) or is_mac):
-				try:
-					print(
-						"🦦 ¡Opa! No se encontró MPV instalado. Intentando descargarlo automáticamente...",
-						file=sys.stderr,
-					)
-					import mpv_installer
-
-					installed = mpv_installer.install_mpv(log_fn=lambda m: print(f"  {m}", file=sys.stderr))
-					if installed and find_binary("mpv"):
-						print("🦦 ¡MPV instalado con éxito! Siguiendo con la música... 🧉🎶\n", file=sys.stderr)
-						continue
-				except Exception as e:
-					print(f"⚠️ Falló la descarga automática de MPV: {e}", file=sys.stderr)
-			missing_req_sys.append((bin_name, fix))
-		else:
-			if bin_name == "mpv" and (is_win or getattr(sys, "frozen", False) or is_mac):
-				try:
-					import mpv_installer
-
-					if mpv_installer.is_rockola_managed(mpv_bin):
-						mpv_installer.update_mpv(bin_path=mpv_bin, log_fn=lambda m: print(f"  {m}", file=sys.stderr))
-				except Exception as e:
-					print(f"⚠️ Aviso al verificar actualizaciones de MPV: {e}", file=sys.stderr)
-
-	for bin_name, fix in optional_system.items():
-		if find_binary(bin_name) is None:
-			if bin_name == "yt-dlp" and (is_win or getattr(sys, "frozen", False) or is_mac):
-				try:
-					import ytdlp_installer
-
-					installed = ytdlp_installer.install_ytdlp(log_fn=lambda m: print(f"  {m}", file=sys.stderr))
-					if installed and find_binary("yt-dlp"):
-						print("🦦 ¡yt-dlp instalado con éxito para temas de YouTube! 🧉🎶\n", file=sys.stderr)
-						continue
-				except Exception as e:
-					print(f"⚠️ Aviso al intentar auto-instalar yt-dlp: {e}", file=sys.stderr)
-			missing_opt_sys.append((bin_name, fix))
-
-	# Tiramos un aviso si falta algo opcional, pero seguimos adelante
+	# Avisar si faltan dependencias opcionales
 	if missing_opt_py or missing_opt_sys:
 		print(
 			"🦦 Ojo al piojo: Faltan algunas cositas opcionales. La Rockola arranca igual, pero con menos magia:",
@@ -341,7 +326,7 @@ def check_dependencies(force: bool = False):
 			print(f"  - [Opcional] {bin_name:<10} -> {fix}", file=sys.stderr)
 		print(file=sys.stderr)
 
-	# Si falta algo REQUERIDO, frenamos acá
+	# Si falta algo requerido, frenar el arranque
 	if missing_req_py or missing_req_sys:
 		print(
 			"🦦 ¡Pará un cacho, che! La Rockola del Carpincho no puede arrancar así 🧉\n",
