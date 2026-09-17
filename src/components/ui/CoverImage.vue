@@ -29,6 +29,7 @@
 		:src="coverUrl"
 		:class="[size, rounded, 'shrink-0 object-cover']"
 		loading="lazy"
+		decoding="async"
 		alt=""
 		@error="onCoverError"
 	/>

@@ -283,6 +283,15 @@ async def test_serve_cover_flac_and_id3_extraction(tmp_path, clean_state, monkey
 		assert res.status_code == 200
 		assert res.media_type == "image/jpeg"
 		assert res.body.startswith(b"\xff\xd8")
+		assert "ETag" in res.headers
+		assert "max-age" in res.headers.get("Cache-Control", "")
+
+		# Test 304 Not Modified conditional request
+		mock_req = MagicMock()
+		mock_req.headers = {"if-none-match": res.headers["ETag"]}
+		res_304 = await server.serve_cover(path=str(dummy_path), request=mock_req)
+		assert res_304.status_code == 304
+		assert res_304.headers["ETag"] == res.headers["ETag"]
 
 
 @pytest.mark.asyncio

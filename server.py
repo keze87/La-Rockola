@@ -373,7 +373,7 @@ import webbrowser
 from contextlib import asynccontextmanager, suppress
 
 import uvicorn
-from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -3323,7 +3323,7 @@ async def serve_index():
 
 @app.get("/favicon.ico", include_in_schema=False)
 @app.get("/favicon.png", include_in_schema=False)
-async def serve_favicon():
+async def serve_favicon(request: Request = None):
 	favicon_path = dist_dir / "favicon.png"
 	if not favicon_path.exists():
 		favicon_path = frontend_dir / "public" / "favicon.png"
@@ -3333,12 +3333,22 @@ async def serve_favicon():
 	if not favicon_path.exists():
 		return {"error": f"No encuentro el favicon en {favicon_path}"}
 
+	stat = favicon_path.stat()
+	etag = f'"{int(stat.st_mtime)}-{stat.st_size}"'
+	cache_headers = {
+		"ETag": etag,
+		"Cache-Control": "public, max-age=31536000, immutable",
+	}
+
+	if request:
+		if_none_match = request.headers.get("if-none-match")
+		if if_none_match and etag in if_none_match:
+			return Response(status_code=304, headers=cache_headers)
+
 	return FileResponse(
 		favicon_path,
 		media_type="image/png",
-		headers={
-			"Cache-Control": "public, max-age=604800"  # Cacheado por 7 días
-		},
+		headers=cache_headers,
 	)
 
 
@@ -3411,13 +3421,48 @@ async def scan_library(dir: str | None = None, dir2: str | None = None):
 	return {"data": state.tracks_cache}
 
 
+# Cache en memoria para carátulas de audio extraídas (evita re-procesar con Mutagen)
+# Estructura: path -> (mtime, size, cover_data, mime_type, etag)
+_COVER_MEM_CACHE: dict[str, tuple[int, int, bytes | None, str, str]] = {}
+_MAX_COVER_MEM_CACHE = 500
+
+
 @app.get("/cover")
-async def serve_cover(path: str = Query(...)):
+async def serve_cover(path: str = Query(...), request: Request = None):
 	try:
+		if not os.path.exists(path):
+			return Response(status_code=404)
+
+		# Obtenemos metadata rápida del archivo para armar el ETag sin leer todo el audio
+		st = os.stat(path)
+		mtime = int(st.st_mtime)
+		size = st.st_size
+		etag = f'"{hashlib.md5(f"{path}:{mtime}:{size}".encode()).hexdigest()}"'
+		cache_headers = {
+			"ETag": etag,
+			"Cache-Control": "public, max-age=2592000, stale-while-revalidate=86400",
+		}
+
+		if request:
+			if_none_match = request.headers.get("if-none-match")
+			if if_none_match and etag in if_none_match:
+				return Response(status_code=304, headers=cache_headers)
+
+		# Verificamos si ya tenemos la portada en caché de memoria con el mismo mtime y size
+		if path in _COVER_MEM_CACHE:
+			c_mtime, c_size, c_data, c_mime, _ = _COVER_MEM_CACHE[path]
+			if c_mtime == mtime and c_size == size:
+				if c_data is None:
+					return Response(status_code=404, headers=cache_headers)
+				return Response(content=c_data, media_type=c_mime, headers=cache_headers)
+
 		# Extraemos los metadatos completos con Mutagen
 		audio = MutagenFile(path)
 		if not audio:
-			return Response(status_code=404)
+			if len(_COVER_MEM_CACHE) >= _MAX_COVER_MEM_CACHE:
+				_COVER_MEM_CACHE.pop(next(iter(_COVER_MEM_CACHE)))
+			_COVER_MEM_CACHE[path] = (mtime, size, None, "image/jpeg", etag)
+			return Response(status_code=404, headers=cache_headers)
 
 		cover_data = None
 		mime_type = "image/jpeg"
@@ -3436,11 +3481,15 @@ async def serve_cover(path: str = Query(...)):
 				cover_data = audio.tags["covr"][0]
 				mime_type = "image/jpeg" if cover_data.startswith(b"\xff\xd8") else "image/png"
 
+		if len(_COVER_MEM_CACHE) >= _MAX_COVER_MEM_CACHE:
+			_COVER_MEM_CACHE.pop(next(iter(_COVER_MEM_CACHE)))
+		_COVER_MEM_CACHE[path] = (mtime, size, cover_data, mime_type, etag)
+
 		if cover_data:
 			return Response(
 				content=cover_data,
 				media_type=mime_type,
-				headers={"Cache-Control": "public, max-age=604800"},  # <-- Agregado para cachear por 7 días
+				headers=cache_headers,
 			)
 	except Exception as e:
 		logger.debug(f"Pifió sacando la tapa de {path}: {e}")
