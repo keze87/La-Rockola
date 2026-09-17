@@ -168,8 +168,8 @@ def test_scan_directory_reconciliation_negative_dissimilar(clean_state, temp_db,
 		assert old_id not in state.id_to_current_path
 
 
-def test_scan_directory_reanalyzes_invalid_bpm(clean_state, temp_db, tmp_path):
-	"""Test that tracks with bpm <= 0.0 (-1.0 failed mood or 0.0 unanalyzed) are re-analyzed on scan."""
+def test_scan_directory_reanalyzes_untested_bpm(clean_state, temp_db, tmp_path):
+	"""Test that tracks with bpm == 0.0 (untested) are re-analyzed only when librosa is available."""
 	music_dir = tmp_path / "Music"
 	music_dir.mkdir()
 
@@ -178,38 +178,59 @@ def test_scan_directory_reanalyzes_invalid_bpm(clean_state, temp_db, tmp_path):
 
 	state = clean_state
 
-	# Step 1: Simulate first scan where mood extraction fails and sets bpm = -1.0
-	def mock_mood_failed(self):
-		self.bpm = -1.0
-		self.energy = -1.0
-		self.spectral_centroid = -1.0
+	# Step 1: Scan with no librosa available -> bpm remains 0.0
+	def mock_mood_untested(self):
+		self.bpm = 0.0
+		self.energy = 0.0
+		self.spectral_centroid = 0.0
 
 	def mock_fp(self):
 		self.fingerprint = "1001,1002,1003,1004,1005,1006,1007,1008,1009,1010,1011"
 
 	with (
-		patch.object(server.Track, "_extract_mood", mock_mood_failed),
+		patch("importlib.util.find_spec", return_value=None),
+		patch("server.find_system_librosa_python", return_value=None),
+		patch.object(server.Track, "_extract_mood", mock_mood_untested),
 		patch.object(server.Track, "_extract_fingerprint", mock_fp),
 	):
 		tracks = state.scan_directory([str(music_dir)])
 		assert len(tracks) == 1
-		assert tracks[0]["bpm"] == -1.0
+		assert tracks[0]["bpm"] == 0.0
 
 		with sqlite3.connect(temp_db) as conn:
 			row = conn.execute(
 				"SELECT bpm, energy, spectral_centroid FROM tracks WHERE path = ?", (str(file1),)
 			).fetchone()
 			assert row is not None
-			assert row[0] == -1.0
+			assert row[0] == 0.0
 
-	# Step 2: Second scan where mood extraction succeeds (e.g. librosa is now available or issue resolved).
-	# It should NOT use the -1.0 DB or in-memory cache, but re-extract and update DB.
+	# Step 2: Scan without librosa -> should hit cache without reanalyzing
+	mood_called = False
+
+	def mock_mood_should_not_run(self):
+		nonlocal mood_called
+		mood_called = True
+
+	with (
+		patch("importlib.util.find_spec", return_value=None),
+		patch("server.find_system_librosa_python", return_value=None),
+		patch.object(server.Track, "_extract_mood", mock_mood_should_not_run),
+		patch.object(server.Track, "_extract_fingerprint", mock_fp),
+	):
+		tracks_cached = state.scan_directory([str(music_dir)])
+		assert len(tracks_cached) == 1
+		assert tracks_cached[0]["bpm"] == 0.0
+		assert not mood_called
+
+	# Step 3: Scan with librosa available -> should re-analyze and update DB
 	def mock_mood_success(self):
 		self.bpm = 124.0
 		self.energy = 0.8
 		self.spectral_centroid = 2200.0
 
 	with (
+		patch("importlib.util.find_spec", return_value=None),
+		patch("server.find_system_librosa_python", return_value="/usr/bin/python3"),
 		patch.object(server.Track, "_extract_mood", mock_mood_success),
 		patch.object(server.Track, "_extract_fingerprint", mock_fp),
 	):
@@ -227,3 +248,58 @@ def test_scan_directory_reanalyzes_invalid_bpm(clean_state, temp_db, tmp_path):
 			assert row[0] == 124.0
 			assert row[1] == 0.8
 			assert row[2] == 2200.0
+
+
+def test_scan_directory_skips_failed_mood(clean_state, temp_db, tmp_path):
+	"""Test that tracks with bpm == -1.0 (librosa failed/error) are cached and NOT re-tested."""
+	music_dir = tmp_path / "Music"
+	music_dir.mkdir()
+
+	file1 = music_dir / "track_corrupt.mp3"
+	file1.write_bytes(b"CORRUPT_AUDIO_FILE_BYTES")
+
+	state = clean_state
+
+	# Step 1: First scan with librosa running but failing -> bpm set to -1.0
+	def mock_mood_error(self):
+		self.bpm = -1.0
+		self.energy = -1.0
+		self.spectral_centroid = -1.0
+
+	def mock_fp(self):
+		self.fingerprint = "1001,1002,1003,1004,1005,1006,1007,1008,1009,1010,1011"
+
+	with (
+		patch("importlib.util.find_spec", return_value=None),
+		patch("server.find_system_librosa_python", return_value="/usr/bin/python3"),
+		patch.object(server.Track, "_extract_mood", mock_mood_error),
+		patch.object(server.Track, "_extract_fingerprint", mock_fp),
+	):
+		tracks = state.scan_directory([str(music_dir)])
+		assert len(tracks) == 1
+		assert tracks[0]["bpm"] == -1.0
+
+		with sqlite3.connect(temp_db) as conn:
+			row = conn.execute(
+				"SELECT bpm, energy, spectral_centroid FROM tracks WHERE path = ?", (str(file1),)
+			).fetchone()
+			assert row is not None
+			assert row[0] == -1.0
+
+	# Step 2: Next scan with librosa available -> should hit cache and NOT re-run _extract_mood
+	mood_retested = False
+
+	def mock_mood_unexpected(self):
+		nonlocal mood_retested
+		mood_retested = True
+
+	with (
+		patch("importlib.util.find_spec", return_value=None),
+		patch("server.find_system_librosa_python", return_value="/usr/bin/python3"),
+		patch.object(server.Track, "_extract_mood", mock_mood_unexpected),
+		patch.object(server.Track, "_extract_fingerprint", mock_fp),
+	):
+		tracks_cached = state.scan_directory([str(music_dir)])
+		assert len(tracks_cached) == 1
+		assert tracks_cached[0]["bpm"] == -1.0
+		assert not mood_retested

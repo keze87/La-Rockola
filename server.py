@@ -1500,6 +1500,9 @@ class Track:
 		BPM (tempo), energía (RMS) y brillo espectral (centroid).
 		No cargamos el archivo entero: 60 segundos arrancando a los 15s alcanza
 		y sobra para tempo/energía, y es mucho más rápido que decodificar todo.
+		- Si librosa no está disponible: queda en 0.0 (no testeado).
+		- Si librosa se ejecuta pero falla/da error/timeout: se asigna -1.0 (error definitivo, no re-testear).
+		- Si tiene éxito: float > 0.0.
 		"""
 		# 1. Si librosa está disponible en el proceso actual (ej: ejecución directa con python3)
 		if importlib.util.find_spec("librosa") is not None:
@@ -1536,9 +1539,12 @@ class Track:
 			try:
 				# Le damos 25 segundos máximo. Si es un MKV pesado o algo larguísimo, lo abortamos.
 				b, e, c = future.result(timeout=25.0)
-				self.bpm = b
-				self.energy = e
-				self.spectral_centroid = c
+				if b > 0.0:
+					self.bpm = b
+					self.energy = e
+					self.spectral_centroid = c
+				else:
+					self.bpm, self.energy, self.spectral_centroid = -1.0, -1.0, -1.0
 			except concurrent.futures.TimeoutError:
 				logger.warning(f"¡Se re colgó! Timeout de 25s sacando el mood a {self.path}")
 				self.bpm, self.energy, self.spectral_centroid = -1.0, -1.0, -1.0
@@ -1563,7 +1569,7 @@ class Track:
 				"    if y.size == 0:\n"
 				"        y, sr = librosa.load(p, sr=22050, mono=True)\n"
 				"    if y.size == 0:\n"
-				"        print(json.dumps({'bpm': 0.0, 'energy': 0.0, 'centroid': 0.0}))\n"
+				"        print(json.dumps({'bpm': -1.0, 'energy': -1.0, 'centroid': -1.0}))\n"
 				"        sys.exit(0)\n"
 				"    tempo, _ = librosa.beat.beat_track(y=y, sr=sr)\n"
 				"    bpm_val = float(np.mean(tempo)) if tempo is not None else 0.0\n"
@@ -1587,9 +1593,10 @@ class Track:
 				)
 				if proc.returncode == 0 and proc.stdout.strip():
 					data = json.loads(proc.stdout.strip())
-					self.bpm = float(data.get("bpm", 0.0))
-					self.energy = float(data.get("energy", 0.0))
-					self.spectral_centroid = float(data.get("centroid", 0.0))
+					bpm_out = float(data.get("bpm", -1.0))
+					self.bpm = bpm_out if bpm_out > 0.0 else -1.0
+					self.energy = float(data.get("energy", -1.0))
+					self.spectral_centroid = float(data.get("centroid", -1.0))
 				else:
 					err_msg = proc.stderr.strip() or f"Código de salida: {proc.returncode}"
 					logger.warning(f"No le pude sacar el mood (bpm/energía) a {self.path} con {sys_python}: {err_msg}")
@@ -1604,6 +1611,7 @@ class Track:
 
 		# 3. Librosa no está disponible ni en proceso ni en el sistema anfitrión
 		logger.debug(f"Librosa no disponible para analizar mood en {self.path}")
+		self.bpm, self.energy, self.spectral_centroid = 0.0, 0.0, 0.0
 
 	def to_dict(self):
 		return {
@@ -2430,6 +2438,8 @@ class APIState:
 		logger.info(f"Encontré {len(raw_files)} archivos en total. Revisando cuáles son nuevos o cambiaron...")
 		raw_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
 
+		has_librosa = importlib.util.find_spec("librosa") is not None or find_system_librosa_python() is not None
+
 		# --- CARGAMOS LA CACHÉ DE LA DB AL PRINCIPIO ---
 		db_cache = {}
 		try:
@@ -2461,7 +2471,7 @@ class APIState:
 						"album": db_album,
 						"artist": db_artist,
 						"duration_str": db_dur,
-						# Si estaba en NULL en la base de datos vieja, aseguramos que cargue como 0.0
+						# 0.0: no testeado / librosa ausente; -1.0: librosa retornó error (no re-testear); > 0.0: procesado
 						"bpm": db_bpm if db_bpm is not None else 0.0,
 						"energy": db_energy if db_energy is not None else 0.0,
 						"spectral_centroid": (db_centroid if db_centroid is not None else 0.0),
@@ -2495,23 +2505,26 @@ class APIState:
 				continue
 
 			# 1. Miramos si está en memoria (escaneo en caliente)
+			# Si el BPM es 0.0 (no testeado), solo re-testeamos si librosa está disponible.
+			# Si ya dio error (-1.0) o fue procesado con éxito (> 0.0), usamos la caché en memoria.
 			if (
 				file_str in self.track_cache_by_path
 				and self.track_cache_by_path[file_str]["mtime"] == current_mtime
-				and self.track_cache_by_path[file_str]["data"].get("bpm", 0.0) > 0.0
+				and (self.track_cache_by_path[file_str]["data"].get("bpm", 0.0) != 0.0 or not has_librosa)
 			):
 				track_dict = self.track_cache_by_path[file_str]["data"]
 				track_hash = track_dict.get("track_hash")
 				seen_track_ids.add(track_hash)
 
 			# 2. Miramos si está intacto en la DB (arranque de servidor)
+			# Si el BPM es 0.0 (no testeado), solo re-testeamos si librosa está disponible.
+			# Si ya dio error (-1.0) o fue procesado con éxito (> 0.0), usamos la caché de la DB.
 			elif (
 				file_str in db_cache
 				and db_cache[file_str]["mtime"] == current_mtime
 				and db_cache[file_str]["file_size"] == current_size
 				and db_cache[file_str].get("bpm") is not None
-				# Chequeo mágico: si el BPM es <= 0.0 (error -1.0 o no procesado 0.0), obligamos a recalcular.
-				and db_cache[file_str].get("bpm") > 0.0
+				and (db_cache[file_str].get("bpm") != 0.0 or not has_librosa)
 				and db_cache[file_str].get("fingerprint") is not None
 			):
 				cached = db_cache[file_str]

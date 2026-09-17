@@ -219,7 +219,7 @@ def test_extract_mood_subprocess_failure(tmp_path):
 
 
 def test_extract_mood_no_librosa_available(tmp_path):
-	"""When librosa is not available anywhere, leaves defaults at 0.0."""
+	"""When librosa is not available anywhere, leaves defaults at 0.0 (untested)."""
 	test_file = tmp_path / "no_librosa.flac"
 	test_file.write_bytes(b"dummy")
 
