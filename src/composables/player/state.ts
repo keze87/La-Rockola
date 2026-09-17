@@ -63,6 +63,9 @@ export const showFogonVolume = ref<boolean>(false);
 export const serverUrl = ref<string | null>(null);
 export const localIp = ref<string | null>(null);
 
+// Server Capabilities
+export const hasLibrosa = ref<boolean>(false);
+
 export const isPlaying = computed(() => !!currentTrackPath.value && !isPaused.value);
 export const volIcon = computed(() => {
 	if (serverMuted.value || volume.value == 0) return 'volume_off';

@@ -10,6 +10,7 @@ import {
 	djSafeModeEnabled,
 	duration,
 	favorites,
+	hasLibrosa,
 	historyState,
 	isDraggingSeek,
 	isPaused,
@@ -94,6 +95,7 @@ export function useSocket() {
 						if (state.dj_safe_mode !== undefined) djSafeModeEnabled.value = state.dj_safe_mode;
 						if (state.duration !== undefined) duration.value = state.duration;
 						if (state.favorites !== undefined) favorites.value = state.favorites;
+						if (state.has_librosa !== undefined) hasLibrosa.value = state.has_librosa;
 						if (state.history) historyState.value = state.history;
 						if (state.is_scanning !== undefined) isScanning.value = state.is_scanning;
 						if (state.mpv_visible !== undefined) mpvVisible.value = state.mpv_visible;

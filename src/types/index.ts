@@ -17,6 +17,7 @@ export interface PlayerState {
 	dj_safe_mode?: boolean;
 	duration?: number;
 	favorites?: string[];
+	has_librosa?: boolean;
 	history?: string[];
 	is_scanning?: boolean;
 	library?: Track[];

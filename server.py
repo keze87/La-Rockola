@@ -2227,6 +2227,7 @@ class APIState:
 			"dj_next_track": clean_dj_next,
 			"duration": self.duration,
 			"favorites": active_favs,
+			"has_librosa": (importlib.util.find_spec("librosa") is not None or find_system_librosa_python() is not None),
 			"history": list(self.history),
 			"is_scanning": self.is_scanning,
 			"local_ip": self.local_ip,

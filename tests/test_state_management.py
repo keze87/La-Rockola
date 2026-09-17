@@ -42,6 +42,10 @@ async def test_get_full_state_dict_strips_heavy_keys(clean_state):
 	assert "energy" not in dj_track
 	assert dj_track["display_title"] == "Song Title"
 
+	# Check has_librosa flag
+	assert "has_librosa" in full_state
+	assert isinstance(full_state["has_librosa"], bool)
+
 
 @pytest.mark.asyncio
 async def test_play_track_and_navigation(clean_state):

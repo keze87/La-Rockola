@@ -6,6 +6,7 @@ import {
 	currentTracks,
 	djCarpinchoEnabled,
 	djSafeModeEnabled,
+	hasLibrosa,
 	listenLocally,
 	mpvVisible,
 	serverMuted,
@@ -26,6 +27,7 @@ describe('ControlsTab.vue', () => {
 		currentTracks.value = [];
 		djCarpinchoEnabled.value = false;
 		djSafeModeEnabled.value = false;
+		hasLibrosa.value = true;
 		listenLocally.value = false;
 		mpvVisible.value = true;
 		serverMuted.value = false;
@@ -44,6 +46,16 @@ describe('ControlsTab.vue', () => {
 		expect(wrapper.text()).toContain('La Joda');
 		expect(wrapper.text()).toContain('DJ Carpincho');
 		expect(wrapper.text()).toContain('Escuchar acá');
+	});
+
+	it('hides "Más Manija" button when hasLibrosa is false', () => {
+		hasLibrosa.value = false;
+		const wrapper = mount(ControlsTab);
+
+		expect(wrapper.text()).not.toContain('Más Manija');
+		expect(wrapper.text()).toContain('Como llegaron');
+		expect(wrapper.text()).toContain('Por el que canta');
+		expect(wrapper.text()).toContain('Mezcladito (A lo loco)');
 	});
 
 	it('toggles mute when mute icon or button is clicked', async () => {
