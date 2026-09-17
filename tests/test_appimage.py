@@ -274,12 +274,12 @@ def test_check_dependencies_frozen_message(monkeypatch, capsys):
 		"find_spec",
 		lambda m: None if m in ("librosa", "dbus_next") else MagicMock(),
 	)
+	monkeypatch.setattr(server, "find_system_librosa_python", lambda force=False: None)
 
 	server.check_dependencies(force=True)
 	captured = capsys.readouterr()
-	# In frozen mode, it should not say pip install librosa
+	# In frozen mode when librosa is not found on host, it explains it is not included
 	assert "no incluido en la versión portable" in captured.err
-	assert "pip install librosa" not in captured.err
 	assert "no incluido en este build de Linux" in captured.err
 
 

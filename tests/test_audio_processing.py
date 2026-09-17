@@ -118,3 +118,119 @@ def test_compare_fps():
 	# Completely different bitwise inverted fingerprints
 	fp2 = [~x & 0xFFFFFFFF for x in fp1]
 	assert server.compare_fps(fp1, fp2) == 0.0
+
+
+def test_find_system_librosa_python_in_process():
+	"""When librosa is in-process, find_system_librosa_python returns sys.executable."""
+	with patch("importlib.util.find_spec", return_value=MagicMock()):
+		found = server.find_system_librosa_python(force=True)
+		assert found == server.sys.executable
+
+
+def test_find_system_librosa_python_subprocess_found():
+	"""When librosa is not in-process, finds candidate in PATH via subprocess."""
+	mock_proc = MagicMock()
+	mock_proc.returncode = 0
+	with (
+		patch("importlib.util.find_spec", return_value=None),
+		patch("shutil.which", side_effect=lambda name: "/usr/bin/python3" if name == "python3" else None),
+		patch("subprocess.run", return_value=mock_proc),
+	):
+		found = server.find_system_librosa_python(force=True)
+		assert found == "/usr/bin/python3"
+
+
+def test_find_system_librosa_python_none_found():
+	"""When no candidates have librosa, returns None."""
+	mock_proc = MagicMock()
+	mock_proc.returncode = 1
+	with (
+		patch("importlib.util.find_spec", return_value=None),
+		patch("shutil.which", return_value=None),
+		patch("pathlib.Path.is_file", return_value=False),
+	):
+		found = server.find_system_librosa_python(force=True)
+		assert found is None
+
+
+def test_extract_mood_subprocess_success(tmp_path):
+	"""Test mood extraction using system python subprocess when in-process librosa is absent."""
+	test_file = tmp_path / "test.flac"
+	test_file.write_bytes(b"dummy")
+
+	mock_proc = MagicMock()
+	mock_proc.returncode = 0
+	mock_proc.stdout = '{"bpm": 128.0, "energy": 0.45, "centroid": 1500.0}\n'
+
+	with (
+		patch("server.MutagenFile", return_value=None),
+		patch.object(server.Track, "_extract_fingerprint", return_value=None),
+		patch("importlib.util.find_spec", return_value=None),
+		patch("server.find_system_librosa_python", return_value="/usr/bin/python3"),
+		patch("subprocess.run", return_value=mock_proc),
+	):
+		track = server.Track(test_file)
+		assert track.bpm == 128.0
+		assert track.energy == 0.45
+		assert track.spectral_centroid == 1500.0
+
+
+def test_extract_mood_subprocess_timeout(tmp_path):
+	"""Test mood extraction handles subprocess timeout gracefully."""
+	import subprocess
+
+	test_file = tmp_path / "timeout.flac"
+	test_file.write_bytes(b"dummy")
+
+	with (
+		patch("server.MutagenFile", return_value=None),
+		patch.object(server.Track, "_extract_fingerprint", return_value=None),
+		patch("importlib.util.find_spec", return_value=None),
+		patch("server.find_system_librosa_python", return_value="/usr/bin/python3"),
+		patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="python3", timeout=25.0)),
+	):
+		track = server.Track(test_file)
+		assert track.bpm == -1.0
+		assert track.energy == -1.0
+		assert track.spectral_centroid == -1.0
+
+
+def test_extract_mood_subprocess_failure(tmp_path):
+	"""Test mood extraction handles non-zero exit code or error output."""
+	test_file = tmp_path / "corrupt.flac"
+	test_file.write_bytes(b"dummy")
+
+	mock_proc = MagicMock()
+	mock_proc.returncode = 1
+	mock_proc.stdout = ""
+	mock_proc.stderr = "Corrupt audio header"
+
+	with (
+		patch("server.MutagenFile", return_value=None),
+		patch.object(server.Track, "_extract_fingerprint", return_value=None),
+		patch("importlib.util.find_spec", return_value=None),
+		patch("server.find_system_librosa_python", return_value="/usr/bin/python3"),
+		patch("subprocess.run", return_value=mock_proc),
+	):
+		track = server.Track(test_file)
+		assert track.bpm == -1.0
+		assert track.energy == -1.0
+		assert track.spectral_centroid == -1.0
+
+
+def test_extract_mood_no_librosa_available(tmp_path):
+	"""When librosa is not available anywhere, leaves defaults at 0.0."""
+	test_file = tmp_path / "no_librosa.flac"
+	test_file.write_bytes(b"dummy")
+
+	with (
+		patch("server.MutagenFile", return_value=None),
+		patch.object(server.Track, "_extract_fingerprint", return_value=None),
+		patch("importlib.util.find_spec", return_value=None),
+		patch("server.find_system_librosa_python", return_value=None),
+	):
+		track = server.Track(test_file)
+		assert track.bpm == 0.0
+		assert track.energy == 0.0
+		assert track.spectral_centroid == 0.0
+

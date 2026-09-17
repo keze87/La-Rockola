@@ -12,8 +12,10 @@ Uso:
 """
 
 import importlib.util
+import json
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -49,6 +51,112 @@ def enable_system_site_packages() -> None:
 
 
 enable_system_site_packages()
+
+
+def get_clean_env() -> dict:
+	"""
+	Retorna una copia de os.environ con las variables alteradas por PyInstaller/AppImage
+	restauradas a sus valores originales o eliminadas.
+	Esto evita que herramientas del sistema como kdialog, zenity, yad, powershell, mpv,
+	yt-dlp o el intérprete de python del sistema fallen por incompatibilidad de librerías dinámicas
+	o rutas de python cargadas desde el bundle.
+	"""
+	env = os.environ.copy()
+	for var in ("LD_LIBRARY_PATH", "LD_PRELOAD", "PYTHONPATH", "PYTHONHOME", "DYLD_LIBRARY_PATH"):
+		orig = f"{var}_ORIG"
+		if orig in env and env[orig].strip():
+			env[var] = env[orig]
+		elif var in env:
+			del env[var]
+
+	# Filtrar cualquier rastro de PyInstaller (_MEI*) o AppImage (/tmp/.mount_*) de LD_LIBRARY_PATH
+	if "LD_LIBRARY_PATH" in env:
+		parts = env["LD_LIBRARY_PATH"].split(":")
+		clean_parts = []
+		appdir = os.environ.get("APPDIR", "")
+		meipass = getattr(sys, "_MEIPASS", "")
+		for p in parts:
+			p_str = p.strip()
+			if not p_str:
+				continue
+			if meipass and p_str.startswith(str(meipass)):
+				continue
+			if appdir and p_str.startswith(str(appdir)):
+				continue
+			if ".mount_" in p_str or "_MEI" in p_str:
+				continue
+			clean_parts.append(p_str)
+
+		if clean_parts:
+			env["LD_LIBRARY_PATH"] = ":".join(clean_parts)
+		else:
+			del env["LD_LIBRARY_PATH"]
+
+	return env
+
+
+_system_librosa_python: str | None = None
+_system_librosa_checked: bool = False
+
+
+def find_system_librosa_python(force: bool = False) -> str | None:
+	"""
+	Busca un binario de Python en el sistema anfitrión que tenga 'librosa' instalado.
+	Permite que el ejecutable congelado (AppImage / portable) use el librosa del sistema
+	mediante subprocesos sin inflar el paquete con 150MB+ de dependencias pesadas.
+	"""
+	global _system_librosa_python, _system_librosa_checked
+	if _system_librosa_checked and not force:
+		return _system_librosa_python
+
+	_system_librosa_checked = True
+
+	# 1. Si librosa se puede importar en el proceso actual, usamos sys.executable
+	if importlib.util.find_spec("librosa") is not None:
+		_system_librosa_python = sys.executable
+		return _system_librosa_python
+
+	# 2. Buscar intérpretes de Python candidatos en el sistema
+	candidates = []
+
+	for bin_name in ("python3", "python", "py"):
+		found = shutil.which(bin_name)
+		if found and found not in candidates:
+			candidates.append(found)
+
+	extra_paths = [
+		"/usr/bin/python3",
+		"/usr/local/bin/python3",
+		"/opt/homebrew/bin/python3",
+		str(Path.home() / ".local" / "bin" / "python3"),
+	]
+	for ep in extra_paths:
+		if ep not in candidates and Path(ep).is_file():
+			candidates.append(ep)
+
+	clean_env = get_clean_env()
+	check_code = "import librosa, sys; sys.exit(0)"
+
+	for cand in candidates:
+		if getattr(sys, "frozen", False) and os.path.abspath(cand) == os.path.abspath(sys.executable):
+			continue
+		try:
+			res = subprocess.run(
+				[cand, "-c", check_code],
+				env=clean_env,
+				capture_output=True,
+				text=True,
+				timeout=3,
+				check=False,
+			)
+			if res.returncode == 0:
+				_system_librosa_python = cand
+				return _system_librosa_python
+		except Exception:
+			continue
+
+	_system_librosa_python = None
+	return None
 
 
 def find_binary(bin_name: str) -> str | None:
@@ -123,13 +231,21 @@ def check_dependencies(force: bool = False):
 	}
 
 	# Paquetes que suman magia pero no son de vida o muerte
-	optional_python = {
-		"librosa": (
-			"no incluido en la versión portable para mantenerla liviana (análisis de mood/BPM)"
-			if is_frozen
-			else "pip install librosa (para el análisis de mood/BPM)"
-		),
-	}
+	optional_python = {}
+
+	# Librosa: ver si está disponible en proceso o vía subproceso en el Python del sistema
+	has_librosa = importlib.util.find_spec("librosa") is not None or find_system_librosa_python(force=force) is not None
+	if not has_librosa:
+		missing_opt_py.append(
+			(
+				"librosa",
+				(
+					"no incluido en la versión portable (instalá 'pip install librosa' en tu sistema para análisis de mood/BPM)"
+					if is_frozen
+					else "pip install librosa (para el análisis de mood/BPM)"
+				),
+			)
+		)
 
 	is_win = sys.platform == "win32"
 	is_mac = sys.platform == "darwin"
@@ -718,47 +834,6 @@ def print_startup_banner(
 		print("        rockola_config.json")
 	print("     5. ⏹️  Para detener La Rockola, presioná Ctrl+C en esta consola.\n")
 	print(f"{border}\n")
-
-
-def get_clean_env() -> dict:
-	"""
-	Retorna una copia de os.environ con las variables alteradas por PyInstaller/AppImage
-	restauradas a sus valores originales o eliminadas.
-	Esto evita que herramientas del sistema como kdialog, zenity, yad, powershell, mpv o yt-dlp
-	fallen por incompatibilidad de librerías dinámicas cargadas desde el bundle.
-	"""
-	env = os.environ.copy()
-	for var in ("LD_LIBRARY_PATH", "LD_PRELOAD", "PYTHONPATH", "PYTHONHOME", "DYLD_LIBRARY_PATH"):
-		orig = f"{var}_ORIG"
-		if orig in env and env[orig].strip():
-			env[var] = env[orig]
-		elif var in env:
-			del env[var]
-
-	# Filtrar cualquier rastro de PyInstaller (_MEI*) o AppImage (/tmp/.mount_*) de LD_LIBRARY_PATH
-	if "LD_LIBRARY_PATH" in env:
-		parts = env["LD_LIBRARY_PATH"].split(":")
-		clean_parts = []
-		appdir = os.environ.get("APPDIR", "")
-		meipass = getattr(sys, "_MEIPASS", "")
-		for p in parts:
-			p_str = p.strip()
-			if not p_str:
-				continue
-			if meipass and p_str.startswith(str(meipass)):
-				continue
-			if appdir and p_str.startswith(str(appdir)):
-				continue
-			if ".mount_" in p_str or "_MEI" in p_str:
-				continue
-			clean_parts.append(p_str)
-
-		if clean_parts:
-			env["LD_LIBRARY_PATH"] = ":".join(clean_parts)
-		else:
-			del env["LD_LIBRARY_PATH"]
-
-	return env
 
 
 def _parse_selected_dir(raw_out: str | None) -> str | None:
@@ -1391,53 +1466,108 @@ class Track:
 		No cargamos el archivo entero: 60 segundos arrancando a los 15s alcanza
 		y sobra para tempo/energía, y es mucho más rápido que decodificar todo.
 		"""
+		# 1. Si librosa está disponible en el proceso actual (ej: ejecución directa con python3)
+		if importlib.util.find_spec("librosa") is not None:
+			def _do_librosa_work():
+				import librosa
+				import numpy as np
 
-		def _do_librosa_work():
-			import librosa
-			import numpy as np
+				y, sr = librosa.load(str(self.path), sr=22050, mono=True, duration=60, offset=15)
+				if y.size == 0:
+					# Tema corto (menos de 15s): probamos de nuevo desde el arranque
+					y, sr = librosa.load(str(self.path), sr=22050, mono=True)
 
-			y, sr = librosa.load(str(self.path), sr=22050, mono=True, duration=60, offset=15)
-			if y.size == 0:
-				# Tema corto (menos de 15s): probamos de nuevo desde el arranque
-				y, sr = librosa.load(str(self.path), sr=22050, mono=True)
+				if y.size == 0:
+					return 0.0, 0.0, 0.0
 
-			if y.size == 0:
-				return 0.0, 0.0, 0.0
+				tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
+				bpm_val = float(np.mean(tempo)) if tempo is not None else 0.0
 
-			tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
-			bpm_val = float(np.mean(tempo)) if tempo is not None else 0.0
+				rms = librosa.feature.rms(y=y)[0]
+				energy_val = float(np.mean(rms)) if rms.size else 0.0
 
-			rms = librosa.feature.rms(y=y)[0]
-			energy_val = float(np.mean(rms)) if rms.size else 0.0
+				centroid = librosa.feature.spectral_centroid(y=y, sr=sr)[0]
+				centroid_val = float(np.mean(centroid)) if centroid.size else 0.0
 
-			centroid = librosa.feature.spectral_centroid(y=y, sr=sr)[0]
-			centroid_val = float(np.mean(centroid)) if centroid.size else 0.0
+				return bpm_val, energy_val, centroid_val
 
-			return bpm_val, energy_val, centroid_val
+			import concurrent.futures
 
-		import concurrent.futures
+			# Usamos un ThreadPool para poder meterle un timeout
+			executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+			future = executor.submit(_do_librosa_work)
 
-		# Usamos un ThreadPool para poder meterle un timeout
-		executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-		future = executor.submit(_do_librosa_work)
+			try:
+				# Le damos 25 segundos máximo. Si es un MKV pesado o algo larguísimo, lo abortamos.
+				b, e, c = future.result(timeout=25.0)
+				self.bpm = b
+				self.energy = e
+				self.spectral_centroid = c
+			except concurrent.futures.TimeoutError:
+				logger.warning(f"¡Se re colgó! Timeout de 25s sacando el mood a {self.path}")
+				self.bpm, self.energy, self.spectral_centroid = -1.0, -1.0, -1.0
+			except Exception as exc:
+				logger.warning(f"No le pude sacar el mood (bpm/energía) a {self.path}: {exc}")
+				# Si falla feo (por archivo corrupto o falta de permisos) le mandamos -1.0
+				# Así diferenciamos los rotos de los que todavía no se analizaron (0.0)
+				self.bpm, self.energy, self.spectral_centroid = -1.0, -1.0, -1.0
+			finally:
+				# Cerramos el executor sin esperar. Si el hilo se quedó colgado en C/FFmpeg, que muera de fondo.
+				executor.shutdown(wait=False, cancel_futures=True)
+			return
 
-		try:
-			# Le damos 25 segundos máximo. Si es un MKV pesado o algo larguísimo, lo abortamos.
-			b, e, c = future.result(timeout=25.0)
-			self.bpm = b
-			self.energy = e
-			self.spectral_centroid = c
-		except concurrent.futures.TimeoutError:
-			logger.warning(f"¡Se re colgó! Timeout de 25s sacando el mood a {self.path}")
-			self.bpm, self.energy, self.spectral_centroid = -1.0, -1.0, -1.0
-		except Exception as exc:
-			logger.warning(f"No le pude sacar el mood (bpm/energía) a {self.path}: {exc}")
-			# Si falla feo (por archivo corrupto o falta de permisos) le mandamos -1.0
-			# Así diferenciamos los rotos de los que todavía no se analizaron (0.0)
-			self.bpm, self.energy, self.spectral_centroid = -1.0, -1.0, -1.0
-		finally:
-			# Cerramos el executor sin esperar. Si el hilo se quedó colgado en C/FFmpeg, que muera de fondo.
-			executor.shutdown(wait=False, cancel_futures=True)
+		# 2. Si estamos en un paquete congelado (AppImage/portable), usamos el Python del sistema anfitrión como subproceso
+		sys_python = find_system_librosa_python()
+		if sys_python:
+			script = (
+				"import librosa, json, sys, numpy as np\n"
+				"try:\n"
+				"    p = sys.argv[1]\n"
+				"    y, sr = librosa.load(p, sr=22050, mono=True, duration=60, offset=15)\n"
+				"    if y.size == 0:\n"
+				"        y, sr = librosa.load(p, sr=22050, mono=True)\n"
+				"    if y.size == 0:\n"
+				"        print(json.dumps({'bpm': 0.0, 'energy': 0.0, 'centroid': 0.0}))\n"
+				"        sys.exit(0)\n"
+				"    tempo, _ = librosa.beat.beat_track(y=y, sr=sr)\n"
+				"    bpm_val = float(np.mean(tempo)) if tempo is not None else 0.0\n"
+				"    rms = librosa.feature.rms(y=y)[0]\n"
+				"    energy_val = float(np.mean(rms)) if rms.size else 0.0\n"
+				"    centroid = librosa.feature.spectral_centroid(y=y, sr=sr)[0]\n"
+				"    centroid_val = float(np.mean(centroid)) if centroid.size else 0.0\n"
+				"    print(json.dumps({'bpm': bpm_val, 'energy': energy_val, 'centroid': centroid_val}))\n"
+				"except Exception as e:\n"
+				"    sys.stderr.write(str(e))\n"
+				"    sys.exit(1)\n"
+			)
+			try:
+				proc = subprocess.run(
+					[sys_python, "-c", script, str(self.path)],
+					env=get_clean_env(),
+					capture_output=True,
+					text=True,
+					timeout=25.0,
+					check=False,
+				)
+				if proc.returncode == 0 and proc.stdout.strip():
+					data = json.loads(proc.stdout.strip())
+					self.bpm = float(data.get("bpm", 0.0))
+					self.energy = float(data.get("energy", 0.0))
+					self.spectral_centroid = float(data.get("centroid", 0.0))
+				else:
+					err_msg = proc.stderr.strip() or f"Código de salida: {proc.returncode}"
+					logger.warning(f"No le pude sacar el mood (bpm/energía) a {self.path} con {sys_python}: {err_msg}")
+					self.bpm, self.energy, self.spectral_centroid = -1.0, -1.0, -1.0
+			except subprocess.TimeoutExpired:
+				logger.warning(f"¡Se re colgó! Timeout de 25s sacando el mood a {self.path} (subproceso)")
+				self.bpm, self.energy, self.spectral_centroid = -1.0, -1.0, -1.0
+			except Exception as exc:
+				logger.warning(f"No le pude sacar el mood a {self.path} (subproceso): {exc}")
+				self.bpm, self.energy, self.spectral_centroid = -1.0, -1.0, -1.0
+			return
+
+		# 3. Librosa no está disponible ni en proceso ni en el sistema anfitrión
+		logger.debug(f"Librosa no disponible para analizar mood en {self.path}")
 
 	def to_dict(self):
 		return {
