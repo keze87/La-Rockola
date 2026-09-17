@@ -758,6 +758,58 @@ def get_server_urls(host: str, port: int, custom_url: str | None = None) -> dict
 	}
 
 
+def open_browser_url(url: str) -> None:
+	"""
+	Abre la URL en el navegador predeterminado del usuario.
+	Aísla el entorno de subprocesos (get_clean_env) para evitar colisiones
+	de librerías dinámicas en AppImage/Linux (ej. libreadline/glibc en /bin/sh o xdg-open).
+	"""
+	if sys.platform == "win32":
+		try:
+			os.startfile(url)
+			return
+		except Exception:
+			pass
+	elif sys.platform == "darwin":
+		try:
+			subprocess.Popen(
+				["open", url],
+				env=get_clean_env(),
+				stdout=subprocess.DEVNULL,
+				stderr=subprocess.DEVNULL,
+			)
+			return
+		except Exception:
+			pass
+	else:
+		if shutil.which("xdg-open"):
+			try:
+				subprocess.Popen(
+					["xdg-open", url],
+					env=get_clean_env(),
+					stdout=subprocess.DEVNULL,
+					stderr=subprocess.DEVNULL,
+				)
+				return
+			except Exception:
+				pass
+
+	old_env = os.environ.copy()
+	try:
+		clean = get_clean_env()
+		for k in ("LD_LIBRARY_PATH", "LD_PRELOAD", "PYTHONPATH", "PYTHONHOME", "DYLD_LIBRARY_PATH"):
+			if k not in clean and k in os.environ:
+				del os.environ[k]
+			elif k in clean:
+				os.environ[k] = clean[k]
+		webbrowser.open(url)
+	except Exception as e:
+		logger.debug(f"Aviso en webbrowser.open: {e}")
+	finally:
+		os.environ.clear()
+		os.environ.update(old_env)
+
+
 def print_startup_banner(
 	host: str,
 	port: int,
@@ -3095,7 +3147,7 @@ async def lifespan(app: FastAPI):
 
 			logger.info(f"🌐 Abriendo La Rockola en tu navegador: {target_url}")
 			loop = asyncio.get_running_loop()
-			await loop.run_in_executor(None, webbrowser.open, target_url)
+			await loop.run_in_executor(None, open_browser_url, target_url)
 		except Exception as e:
 			logger.debug(f"Aviso al abrir el navegador automáticamente: {e}")
 

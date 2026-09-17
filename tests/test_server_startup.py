@@ -130,7 +130,7 @@ async def test_lifespan_browser_opening(clean_state, monkeypatch):
 	monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
 
 	with patch("server.scan_library", new_callable=AsyncMock):
-		with patch("webbrowser.open") as mock_browser_open:
+		with patch("server.open_browser_url") as mock_browser_open:
 			with patch("socket.socket") as mock_sock_cls:
 				mock_sock = MagicMock()
 				mock_sock.connect_ex.return_value = 0
@@ -142,6 +142,27 @@ async def test_lifespan_browser_opening(clean_state, monkeypatch):
 					await asyncio.sleep(0.15)
 
 				mock_browser_open.assert_called_once_with("http://192.168.1.50:1729")
+
+
+def test_open_browser_url_xdg_open(monkeypatch):
+	"""Verify open_browser_url uses xdg-open with clean environment on Linux."""
+	monkeypatch.setattr(server.sys, "platform", "linux")
+	with patch("shutil.which", return_value="/usr/bin/xdg-open"):
+		with patch("subprocess.Popen") as mock_popen:
+			server.open_browser_url("http://localhost:1729")
+			mock_popen.assert_called_once()
+			args, kwargs = mock_popen.call_args
+			assert args[0] == ["xdg-open", "http://localhost:1729"]
+			assert "env" in kwargs
+
+
+def test_open_browser_url_windows(monkeypatch):
+	"""Verify open_browser_url uses os.startfile on Windows."""
+	monkeypatch.setattr(server.sys, "platform", "win32")
+	mock_startfile = MagicMock()
+	monkeypatch.setattr(server.os, "startfile", mock_startfile, raising=False)
+	server.open_browser_url("http://localhost:1729")
+	mock_startfile.assert_called_once_with("http://localhost:1729")
 
 
 def test_normalize_url_and_subpath():
