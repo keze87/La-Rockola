@@ -44,9 +44,11 @@ def test_ensure_ytdlp_installs_when_missing(tmp_path):
 	fake_bin = tmp_path / "yt-dlp.exe"
 	fake_bin.write_text("dummy")
 
-	with patch("server.find_binary", return_value=None), patch(
-		"shutil.which", return_value=None
-	), patch("ytdlp_installer.install_ytdlp", return_value=fake_bin):
+	with (
+		patch("server.find_binary", return_value=None),
+		patch("shutil.which", return_value=None),
+		patch("ytdlp_installer.install_ytdlp", return_value=fake_bin),
+	):
 		res = ytdlp_installer.ensure_ytdlp()
 		assert res == str(fake_bin)
 
@@ -116,9 +118,11 @@ async def test_fetch_yt_dlp_metadata_invokes_ensure_ytdlp(tmp_path):
 	fake_bin = str(tmp_path / "yt-dlp")
 
 	# find_binary returns None first
-	with patch("server.find_binary", return_value=None), patch(
-		"ytdlp_installer.ensure_ytdlp", return_value=fake_bin
-	) as mock_ensure, patch("asyncio.create_subprocess_exec") as mock_exec:
+	with (
+		patch("server.find_binary", return_value=None),
+		patch("ytdlp_installer.ensure_ytdlp", return_value=fake_bin) as mock_ensure,
+		patch("asyncio.create_subprocess_exec") as mock_exec,
+	):
 		mock_proc = AsyncMock()
 		mock_proc.communicate.return_value = (
 			b'{"title": "Test Song", "uploader": "Test Artist", "duration": 180}',

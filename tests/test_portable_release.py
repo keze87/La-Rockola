@@ -160,8 +160,9 @@ def test_check_dependencies_no_duplicate_warning():
 		mock_find.assert_not_called()
 
 	# When force=True, it should execute
-	with patch("server.importlib.util.find_spec", return_value=True) as mock_find2, patch(
-		"server.find_binary", return_value="/usr/bin/dummy"
+	with (
+		patch("server.importlib.util.find_spec", return_value=True) as mock_find2,
+		patch("server.find_binary", return_value="/usr/bin/dummy"),
 	):
 		server.check_dependencies(force=True)
 		assert mock_find2.called
@@ -183,8 +184,9 @@ def test_select_folder_dialog_powershell(tmp_path):
 def test_select_folder_dialog_cancel(tmp_path):
 	"""Test select_folder_dialog returns None when user cancels the dialog."""
 	with patch("sys.platform", "win32"):
-		with patch("server._select_folder_powershell", return_value=None), patch(
-			"server._select_folder_tkinter", return_value=None
+		with (
+			patch("server._select_folder_powershell", return_value=None),
+			patch("server._select_folder_tkinter", return_value=None),
 		):
 			res = server.select_folder_dialog(title="Test", initial_dir=str(tmp_path))
 			assert res is None
@@ -254,5 +256,3 @@ def test_build_windows_zip_structure(tmp_path, monkeypatch):
 		# Third party binaries must not be bundled (they are downloaded at runtime)
 		assert not any("mpv.exe" in name.lower() for name in names)
 		assert not any("yt-dlp" in name.lower() for name in names)
-
-

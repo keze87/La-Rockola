@@ -82,10 +82,12 @@ def run_pyinstaller(skip=False) -> Path:
 	res = subprocess.run(cmd, cwd=str(ROOT_DIR), env=env, check=False)
 
 	if not exe_path.exists():
-		print(f"Error: No se encontró el ejecutable en {exe_path} (código de salida: {res.returncode})", file=sys.stderr)
+		print(
+			f"Error: No se encontró el ejecutable en {exe_path} (código de salida: {res.returncode})", file=sys.stderr
+		)
 		sys.exit(1)
 
-	log(f"Ejecutable Linux generado con éxito: {exe_path} ({exe_path.stat().st_size / (1024*1024):.1f} MB)")
+	log(f"Ejecutable Linux generado con éxito: {exe_path} ({exe_path.stat().st_size / (1024 * 1024):.1f} MB)")
 	return exe_path
 
 
@@ -232,7 +234,7 @@ def build_appimage(appdir: Path = APPDIR_PATH, output_path: Path | None = None) 
 		sys.exit(1)
 
 	final_output.chmod(final_output.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-	log(f"¡AppImage generado exitosamente!: {final_output} ({final_output.stat().st_size / (1024*1024):.1f} MB)")
+	log(f"¡AppImage generado exitosamente!: {final_output} ({final_output.stat().st_size / (1024 * 1024):.1f} MB)")
 	return final_output
 
 
@@ -240,8 +242,12 @@ def main():
 	parser = argparse.ArgumentParser(description="Compila el paquete Linux AppImage de La Rockola del Carpincho")
 	parser.add_argument("--rebuild-frontend", action="store_true", help="Fuerza la recompilación del frontend con Vite")
 	parser.add_argument("--clean", action="store_true", help="Limpia temporales antes de compilar")
-	parser.add_argument("--no-appimage", action="store_true", help="Solo genera el AppDir sin crear el archivo .AppImage")
-	parser.add_argument("--skip-pyinstaller", action="store_true", help="Usa el ejecutable existente en dist_bin/ si ya está compilado")
+	parser.add_argument(
+		"--no-appimage", action="store_true", help="Solo genera el AppDir sin crear el archivo .AppImage"
+	)
+	parser.add_argument(
+		"--skip-pyinstaller", action="store_true", help="Usa el ejecutable existente en dist_bin/ si ya está compilado"
+	)
 	args = parser.parse_args()
 
 	if args.clean:

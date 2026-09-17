@@ -101,9 +101,7 @@ def test_websocket_local_player_time_drift_reconciliation(clean_state, clean_man
 
 		assert clean_state.time_pos == 40.0
 		assert clean_state.last_seek_drift == 27.0
-		clean_state.mpv._send.assert_called_once_with(
-			json.dumps({"command": ["seek", 40.0, "absolute"]})
-		)
+		clean_state.mpv._send.assert_called_once_with(json.dumps({"command": ["seek", 40.0, "absolute"]}))
 
 		# 3. Subsequent small drift change from same offset (diff change <= 1.0s) -> No duplicate seek spam
 		clean_state.time_pos = 13.0
@@ -216,4 +214,3 @@ async def test_local_player_ignores_mpv_mute_and_volume_events(clean_state, clea
 
 	await clean_state.handle_volume_update(50)
 	assert clean_state.volume == 50
-

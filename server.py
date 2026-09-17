@@ -152,8 +152,8 @@ def find_system_librosa_python(force: bool = False) -> str | None:
 			if res.returncode == 0:
 				_system_librosa_python = cand
 				return _system_librosa_python
-		except Exception:
-			continue
+		except (OSError, subprocess.SubprocessError):
+			pass
 
 	_system_librosa_python = None
 	return None
@@ -361,13 +361,11 @@ import argparse
 import asyncio
 import gc
 import hashlib
-import json
 import logging
 import random
 import re
 import socket
 import sqlite3
-import subprocess
 import tempfile
 import time
 import warnings
@@ -1453,6 +1451,7 @@ class Track:
 		"""
 		# 1. Si librosa está disponible en el proceso actual (ej: ejecución directa con python3)
 		if importlib.util.find_spec("librosa") is not None:
+
 			def _do_librosa_work():
 				import librosa
 				import numpy as np
@@ -2212,7 +2211,9 @@ class APIState:
 			"dj_next_track": clean_dj_next,
 			"duration": self.duration,
 			"favorites": active_favs,
-			"has_librosa": (importlib.util.find_spec("librosa") is not None or find_system_librosa_python() is not None),
+			"has_librosa": (
+				importlib.util.find_spec("librosa") is not None or find_system_librosa_python() is not None
+			),
 			"history": list(self.history),
 			"is_scanning": self.is_scanning,
 			"local_ip": self.local_ip,

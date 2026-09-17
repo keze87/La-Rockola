@@ -173,5 +173,3 @@ async def test_mpv_start_passes_clean_env():
 		await mpv.start()
 		mock_clean.assert_called()
 		assert mock_exec.call_args[1]["env"]["MOCK_CLEAN_ENV"] == "1"
-
-

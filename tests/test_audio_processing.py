@@ -233,4 +233,3 @@ def test_extract_mood_no_librosa_available(tmp_path):
 		assert track.bpm == 0.0
 		assert track.energy == 0.0
 		assert track.spectral_centroid == 0.0
-

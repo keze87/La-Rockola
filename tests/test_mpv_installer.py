@@ -74,7 +74,11 @@ def test_fetch_release_info_api_success():
 	fake_response_data = {
 		"tag_name": "v0.41.0",
 		"assets": [
-			{"name": "mpv-v0.41.0-x86_64-w64-mingw32.zip", "browser_download_url": "http://test.com/mpv.zip", "size": 100}
+			{
+				"name": "mpv-v0.41.0-x86_64-w64-mingw32.zip",
+				"browser_download_url": "http://test.com/mpv.zip",
+				"size": 100,
+			}
 		],
 	}
 
@@ -178,9 +182,7 @@ def test_install_mpv_full_flow(tmp_path):
 	# Mock release info
 	fake_info = {
 		"tag": "v0.41.0",
-		"assets": [
-			{"name": "mpv-v0.41.0-x86_64-w64-mingw32.zip", "url": "http://fake.url/mpv.zip", "size": 100}
-		],
+		"assets": [{"name": "mpv-v0.41.0-x86_64-w64-mingw32.zip", "url": "http://fake.url/mpv.zip", "size": 100}],
 	}
 
 	def fake_download(url, dest_path, log_fn=None):
@@ -188,8 +190,9 @@ def test_install_mpv_full_flow(tmp_path):
 			zf.writestr("mpv.exe", "fake_binary")
 			zf.writestr("avutil.dll", "dll_binary")
 
-	with patch("mpv_installer.fetch_release_info", return_value=fake_info), patch(
-		"mpv_installer.download_asset", side_effect=fake_download
+	with (
+		patch("mpv_installer.fetch_release_info", return_value=fake_info),
+		patch("mpv_installer.download_asset", side_effect=fake_download),
 	):
 		res = mpv_installer.install_mpv(
 			target_dir=dest_dir,
@@ -220,9 +223,10 @@ def test_server_check_dependencies_triggers_mpv_install(monkeypatch, tmp_path):
 	monkeypatch.setattr(server, "find_binary", fake_find)
 	monkeypatch.setattr("server.importlib.util.find_spec", lambda mod: True)
 
-	with patch("mpv_installer.install_mpv", return_value=fake_mpv.parent) as mock_install, patch(
-		"sys.exit"
-	) as mock_exit:
+	with (
+		patch("mpv_installer.install_mpv", return_value=fake_mpv.parent) as mock_install,
+		patch("sys.exit") as mock_exit,
+	):
 		server.check_dependencies(force=True)
 		mock_install.assert_called_once()
 		mock_exit.assert_not_called()
@@ -321,9 +325,11 @@ def test_update_mpv_already_up_to_date(tmp_path, monkeypatch):
 	fake_bin = managed_dir / "mpv.exe"
 	fake_bin.touch()
 
-	with patch("mpv_installer.get_installed_mpv_version", return_value="0.41.0"), patch(
-		"mpv_installer.fetch_release_info", return_value={"tag": "v0.41.0", "assets": []}
-	), patch("mpv_installer.install_mpv") as mock_install:
+	with (
+		patch("mpv_installer.get_installed_mpv_version", return_value="0.41.0"),
+		patch("mpv_installer.fetch_release_info", return_value={"tag": "v0.41.0", "assets": []}),
+		patch("mpv_installer.install_mpv") as mock_install,
+	):
 		res = mpv_installer.update_mpv(bin_path=fake_bin, force=True)
 		assert res is True
 		mock_install.assert_not_called()
@@ -337,9 +343,11 @@ def test_update_mpv_triggers_install_on_newer_version(tmp_path, monkeypatch):
 	fake_bin = managed_dir / "mpv.exe"
 	fake_bin.touch()
 
-	with patch("mpv_installer.get_installed_mpv_version", return_value="0.40.0"), patch(
-		"mpv_installer.fetch_release_info", return_value={"tag": "v0.41.0", "assets": []}
-	), patch("mpv_installer.install_mpv", return_value=managed_dir) as mock_install:
+	with (
+		patch("mpv_installer.get_installed_mpv_version", return_value="0.40.0"),
+		patch("mpv_installer.fetch_release_info", return_value={"tag": "v0.41.0", "assets": []}),
+		patch("mpv_installer.install_mpv", return_value=managed_dir) as mock_install,
+	):
 		res = mpv_installer.update_mpv(bin_path=fake_bin, force=True)
 		assert res is True
 		mock_install.assert_called_once_with(target_dir=managed_dir, log_fn=mpv_installer.default_logger)

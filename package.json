@@ -6,6 +6,8 @@
 	"scripts": {
 		"build": "vue-tsc --noEmit && vite build",
 		"dev": "vite",
+		"format": "prettier --write .",
+		"format:check": "prettier --check .",
 		"lint:fix": "eslint . --ext .ts,.vue --fix",
 		"lint": "eslint . --ext .ts,.vue --max-warnings 0",
 		"preview": "vite preview",

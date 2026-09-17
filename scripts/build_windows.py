@@ -101,10 +101,12 @@ def run_pyinstaller():
 			shutil.move(alt_path, exe_path)
 
 	if not exe_path.exists():
-		print(f"Error: No se encontró el ejecutable en {exe_path} (código de salida: {res.returncode})", file=sys.stderr)
+		print(
+			f"Error: No se encontró el ejecutable en {exe_path} (código de salida: {res.returncode})", file=sys.stderr
+		)
 		sys.exit(1)
 
-	log(f"Ejecutable Windows generado correctamente: {exe_path} ({exe_path.stat().st_size / (1024*1024):.1f} MB)")
+	log(f"Ejecutable Windows generado correctamente: {exe_path} ({exe_path.stat().st_size / (1024 * 1024):.1f} MB)")
 	return exe_path
 
 
@@ -186,7 +188,7 @@ pause
 			arcname = item.relative_to(package_dir)
 			zf.write(item, arcname)
 
-	log(f"Paquete de lanzamiento listo: {zip_path} ({zip_path.stat().st_size / (1024*1024):.1f} MB)")
+	log(f"Paquete de lanzamiento listo: {zip_path} ({zip_path.stat().st_size / (1024 * 1024):.1f} MB)")
 
 
 def main():
