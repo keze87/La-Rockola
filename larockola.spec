@@ -37,6 +37,9 @@ hiddenimports = [
     "pydantic",
     "fastapi",
     "starlette",
+    "scripts",
+    "scripts.mpv_installer",
+    "scripts.ytdlp_installer",
     "mpv_installer",
     "ytdlp_installer",
 ]

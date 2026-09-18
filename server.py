@@ -18,9 +18,18 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+if sys.platform == "win32":
+	try:
+		if hasattr(sys.stdout, "reconfigure"):
+			sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+		if hasattr(sys.stderr, "reconfigure"):
+			sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+	except Exception:
+		pass
 
 if __name__ == "__main__":
 	sys.modules["server"] = sys.modules[__name__]
+
 
 
 def enable_system_site_packages() -> None:
@@ -224,7 +233,10 @@ def _check_mpv(is_win: bool, is_mac: bool, is_frozen: bool) -> tuple[str, str] |
 					"🦦 ¡Opa! No se encontró MPV instalado. Intentando descargarlo automáticamente...",
 					file=sys.stderr,
 				)
-				import mpv_installer
+				try:
+					from scripts import mpv_installer
+				except ImportError:
+					import mpv_installer
 
 				installed = mpv_installer.install_mpv(log_fn=lambda m: print(f"  {m}", file=sys.stderr))
 				if installed and find_binary("mpv"):
@@ -241,7 +253,10 @@ def _check_mpv(is_win: bool, is_mac: bool, is_frozen: bool) -> tuple[str, str] |
 
 	if is_portable:
 		try:
-			import mpv_installer
+			try:
+				from scripts import mpv_installer
+			except ImportError:
+				import mpv_installer
 
 			if mpv_installer.is_rockola_managed(mpv_bin):
 				mpv_installer.update_mpv(bin_path=mpv_bin, log_fn=lambda m: print(f"  {m}", file=sys.stderr))
@@ -259,7 +274,10 @@ def _check_ytdlp(is_win: bool, is_mac: bool, is_frozen: bool) -> tuple[str, str]
 	is_portable = is_win or is_mac or is_frozen
 	if is_portable:
 		try:
-			import ytdlp_installer
+			try:
+				from scripts import ytdlp_installer
+			except ImportError:
+				import ytdlp_installer
 
 			installed = ytdlp_installer.install_ytdlp(log_fn=lambda m: print(f"  {m}", file=sys.stderr))
 			if installed and find_binary("yt-dlp"):
@@ -2701,6 +2719,10 @@ class APIState:
 		if not ytdlp_bin:
 			try:
 				import ytdlp_installer
+				try:
+					from scripts import ytdlp_installer
+				except ImportError:
+					import ytdlp_installer
 
 				logger.info("yt-dlp no encontrado para procesar link de YouTube. Intentando instalar...")
 				loop = asyncio.get_running_loop()
@@ -3137,6 +3159,10 @@ async def lifespan(app: FastAPI):
 	async def _bg_update_ytdlp():
 		try:
 			import ytdlp_installer
+			try:
+				from scripts import ytdlp_installer
+			except ImportError:
+				import ytdlp_installer
 
 			loop = asyncio.get_running_loop()
 			await loop.run_in_executor(None, ytdlp_installer.update_ytdlp)
@@ -3895,13 +3921,23 @@ if __name__ == "__main__":
 	# Cargar configuración existente o por defecto
 	config = load_config(config_path)
 
-	# Ejecutar asistente si es la primera vez (en terminal interactivo) o si se pidió --setup
-	should_run_wizard = args.setup or (not config_exists and not args.no_interactive and sys.stdin.isatty())
+	# Ejecutar asistente si se pidió --setup, o si es la primera vez (en terminal interactivo) y NO se especificó carpeta
+	should_run_wizard = args.setup or (
+		not config_exists and not args.no_interactive and sys.stdin.isatty() and not args.dir
+	)
 
 	if should_run_wizard:
 		config = run_interactive_wizard(config_path, config)
 	elif not config_exists:
-		# Si no es interactivo pero no existía config, guardamos la configuración inicial
+		# Si no existía config, guardamos la configuración inicial incluyendo parámetros dados por CLI
+		if args.dir:
+			config["music_dir"] = str(Path(args.dir).expanduser().resolve())
+		if args.dir2:
+			config["music_dir2"] = str(Path(args.dir2).expanduser().resolve())
+		if args.port is not None:
+			config["port"] = args.port
+		if args.host is not None:
+			config["host"] = args.host
 		save_config(config_path, config)
 
 	# Los argumentos pasados explícitamente por CLI tienen prioridad sobre el archivo de configuración

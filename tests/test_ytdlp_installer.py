@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import server
-import ytdlp_installer
+from scripts import ytdlp_installer
 
 
 def test_get_ytdlp_asset_name():
@@ -27,7 +27,7 @@ def test_install_ytdlp(tmp_path):
 		dest_path.parent.mkdir(parents=True, exist_ok=True)
 		dest_path.write_text("fake yt-dlp binary")
 
-	with patch("ytdlp_installer.download_file", side_effect=fake_download):
+	with patch("scripts.ytdlp_installer.download_file", side_effect=fake_download):
 		res = ytdlp_installer.install_ytdlp(target_dir=dest_dir, platform_name="windows", arch="x86_64")
 		assert res is not None
 		assert res.name == "yt-dlp.exe"
@@ -47,7 +47,7 @@ def test_ensure_ytdlp_installs_when_missing(tmp_path):
 	with (
 		patch("server.find_binary", return_value=None),
 		patch("shutil.which", return_value=None),
-		patch("ytdlp_installer.install_ytdlp", return_value=fake_bin),
+		patch("scripts.ytdlp_installer.install_ytdlp", return_value=fake_bin),
 	):
 		res = ytdlp_installer.ensure_ytdlp()
 		assert res == str(fake_bin)
@@ -120,7 +120,7 @@ async def test_fetch_yt_dlp_metadata_invokes_ensure_ytdlp(tmp_path):
 	# find_binary returns None first
 	with (
 		patch("server.find_binary", return_value=None),
-		patch("ytdlp_installer.ensure_ytdlp", return_value=fake_bin) as mock_ensure,
+		patch("scripts.ytdlp_installer.ensure_ytdlp", return_value=fake_bin) as mock_ensure,
 		patch("asyncio.create_subprocess_exec") as mock_exec,
 	):
 		mock_proc = AsyncMock()
@@ -152,6 +152,6 @@ def test_check_dependencies_installs_ytdlp_on_windows(monkeypatch, tmp_path):
 	monkeypatch.setattr(server, "find_binary", fake_find)
 	monkeypatch.setattr("server.importlib.util.find_spec", lambda mod: True)
 
-	with patch("ytdlp_installer.install_ytdlp", return_value=fake_bin) as mock_install:
+	with patch("scripts.ytdlp_installer.install_ytdlp", return_value=fake_bin) as mock_install:
 		server.check_dependencies(force=True)
 		mock_install.assert_called_once()

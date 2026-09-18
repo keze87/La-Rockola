@@ -135,6 +135,7 @@ def is_rockola_managed(bin_path: str | Path) -> bool:
 
 	# 2. Ubicado dentro del directorio base de la aplicación (ej. en base / "mpv")
 	base = (Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent).resolve()
+	base = (Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent).resolve()
 	try:
 		path.relative_to(base)
 		return True
@@ -349,6 +350,7 @@ def extract_mpv_zip(zip_path: Path, target_dir: Path, log_fn=default_logger) -> 
 def get_default_install_dir() -> Path:
 	"""Determina el directorio por defecto donde instalar MPV (portable o datos de usuario)."""
 	base = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+	base = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
 
 	# Probar si el directorio base es escribible (modo portable)
 	try:

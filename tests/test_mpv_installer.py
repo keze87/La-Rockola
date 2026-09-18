@@ -6,7 +6,7 @@ import urllib.error
 import zipfile
 from unittest.mock import MagicMock, patch
 
-import mpv_installer
+from scripts import mpv_installer
 import server
 
 
@@ -165,7 +165,7 @@ def test_ensure_mpv_already_exists(tmp_path):
 	dest_dir.mkdir()
 	(dest_dir / "mpv.exe").write_text("existing")
 
-	with patch("mpv_installer.install_mpv") as mock_install:
+	with patch("scripts.mpv_installer.install_mpv") as mock_install:
 		res = mpv_installer.ensure_mpv(target_dir=dest_dir)
 		assert res == dest_dir
 		mock_install.assert_not_called()
@@ -191,8 +191,8 @@ def test_install_mpv_full_flow(tmp_path):
 			zf.writestr("avutil.dll", "dll_binary")
 
 	with (
-		patch("mpv_installer.fetch_release_info", return_value=fake_info),
-		patch("mpv_installer.download_asset", side_effect=fake_download),
+		patch("scripts.mpv_installer.fetch_release_info", return_value=fake_info),
+		patch("scripts.mpv_installer.download_asset", side_effect=fake_download),
 	):
 		res = mpv_installer.install_mpv(
 			target_dir=dest_dir,
@@ -224,7 +224,7 @@ def test_server_check_dependencies_triggers_mpv_install(monkeypatch, tmp_path):
 	monkeypatch.setattr("server.importlib.util.find_spec", lambda mod: True)
 
 	with (
-		patch("mpv_installer.install_mpv", return_value=fake_mpv.parent) as mock_install,
+		patch("scripts.mpv_installer.install_mpv", return_value=fake_mpv.parent) as mock_install,
 		patch("sys.exit") as mock_exit,
 	):
 		server.check_dependencies(force=True)
@@ -305,14 +305,14 @@ def test_update_mpv_cooldown(tmp_path, monkeypatch):
 
 	(managed_dir / ".last_mpv_update_check").write_text(str(time.time()))
 
-	with patch("mpv_installer.fetch_release_info") as mock_fetch:
+	with patch("scripts.mpv_installer.fetch_release_info") as mock_fetch:
 		# Within cooldown, force=False -> returns True immediately without network call
 		assert mpv_installer.update_mpv(bin_path=fake_bin, force=False) is True
 		mock_fetch.assert_not_called()
 
 		# force=True -> bypasses cooldown and calls fetch_release_info
 		mock_fetch.return_value = {"tag": "v0.41.0", "assets": []}
-		with patch("mpv_installer.get_installed_mpv_version", return_value="0.41.0"):
+		with patch("scripts.mpv_installer.get_installed_mpv_version", return_value="0.41.0"):
 			assert mpv_installer.update_mpv(bin_path=fake_bin, force=True) is True
 			mock_fetch.assert_called_once()
 
@@ -326,9 +326,9 @@ def test_update_mpv_already_up_to_date(tmp_path, monkeypatch):
 	fake_bin.touch()
 
 	with (
-		patch("mpv_installer.get_installed_mpv_version", return_value="0.41.0"),
-		patch("mpv_installer.fetch_release_info", return_value={"tag": "v0.41.0", "assets": []}),
-		patch("mpv_installer.install_mpv") as mock_install,
+		patch("scripts.mpv_installer.get_installed_mpv_version", return_value="0.41.0"),
+		patch("scripts.mpv_installer.fetch_release_info", return_value={"tag": "v0.41.0", "assets": []}),
+		patch("scripts.mpv_installer.install_mpv") as mock_install,
 	):
 		res = mpv_installer.update_mpv(bin_path=fake_bin, force=True)
 		assert res is True
@@ -344,9 +344,9 @@ def test_update_mpv_triggers_install_on_newer_version(tmp_path, monkeypatch):
 	fake_bin.touch()
 
 	with (
-		patch("mpv_installer.get_installed_mpv_version", return_value="0.40.0"),
-		patch("mpv_installer.fetch_release_info", return_value={"tag": "v0.41.0", "assets": []}),
-		patch("mpv_installer.install_mpv", return_value=managed_dir) as mock_install,
+		patch("scripts.mpv_installer.get_installed_mpv_version", return_value="0.40.0"),
+		patch("scripts.mpv_installer.fetch_release_info", return_value={"tag": "v0.41.0", "assets": []}),
+		patch("scripts.mpv_installer.install_mpv", return_value=managed_dir) as mock_install,
 	):
 		res = mpv_installer.update_mpv(bin_path=fake_bin, force=True)
 		assert res is True
@@ -366,6 +366,6 @@ def test_server_check_dependencies_triggers_mpv_update(monkeypatch, tmp_path):
 	monkeypatch.setattr(server, "find_binary", lambda b: str(fake_mpv) if b == "mpv" else None)
 	monkeypatch.setattr("server.importlib.util.find_spec", lambda mod: True)
 
-	with patch("mpv_installer.update_mpv") as mock_update:
+	with patch("scripts.mpv_installer.update_mpv") as mock_update:
 		server.check_dependencies(force=True)
 		mock_update.assert_called_once()

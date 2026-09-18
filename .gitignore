@@ -34,6 +34,7 @@ build/
 dist_bin/
 release/
 rockola_config.json
+mpv/
 DB/
 *.db
 *.db-journal

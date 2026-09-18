@@ -94,13 +94,18 @@ def get_default_install_dir() -> Path:
 
 	# 2. Si no, consultar el directorio por defecto de mpv_installer (mpv/ o datos de usuario)
 	try:
-		import mpv_installer
+		from scripts import mpv_installer
 
 		return mpv_installer.get_default_install_dir()
 	except Exception:
-		pass
+		try:
+			import mpv_installer
 
-	base = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+			return mpv_installer.get_default_install_dir()
+		except Exception:
+			pass
+
+	base = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
 	if (base / "mpv").is_dir():
 		return base / "mpv"
 	return base
@@ -120,6 +125,7 @@ def is_rockola_managed(bin_path: str | Path) -> bool:
 
 	# 2. Ubicado dentro del directorio base de la aplicación (ej. en mpv/)
 	base = (Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent).resolve()
+	base = (Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent).resolve()
 	try:
 		path.relative_to(base)
 		return True

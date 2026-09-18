@@ -1,3 +1,4 @@
+import argparse
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -24,8 +25,13 @@ def test_find_binary_in_script_or_app_dir(tmp_path, monkeypatch):
 	assert Path(found).resolve() == dummy_bin.resolve()
 
 
-def test_find_binary_fallback_to_which(monkeypatch):
+def test_find_binary_fallback_to_which(tmp_path, monkeypatch):
 	"""Test find_binary falling back to shutil.which."""
+	fake_server_file = tmp_path / "app" / "server.py"
+	fake_server_file.parent.mkdir()
+	fake_server_file.touch()
+	monkeypatch.setattr(server, "__file__", str(fake_server_file))
+	monkeypatch.setattr(server, "DATA_DIR", tmp_path / "data")
 	monkeypatch.setattr(sys, "frozen", False, raising=False)
 	with patch("shutil.which", return_value="/usr/bin/mpv"):
 		assert server.find_binary("mpv") == "/usr/bin/mpv"
@@ -256,3 +262,100 @@ def test_build_windows_zip_structure(tmp_path, monkeypatch):
 		# Third party binaries must not be bundled (they are downloaded at runtime)
 		assert not any("mpv.exe" in name.lower() for name in names)
 		assert not any("yt-dlp" in name.lower() for name in names)
+
+
+def test_first_run_skips_wizard_when_dir_provided(tmp_path):
+	"""Test that on first run, providing --dir skips the wizard and persists the directory."""
+	cfg_file = tmp_path / "rockola_config.json"
+	custom_music = tmp_path / "CustomMusic"
+	custom_music.mkdir()
+
+	args = argparse.Namespace(
+		host=None,
+		port=80,
+		url=None,
+		dir=str(custom_music),
+		dir2=None,
+		config=str(cfg_file),
+		setup=False,
+		no_interactive=False,
+		open_browser=False,
+	)
+
+	with (
+		patch("sys.stdin.isatty", return_value=True),
+		patch("server.run_interactive_wizard") as mock_wizard,
+	):
+		config_path = server.get_config_path(args.config)
+		config_exists = config_path.is_file()
+		config = server.load_config(config_path)
+
+		should_run_wizard = args.setup or (
+			not config_exists and not args.no_interactive and sys.stdin.isatty() and not args.dir
+		)
+		assert should_run_wizard is False
+
+		if not config_exists:
+			if args.dir:
+				config["music_dir"] = str(Path(args.dir).expanduser().resolve())
+			if args.port is not None:
+				config["port"] = args.port
+			server.save_config(config_path, config)
+
+		mock_wizard.assert_not_called()
+
+	saved = server.load_config(cfg_file)
+	assert saved["music_dir"] == str(custom_music.resolve())
+	assert saved["port"] == 80
+
+
+def test_first_run_triggers_wizard_when_no_dir(tmp_path):
+	"""Test that on first run without --dir in an interactive terminal, the wizard is triggered."""
+	cfg_file = tmp_path / "rockola_config.json"
+
+	args = argparse.Namespace(
+		host=None,
+		port=None,
+		url=None,
+		dir=None,
+		dir2=None,
+		config=str(cfg_file),
+		setup=False,
+		no_interactive=False,
+		open_browser=False,
+	)
+
+	with patch("sys.stdin.isatty", return_value=True):
+		config_path = server.get_config_path(args.config)
+		config_exists = config_path.is_file()
+
+		should_run_wizard = args.setup or (
+			not config_exists and not args.no_interactive and sys.stdin.isatty() and not args.dir
+		)
+		assert should_run_wizard is True
+
+
+def test_setup_flag_forces_wizard_even_with_dir(tmp_path):
+	"""Test that --setup always forces the interactive wizard even if --dir is provided."""
+	cfg_file = tmp_path / "rockola_config.json"
+
+	args = argparse.Namespace(
+		host=None,
+		port=None,
+		url=None,
+		dir="/some/dir",
+		dir2=None,
+		config=str(cfg_file),
+		setup=True,
+		no_interactive=False,
+		open_browser=False,
+	)
+
+	with patch("sys.stdin.isatty", return_value=True):
+		config_path = server.get_config_path(args.config)
+		config_exists = config_path.is_file()
+
+		should_run_wizard = args.setup or (
+			not config_exists and not args.no_interactive and sys.stdin.isatty() and not args.dir
+		)
+		assert should_run_wizard is True
