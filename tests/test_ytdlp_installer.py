@@ -1,4 +1,5 @@
 import sys
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -32,6 +33,34 @@ def test_install_ytdlp(tmp_path):
 		assert res is not None
 		assert res.name == "yt-dlp.exe"
 		assert res.is_file()
+
+
+def test_install_ytdlp_skips_when_already_installed(tmp_path):
+	dest_dir = tmp_path / "bin"
+	dest_dir.mkdir(parents=True, exist_ok=True)
+	existing_bin = dest_dir / "yt-dlp.exe"
+	existing_bin.write_text("existing binary content")
+
+	with patch("scripts.ytdlp_installer.download_file") as mock_download:
+		res = ytdlp_installer.install_ytdlp(target_dir=dest_dir, platform_name="windows", arch="x86_64", force=False)
+		assert res == existing_bin
+		mock_download.assert_not_called()
+
+
+def test_install_ytdlp_reinstalls_when_force(tmp_path):
+	dest_dir = tmp_path / "bin"
+	dest_dir.mkdir(parents=True, exist_ok=True)
+	existing_bin = dest_dir / "yt-dlp.exe"
+	existing_bin.write_text("old content")
+
+	def fake_download(url, dest_path, log_fn=None):
+		dest_path.write_text("new content")
+
+	with patch("scripts.ytdlp_installer.download_file", side_effect=fake_download) as mock_download:
+		res = ytdlp_installer.install_ytdlp(target_dir=dest_dir, platform_name="windows", arch="x86_64", force=True)
+		assert res == existing_bin
+		mock_download.assert_called_once()
+		assert existing_bin.read_text() == "new content"
 
 
 def test_ensure_ytdlp_existing():
@@ -155,3 +184,64 @@ def test_check_dependencies_installs_ytdlp_on_windows(monkeypatch, tmp_path):
 	with patch("scripts.ytdlp_installer.install_ytdlp", return_value=fake_bin) as mock_install:
 		server.check_dependencies(force=True)
 		mock_install.assert_called_once()
+
+
+def test_find_binary_in_python_scripts(monkeypatch, tmp_path):
+	"""Test find_binary discovers binaries located in Python's Scripts/ directory."""
+	fake_scripts = tmp_path / "Scripts"
+	fake_scripts.mkdir()
+	fake_ytdlp = fake_scripts / "yt-dlp.exe"
+	fake_ytdlp.touch()
+
+	monkeypatch.setattr(sys, "prefix", str(tmp_path))
+	monkeypatch.setattr(sys, "platform", "win32")
+	monkeypatch.setattr("shutil.which", lambda name: None)
+
+	found = server.find_binary("yt-dlp")
+	assert found == str(fake_ytdlp)
+
+
+def test_find_binary_in_scoop_shims(monkeypatch, tmp_path):
+	"""Test find_binary discovers binaries located in Scoop shims."""
+	fake_env = tmp_path / "dummy_env"
+	fake_env.mkdir()
+	monkeypatch.setattr(sys, "prefix", str(fake_env))
+	monkeypatch.setattr(sys, "exec_prefix", str(fake_env))
+	monkeypatch.setattr(sys, "executable", str(fake_env / "python.exe"))
+
+	fake_shims = tmp_path / "scoop" / "shims"
+	fake_shims.mkdir(parents=True)
+	fake_ytdlp = fake_shims / "yt-dlp.exe"
+	fake_ytdlp.touch()
+
+	monkeypatch.setattr(Path, "home", lambda: tmp_path)
+	monkeypatch.setattr(sys, "platform", "win32")
+	monkeypatch.setattr("shutil.which", lambda name: None)
+
+	found = server.find_binary("yt-dlp")
+	assert found == str(fake_ytdlp)
+
+
+def test_find_binary_next_to_mpv(monkeypatch, tmp_path):
+	"""Test find_binary discovers yt-dlp in the same directory as mpv."""
+	fake_env = tmp_path / "dummy_env"
+	fake_env.mkdir()
+	monkeypatch.setattr(sys, "prefix", str(fake_env))
+	monkeypatch.setattr(sys, "exec_prefix", str(fake_env))
+	monkeypatch.setattr(sys, "executable", str(fake_env / "python.exe"))
+	monkeypatch.setattr(Path, "home", lambda: tmp_path / "empty_home")
+
+	fake_mpv_dir = tmp_path / "custom_mpv"
+	fake_mpv_dir.mkdir()
+	fake_mpv = fake_mpv_dir / "mpv.exe"
+	fake_mpv.touch()
+	fake_ytdlp = fake_mpv_dir / "yt-dlp.exe"
+	fake_ytdlp.touch()
+
+	monkeypatch.setattr(sys, "platform", "win32")
+	# shutil.which finds mpv, but not yt-dlp
+	monkeypatch.setattr("shutil.which", lambda name: str(fake_mpv) if "mpv" in name else None)
+
+	found = server.find_binary("yt-dlp")
+	assert found == str(fake_ytdlp)
+

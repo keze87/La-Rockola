@@ -178,6 +178,7 @@ def install_ytdlp(
 	target_dir: Path | None = None,
 	platform_name: str | None = None,
 	arch: str | None = None,
+	force: bool = False,
 	log_fn=default_logger,
 ) -> Path | None:
 	"""
@@ -192,6 +193,10 @@ def install_ytdlp(
 
 	binary_name = "yt-dlp.exe" if (plat == "windows" or os.name == "nt") else "yt-dlp"
 	final_path = dest_dir / binary_name
+
+	if not force and final_path.is_file() and final_path.stat().st_size > 0:
+		log_fn(f"yt-dlp ya está disponible en {final_path}. Usá force=True para reinstalar.")
+		return final_path
 
 	try:
 		log_fn(f"Descargando yt-dlp desde {url}...")
@@ -238,11 +243,13 @@ def ensure_ytdlp(log_fn=default_logger) -> str | None:
 		existing = server.find_binary("yt-dlp")
 	except Exception:
 		existing = shutil.which("yt-dlp")
+		existing = shutil.which("yt-dlp") or shutil.which("yt-dlp.exe")
 
 	if existing:
 		return existing
 
 	installed = install_ytdlp(log_fn=log_fn)
+	installed = install_ytdlp(force=False, log_fn=log_fn)
 	return str(installed) if installed else None
 
 
@@ -315,6 +322,14 @@ def update_ytdlp(bin_path: str | None = None, log_fn=default_logger) -> bool:
 if __name__ == "__main__":
 	target = Path(sys.argv[1]) if len(sys.argv) > 1 else None
 	res = install_ytdlp(target_dir=target)
+	import argparse
+
+	parser = argparse.ArgumentParser(description="Instalador y actualizador automático de yt-dlp")
+	parser.add_argument("target_dir", nargs="?", type=Path, default=None, help="Directorio destino de instalación")
+	parser.add_argument("--force", action="store_true", help="Forzar reinstalación aunque ya exista")
+	args = parser.parse_args()
+
+	res = install_ytdlp(target_dir=args.target_dir, force=args.force)
 	if res:
 		print(f"yt-dlp listo en: {res}")
 		sys.exit(0)

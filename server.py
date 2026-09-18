@@ -169,22 +169,92 @@ def find_system_librosa_python(force: bool = False) -> str | None:
 
 
 def find_binary(bin_name: str) -> str | None:
-	"""Busca un binario en la carpeta del ejecutable/script, subdirectorios locales o en el PATH del sistema."""
+	"""Busca un binario en la carpeta del ejecutable/script, subdirectorios locales, gestores de paquetes o en el PATH del sistema."""
+	is_win = sys.platform == "win32" or os.name == "nt"
 	base = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
-	exts = [".exe", ""] if (sys.platform == "win32" or os.name == "nt") else [""]
+	exts = [".exe", ""] if is_win else [""]
 
-	dirs = [base, base / "bin", base / "mpv", base / bin_name]
+	dirs: list[Path] = [base, base / "bin", base / "mpv", base / bin_name]
 	if "DATA_DIR" in globals() and isinstance(globals()["DATA_DIR"], Path):
 		d = globals()["DATA_DIR"]
 		dirs.extend([d, d / "bin", d / "mpv", d / bin_name, d.parent / "mpv", d.parent / bin_name])
 
+	# 1. Buscar en directorios locales prioritarios de la aplicación
 	for d in dirs:
 		for ext in exts:
 			cand = d / f"{bin_name}{ext}"
 			if cand.is_file():
 				return str(cand)
 
-	return shutil.which(bin_name)
+	# 2. Buscar en el PATH estándar del sistema
+	found = shutil.which(bin_name)
+	if not found and is_win and not bin_name.lower().endswith(".exe"):
+		found = shutil.which(f"{bin_name}.exe")
+	if found:
+		return found
+
+	# 3. Si buscamos yt-dlp, verificar si está en la misma carpeta que mpv (convención muy común)
+	if bin_name == "yt-dlp":
+		try:
+			mpv_found = shutil.which("mpv") or (shutil.which("mpv.exe") if is_win else None)
+			if mpv_found:
+				mpv_dir = Path(mpv_found).parent
+				for ext in exts:
+					cand = mpv_dir / f"{bin_name}{ext}"
+					if cand.is_file():
+						return str(cand)
+		except Exception:
+			pass
+
+	# 4. Entorno de Python (Scripts / bin) donde pip instala herramientas como yt-dlp
+	py_scripts = "Scripts" if is_win else "bin"
+	py_dirs = [
+		Path(sys.prefix) / py_scripts,
+		Path(sys.exec_prefix) / py_scripts,
+		Path(sys.executable).parent / py_scripts,
+	]
+	try:
+		import site
+
+		user_base = getattr(site, "USER_BASE", None)
+		if user_base:
+			py_dirs.append(Path(user_base) / py_scripts)
+	except Exception:
+		pass
+
+	for pd in py_dirs:
+		for ext in exts:
+			cand = pd / f"{bin_name}{ext}"
+			if cand.is_file():
+				return str(cand)
+
+	# 5. En Windows: Gestores de paquetes populares (Scoop, WinGet, Chocolatey)
+	if is_win:
+		home = Path.home()
+		mgr_dirs = [
+			home / "scoop" / "shims",
+			home / "scoop" / "apps" / bin_name / "current",
+			home / "scoop" / "apps" / "python" / "current" / "Scripts",
+			home / "scoop" / "apps" / "mpv" / "current",
+		]
+		prog_data = os.environ.get("ProgramData", "C:\\ProgramData")
+		mgr_dirs.append(Path(prog_data) / "scoop" / "shims")
+
+		local_app_data = os.environ.get("LOCALAPPDATA")
+		if local_app_data:
+			mgr_dirs.append(Path(local_app_data) / "Microsoft" / "WinGet" / "Links")
+
+		choco = os.environ.get("ChocolateyInstall", os.path.join(prog_data, "chocolatey"))
+		if choco:
+			mgr_dirs.append(Path(choco) / "bin")
+
+		for md in mgr_dirs:
+			for ext in exts:
+				cand = md / f"{bin_name}{ext}"
+				if cand.is_file():
+					return str(cand)
+
+	return None
 
 
 _dependencies_checked = False
@@ -279,7 +349,7 @@ def _check_ytdlp(is_win: bool, is_mac: bool, is_frozen: bool) -> tuple[str, str]
 			except ImportError:
 				import ytdlp_installer
 
-			installed = ytdlp_installer.install_ytdlp(log_fn=lambda m: print(f"  {m}", file=sys.stderr))
+			installed = ytdlp_installer.install_ytdlp(force=False, log_fn=lambda m: print(f"  {m}", file=sys.stderr))
 			if installed and find_binary("yt-dlp"):
 				print("🦦 ¡yt-dlp instalado con éxito para temas de YouTube! 🧉🎶\n", file=sys.stderr)
 				return None
@@ -1751,6 +1821,14 @@ class AsyncMpvController:
 				f"--{'quiet' if show_window else 'no-audio-display'}",
 				f"--input-ipc-server={self.socket_path}",
 			]
+
+			ytdlp_bin = find_binary("yt-dlp")
+			if ytdlp_bin:
+				mpv_args.append(f"--script-opts-append=ytdl_hook-ytdl_path={ytdlp_bin}")
+				ytdlp_dir = str(Path(ytdlp_bin).parent)
+				current_path = env.get("PATH", "")
+				if ytdlp_dir not in current_path.split(os.pathsep):
+					env["PATH"] = f"{ytdlp_dir}{os.pathsep}{current_path}" if current_path else ytdlp_dir
 
 			if not self.is_windows:
 				mpv_args.extend(["--wayland-app-id=mpvpip", "--x11-name=mpvpip"])
