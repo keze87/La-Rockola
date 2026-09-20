@@ -18,6 +18,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+
 if sys.platform == "win32":
 	try:
 		if hasattr(sys.stdout, "reconfigure"):
@@ -29,7 +30,6 @@ if sys.platform == "win32":
 
 if __name__ == "__main__":
 	sys.modules["server"] = sys.modules[__name__]
-
 
 
 def enable_system_site_packages() -> None:
@@ -1755,6 +1755,23 @@ class AsyncMpvController:
 		except OSError:
 			return False
 
+	async def _check_and_raise_mpv_error(self) -> None:
+		"""Verifica si el proceso MPV finalizó prematuramente y levanta un error descriptivo."""
+		if self.process and self.process.returncode is not None:
+			err_msg = ""
+			if self.process.stderr:
+				try:
+					raw_err = await self.process.stderr.read()
+					err_msg = raw_err.decode("utf-8", errors="replace").strip()
+				except Exception:
+					pass
+			logger.error(
+				f"MPV finalizó inesperadamente con código {self.process.returncode}. Detalle: {err_msg or 'Sin salida de error'}"
+			)
+			raise RuntimeError(
+				f"MPV falló al iniciar (código {self.process.returncode}): {err_msg or 'proceso terminado'}"
+			)
+
 	async def start(self, is_restart: bool = False):
 		# Si ya hay otro proceso reiniciando MPV, nos quedamos en el molde y salimos
 		if self._start_lock.locked():
@@ -1847,20 +1864,7 @@ class AsyncMpvController:
 				sys.exit(1)
 
 			for i in range(20):
-				if self.process.returncode is not None:
-					err_msg = ""
-					if self.process.stderr:
-						try:
-							raw_err = await self.process.stderr.read()
-							err_msg = raw_err.decode("utf-8", errors="replace").strip()
-						except Exception:
-							pass
-					logger.error(
-						f"MPV finalizó inesperadamente con código {self.process.returncode}. Detalle: {err_msg or 'Sin salida de error'}"
-					)
-					raise RuntimeError(
-						f"MPV falló al iniciar (código {self.process.returncode}): {err_msg or 'proceso terminado'}"
-					)
+				await self._check_and_raise_mpv_error()
 
 				if self.is_windows:
 					# Named pipes appear instantly in the OS namespace if MPV created it successfully
@@ -1870,20 +1874,7 @@ class AsyncMpvController:
 					break
 				await asyncio.sleep(0.3)
 
-			if self.process.returncode is not None:
-				err_msg = ""
-				if self.process.stderr:
-					try:
-						raw_err = await self.process.stderr.read()
-						err_msg = raw_err.decode("utf-8", errors="replace").strip()
-					except Exception:
-						pass
-				logger.error(
-					f"MPV finalizó inesperadamente con código {self.process.returncode}. Detalle: {err_msg or 'Sin salida de error'}"
-				)
-				raise RuntimeError(
-					f"MPV falló al iniciar (código {self.process.returncode}): {err_msg or 'proceso terminado'}"
-				)
+			await self._check_and_raise_mpv_error()
 
 			if not self.is_windows and not os.path.exists(self.socket_path):
 				raise RuntimeError("MPV se quedó dormido y no armó el socket a tiempo.")
@@ -2797,6 +2788,7 @@ class APIState:
 		if not ytdlp_bin:
 			try:
 				import ytdlp_installer
+
 				try:
 					from scripts import ytdlp_installer
 				except ImportError:
@@ -2988,6 +2980,23 @@ class APIState:
 		else:
 			await self.mpv._send(json.dumps({"command": ["set_property", "mute", self.server_muted]}))
 
+	def _select_candidate_dj_track(self, unplayed: list[dict]) -> dict | None:
+		"""Elige una pista de la lista de pendientes según el modo del DJ Carpincho."""
+		if not unplayed:
+			return None
+		if self.dj_safe_mode:
+			favs = [t for t in unplayed if self.path_to_id.get(t["path"]) in self.favorites]
+			normals = [t for t in unplayed if self.path_to_id.get(t["path"]) not in self.favorites]
+
+			if favs and normals:
+				# ¡90% de chances clavadas de sacar un temazo!
+				return random.choice(favs) if random.random() < 0.90 else random.choice(normals)
+			elif favs:
+				return random.choice(favs)
+			else:
+				return random.choice(normals)
+		return random.choice(unplayed)
+
 	async def play_next(self, skipped_by_user=False):
 		# Si hay un countdown del DJ corriendo en otra task que no sea esta, lo matamos
 		if (
@@ -3022,23 +3031,7 @@ class APIState:
 			else:
 				played_paths = set(self.history)
 				unplayed = [t for t in self.tracks_cache if t["path"] not in played_paths]
-
-				if unplayed:
-					if self.dj_safe_mode:
-						favs = [t for t in unplayed if self.path_to_id.get(t["path"]) in self.favorites]
-						normals = [t for t in unplayed if self.path_to_id.get(t["path"]) not in self.favorites]
-
-						if favs and normals:
-							# ¡90% de chances clavadas de sacar un temazo!
-							chosen = random.choice(favs) if random.random() < 0.90 else random.choice(normals)
-						elif favs:
-							chosen = random.choice(favs)
-						else:
-							chosen = random.choice(normals)
-					else:
-						chosen = random.choice(unplayed)
-				else:
-					chosen = None
+				chosen = self._select_candidate_dj_track(unplayed)
 
 			if chosen:
 				logger.info(
@@ -3107,29 +3100,14 @@ class APIState:
 	def _pick_dj_next(self):
 		"""Elige (o limpia) el próximo tema del DJ Carpincho según el estado actual."""
 		if self.dj_carpincho_enabled and not self.queue and self.tracks_cache:
-			import random
-
 			played_paths = set(self.history)
 			if self.current_track:
 				played_paths.add(self.current_track)
 
 			unplayed = [t for t in self.tracks_cache if t["path"] not in played_paths]
+			chosen = self._select_candidate_dj_track(unplayed)
 
-			if unplayed:
-				if self.dj_safe_mode:
-					favs = [t for t in unplayed if self.path_to_id.get(t["path"]) in self.favorites]
-					normals = [t for t in unplayed if self.path_to_id.get(t["path"]) not in self.favorites]
-
-					if favs and normals:
-						chosen = random.choice(favs) if random.random() < 0.90 else random.choice(normals)
-					elif favs:
-						chosen = random.choice(favs)
-					else:
-						chosen = random.choice(normals)
-				else:
-					# DJ Salvaje (Clásico): todo pesa lo mismo
-					chosen = random.choice(unplayed)
-
+			if chosen:
 				self.dj_next_track = chosen
 				is_fav = self.path_to_id.get(chosen["path"]) in self.favorites
 				logger.info(
@@ -3237,6 +3215,7 @@ async def lifespan(app: FastAPI):
 	async def _bg_update_ytdlp():
 		try:
 			import ytdlp_installer
+
 			try:
 				from scripts import ytdlp_installer
 			except ImportError:

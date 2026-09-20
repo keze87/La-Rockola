@@ -244,4 +244,3 @@ def test_find_binary_next_to_mpv(monkeypatch, tmp_path):
 
 	found = server.find_binary("yt-dlp")
 	assert found == str(fake_ytdlp)
-

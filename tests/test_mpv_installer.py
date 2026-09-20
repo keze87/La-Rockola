@@ -1,13 +1,14 @@
 import io
 import json
 import os
+import platform
 import sys
 import urllib.error
 import zipfile
 from unittest.mock import MagicMock, patch
 
-from scripts import mpv_installer
 import server
+from scripts import mpv_installer
 
 
 def test_resolve_platform_and_arch_explicit():
@@ -23,7 +24,7 @@ def test_resolve_platform_and_arch_explicit():
 def test_resolve_platform_and_arch_detected(monkeypatch):
 	monkeypatch.setattr(sys, "platform", "win32")
 	monkeypatch.setattr(os, "name", "nt")
-	monkeypatch.setattr(mpv_installer.platform, "machine", lambda: "AMD64")
+	monkeypatch.setattr(platform, "machine", lambda: "AMD64")
 
 	plat, arch = mpv_installer.resolve_platform_and_arch()
 	assert plat == "windows"

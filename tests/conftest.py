@@ -9,7 +9,7 @@ root_dir = Path(__file__).resolve().parent.parent
 if str(root_dir) not in sys.path:
 	sys.path.insert(0, str(root_dir))
 
-import scripts  # Registers sys.modules["mpv_installer"] and sys.modules["ytdlp_installer"]
+import scripts  # noqa: F401 - Registers sys.modules["binary_utils"], etc.
 import server
 
 

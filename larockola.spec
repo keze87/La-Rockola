@@ -38,8 +38,10 @@ hiddenimports = [
     "fastapi",
     "starlette",
     "scripts",
+    "scripts.binary_utils",
     "scripts.mpv_installer",
     "scripts.ytdlp_installer",
+    "binary_utils",
     "mpv_installer",
     "ytdlp_installer",
 ]

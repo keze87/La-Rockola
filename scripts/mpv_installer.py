@@ -8,7 +8,6 @@ oficiales de mpv-player/mpv en GitHub cuando no se encuentra instalado en el sis
 
 import json
 import os
-import platform
 import re
 import shutil
 import subprocess
@@ -30,31 +29,13 @@ def default_logger(msg: str):
 	print(f"[mpv-installer] {msg}")
 
 
-def resolve_platform_and_arch(platform_name: str | None = None, arch: str | None = None) -> tuple[str, str]:
-	"""Normaliza la plataforma y la arquitectura deseada."""
-	if not platform_name:
-		plat = sys.platform.lower()
-		if plat in ("win32", "cygwin") or os.name == "nt":
-			platform_name = "windows"
-		elif "darwin" in plat:
-			platform_name = "macos"
-		elif "linux" in plat:
-			platform_name = "linux"
-		else:
-			platform_name = platform.system().lower()
+try:
+	from .binary_utils import get_clean_env, resolve_platform_and_arch
+except (ImportError, ValueError):
+	from binary_utils import get_clean_env, resolve_platform_and_arch
 
-	if not arch:
-		mach = platform.machine().lower()
-		if mach in ("amd64", "x86_64", "x64"):
-			arch = "x86_64"
-		elif mach in ("arm64", "aarch64"):
-			arch = "arm64"
-		elif mach in ("i386", "i686", "x86"):
-			arch = "i686"
-		else:
-			arch = mach
 
-	return platform_name, arch
+_get_clean_env = get_clean_env
 
 
 def _parse_version(v_str: str | None) -> tuple[int, ...]:
@@ -63,24 +44,6 @@ def _parse_version(v_str: str | None) -> tuple[int, ...]:
 		return (0,)
 	nums = re.findall(r"\d+", v_str)
 	return tuple(int(x) for x in nums) if nums else (0,)
-
-
-def _get_clean_env() -> dict:
-	env = os.environ.copy()
-	for var in ("LD_LIBRARY_PATH", "LD_PRELOAD", "PYTHONPATH", "PYTHONHOME", "DYLD_LIBRARY_PATH"):
-		orig = f"{var}_ORIG"
-		if orig in env and env[orig].strip():
-			env[var] = env[orig]
-		elif var in env:
-			del env[var]
-	if "LD_LIBRARY_PATH" in env:
-		parts = [p.strip() for p in env["LD_LIBRARY_PATH"].split(":") if p.strip()]
-		clean_parts = [p for p in parts if "_MEI" not in p and ".mount_" not in p]
-		if clean_parts:
-			env["LD_LIBRARY_PATH"] = ":".join(clean_parts)
-		else:
-			del env["LD_LIBRARY_PATH"]
-	return env
 
 
 def get_installed_mpv_version(bin_path: str | Path) -> str | None:
@@ -134,8 +97,9 @@ def is_rockola_managed(bin_path: str | Path) -> bool:
 		return True
 
 	# 2. Ubicado dentro del directorio base de la aplicación (ej. en base / "mpv")
-	base = (Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent).resolve()
-	base = (Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent).resolve()
+	base = (
+		Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
+	).resolve()
 	try:
 		path.relative_to(base)
 		return True
@@ -521,6 +485,12 @@ def update_mpv(
 
 
 if __name__ == "__main__":
+	if "-h" in sys.argv or "--help" in sys.argv:
+		print("Uso: mpv_installer.py [--update] [target_dir]")
+		print("  --update    Fuerza la actualización de MPV si ya está instalado.")
+		print("  target_dir  Directorio donde instalar o buscar MPV.")
+		sys.exit(0)
+
 	if "--update" in sys.argv:
 		sys.argv.remove("--update")
 		target = Path(sys.argv[1]) if len(sys.argv) > 1 else None
