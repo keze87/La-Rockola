@@ -62,46 +62,10 @@ def enable_system_site_packages() -> None:
 enable_system_site_packages()
 
 
-def get_clean_env() -> dict:
-	"""
-	Retorna una copia de os.environ con las variables alteradas por PyInstaller/AppImage
-	restauradas a sus valores originales o eliminadas.
-	Esto evita que herramientas del sistema como kdialog, zenity, yad, powershell, mpv,
-	yt-dlp o el intérprete de python del sistema fallen por incompatibilidad de librerías dinámicas
-	o rutas de python cargadas desde el bundle.
-	"""
-	env = os.environ.copy()
-	for var in ("LD_LIBRARY_PATH", "LD_PRELOAD", "PYTHONPATH", "PYTHONHOME", "DYLD_LIBRARY_PATH"):
-		orig = f"{var}_ORIG"
-		if orig in env and env[orig].strip():
-			env[var] = env[orig]
-		elif var in env:
-			del env[var]
-
-	# Filtrar cualquier rastro de PyInstaller (_MEI*) o AppImage (/tmp/.mount_*) de LD_LIBRARY_PATH
-	if "LD_LIBRARY_PATH" in env:
-		parts = env["LD_LIBRARY_PATH"].split(":")
-		clean_parts = []
-		appdir = os.environ.get("APPDIR", "")
-		meipass = getattr(sys, "_MEIPASS", "")
-		for p in parts:
-			p_str = p.strip()
-			if not p_str:
-				continue
-			if meipass and p_str.startswith(str(meipass)):
-				continue
-			if appdir and p_str.startswith(str(appdir)):
-				continue
-			if ".mount_" in p_str or "_MEI" in p_str:
-				continue
-			clean_parts.append(p_str)
-
-		if clean_parts:
-			env["LD_LIBRARY_PATH"] = ":".join(clean_parts)
-		else:
-			del env["LD_LIBRARY_PATH"]
-
-	return env
+try:
+	from scripts.binary_utils import ensure_display_env, get_clean_env
+except ImportError:
+	from binary_utils import ensure_display_env, get_clean_env
 
 
 _system_librosa_python: str | None = None
@@ -1727,6 +1691,7 @@ class AsyncMpvController:
 		self.reader = None
 		self.writer = None
 		self.is_windows = sys.platform == "win32"
+		self.has_display = True
 		self.callbacks = callbacks  # Dict mapping event names to async handlers
 		self._start_lock = asyncio.Lock()
 
@@ -1783,15 +1748,12 @@ class AsyncMpvController:
 			await self.stop()
 
 			env = get_clean_env()
+			ensure_display_env(env)
 
 			# 1. Handle OS-Specific IPC Socket Paths
 			if self.is_windows:
 				self.socket_path = rf"\\.\pipe\mpv_server_{id(self)}"
 			else:
-				if "WAYLAND_DISPLAY" not in env and os.environ.get("WAYLAND_DISPLAY"):
-					env["WAYLAND_DISPLAY"] = os.environ["WAYLAND_DISPLAY"]
-				elif "WAYLAND_DISPLAY" not in env and os.environ.get("XDG_SESSION_TYPE") == "wayland":
-					env["WAYLAND_DISPLAY"] = "wayland-0"
 				tmp_dir = os.environ.get("TMPDIR", "/tmp")
 				self.socket_path = os.path.join(tmp_dir, f"mpv_server_{id(self)}.sock")
 
@@ -1803,7 +1765,10 @@ class AsyncMpvController:
 
 			logger.info(f"Armando el socket de MPV en {self.socket_path}...")
 
-			# Determinar si mostramos la ventana en base al estado (si existe)
+			# Determinar si mostramos la ventana en base al estado (si existe) y disponibilidad de display
+			has_display = bool(self.is_windows or env.get("WAYLAND_DISPLAY") or env.get("DISPLAY"))
+			self.has_display = has_display
+
 			show_window = True
 			if "APIState" in globals() and hasattr(state, "mpv_visible"):
 				show_window = state.mpv_visible
@@ -1818,26 +1783,52 @@ class AsyncMpvController:
 
 			mpv_args = [
 				mpv_bin,
-				"--autofit=33%x33%",
-				# "--fs",
-				"--geometry=-20-40",
-				"--hwdec=auto",
 				"--idle",
-				"--no-border",
-				"--ontop",
 				"--quiet",
 				"--script-opts=osc-visibility=always,osc-layout=topbar",
 				f"--load-scripts={mpris_opt}",
 				f"--input-media-keys={keys_opt}",
-				"--sub-color=#FF00FF",
-				"--sub-font-size=100",
-				"--sub-font=Pacifico",
-				"--sub-scale-by-window=no",
-				"--sub-scale-with-window=no",
 				"--ytdl-raw-options=no-playlist=",
-				f"--{'quiet' if show_window else 'no-audio-display'}",
 				f"--input-ipc-server={self.socket_path}",
 			]
+
+			if show_window and has_display:
+				mpv_args.extend(
+					[
+						"--autofit=33%x33%",
+						"--geometry=-20-40",
+						"--hwdec=auto",
+						"--no-border",
+						"--ontop",
+						"--sub-color=#FF00FF",
+						"--sub-font-size=100",
+						"--sub-font=Pacifico",
+						"--sub-scale-by-window=no",
+						"--sub-scale-with-window=no",
+					]
+				)
+				if not self.is_windows:
+					# En Linux/Unix, restringimos los contextos GPU a Wayland y X11
+					# y ponemos fallback a null para que si la sesión gráfica falla,
+					# MPV no intente DRM (que requiere permisos especiales de kernel) y no corte la reproducción.
+					mpv_args.extend(
+						[
+							"--gpu-context=waylandvk,wayland,x11vk,x11egl,x11",
+							"--vo=gpu-next,gpu,null",
+						]
+					)
+				else:
+					mpv_args.append("--vo=gpu-next,gpu,null")
+			else:
+				# Modo headless o ventana oculta: salida de video nula para que los audios con carátula
+				# (como FLAC o MP3) no intenten inicializar video y fallen con error de display.
+				mpv_args.extend(
+					[
+						"--vo=null",
+						"--no-audio-display",
+						"--force-window=no",
+					]
+				)
 
 			ytdlp_bin = find_binary("yt-dlp")
 			if ytdlp_bin:
@@ -1847,7 +1838,7 @@ class AsyncMpvController:
 				if ytdlp_dir not in current_path.split(os.pathsep):
 					env["PATH"] = f"{ytdlp_dir}{os.pathsep}{current_path}" if current_path else ytdlp_dir
 
-			if not self.is_windows:
+			if not self.is_windows and has_display:
 				mpv_args.extend(["--wayland-app-id=mpvpip", "--x11-name=mpvpip"])
 
 			logger.info("Despertando al carpincho reproductor (MPV)...")
@@ -1968,12 +1959,21 @@ class AsyncMpvController:
 		try:
 			event_data = json.loads(line.decode("utf-8").strip())
 			event_name = event_data.get("event")
+			# if event_name:
+			# 	logger.info(f"IPC EVENT DATA: {event_data}")
 
 			# Handle Track End
 			if event_name == "end-file":
 				reason = event_data.get("reason")
+				file_error = event_data.get("file_error")
+				if reason == "error":
+					logger.error(f"MPV reportó error al reproducir la pista: {file_error or 'error desconocido'}")
 				if reason in ("eof", "error") and "song_ended" in self.callbacks:
-					asyncio.create_task(self.callbacks["song_ended"]())
+					cb = self.callbacks["song_ended"]
+					try:
+						asyncio.create_task(cb(reason=reason, file_error=file_error))
+					except TypeError:
+						asyncio.create_task(cb())
 				elif reason in ("quit", "stop") and "track_stopped" in self.callbacks:
 					asyncio.create_task(self.callbacks["track_stopped"]())
 			elif event_name == "property-change":
@@ -2416,6 +2416,7 @@ class APIState:
 			if self.mpris_registered or not DBUS_AVAILABLE:
 				return
 			try:
+				ensure_display_env(os.environ)
 				bus = await MessageBus().connect()
 				self.mpris_root = MPRISRoot()
 				self.mpris_player = MPRISPlayer(self)
@@ -2848,7 +2849,7 @@ class APIState:
 			logger.error(f"Pifió yt-dlp sacando la info de {url}, se empacó: {e}")
 
 	# Event handlers update the state, which clients will see on their next poll
-	async def handle_song_ended(self):
+	async def handle_song_ended(self, reason: str = "eof", file_error: str | None = None):
 		# Si hay un reproductor local activo, ÉL es quien manda el evento de canción terminada.
 		# Ignoramos el EOF de MPV para no avanzar la cola dos veces.
 		if manager.local_player_ws is not None:
@@ -2861,7 +2862,7 @@ class APIState:
 
 		self.processing_eof = True
 		try:
-			if self.current_track:
+			if self.current_track and reason != "error":
 				self._register_play_stat(self.current_track)
 			await self.play_next(skipped_by_user=False)
 			await broadcast_state()
@@ -2968,8 +2969,10 @@ class APIState:
 			# Si es un link de YouTube o internet, lo mandamos al log especial apenas arranca
 			self._log_url(str_path)
 
-		if state.mpv_visible:
+		if state.mpv_visible and getattr(self.mpv, "has_display", True):
 			await self.mpv._send('{"command": ["set_property", "force-window", "yes"]}')
+		else:
+			await self.mpv._send('{"command": ["set_property", "force-window", "no"]}')
 
 		# Usamos json.dumps() con ensure_ascii=False para mandar acentos (ñ, tildes) en crudo y evitar marear a MPV
 		cmd_payload = json.dumps({"command": ["loadfile", str_path]}, ensure_ascii=False)
