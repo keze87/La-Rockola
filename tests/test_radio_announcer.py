@@ -15,6 +15,23 @@ def test_clean_fortune_text():
 	assert "<nick>" not in cleaned
 
 
+def test_is_spanish_text():
+	assert radio_announcer.is_spanish_text("En muerte y en boda, verás quien te honra.") is True
+	assert radio_announcer.is_spanish_text("A borrico desconocido, no le toques la oreja.") is True
+	assert radio_announcer.is_spanish_text("El que madruga encuentra todo cerrado.") is True
+	assert radio_announcer.is_spanish_text("Tranquilo como carpincho en Nordelta.") is True
+
+	# English text must be rejected
+	assert radio_announcer.is_spanish_text("I had pancake makeup for brunch!") is False
+	assert (
+		radio_announcer.is_spanish_text("The universe is an island, surrounded by whatever surrounds universes.")
+		is False
+	)
+	assert radio_announcer.is_spanish_text("Linux: Because Software Problems Should Not Cost Money.") is False
+	assert radio_announcer.is_spanish_text("The wise shepherd never trusts his flock to a smiling wolf.") is False
+	assert radio_announcer.is_spanish_text("") is False
+
+
 def test_get_system_fortune_no_binary():
 	with patch("shutil.which", return_value=None):
 		assert radio_announcer.get_system_fortune() is None
@@ -23,37 +40,56 @@ def test_get_system_fortune_no_binary():
 def test_get_system_fortune_success():
 	with (
 		patch("shutil.which", return_value="/usr/bin/fortune"),
+		patch("scripts.radio_announcer.get_available_spanish_dbs", return_value=["refranes"]),
 		patch(
 			"subprocess.run",
-			return_value=MagicMock(returncode=0, stdout="A witty saying proves nothing.\n"),
+			return_value=MagicMock(returncode=0, stdout="En muerte y en boda, verás quien te honra.\n"),
 		),
 	):
 		res = radio_announcer.get_system_fortune()
-		assert res == "A witty saying proves nothing."
+		assert res == "En muerte y en boda, verás quien te honra."
+		assert radio_announcer.is_spanish_text(res) is True
+
+
+def test_get_system_fortune_rejects_english():
+	with (
+		patch("shutil.which", return_value="/usr/bin/fortune"),
+		patch("scripts.radio_announcer.get_available_spanish_dbs", return_value=["refranes"]),
+		patch(
+			"subprocess.run",
+			return_value=MagicMock(returncode=0, stdout="A witty saying proves nothing at all.\n"),
+		),
+	):
+		# English text must return None so fallback activates
+		res = radio_announcer.get_system_fortune()
+		assert res is None
 
 
 def test_get_system_fortune_too_short_or_long():
 	with (
 		patch("shutil.which", return_value="/usr/bin/fortune"),
-		patch("subprocess.run", return_value=MagicMock(returncode=0, stdout="Hi")),
+		patch("scripts.radio_announcer.get_available_spanish_dbs", return_value=["refranes"]),
+		patch("subprocess.run", return_value=MagicMock(returncode=0, stdout="Hola")),
 	):
-		# Less than 15 chars
+		# Menos de 15 caracteres
 		assert radio_announcer.get_system_fortune() is None
 
 	with (
 		patch("shutil.which", return_value="/usr/bin/fortune"),
-		patch("subprocess.run", return_value=MagicMock(returncode=0, stdout="A" * 200)),
+		patch("scripts.radio_announcer.get_available_spanish_dbs", return_value=["refranes"]),
+		patch("subprocess.run", return_value=MagicMock(returncode=0, stdout="Hola carpincho " * 20)),
 	):
-		# More than 160 chars
+		# Más de 160 caracteres
 		assert radio_announcer.get_system_fortune() is None
 
 
-def test_get_radio_fortune():
-	# Debe devolver una cadena no vacía siempre
-	for _ in range(10):
+def test_get_radio_fortune_is_always_spanish():
+	# Debe devolver una cadena no vacía y 100% en español siempre
+	for _ in range(25):
 		fortune = radio_announcer.get_radio_fortune()
 		assert isinstance(fortune, str)
 		assert len(fortune) > 0
+		assert radio_announcer.is_spanish_text(fortune) is True
 
 
 def test_format_radio_time():
@@ -89,10 +125,12 @@ def test_generate_radio_script():
 	assert voice == radio_announcer.VOICE_TOMAS
 	assert fortune in script
 	assert "La Rockola" in script
+	assert radio_announcer.is_spanish_text(script) is True
 
 	script_elena, voice_elena, _ = radio_announcer.generate_radio_script(voice=radio_announcer.VOICE_ELENA)
 	assert voice_elena == radio_announcer.VOICE_ELENA
 	assert len(script_elena) > 10
+	assert radio_announcer.is_spanish_text(script_elena) is True
 
 
 @pytest.mark.asyncio
@@ -119,6 +157,7 @@ async def test_create_radio_announcement_success(tmp_path):
 		assert ok is True
 		assert "Tomás" in title
 		assert len(text) > 0
+		assert radio_announcer.is_spanish_text(text) is True
 		mock_comm.save.assert_awaited_once_with(str(out_p))
 
 
