@@ -8,6 +8,7 @@ import {
 	djSafeModeEnabled,
 	duration,
 	favorites,
+	hasEdgeTts,
 	historyState,
 	isDraggingSeek,
 	isPaused,
@@ -19,6 +20,7 @@ import {
 	pauseAfterPath,
 	pendingSeekTime,
 	queueState,
+	radioModeEnabled,
 	serverMuted,
 	setWsSend,
 	timePos,
@@ -80,6 +82,8 @@ describe('useSocket.ts', () => {
 		topPlayedState.value = [];
 		trackMap.value = {};
 		urlMetadata.value = {};
+		hasEdgeTts.value = false;
+		radioModeEnabled.value = false;
 		volume.value = 80;
 	});
 
@@ -162,6 +166,8 @@ describe('useSocket.ts', () => {
 			pause_after_path: '/music/spinetta.mp3',
 			paused: true,
 			queue: ['/music/q1.mp3'],
+			radio_mode_enabled: true,
+			has_edge_tts: true,
 			server_muted: true,
 			top_played: [{ path: '/music/spinetta.mp3', count: 10 }],
 			url_metadata: { 'https://youtube.com/watch?v=1': { display_title: 'Web Song' } },
@@ -174,6 +180,8 @@ describe('useSocket.ts', () => {
 
 		expect(currentTrackPath.value).toBe('/music/spinetta.mp3');
 		expect(djCarpinchoEnabled.value).toBe(true);
+		expect(radioModeEnabled.value).toBe(true);
+		expect(hasEdgeTts.value).toBe(true);
 		expect(djNextTrack.value?.title).toBe('DJ Tune');
 		expect(djSafeModeEnabled.value).toBe(true);
 		expect(duration.value).toBe(210);

@@ -41,9 +41,12 @@ hiddenimports = [
     "scripts.binary_utils",
     "scripts.mpv_installer",
     "scripts.ytdlp_installer",
+    "scripts.radio_announcer",
     "binary_utils",
     "mpv_installer",
     "ytdlp_installer",
+    "radio_announcer",
+    "edge_tts",
 ]
 
 import sys

@@ -67,6 +67,15 @@ try:
 except ImportError:
 	from binary_utils import ensure_display_env, get_clean_env
 
+try:
+	from scripts.radio_announcer import HAS_EDGE_TTS, create_radio_announcement
+except ImportError:
+	try:
+		from radio_announcer import HAS_EDGE_TTS, create_radio_announcement
+	except ImportError:
+		HAS_EDGE_TTS = False
+		create_radio_announcement = None
+
 
 _system_librosa_python: str | None = None
 _system_librosa_checked: bool = False
@@ -2307,6 +2316,13 @@ class APIState:
 
 		self.favorites = self._load_favs_from_db()
 
+		# Radio Mode
+		self.radio_mode_enabled = False
+		self.radio_track_counter = 0
+		self.radio_tracks_until_next = random.randint(1, 2)
+		self.is_playing_radio_announcement = False
+		self.radio_announcement_path = str(DATA_DIR / "radio_announcement.mp3")
+
 		# Server network & browser state
 		self.open_browser = True
 		self.server_host = "0.0.0.0"
@@ -2358,6 +2374,7 @@ class APIState:
 			"dj_next_track": clean_dj_next,
 			"duration": self.duration,
 			"favorites": active_favs,
+			"has_edge_tts": HAS_EDGE_TTS,
 			"has_librosa": (
 				importlib.util.find_spec("librosa") is not None or find_system_librosa_python() is not None
 			),
@@ -2368,6 +2385,7 @@ class APIState:
 			"pause_after_path": self.pause_after_path,
 			"paused": self.mpv_paused,
 			"queue": list(self.queue),
+			"radio_mode_enabled": self.radio_mode_enabled,
 			"server_muted": self.server_muted,
 			"server_url": self.server_url,
 			"time_pos": self.time_pos,
@@ -3012,13 +3030,53 @@ class APIState:
 
 		just_finished = self.current_track
 		if self.current_track:
-			self.history.append(self.current_track)
+			if self.current_track == self.radio_announcement_path:
+				# Terminó la locución radial: no va al historial
+				self.is_playing_radio_announcement = False
+			else:
+				self.history.append(self.current_track)
 			self.current_track = None
 
 		# Verificamos si tocaba pausar después del track que acaba de terminar
 		should_pause = (self.pause_after_path is not None) and (just_finished == self.pause_after_path)
 		if should_pause:
 			self.pause_after_path = None
+
+		# Modo Radio: Intervención de locución cada 2 o 3 canciones durante transiciones naturales
+		has_next_track = bool(self.queue or (self.dj_carpincho_enabled and self.tracks_cache))
+		if (
+			not skipped_by_user
+			and self.radio_mode_enabled
+			and HAS_EDGE_TTS
+			and create_radio_announcement is not None
+			and has_next_track
+			and just_finished != self.radio_announcement_path
+		):
+			self.radio_track_counter += 1
+			if self.radio_track_counter >= self.radio_tracks_until_next:
+				logger.info(
+					f"📻 Modo Radio: turno de locución radial (canción #{self.radio_track_counter}). Sintetizando..."
+				)
+				ok, display_title, _script_text = await create_radio_announcement(self.radio_announcement_path)
+				if ok:
+					self.radio_track_counter = 0
+					self.radio_tracks_until_next = random.randint(2, 3)
+					self.is_playing_radio_announcement = True
+					self.url_metadata[self.radio_announcement_path] = {
+						"path": self.radio_announcement_path,
+						"display_title": display_title,
+						"display_artist": "Radio Carpincho 📻",
+						"album": "La Rockola del Carpincho",
+						"duration_str": "0:12",
+					}
+					await self.play_track(self.radio_announcement_path)
+					if should_pause:
+						self.mpv_paused = True
+						await self.mpv._send(json.dumps({"command": ["set_property", "pause", True]}))
+					await broadcast_state()
+					return
+				else:
+					logger.warning("📻 Modo Radio: No se pudo sintetizar locución, pasando al tema siguiente.")
 
 		if self.queue:
 			next_path = self.queue.pop(0)
@@ -3038,7 +3096,7 @@ class APIState:
 
 			if chosen:
 				logger.info(
-					f"🦦 DJ Carpincho salvó las papas con un clásico: {chosen['display_title']} {'(al toque)' if skipped_by_user else '(arranca en 10 segundos...)'}"
+					f"🦦 DJ Carpincho salvó las papas con un clásico: {chosen['display_title']} {'(al toque)' if skipped_by_user or just_finished == self.radio_announcement_path else '(arranca en 10 segundos...)'}"
 				)
 
 				# Durante el countdown mostramos el tema elegido en dj_next_track
@@ -3046,7 +3104,7 @@ class APIState:
 				self.dj_next_track = chosen
 				await broadcast_state()
 
-				if not skipped_by_user:
+				if not skipped_by_user and just_finished != self.radio_announcement_path:
 					# Guardamos el countdown como task cancelable
 					self.dj_countdown_task = asyncio.current_task()
 					try:
@@ -3060,9 +3118,6 @@ class APIState:
 						return
 					finally:
 						self.dj_countdown_task = None
-				else:
-					# Skip manual, tocamos de una (respetando si tocaba pausar)
-					await self.play_track(chosen["path"])
 
 				self.dj_next_track = None  # Ahora sí borramos: el tema está por arrancar
 
@@ -3516,6 +3571,11 @@ _MAX_COVER_MEM_CACHE = 500
 @app.get("/cover")
 async def serve_cover(path: str = Query(...), request: Request = None):
 	try:
+		if path == getattr(state, "radio_announcement_path", None):
+			favicon_p = Path(__file__).resolve().parent / "public" / "favicon.png"
+			if favicon_p.exists():
+				return FileResponse(favicon_p, media_type="image/png")
+
 		if not os.path.exists(path):
 			return Response(status_code=404)
 
@@ -3587,7 +3647,8 @@ async def serve_cover(path: str = Query(...), request: Request = None):
 async def stream_audio(path: str = Query(...)):
 	"""Endpoint para mandarle la música al navegador del cliente si quiere escuchar ahí."""
 	# Validar que el path exista en nuestra librería para no servir archivos confidenciales
-	if path not in state.path_to_id and not any(t["path"] == path for t in state.tracks_cache):
+	is_radio = path == getattr(state, "radio_announcement_path", None)
+	if not is_radio and path not in state.path_to_id and not any(t["path"] == path for t in state.tracks_cache):
 		return Response(status_code=404)
 	# FileResponse en Starlette maneja encabezados 'Range' si el browser los pide
 	return FileResponse(
@@ -3664,10 +3725,12 @@ async def handle_command(req: CommandRequest):
 		await state.play_prev()
 	elif cmd == "stop":
 		if state.current_track:
-			state.history.append(state.current_track)
+			if state.current_track != state.radio_announcement_path:
+				state.history.append(state.current_track)
 			state.current_track = None
 		state.mpv_paused = False
 		state.dj_carpincho_enabled = False
+		state.is_playing_radio_announcement = False
 		state.time_pos = 0
 		await state.mpv._send('{"command": ["stop"]}')
 		await state.mpv._send('{"command": ["set_property", "force-window", "no"]}')
@@ -3771,6 +3834,15 @@ async def handle_command(req: CommandRequest):
 			state.dj_safe_mode = req.state
 			logger.info(f"Modo DJ Seguro cambiado a: {state.dj_safe_mode}")
 			state._pick_dj_next()  # Recalculamos la pre-elección con las nuevas probabilidades
+	elif cmd == "toggle_radio_mode":
+		if req.state is not None:
+			state.radio_mode_enabled = req.state
+		else:
+			state.radio_mode_enabled = not state.radio_mode_enabled
+		logger.info(f"Modo Radio cambiado a: {state.radio_mode_enabled}")
+		if state.radio_mode_enabled:
+			state.radio_tracks_until_next = random.randint(1, 2)
+			state.radio_track_counter = 0
 	elif cmd == "pause_after":
 		state.pause_after_path = req.path
 	elif cmd == "remove_history_item":

@@ -6,9 +6,11 @@ import {
 	currentTracks,
 	djCarpinchoEnabled,
 	djSafeModeEnabled,
+	hasEdgeTts,
 	hasLibrosa,
 	listenLocally,
 	mpvVisible,
+	radioModeEnabled,
 	serverMuted,
 	serverUrl,
 	volume,
@@ -27,9 +29,11 @@ describe('ControlsTab.vue', () => {
 		currentTracks.value = [];
 		djCarpinchoEnabled.value = false;
 		djSafeModeEnabled.value = false;
+		hasEdgeTts.value = true;
 		hasLibrosa.value = true;
 		listenLocally.value = false;
 		mpvVisible.value = true;
+		radioModeEnabled.value = false;
 		serverMuted.value = false;
 		serverUrl.value = null;
 		volume.value = 80;
@@ -45,6 +49,7 @@ describe('ControlsTab.vue', () => {
 		expect(wrapper.text()).toContain('Mezcladito (A lo loco)');
 		expect(wrapper.text()).toContain('La Joda');
 		expect(wrapper.text()).toContain('DJ Carpincho');
+		expect(wrapper.text()).toContain('Modo Radio');
 		expect(wrapper.text()).toContain('Escuchar acá');
 	});
 
@@ -108,6 +113,34 @@ describe('ControlsTab.vue', () => {
 				body: JSON.stringify({ cmd: 'toggle_dj_carpincho', state: true }),
 			})
 		);
+	});
+
+	it('dispatches toggle_radio_mode when clicking Modo Radio toggle', async () => {
+		radioModeEnabled.value = false;
+		hasEdgeTts.value = true;
+		const wrapper = mount(ControlsTab);
+
+		const toggles = wrapper.findAllComponents({ name: 'ToggleRow' });
+		const radioToggle = toggles.find((t) => t.props('title') === 'Modo Radio');
+		expect(radioToggle).toBeDefined();
+
+		const switchBtn = radioToggle!.find('button');
+		await switchBtn.trigger('click');
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({
+				method: 'POST',
+				body: JSON.stringify({ cmd: 'toggle_radio_mode', state: true }),
+			})
+		);
+	});
+
+	it('hides Modo Radio toggle when hasEdgeTts is false', () => {
+		hasEdgeTts.value = false;
+		const wrapper = mount(ControlsTab);
+
+		expect(wrapper.text()).not.toContain('Modo Radio');
 	});
 
 	it('uses serverUrl for QR code when opened on localhost', () => {

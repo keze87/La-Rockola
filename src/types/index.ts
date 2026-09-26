@@ -17,6 +17,7 @@ export interface PlayerState {
 	dj_safe_mode?: boolean;
 	duration?: number;
 	favorites?: string[];
+	has_edge_tts?: boolean;
 	has_librosa?: boolean;
 	history?: string[];
 	is_scanning?: boolean;
@@ -26,6 +27,7 @@ export interface PlayerState {
 	pause_after_path?: string | null;
 	paused?: boolean;
 	queue?: string[];
+	radio_mode_enabled?: boolean;
 	server_muted?: boolean;
 	server_url?: string;
 	time_pos?: number;
@@ -60,6 +62,7 @@ export interface CommandPayloads {
 	remove_history_item: { index: number };
 	toggle_dj_carpincho: { state: boolean };
 	toggle_dj_safe_mode: { state: boolean };
+	toggle_radio_mode: { state?: boolean };
 	fullscreen: undefined;
 	pause_after: { path: string };
 	move_history_item: { index: number; new_index: number };

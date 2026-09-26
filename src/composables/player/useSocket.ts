@@ -10,6 +10,7 @@ import {
 	djSafeModeEnabled,
 	duration,
 	favorites,
+	hasEdgeTts,
 	hasLibrosa,
 	historyState,
 	isDraggingSeek,
@@ -24,6 +25,7 @@ import {
 	pauseAfterPath,
 	pendingSeekTime,
 	queueState,
+	radioModeEnabled,
 	serverMuted,
 	serverUrl,
 	setWsSend,
@@ -95,6 +97,7 @@ export function useSocket() {
 						if (state.dj_safe_mode !== undefined) djSafeModeEnabled.value = state.dj_safe_mode;
 						if (state.duration !== undefined) duration.value = state.duration;
 						if (state.favorites !== undefined) favorites.value = state.favorites;
+						if (state.has_edge_tts !== undefined) hasEdgeTts.value = state.has_edge_tts;
 						if (state.has_librosa !== undefined) hasLibrosa.value = state.has_librosa;
 						if (state.history) historyState.value = state.history;
 						if (state.is_scanning !== undefined) isScanning.value = state.is_scanning;
@@ -102,6 +105,7 @@ export function useSocket() {
 						if (state.pause_after_path !== undefined) pauseAfterPath.value = state.pause_after_path;
 						if (state.paused !== undefined) isPaused.value = state.paused;
 						if (state.queue !== undefined) queueState.value = state.queue;
+						if (state.radio_mode_enabled !== undefined) radioModeEnabled.value = state.radio_mode_enabled;
 						if (state.server_muted !== undefined) serverMuted.value = state.server_muted;
 						if (state.server_url !== undefined) serverUrl.value = state.server_url;
 						if (state.local_ip !== undefined) localIp.value = state.local_ip;

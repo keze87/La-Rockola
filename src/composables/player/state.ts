@@ -41,6 +41,9 @@ export const djCarpinchoEnabled = ref<boolean>(false);
 export const djNextTrack = ref<Track | null>(null);
 export const djSafeModeEnabled = ref<boolean>(false);
 
+// Radio Mode (locutor con hora y fortunas entre temas)
+export const radioModeEnabled = ref<boolean>(false);
+
 // Local audio playback & Media Session
 export const duration = ref<number>(0);
 export const pendingSeekTime = ref<number | null>(null);
@@ -64,6 +67,7 @@ export const serverUrl = ref<string | null>(null);
 export const localIp = ref<string | null>(null);
 
 // Server Capabilities
+export const hasEdgeTts = ref<boolean>(false);
 export const hasLibrosa = ref<boolean>(false);
 
 export const isPlaying = computed(() => !!currentTrackPath.value && !isPaused.value);

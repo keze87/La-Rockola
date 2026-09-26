@@ -16,16 +16,19 @@
 		stop,
 		toggleDjCarpincho: toggleDjCmd,
 		toggleDjSafeMode: toggleSafeCmd,
+		toggleRadioMode: toggleRadioCmd,
 	} = usePlaybackControls();
 
 	const {
 		djCarpinchoEnabled,
 		djSafeModeEnabled,
 		haptic,
+		hasEdgeTts,
 		hasLibrosa,
 		listenLocally,
 		loadLibrary,
 		mpvVisible,
+		radioModeEnabled,
 		serverMuted,
 		setVolume,
 		sortLibrary,
@@ -100,6 +103,11 @@
 
 	function toggleDjSafeMode() {
 		toggleSafeCmd(!djSafeModeEnabled.value);
+		haptic();
+	}
+
+	function toggleRadioMode() {
+		toggleRadioCmd(!radioModeEnabled.value);
 		haptic();
 	}
 
@@ -185,6 +193,16 @@
 			description="Prioriza favoritos, para que no decaiga"
 			active-class="bg-carpincho-success"
 			@update:model-value="toggleDjSafeMode"
+		/>
+
+		<ToggleRow
+			v-if="hasEdgeTts"
+			:model-value="radioModeEnabled"
+			icon="radio"
+			title="Modo Radio"
+			description="Locución con la hora y una fortuna cada 2 o 3 temas"
+			active-class="bg-carpincho-success"
+			@update:model-value="toggleRadioMode"
 		/>
 
 		<!-- Action Buttons -->

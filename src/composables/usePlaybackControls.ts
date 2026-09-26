@@ -47,6 +47,7 @@ export function usePlaybackControls() {
 		stop: () => execute('stop'),
 		toggleDjCarpincho: (state: boolean) => execute('toggle_dj_carpincho', { state }),
 		toggleDjSafeMode: (state: boolean) => execute('toggle_dj_safe_mode', { state }),
+		toggleRadioMode: (state?: boolean) => execute('toggle_radio_mode', { state }),
 		toggleFavorite: (path: string) => execute('toggle_favorite', { path }),
 		toggleQueue: (path: string, title?: string) =>
 			execute('toggle_queue', { path }, title ? `¡Adentro! ${title} a la fila.` : null),
