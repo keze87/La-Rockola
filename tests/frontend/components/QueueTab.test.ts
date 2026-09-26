@@ -66,6 +66,11 @@ describe('QueueTab.vue', () => {
 		expect(wrapper.text()).toContain('Historial 1');
 		expect(wrapper.text()).toContain('Tema Actual');
 		expect(wrapper.text()).toContain('En Fila 1');
+
+		const trackRows = wrapper.findAllComponents(TrackRow);
+		expect(trackRows[0].props('contextSource')).toBe('history');
+		expect(trackRows[1].props('contextSource')).toBe('current');
+		expect(trackRows[2].props('contextSource')).toBe('queue');
 	});
 
 	it('submits a new URL using the input and add button', async () => {

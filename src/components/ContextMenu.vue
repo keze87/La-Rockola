@@ -4,13 +4,24 @@
 	import { usePlaybackControls } from '../composables/usePlaybackControls';
 	import { usePlayer } from '../composables/usePlayer';
 
-	const { toggleQueue, pauseAfter, play, removeHistoryItem, moveQueueItem, removeQueueItem } = usePlaybackControls();
+	const {
+		toggleQueue,
+		pauseAfter,
+		play,
+		pause,
+		seekAbsolute,
+		skip,
+		removeHistoryItem,
+		moveQueueItem,
+		removeQueueItem,
+	} = usePlaybackControls();
 	const { ctxMenu, closeCtxMenu } = useContextMenu();
 	const {
 		currentTrackPath,
 		favorites,
 		haptic,
 		historyState,
+		isPaused,
 		librarySearchQuery,
 		pauseAfterPath,
 		queueState,
@@ -229,6 +240,27 @@
 			haptic();
 		}
 	}
+
+	// --- Current Source Actions ---
+	async function ctxTogglePause() {
+		closeCtxMenu();
+		await pause();
+		haptic();
+	}
+
+	async function ctxRestartCurrent() {
+		closeCtxMenu();
+		await seekAbsolute(0);
+		showToast('Volviendo a arrancar el temón', 'info');
+		haptic();
+	}
+
+	async function ctxSkipCurrent() {
+		closeCtxMenu();
+		await skip();
+		showToast('Pasando al siguiente tema...', 'info');
+		haptic();
+	}
 </script>
 
 <template>
@@ -279,6 +311,36 @@
 				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxPauseAfter">
 					<i class="material-icons">timer</i>
 					Frenar la chata tras este tema
+				</button>
+			</template>
+
+			<!-- CURRENT ACTIONS -->
+			<template v-if="ctxMenu.source === 'current'">
+				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxTogglePause">
+					<i class="material-icons">{{ isPaused ? 'play_arrow' : 'pause' }}</i>
+					{{ isPaused ? 'Reanudar tema' : 'Pausar tema' }}
+				</button>
+				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxRestartCurrent">
+					<i class="material-icons">replay</i>
+					Volver a empezar
+				</button>
+				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxSkipCurrent">
+					<i class="material-icons">skip_next</i>
+					Pasar al siguiente tema
+				</button>
+				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxToggleFavorite">
+					<i class="material-icons">
+						{{ favorites?.includes(ctxMenu.track?.path || '') ? 'favorite' : 'favorite_border' }}
+					</i>
+					{{ favorites?.includes(ctxMenu.track?.path || '') ? 'Sacar de favoritos' : 'A los favoritos' }}
+				</button>
+				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxPauseAfter">
+					<i class="material-icons">timer</i>
+					Frenar la chata tras este tema
+				</button>
+				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxFilterByArtist">
+					<i class="material-icons">person_search</i>
+					Buscar en la librería
 				</button>
 			</template>
 

@@ -224,6 +224,56 @@ describe('ContextMenu.vue', () => {
 		);
 	});
 
+	it('renders current track actions and handles pause, restart, and skip without queue actions', async () => {
+		ctxMenu.visible = true;
+		ctxMenu.source = 'current';
+		ctxMenu.track = sampleTrack;
+		ctxMenu.index = null;
+
+		const wrapper = mount(ContextMenu);
+
+		// Current track must NOT have queue actions like 'Subir a próximo', 'Mandale play de una', or 'Pegarle un voleo'
+		expect(wrapper.text()).not.toContain('Subir a próximo');
+		expect(wrapper.text()).not.toContain('Mandale play de una');
+		expect(wrapper.text()).not.toContain('Pegarle un voleo');
+
+		// 1. Restart current (Volver a empezar)
+		const restartBtn = wrapper.findAll('.ctx-menu-item').find((b) => b.text().includes('Volver a empezar'));
+		expect(restartBtn).toBeDefined();
+		await restartBtn!.trigger('click');
+		await flushPromises();
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({ body: JSON.stringify({ cmd: 'seek_absolute', amount: 0 }) })
+		);
+
+		// 2. Skip to next (Pasar al siguiente tema)
+		fetchMock.mockClear();
+		ctxMenu.visible = true;
+		const wrapper2 = mount(ContextMenu);
+		const skipBtn = wrapper2.findAll('.ctx-menu-item').find((b) => b.text().includes('Pasar al siguiente tema'));
+		expect(skipBtn).toBeDefined();
+		await skipBtn!.trigger('click');
+		await flushPromises();
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({ body: JSON.stringify({ cmd: 'skip' }) })
+		);
+
+		// 3. Pause / Resume current
+		fetchMock.mockClear();
+		ctxMenu.visible = true;
+		const wrapper3 = mount(ContextMenu);
+		const pauseBtn = wrapper3.findAll('.ctx-menu-item').find((b) => b.text().includes('Pausar tema'));
+		expect(pauseBtn).toBeDefined();
+		await pauseBtn!.trigger('click');
+		await flushPromises();
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({ body: JSON.stringify({ cmd: 'pause' }) })
+		);
+	});
+
 	it('navigates with keyboard (ArrowDown, ArrowUp, Tab, Escape)', async () => {
 		ctxMenu.visible = true;
 		ctxMenu.source = 'library';

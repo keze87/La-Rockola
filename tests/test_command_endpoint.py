@@ -364,6 +364,7 @@ async def test_playback_queue_edge_cases(clean_state):
 	4. Cuando se mueve el siguiente antes del actual (queue[0] moved to history[-1])
 	"""
 	with patch.object(clean_state, "play_track", new_callable=AsyncMock) as mock_play:
+
 		async def fake_play(path):
 			clean_state.current_track = path
 

@@ -302,7 +302,7 @@
 					:data-track-status="item.status"
 					:data-playlist-index="item.index"
 					:track="getTrackInfo(item.path)"
-					:context-source="item.status === 'history' ? 'history' : 'queue'"
+					:context-source="item.status"
 					:index="
 						item.status === 'history' ? item.historyIndex : item.status === 'queue' ? item.queueIndex : null
 					"
