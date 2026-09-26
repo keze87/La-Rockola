@@ -50,5 +50,13 @@ export function usePlaybackControls() {
 		toggleFavorite: (path: string) => execute('toggle_favorite', { path }),
 		toggleQueue: (path: string, title?: string) =>
 			execute('toggle_queue', { path }, title ? `¡Adentro! ${title} a la fila.` : null),
+		moveHistoryItem: (index: number, new_index: number) => execute('move_history_item', { index, new_index }),
+		insertQueueItem: (path: string, index: number) => execute('insert_queue_item', { path, index }),
+		moveCurrentToQueue: (index: number) => execute('move_current_to_queue', { index }),
+		moveCurrentToHistory: (history_index?: number) => execute('move_current_to_history', { history_index }),
+		moveQueueToHistory: (index: number, history_index?: number) =>
+			execute('move_queue_to_history', { index, history_index }),
+		playFromQueue: (index: number) => execute('play_from_queue', { index }),
+		moveInPlaylist: (index: number, new_index: number) => execute('move_in_playlist', { index, new_index }),
 	};
 }

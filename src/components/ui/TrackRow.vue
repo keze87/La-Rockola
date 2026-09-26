@@ -16,7 +16,11 @@
 				contextMenuOnly?: boolean;
 				// Explicitly declare the camelCased data attributes for vue-tsc
 				dataHistoryPath?: string;
+				dataHistoryIndex?: number;
 				dataQueueIndex?: number;
+				dataCurrentTrack?: boolean | string;
+				dataTrackStatus?: string;
+				dataPlaylistIndex?: number;
 			} & /* @vue-ignore */ HTMLAttributes
 		>(),
 		{
@@ -24,7 +28,11 @@
 			index: null,
 			contextMenuOnly: false,
 			dataHistoryPath: undefined,
+			dataHistoryIndex: undefined,
 			dataQueueIndex: undefined,
+			dataCurrentTrack: undefined,
+			dataTrackStatus: undefined,
+			dataPlaylistIndex: undefined,
 		}
 	);
 
@@ -49,6 +57,14 @@
 	<div
 		class="border-carpincho-border hover:bg-carpincho-border grid h-[72px] w-full cursor-pointer grid-cols-[4rem_minmax(0,1fr)_minmax(0,1fr)] items-center border-b transition-colors active:scale-[0.98] sm:grid-cols-[4rem_minmax(0,1fr)_minmax(0,1fr)_5.5rem]"
 		:class="{ 'bg-carpincho-panel': isPlaying }"
+		v-bind="{
+			'data-history-path': props.dataHistoryPath,
+			'data-history-index': props.dataHistoryIndex,
+			'data-queue-index': props.dataQueueIndex,
+			'data-current-track': props.dataCurrentTrack,
+			'data-track-status': props.dataTrackStatus,
+			'data-playlist-index': props.dataPlaylistIndex,
+		}"
 		v-on="bindings"
 		@click="emit('click', track)"
 	>

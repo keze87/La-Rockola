@@ -62,6 +62,13 @@ export interface CommandPayloads {
 	toggle_dj_safe_mode: { state: boolean };
 	fullscreen: undefined;
 	pause_after: { path: string };
+	move_history_item: { index: number; new_index: number };
+	insert_queue_item: { path: string; index: number };
+	move_current_to_queue: { index: number };
+	move_current_to_history: { history_index?: number };
+	move_queue_to_history: { index: number; history_index?: number };
+	play_from_queue: { index: number };
+	move_in_playlist: { index: number; new_index: number };
 }
 
 export type CommandName = keyof CommandPayloads;

@@ -205,6 +205,252 @@ async def test_command_queue_operations(clean_state):
 	await server.handle_command(server.CommandRequest(cmd="remove_history_item", index=-1))
 	assert clean_state.history == ["H1", "H3"]
 
+	# 6. move_history_item
+	clean_state.history = ["H1", "H2", "H3"]
+	await server.handle_command(server.CommandRequest(cmd="move_history_item", index=0, new_index=2))
+	assert clean_state.history == ["H2", "H3", "H1"]
+
+	# out of bounds move_history_item
+	await server.handle_command(server.CommandRequest(cmd="move_history_item", index=9, new_index=0))
+	assert clean_state.history == ["H2", "H3", "H1"]
+
+	# 7. insert_queue_item
+	clean_state.current_track = "/music/playing.mp3"
+	clean_state.queue = ["Q1", "Q2"]
+	await server.handle_command(server.CommandRequest(cmd="insert_queue_item", path="Q_new", index=1))
+	assert clean_state.queue == ["Q1", "Q_new", "Q2"]
+
+	# 8. move_current_to_queue (when queue has items)
+	clean_state.current_track = "CURRENT"
+	clean_state.queue = ["NEXT", "AFTER"]
+	clean_state.pause_after_path = "CURRENT"
+	await server.handle_command(server.CommandRequest(cmd="move_current_to_queue", index=0))
+	assert clean_state.current_track == "NEXT"
+	assert clean_state.queue == ["CURRENT", "AFTER"]
+	assert clean_state.pause_after_path is None
+
+	# move_current_to_queue (when queue is empty)
+	clean_state.current_track = "SOLO"
+	clean_state.queue = []
+	await server.handle_command(server.CommandRequest(cmd="move_current_to_queue", index=0))
+	assert clean_state.current_track is None
+	assert clean_state.queue == ["SOLO"]
+
+	# 9. move_current_to_history
+	clean_state.current_track = "CURRENT2"
+	clean_state.queue = ["NEXT2"]
+	clean_state.history = ["H1"]
+	await server.handle_command(server.CommandRequest(cmd="move_current_to_history", history_index=1))
+	assert clean_state.current_track == "NEXT2"
+	assert clean_state.history == ["H1", "CURRENT2"]
+	assert clean_state.queue == []
+
+	# 10. move_queue_to_history
+	clean_state.queue = ["Q1", "Q2"]
+	clean_state.history = ["H1"]
+	await server.handle_command(server.CommandRequest(cmd="move_queue_to_history", index=0, history_index=0))
+	assert clean_state.queue == ["Q2"]
+	assert clean_state.history == ["Q1", "H1"]
+
+	# 11. play_from_queue
+	clean_state.current_track = "CURRENT3"
+	clean_state.queue = ["Q_TARGET", "Q_OTHER"]
+	clean_state.history = ["H1"]
+	await server.handle_command(server.CommandRequest(cmd="play_from_queue", index=0))
+	assert clean_state.current_track == "Q_TARGET"
+	assert clean_state.queue == ["Q_OTHER"]
+	assert clean_state.history == ["H1", "CURRENT3"]
+
+
+@pytest.mark.asyncio
+async def test_command_move_in_playlist(clean_state):
+	"""Test unified playlist move command across history, current track, and queue."""
+	with patch.object(clean_state, "play_track", new_callable=AsyncMock) as mock_play:
+		# 1. Reordering within history (current playing track is NOT interrupted)
+		clean_state.history = ["H1", "H2", "H3"]
+		clean_state.current_track = "CURRENT"
+		clean_state.queue = ["Q1", "Q2"]
+		await server.handle_command(server.CommandRequest(cmd="move_in_playlist", index=0, new_index=2))
+		assert clean_state.history == ["H2", "H3", "H1"]
+		assert clean_state.current_track == "CURRENT"
+		assert clean_state.queue == ["Q1", "Q2"]
+		mock_play.assert_not_called()
+
+		# 2. Reordering within queue (current playing track is NOT interrupted)
+		# playlist: ["H2", "H3", "H1", "CURRENT", "Q1", "Q2"] (indices 0..5, current is 3)
+		await server.handle_command(server.CommandRequest(cmd="move_in_playlist", index=5, new_index=4))
+		assert clean_state.history == ["H2", "H3", "H1"]
+		assert clean_state.current_track == "CURRENT"
+		assert clean_state.queue == ["Q2", "Q1"]
+		mock_play.assert_not_called()
+
+		# 3. Moving from history to queue (replay a song! current track NOT interrupted)
+		# playlist: ["H2", "H3", "H1", "CURRENT", "Q2", "Q1"] (indices 0..5, current is 3)
+		# Move H2 (idx 0) to end of queue (idx 5)
+		await server.handle_command(server.CommandRequest(cmd="move_in_playlist", index=0, new_index=5))
+		assert clean_state.history == ["H3", "H1"]
+		assert clean_state.current_track == "CURRENT"
+		assert clean_state.queue == ["Q2", "Q1", "H2"]
+		mock_play.assert_not_called()
+
+		# 4. Moving from queue to history (current track NOT interrupted)
+		# playlist: ["H3", "H1", "CURRENT", "Q2", "Q1", "H2"] (indices 0..5, current is 2)
+		# Move Q2 (idx 3) to start of history (idx 0)
+		await server.handle_command(server.CommandRequest(cmd="move_in_playlist", index=3, new_index=0))
+		assert clean_state.history == ["Q2", "H3", "H1"]
+		assert clean_state.current_track == "CURRENT"
+		assert clean_state.queue == ["Q1", "H2"]
+		mock_play.assert_not_called()
+
+		# 5. Moving current song below into queue (continues playing, items above become history)
+		# playlist: ["Q2", "H3", "H1", "CURRENT", "Q1", "H2"] (indices 0..5, current is 3)
+		# Move CURRENT (idx 3) after Q1 (idx 4)
+		await server.handle_command(server.CommandRequest(cmd="move_in_playlist", index=3, new_index=4))
+		assert clean_state.current_track == "CURRENT"
+		assert clean_state.history == ["Q2", "H3", "H1", "Q1"]
+		assert clean_state.queue == ["H2"]
+		mock_play.assert_not_called()
+
+		# 6. Moving current song up into history (continues playing, items below become queue)
+		# playlist: ["Q2", "H3", "H1", "Q1", "CURRENT", "H2"] (indices 0..5, current is 4)
+		# Move CURRENT (idx 4) to idx 1 (above H3)
+		await server.handle_command(server.CommandRequest(cmd="move_in_playlist", index=4, new_index=1))
+		assert clean_state.current_track == "CURRENT"
+		assert clean_state.history == ["Q2"]
+		assert clean_state.queue == ["H3", "H1", "Q1", "H2"]
+		mock_play.assert_not_called()
+
+		# 7. Moving current song when queue is empty (continues playing)
+		clean_state.history = ["H1"]
+		clean_state.current_track = "SOLO"
+		clean_state.queue = []
+		# playlist: ["H1", "SOLO"] (idx 0, 1)
+		# Move SOLO (idx 1) to idx 0
+		await server.handle_command(server.CommandRequest(cmd="move_in_playlist", index=1, new_index=0))
+		assert clean_state.current_track == "SOLO"
+		assert clean_state.history == []
+		assert clean_state.queue == ["H1"]
+		mock_play.assert_not_called()
+
+		# 8. Moving when current_track is None (idle rockola)
+		clean_state.history = ["H1", "H2"]
+		clean_state.current_track = None
+		clean_state.queue = ["Q1", "Q2"]
+		# playlist: ["H1", "H2", "Q1", "Q2"] (boundary = 2)
+		# Move from history (idx 0) to queue (idx 3)
+		await server.handle_command(server.CommandRequest(cmd="move_in_playlist", index=0, new_index=3))
+		assert clean_state.history == ["H2"]
+		assert clean_state.queue == ["Q1", "Q2", "H1"]
+		# Move from queue (idx 2, which is Q2) to history (idx 0)
+		# playlist: ["H2", "Q1", "Q2", "H1"] (boundary = 1)
+		await server.handle_command(server.CommandRequest(cmd="move_in_playlist", index=2, new_index=0))
+		assert clean_state.history == ["Q2", "H2"]
+		assert clean_state.queue == ["Q1", "H1"]
+
+		# 9. Out of bounds or identical indices (noop)
+		await server.handle_command(server.CommandRequest(cmd="move_in_playlist", index=-1, new_index=2))
+		await server.handle_command(server.CommandRequest(cmd="move_in_playlist", index=0, new_index=10))
+		await server.handle_command(server.CommandRequest(cmd="move_in_playlist", index=1, new_index=1))
+		assert clean_state.history == ["Q2", "H2"]
+		assert clean_state.queue == ["Q1", "H1"]
+
+
+@pytest.mark.asyncio
+async def test_playback_queue_edge_cases(clean_state):
+	"""Test edge cases requested by user:
+	1. Cuando no hay archivos (empty playlist)
+	2. Cuando se reproduce el ultimo (playing last track and it finishes, or re-queuing from history)
+	3. Cuando se mueve un ya reproducido al siguiente (history track moved to queue[0])
+	4. Cuando se mueve el siguiente antes del actual (queue[0] moved to history[-1])
+	"""
+	with patch.object(clean_state, "play_track", new_callable=AsyncMock) as mock_play:
+		async def fake_play(path):
+			clean_state.current_track = path
+
+		mock_play.side_effect = fake_play
+		# 1. Cuando no hay archivos
+		clean_state.history = []
+		clean_state.current_track = None
+		clean_state.queue = []
+		res = await server.handle_command(server.CommandRequest(cmd="move_in_playlist", index=0, new_index=1))
+		assert res == {"status": "ok"}
+		assert clean_state.history == []
+		assert clean_state.current_track is None
+		assert clean_state.queue == []
+		# play_next on empty state
+		await clean_state.play_next()
+		assert clean_state.current_track is None
+		mock_play.assert_not_called()
+
+		# 2. Cuando se reproduce el ultimo
+		clean_state.history = ["H1", "H2"]
+		clean_state.current_track = "LAST"
+		clean_state.queue = []
+		# playlist: ["H1", "H2", "LAST"]
+		# While playing the last track, user re-queues H1 to be played next
+		await server.handle_command(server.CommandRequest(cmd="move_in_playlist", index=0, new_index=2))
+		assert clean_state.history == ["H2"]
+		assert clean_state.current_track == "LAST"
+		assert clean_state.queue == ["H1"]
+		mock_play.assert_not_called()
+
+		# Now LAST finishes playing -> H1 plays next!
+		await clean_state.play_next()
+		assert clean_state.history == ["H2", "LAST"]
+		assert clean_state.current_track == "H1"
+		assert clean_state.queue == []
+		mock_play.assert_called_once_with("H1")
+		mock_play.reset_mock()
+
+		# When H1 (now the last track) finishes playing -> player stops cleanly
+		await clean_state.play_next()
+		assert clean_state.history == ["H2", "LAST", "H1"]
+		assert clean_state.current_track is None
+		assert clean_state.queue == []
+		clean_state.mpv._send.assert_any_call('{"command": ["stop"]}')
+
+		# 3. Cuando se mueve un ya reproducido al siguiente
+		clean_state.history = ["H1", "H2"]
+		clean_state.current_track = "CURRENT"
+		clean_state.queue = ["Q1", "Q2"]
+		# playlist: ["H1", "H2", "CURRENT", "Q1", "Q2"] (indices 0..4, current is 2)
+		# Move H1 (idx 0) to be the NEXT track (idx 2, right after CURRENT)
+		await server.handle_command(server.CommandRequest(cmd="move_in_playlist", index=0, new_index=2))
+		assert clean_state.history == ["H2"]
+		assert clean_state.current_track == "CURRENT"
+		assert clean_state.queue == ["H1", "Q1", "Q2"]
+		assert clean_state.queue[0] == "H1"  # H1 is indeed the next track!
+		mock_play.assert_not_called()
+
+		# When CURRENT finishes, H1 plays next!
+		await clean_state.play_next()
+		assert clean_state.current_track == "H1"
+		assert clean_state.queue == ["Q1", "Q2"]
+		assert clean_state.history == ["H2", "CURRENT"]
+		mock_play.assert_called_once_with("H1")
+		mock_play.reset_mock()
+
+		# 4. Cuando se mueve el siguiente antes del actual
+		clean_state.history = ["H1", "H2"]
+		clean_state.current_track = "CURRENT"
+		clean_state.queue = ["Q1", "Q2"]
+		# playlist: ["H1", "H2", "CURRENT", "Q1", "Q2"] (indices 0..4, current is 2, next is Q1 at 3)
+		# Move Q1 (idx 3) before CURRENT (idx 2)
+		await server.handle_command(server.CommandRequest(cmd="move_in_playlist", index=3, new_index=2))
+		assert clean_state.history == ["H1", "H2", "Q1"]
+		assert clean_state.current_track == "CURRENT"
+		assert clean_state.queue == ["Q2"]
+		assert clean_state.history[-1] == "Q1"  # Q1 is now in history
+		assert clean_state.queue[0] == "Q2"  # Q2 is now the next track
+		mock_play.assert_not_called()
+
+		# When CURRENT finishes, Q2 plays next (skipping Q1 since it was moved to history)
+		await clean_state.play_next()
+		assert clean_state.current_track == "Q2"
+		assert clean_state.queue == []
+		assert clean_state.history == ["H1", "H2", "Q1", "CURRENT"]
+		mock_play.assert_called_once_with("Q2")
+
 
 @pytest.mark.asyncio
 async def test_command_add_url(clean_state):

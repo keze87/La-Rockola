@@ -3635,6 +3635,7 @@ class CommandRequest(BaseModel):
 	new_index: int | None = None
 	amount: float | None = None
 	state: bool | None = None
+	history_index: int | None = None
 
 
 @app.post("/command")
@@ -3775,16 +3776,124 @@ async def handle_command(req: CommandRequest):
 	elif cmd == "remove_history_item":
 		if req.index is not None and 0 <= req.index < len(state.history):
 			state.history.pop(req.index)
+	elif cmd == "move_history_item":
+		if (
+			req.index is not None
+			and req.new_index is not None
+			and 0 <= req.index < len(state.history)
+			and 0 <= req.new_index < len(state.history)
+		):
+			item = state.history.pop(req.index)
+			state.history.insert(req.new_index, item)
 	elif cmd == "remove_queue_item":
 		if req.index is not None and 0 <= req.index < len(state.queue):
 			state.queue.pop(req.index)
 			state._pick_dj_next()
 	elif cmd == "move_queue_item":
-		if req.index is not None and req.new_index is not None:
-			if 0 <= req.index < len(state.queue) and 0 <= req.new_index < len(state.queue):
-				item = state.queue.pop(req.index)
-				state.queue.insert(req.new_index, item)
+		if (
+			req.index is not None
+			and req.new_index is not None
+			and 0 <= req.index < len(state.queue)
+			and 0 <= req.new_index < len(state.queue)
+		):
+			item = state.queue.pop(req.index)
+			state.queue.insert(req.new_index, item)
 			state._pick_dj_next()
+	elif cmd == "insert_queue_item":
+		if req.path:
+			idx = max(0, min(len(state.queue), req.index if req.index is not None else len(state.queue)))
+			state.queue.insert(idx, req.path)
+			state._pick_dj_next()
+			if not state.current_track:
+				await state.play_next(skipped_by_user=True)
+			if req.path.startswith("http"):
+				asyncio.create_task(state.fetch_yt_dlp_metadata(req.path))
+	elif cmd == "move_current_to_queue":
+		if state.current_track:
+			old_current = state.current_track
+			state.current_track = None
+			if state.pause_after_path == old_current:
+				state.pause_after_path = None
+			if state.queue:
+				next_track = state.queue.pop(0)
+				idx = max(0, min(len(state.queue), req.index if req.index is not None else 0))
+				state.queue.insert(idx, old_current)
+				state._pick_dj_next()
+				await state.play_track(next_track)
+			else:
+				state.queue.append(old_current)
+				state.mpv_paused = False
+				await state.mpv._send('{"command": ["stop"]}')
+				state._pick_dj_next()
+	elif cmd == "move_current_to_history":
+		if state.current_track:
+			old_current = state.current_track
+			state.current_track = None
+			if state.pause_after_path == old_current:
+				state.pause_after_path = None
+			idx = max(
+				0, min(len(state.history), req.history_index if req.history_index is not None else len(state.history))
+			)
+			state.history.insert(idx, old_current)
+			await state.play_next(skipped_by_user=True)
+	elif cmd == "move_queue_to_history":
+		if req.index is not None and 0 <= req.index < len(state.queue):
+			item = state.queue.pop(req.index)
+			idx = max(
+				0, min(len(state.history), req.history_index if req.history_index is not None else len(state.history))
+			)
+			state.history.insert(idx, item)
+			state._pick_dj_next()
+	elif cmd == "play_from_queue":
+		if req.index is not None and 0 <= req.index < len(state.queue):
+			item = state.queue.pop(req.index)
+			if state.current_track:
+				state.history.append(state.current_track)
+				state.current_track = None
+			state._pick_dj_next()
+			await state.play_track(item)
+	elif cmd == "move_in_playlist":
+		if req.index is not None and req.new_index is not None:
+			from_idx = req.index
+			to_idx = req.new_index
+
+			playlist = list(state.history)
+			current_idx = None
+			if state.current_track:
+				current_idx = len(playlist)
+				playlist.append(state.current_track)
+			history_boundary = len(state.history)
+			playlist.extend(state.queue)
+
+			n = len(playlist)
+			if 0 <= from_idx < n and 0 <= to_idx < n and from_idx != to_idx:
+				item = playlist.pop(from_idx)
+				playlist.insert(to_idx, item)
+
+				if current_idx is not None:
+					if from_idx == current_idx:
+						new_current_idx = to_idx
+					elif from_idx < current_idx <= to_idx:
+						new_current_idx = current_idx - 1
+					elif to_idx <= current_idx < from_idx:
+						new_current_idx = current_idx + 1
+					else:
+						new_current_idx = current_idx
+
+					state.history = playlist[:new_current_idx]
+					state.current_track = playlist[new_current_idx]
+					state.queue = playlist[new_current_idx + 1 :]
+					state._pick_dj_next()
+				else:
+					# No track currently playing
+					if from_idx < history_boundary <= to_idx:
+						history_boundary -= 1
+					elif to_idx < history_boundary <= from_idx:
+						history_boundary += 1
+
+					state.history = playlist[:history_boundary]
+					state.queue = playlist[history_boundary:]
+					state._pick_dj_next()
 
 	# Notify clients of state change
 	await broadcast_state()

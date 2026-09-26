@@ -1,5 +1,5 @@
 <script setup lang="ts">
-	import { ref } from 'vue';
+	import { computed, ref } from 'vue';
 	import { useContextMenu } from '../composables/useContextMenu';
 	import { usePlaybackControls } from '../composables/usePlaybackControls';
 	import { usePlayer } from '../composables/usePlayer';
@@ -30,12 +30,12 @@
 		addUrl: addUrlCmd,
 		jumpToHistory,
 		jumpToQueue,
+		moveInPlaylist,
 		moveQueueItem: moveQueueItemCmd,
 		pause,
 		removeQueueItem: removeQueueItemCmd,
 	} = usePlaybackControls();
 
-	const dragFromIndex = ref<number | null>(null);
 	const newUrl = ref('');
 	const swipeOffsets = ref(new Map<number, number>());
 
@@ -122,63 +122,134 @@
 		}
 	}
 
+	// --- Unified Queue Computation ---
+	interface UnifiedTrackItem {
+		id: string;
+		path: string;
+		status: 'history' | 'current' | 'queue';
+		index: number;
+		historyIndex?: number;
+		queueIndex?: number;
+	}
+
+	const unifiedQueue = computed<UnifiedTrackItem[]>(() => {
+		const list: UnifiedTrackItem[] = [];
+		let idx = 0;
+
+		for (let i = 0; i < historyState.value.length; i++) {
+			const path = historyState.value[i];
+			list.push({
+				id: `hist-${i}-${path}`,
+				path,
+				status: 'history',
+				index: idx++,
+				historyIndex: i,
+			});
+		}
+
+		if (currentTrackPath.value) {
+			list.push({
+				id: `current-${currentTrackPath.value}`,
+				path: currentTrackPath.value,
+				status: 'current',
+				index: idx++,
+			});
+		}
+
+		for (let i = 0; i < queueState.value.length; i++) {
+			const path = queueState.value[i];
+			list.push({
+				id: `queue-${i}-${path}`,
+				path,
+				status: 'queue',
+				index: idx++,
+				queueIndex: i,
+			});
+		}
+
+		return list;
+	});
+
+	function onTrackClick(item: UnifiedTrackItem) {
+		if (item.status === 'history' && item.historyIndex !== undefined) {
+			jumpToHistory(item.historyIndex);
+		} else if (item.status === 'current') {
+			pause();
+		} else if (item.status === 'queue' && item.queueIndex !== undefined) {
+			jumpToQueue(item.queueIndex);
+		}
+	}
+
 	// --- Drag & Drop Handlers ---
+	const dragFromIndex = ref<number | null>(null);
+
 	function dragStart(e: DragEvent, index: number) {
 		dragFromIndex.value = index;
-		(e.currentTarget as HTMLElement).classList.add('opacity-40');
+		(e.currentTarget as HTMLElement)?.classList?.add('opacity-40');
 
-		if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+		if (e.dataTransfer) {
+			e.dataTransfer.effectAllowed = 'move';
+			const item = unifiedQueue.value[index];
+			if (item && typeof e.dataTransfer.setData === 'function') {
+				e.dataTransfer.setData('text/plain', item.path);
+			}
+		}
 	}
 
 	function dragOver(e: DragEvent, index: number) {
 		if (dragFromIndex.value === null || dragFromIndex.value === index) return;
 
-		const target = e.currentTarget as HTMLElement;
-		const rect = target.getBoundingClientRect();
-		const midY = rect.top + rect.height / 2;
+		const target = e.currentTarget as HTMLElement | null;
+		if (!target) return;
 
-		// Clean previous visual classes
-		target.classList.remove('border-t-2', 'border-b-2', 'border-carpincho-primary');
+		const rect = target.getBoundingClientRect ? target.getBoundingClientRect() : { top: 0, height: 0 };
+		const midY = (rect.top || 0) + (rect.height || 0) / 2;
 
-		// Add visual feedback
-		if (e.clientY < midY) {
-			target.classList.add('border-t-2', 'border-carpincho-primary');
+		target.classList?.remove('border-t-2', 'border-b-2', 'border-carpincho-primary');
+
+		if ((e.clientY ?? 0) < midY) {
+			target.classList?.add('border-t-2', 'border-carpincho-primary');
 		} else {
-			target.classList.add('border-b-2', 'border-carpincho-primary');
+			target.classList?.add('border-b-2', 'border-carpincho-primary');
 		}
 	}
 
 	function dragLeave(e: DragEvent) {
-		(e.currentTarget as HTMLElement).classList.remove('border-t-2', 'border-b-2', 'border-carpincho-primary');
+		const target = e.currentTarget as HTMLElement | null;
+		target?.classList?.remove('border-t-2', 'border-b-2', 'border-carpincho-primary');
 	}
 
 	function dragDrop(e: DragEvent, toIndex: number) {
-		const target = e.currentTarget as HTMLElement;
-		target.classList.remove('border-t-2', 'border-b-2', 'border-carpincho-primary');
+		const target = e.currentTarget as HTMLElement | null;
+		target?.classList?.remove('border-t-2', 'border-b-2', 'border-carpincho-primary');
 
 		if (dragFromIndex.value === null || dragFromIndex.value === toIndex) return;
 
-		const rect = target.getBoundingClientRect();
-		const midY = rect.top + rect.height / 2;
+		const rect = target?.getBoundingClientRect ? target.getBoundingClientRect() : { top: 0, height: 0 };
+		const midY = (rect.top || 0) + (rect.height || 0) / 2;
 
-		let finalIndex = e.clientY < midY ? toIndex : toIndex + 1;
-
+		let finalIndex = (e.clientY ?? 0) < midY ? toIndex : toIndex + 1;
 		if (finalIndex > dragFromIndex.value) finalIndex--;
 
 		if (finalIndex !== dragFromIndex.value) {
-			moveQueueItemCmd(dragFromIndex.value, finalIndex);
+			moveInPlaylist(dragFromIndex.value, finalIndex);
 		}
 
 		dragFromIndex.value = null;
 	}
 
 	function dragEnd(e: DragEvent) {
-		(e.currentTarget as HTMLElement).classList.remove(
-			'opacity-40',
-			'border-t-2',
-			'border-b-2',
-			'border-carpincho-primary'
-		);
+		const target = e.currentTarget as HTMLElement | null;
+		target?.classList?.remove('opacity-40', 'border-t-2', 'border-b-2', 'border-carpincho-primary');
+		dragFromIndex.value = null;
+	}
+
+	function dropAtEnd() {
+		if (dragFromIndex.value === null) return;
+		const lastIndex = unifiedQueue.value.length - 1;
+		if (lastIndex >= 0 && dragFromIndex.value !== lastIndex) {
+			moveInPlaylist(dragFromIndex.value, lastIndex);
+		}
 		dragFromIndex.value = null;
 	}
 </script>
@@ -213,133 +284,136 @@
 		</div>
 
 		<div class="overflow-hidden">
-			<!-- History Items -->
+			<!-- Unified Single List of Tracks -->
 			<TransitionGroup name="list" tag="div" class="relative w-full">
 				<TrackRow
-					v-for="(path, i) in historyState"
-					:key="'hist-' + path"
-					:class="['opacity-70', trackGridClass]"
-					:data-history-path="path"
-					:track="getTrackInfo(path)"
-					context-source="history"
-					:index="i"
-					@click="jumpToHistory(i)"
-				>
-					<template #prefix>
-						<i class="material-icons text-carpincho-success text-sm">check</i>
-					</template>
-				</TrackRow>
-			</TransitionGroup>
-
-			<!-- Current Track -->
-			<TransitionGroup name="list" tag="div" class="relative w-full">
-				<TrackRow
-					v-if="currentTrackPath"
-					id="current-queue-row"
-					:class="trackGridClass"
-					:track="getTrackInfo(currentTrackPath)"
-					context-source="queue"
-					@click="pause"
-				>
-					<template #prefix>
-						<div class="flex items-center justify-center gap-1" @click.stop>
-							<div :class="['equalizer', isPaused ? 'paused' : '']">
-								<span />
-								<span />
-								<span />
-							</div>
-							<button
-								type="button"
-								:title="
-									pauseAfterPath === currentTrackPath
-										? 'Cancelar pausa al terminar'
-										: 'Frenar tras este tema'
-								"
-								:class="[
-									btnBaseClass,
-									'active:scale-90',
-									pauseAfterPath === currentTrackPath
-										? 'text-carpincho-warning drop-shadow-[0_0_8px_rgba(233,196,106,0.8)]'
-										: `hover:text-carpincho-warning text-gray-500 ${btnHoverClass}`,
-								]"
-								@click="
-									togglePauseAfterCurrent();
-									haptic();
-								"
-							>
-								<i class="material-icons text-lg">timer</i>
-							</button>
-						</div>
-					</template>
-				</TrackRow>
-			</TransitionGroup>
-
-			<!-- Render queued items -->
-			<TransitionGroup name="list" tag="div" class="relative w-full">
-				<TrackRow
-					v-for="(path, i) in queueState"
-					:key="path"
-					:class="['swipe-row', trackGridClass]"
-					:data-queue-index="i"
-					:track="getTrackInfo(path)"
-					context-source="queue"
-					:index="i"
-					context-menu-only
+					v-for="item in unifiedQueue"
+					:id="item.status === 'current' ? 'current-queue-row' : undefined"
+					:key="item.id"
+					:class="[
+						item.status === 'history' ? 'opacity-70' : '',
+						item.status === 'queue' ? 'swipe-row' : '',
+						trackGridClass,
+					]"
+					:data-history-path="item.status === 'history' ? item.path : undefined"
+					:data-history-index="item.historyIndex"
+					:data-queue-index="item.queueIndex"
+					:data-current-track="item.status === 'current' ? true : undefined"
+					:data-track-status="item.status"
+					:data-playlist-index="item.index"
+					:track="getTrackInfo(item.path)"
+					:context-source="item.status === 'history' ? 'history' : 'queue'"
+					:index="
+						item.status === 'history' ? item.historyIndex : item.status === 'queue' ? item.queueIndex : null
+					"
+					:context-menu-only="item.status === 'queue'"
 					draggable="true"
-					@click="jumpToQueue(i)"
-					@dragstart="dragStart($event, i)"
-					@dragover.prevent="dragOver($event, i)"
+					@click="onTrackClick(item)"
+					@dragstart="dragStart($event, item.index)"
+					@dragover.prevent="dragOver($event, item.index)"
 					@dragleave="dragLeave($event)"
-					@drop.prevent="dragDrop($event, i)"
+					@drop.prevent="dragDrop($event, item.index)"
 					@dragend="dragEnd($event)"
-					@touchstart="queueTouchStart($event, path, i)"
-					@touchend="queueTouchEnd($event, i)"
-					@touchmove="queueTouchMove($event, i)"
+					@touchstart="
+						item.status === 'queue' && item.queueIndex !== undefined
+							? queueTouchStart($event, item.path, item.queueIndex)
+							: undefined
+					"
+					@touchend="
+						item.status === 'queue' && item.queueIndex !== undefined
+							? queueTouchEnd($event, item.queueIndex)
+							: undefined
+					"
+					@touchmove="
+						item.status === 'queue' && item.queueIndex !== undefined
+							? queueTouchMove($event, item.queueIndex)
+							: undefined
+					"
 				>
-					<!-- Actions Column -->
+					<!-- Prefix Slot: Actions / Equalizer / History Checkmark -->
 					<template #prefix>
-						<div class="flex items-center justify-center gap-1" @click.stop>
-							<button
-								type="button"
-								:class="[btnBaseClass, btnHoverClass]"
-								title="Subir a próximo"
-								@click="moveQueueItem(i, 'first')"
-							>
-								<i
-									class="material-icons text-carpincho-primary hover:text-carpincho-secondary transition"
+						<!-- History Icon -->
+						<template v-if="item.status === 'history'">
+							<i class="material-icons text-carpincho-success text-sm">check</i>
+						</template>
+
+						<!-- Current Playing Equalizer & Pause-After Button -->
+						<template v-else-if="item.status === 'current'">
+							<div class="flex items-center justify-center gap-1" @click.stop>
+								<div :class="['equalizer', isPaused ? 'paused' : '']">
+									<span />
+									<span />
+									<span />
+								</div>
+								<button
+									type="button"
+									:title="
+										pauseAfterPath === currentTrackPath
+											? 'Cancelar pausa al terminar'
+											: 'Frenar tras este tema'
+									"
+									:class="[
+										btnBaseClass,
+										'active:scale-90',
+										pauseAfterPath === currentTrackPath
+											? 'text-carpincho-warning drop-shadow-[0_0_8px_rgba(233,196,106,0.8)]'
+											: `hover:text-carpincho-warning text-gray-500 ${btnHoverClass}`,
+									]"
+									@click="
+										togglePauseAfterCurrent();
+										haptic();
+									"
 								>
-									vertical_align_top
-								</i>
-							</button>
-							<button
-								type="button"
-								:class="[btnBaseClass, btnHoverClass]"
-								title="Mover al final"
-								@click="moveQueueItem(i, 'last')"
-							>
-								<i
-									class="material-icons text-carpincho-primary hover:text-carpincho-secondary transition"
+									<i class="material-icons text-lg">timer</i>
+								</button>
+							</div>
+						</template>
+
+						<!-- Queue Actions Column -->
+						<template v-else-if="item.status === 'queue' && item.queueIndex !== undefined">
+							<div class="flex items-center justify-center gap-1" @click.stop>
+								<button
+									type="button"
+									:class="[btnBaseClass, btnHoverClass]"
+									title="Subir a próximo"
+									@click="moveQueueItem(item.queueIndex, 'first')"
 								>
-									vertical_align_bottom
-								</i>
-							</button>
-							<button
-								type="button"
-								:class="[btnBaseClass, 'hidden hover:bg-red-500/20 active:bg-red-500/30 sm:flex']"
-								title="Sacar de la fila"
-								@click="onRemoveClick(i, $event)"
-							>
-								<i class="material-icons text-carpincho-secondary transition hover:text-red-400">
-									delete
-								</i>
-							</button>
-						</div>
+									<i
+										class="material-icons text-carpincho-primary hover:text-carpincho-secondary transition"
+									>
+										vertical_align_top
+									</i>
+								</button>
+								<button
+									type="button"
+									:class="[btnBaseClass, btnHoverClass]"
+									title="Mover al final"
+									@click="moveQueueItem(item.queueIndex, 'last')"
+								>
+									<i
+										class="material-icons text-carpincho-primary hover:text-carpincho-secondary transition"
+									>
+										vertical_align_bottom
+									</i>
+								</button>
+								<button
+									type="button"
+									:class="[btnBaseClass, 'hidden hover:bg-red-500/20 active:bg-red-500/30 sm:flex']"
+									title="Sacar de la fila"
+									@click="onRemoveClick(item.queueIndex, $event)"
+								>
+									<i class="material-icons text-carpincho-secondary transition hover:text-red-400">
+										delete
+									</i>
+								</button>
+							</div>
+						</template>
 					</template>
 
-					<!-- Track Info -->
+					<!-- Track Info: Pause-After Indicator -->
 					<template #title-extra>
 						<i
-							v-if="path === pauseAfterPath"
+							v-if="item.path === pauseAfterPath"
 							class="material-icons text-carpincho-warning shrink-0 text-sm"
 							title="Se frena acá"
 						>
@@ -349,9 +423,19 @@
 				</TrackRow>
 			</TransitionGroup>
 
+			<!-- Drop zone al final de la lista unificada -->
+			<div
+				v-if="unifiedQueue.length > 0"
+				id="playlist-bottom-drop-zone"
+				class="min-h-[48px] w-full"
+				@dragover.prevent
+				@drop.prevent="dropAtEnd"
+			/>
+
 			<!-- EMPTY STATE: Cuando no hay nada en la fila ni está sonando nada -->
 			<div
-				v-if="queueState.length === 0 && !currentTrackPath && !djCarpinchoEnabled"
+				v-if="unifiedQueue.length === 0 && !djCarpinchoEnabled"
+				id="empty-queue-full-state"
 				:class="['border-carpincho-border border-b', trackGridClass]"
 			>
 				<div class="col-span-4 p-12 text-center">

@@ -162,7 +162,7 @@ describe('QueueTab.vue', () => {
 		);
 	});
 
-	it('handles HTML5 drag and drop reordering', async () => {
+	it('handles HTML5 drag and drop reordering within queue', async () => {
 		queueState.value = ['/music/q1.mp3', '/music/current.mp3'];
 
 		const wrapper = mount(QueueTab);
@@ -188,11 +188,275 @@ describe('QueueTab.vue', () => {
 
 		expect(fetchMock).toHaveBeenCalledWith(
 			'/command',
-			expect.objectContaining({ body: JSON.stringify({ cmd: 'move_queue_item', index: 0, new_index: 1 }) })
+			expect.objectContaining({ body: JSON.stringify({ cmd: 'move_in_playlist', index: 0, new_index: 1 }) })
 		);
 
 		// Drag end cleans up
 		await rows[0].trigger('dragend');
+	});
+
+	it('handles drag and drop to order history', async () => {
+		historyState.value = ['/music/h1.mp3', '/music/h2.mp3', '/music/h3.mp3'];
+
+		const wrapper = mount(QueueTab);
+		const historyRows = wrapper.findAll('[data-history-path]');
+		expect(historyRows.length).toBe(3);
+
+		// Drag start on history row 0
+		await historyRows[0].trigger('dragstart', {
+			dataTransfer: { effectAllowed: 'none' },
+		});
+
+		// Drop on history row 1 (clientY: 100 -> dropIndex 1)
+		await historyRows[1].trigger('drop', {
+			clientY: 100,
+		});
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({ body: JSON.stringify({ cmd: 'move_in_playlist', index: 0, new_index: 1 }) })
+		);
+	});
+
+	it('handles dragging from history to queue to play again a song', async () => {
+		historyState.value = ['/music/h1.mp3'];
+		queueState.value = ['/music/q1.mp3'];
+
+		const wrapper = mount(QueueTab);
+		const historyRow = wrapper.find('[data-history-path="/music/h1.mp3"]');
+		const queueRow = wrapper.find('.swipe-row');
+
+		await historyRow.trigger('dragstart', {
+			dataTransfer: { effectAllowed: 'none' },
+		});
+
+		await queueRow.trigger('drop', {
+			clientY: 100,
+		});
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({
+				body: JSON.stringify({ cmd: 'move_in_playlist', index: 0, new_index: 1 }),
+			})
+		);
+	});
+
+	it('handles moving current song below to reorder it in queue', async () => {
+		currentTrackPath.value = '/music/current.mp3';
+		queueState.value = ['/music/q1.mp3', '/music/q2.mp3'];
+
+		const wrapper = mount(QueueTab);
+		const currentRow = wrapper.find('#current-queue-row');
+		const queueRows = wrapper.findAll('.swipe-row');
+
+		// Drag current song (playlist index 0)
+		await currentRow.trigger('dragstart', {
+			dataTransfer: { effectAllowed: 'none' },
+		});
+
+		// Drop below queue row 0 (playlist index 1, clientY: 100 -> dropIndex 1)
+		await queueRows[0].trigger('drop', {
+			clientY: 100,
+		});
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({
+				body: JSON.stringify({ cmd: 'move_in_playlist', index: 0, new_index: 1 }),
+			})
+		);
+	});
+
+	it('handles moving current song up to reorder it above history tracks', async () => {
+		historyState.value = ['/music/h1.mp3', '/music/h2.mp3'];
+		currentTrackPath.value = '/music/current.mp3';
+		queueState.value = ['/music/q1.mp3'];
+
+		// unifiedQueue: h1 (0), h2 (1), current (2), q1 (3)
+		const wrapper = mount(QueueTab);
+		const currentRow = wrapper.find('#current-queue-row');
+		const historyRows = wrapper.findAll('[data-history-path]');
+
+		// Drag current song (idx 2)
+		await currentRow.trigger('dragstart', {
+			dataTransfer: { effectAllowed: 'none' },
+		});
+
+		// Drop onto h1 (idx 0, clientY: -10 -> drop before h1 at idx 0)
+		await historyRows[0].trigger('drop', {
+			clientY: -10,
+		});
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({
+				body: JSON.stringify({ cmd: 'move_in_playlist', index: 2, new_index: 0 }),
+			})
+		);
+	});
+
+	it('handles moving an already played track to become the next track to play', async () => {
+		historyState.value = ['/music/h1.mp3', '/music/h2.mp3'];
+		currentTrackPath.value = '/music/current.mp3';
+		queueState.value = ['/music/q1.mp3', '/music/q2.mp3'];
+
+		// unifiedQueue: h1 (0), h2 (1), current (2), q1 (3), q2 (4)
+		const wrapper = mount(QueueTab);
+		const historyRows = wrapper.findAll('[data-history-path]');
+		const currentRow = wrapper.find('#current-queue-row');
+
+		// Drag h1 (idx 0)
+		await historyRows[0].trigger('dragstart', {
+			dataTransfer: { effectAllowed: 'none' },
+		});
+
+		// Drop on lower half of current track (toIndex: 2, clientY: 100) -> inserts right after current (new_index: 2)
+		await currentRow.trigger('drop', {
+			clientY: 100,
+		});
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({
+				body: JSON.stringify({ cmd: 'move_in_playlist', index: 0, new_index: 2 }),
+			})
+		);
+	});
+
+	it('handles moving the next track before the currently playing track', async () => {
+		historyState.value = ['/music/h1.mp3', '/music/h2.mp3'];
+		currentTrackPath.value = '/music/current.mp3';
+		queueState.value = ['/music/q1.mp3', '/music/q2.mp3'];
+
+		// unifiedQueue: h1 (0), h2 (1), current (2), q1 (3), q2 (4)
+		const wrapper = mount(QueueTab);
+		const currentRow = wrapper.find('#current-queue-row');
+		const queueRows = wrapper.findAll('.swipe-row');
+
+		// Drag next track q1 (idx 3)
+		await queueRows[0].trigger('dragstart', {
+			dataTransfer: { effectAllowed: 'none' },
+		});
+
+		// Drop on upper half of current track (toIndex: 2, clientY: -10) -> inserts before current (new_index: 2)
+		await currentRow.trigger('drop', {
+			clientY: -10,
+		});
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({
+				body: JSON.stringify({ cmd: 'move_in_playlist', index: 3, new_index: 2 }),
+			})
+		);
+	});
+
+	it('handles moving a history track to the next position when currently playing the last track', async () => {
+		historyState.value = ['/music/h1.mp3', '/music/h2.mp3'];
+		currentTrackPath.value = '/music/current.mp3';
+		queueState.value = [];
+
+		// unifiedQueue: h1 (0), h2 (1), current (2) (last track!)
+		const wrapper = mount(QueueTab);
+		const historyRows = wrapper.findAll('[data-history-path]');
+		const currentRow = wrapper.find('#current-queue-row');
+
+		// Drag h1 (idx 0)
+		await historyRows[0].trigger('dragstart', {
+			dataTransfer: { effectAllowed: 'none' },
+		});
+
+		// Drop on lower half of current (toIndex: 2, clientY: 100) -> inserts right after current (new_index: 2)
+		await currentRow.trigger('drop', {
+			clientY: 100,
+		});
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({
+				body: JSON.stringify({ cmd: 'move_in_playlist', index: 0, new_index: 2 }),
+			})
+		);
+	});
+
+	it('handles dragging current song or history track to bottom drop zone', async () => {
+		currentTrackPath.value = '/music/current.mp3';
+		historyState.value = ['/music/h1.mp3'];
+		queueState.value = ['/music/q1.mp3'];
+
+		const wrapper = mount(QueueTab);
+		const bottomZone = wrapper.find('#playlist-bottom-drop-zone');
+		expect(bottomZone.exists()).toBe(true);
+
+		// unifiedQueue: h1 (0), current (1), q1 (2)
+		// 1. Drag current song to bottom drop zone -> moves to last index (2)
+		const currentRow = wrapper.find('#current-queue-row');
+		await currentRow.trigger('dragstart', {
+			dataTransfer: { effectAllowed: 'none' },
+		});
+
+		await bottomZone.trigger('dragover');
+		await bottomZone.trigger('drop');
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({
+				body: JSON.stringify({ cmd: 'move_in_playlist', index: 1, new_index: 2 }),
+			})
+		);
+
+		// 2. Drag history song to bottom drop zone -> moves to last index (2)
+		fetchMock.mockClear();
+		const historyRow = wrapper.find('[data-history-path="/music/h1.mp3"]');
+		await historyRow.trigger('dragstart', {
+			dataTransfer: { effectAllowed: 'none' },
+		});
+
+		await bottomZone.trigger('drop');
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({
+				body: JSON.stringify({ cmd: 'move_in_playlist', index: 0, new_index: 2 }),
+			})
+		);
+	});
+
+	it('handles dropping onto current track without replacing playback and verifies track status', async () => {
+		currentTrackPath.value = '/music/current.mp3';
+		historyState.value = ['/music/h1.mp3'];
+		queueState.value = ['/music/q1.mp3'];
+
+		const wrapper = mount(QueueTab);
+		const currentRow = wrapper.find('#current-queue-row');
+		const historyRow = wrapper.find('[data-history-path="/music/h1.mp3"]');
+
+		// Check unified queue attributes
+		expect(wrapper.findAll('[data-track-status="history"]').length).toBe(1);
+		expect(wrapper.findAll('[data-track-status="current"]').length).toBe(1);
+		expect(wrapper.findAll('[data-track-status="queue"]').length).toBe(1);
+
+		// Drag from history to current -> drops next to current track without replacing playback
+		await historyRow.trigger('dragstart', {
+			dataTransfer: { effectAllowed: 'none' },
+		});
+		await currentRow.trigger('dragover', { clientY: 100 });
+		await currentRow.trigger('drop', { clientY: 100 });
+
+		// Verify move_in_playlist was called, and play was NOT called!
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({
+				body: JSON.stringify({ cmd: 'move_in_playlist', index: 0, new_index: 1 }),
+			})
+		);
+		expect(fetchMock).not.toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({
+				body: expect.stringContaining('"cmd":"play"'),
+			})
+		);
 	});
 
 	it('jumps to history item or queue item when rows are clicked', async () => {
