@@ -120,4 +120,46 @@ describe('useContextMenu.ts', () => {
 		expect(bindings.contextmenu).toBeDefined();
 		expect((bindings as any).touchstart).toBeUndefined();
 	});
+
+	it('onCtxTouchEnd clears active timer and prevents click when long press fired', () => {
+		const { onCtxTouchStart, onCtxTouchEnd } = useContextMenu();
+		const touchStartEvent = {
+			touches: [{ screenX: 50, screenY: 50 }],
+			currentTarget: document.createElement('div'),
+		} as unknown as TouchEvent;
+
+		onCtxTouchStart(touchStartEvent, sampleTrack);
+
+		// Touch end before 500ms
+		const preventDefault = vi.fn();
+		onCtxTouchEnd({ preventDefault } as unknown as TouchEvent);
+		expect(preventDefault).not.toHaveBeenCalled();
+
+		// Start again and allow timer to fire
+		onCtxTouchStart(touchStartEvent, sampleTrack);
+		vi.advanceTimersByTime(500);
+
+		// Now touch end should prevent default click
+		onCtxTouchEnd({ preventDefault } as unknown as TouchEvent);
+		expect(preventDefault).toHaveBeenCalled();
+	});
+
+	it('computes position and focuses menu item when menuRef is present', async () => {
+		const { nextTick } = await import('vue');
+		const { menuRef } = await import('@/composables/useContextMenu');
+		const menuEl = document.createElement('div');
+		const itemEl = document.createElement('button');
+		itemEl.setAttribute('role', 'menuitem');
+		menuEl.appendChild(itemEl);
+		const focusSpy = vi.spyOn(itemEl, 'focus');
+
+		menuRef.value = menuEl;
+		const { openCtxMenu } = useContextMenu();
+
+		openCtxMenu({ clientX: 200, clientY: 300 } as unknown as MouseEvent, sampleTrack);
+		await nextTick();
+		await vi.advanceTimersByTimeAsync(50);
+		expect(focusSpy).toHaveBeenCalled();
+		menuRef.value = null;
+	});
 });

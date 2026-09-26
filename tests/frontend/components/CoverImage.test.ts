@@ -28,4 +28,19 @@ describe('CoverImage.vue', () => {
 		expect(wrapper.find('img').exists()).toBe(false);
 		expect(wrapper.find('.material-icons').text()).toBe('album');
 	});
+
+	it('switches to fallback when image load fails', async () => {
+		const wrapper = mount(CoverImage, {
+			props: {
+				path: '/music/corrupted_cover.mp3',
+			},
+		});
+
+		const img = wrapper.find('img');
+		expect(img.exists()).toBe(true);
+		await img.trigger('error');
+
+		expect(wrapper.find('img').exists()).toBe(false);
+		expect(wrapper.find('.material-icons').exists()).toBe(true);
+	});
 });

@@ -32,4 +32,19 @@ describe('ToggleRow.vue', () => {
 		expect(wrapper.emitted('update:modelValue')).toBeTruthy();
 		expect(wrapper.emitted('update:modelValue')![0]).toEqual([true]);
 	});
+
+	it('renders active styles when modelValue is true', () => {
+		const wrapper = mount(ToggleRow, {
+			props: {
+				modelValue: true,
+				title: 'Modo Activo',
+				activeClass: 'bg-green-500',
+			},
+		});
+
+		const switchBtn = wrapper.find('button');
+		expect(switchBtn.classes()).toContain('bg-green-500');
+		const knob = wrapper.find('span[aria-hidden="true"]');
+		expect(knob.classes()).toContain('translate-x-5');
+	});
 });

@@ -151,4 +151,34 @@ describe('useLocalPlayback', () => {
 		await nextTick();
 		expect(mockAudioEl.muted).toBe(false);
 	});
+
+	it('prefetches next track when listening locally with queued or DJ track', async () => {
+		const { queueState, djCarpinchoEnabled, djNextTrack } = await import('@/composables/player/state');
+		const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+		global.fetch = fetchMock;
+
+		currentTrackPath.value = '/music/now.mp3';
+		listenLocally.value = true;
+		queueState.value = ['/music/upcoming.mp3'];
+
+		useLocalPlayback();
+		await nextTick();
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			expect.stringContaining('/stream?path='),
+			expect.objectContaining({ headers: { Range: 'bytes=0-4194303' } })
+		);
+
+		// Test DJ next track prefetch when queue is empty
+		fetchMock.mockClear();
+		queueState.value = [];
+		djCarpinchoEnabled.value = true;
+		djNextTrack.value = { path: '/music/dj_upcoming.mp3' };
+		await nextTick();
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			expect.stringContaining('/stream?path='),
+			expect.objectContaining({ headers: { Range: 'bytes=0-4194303' } })
+		);
+	});
 });

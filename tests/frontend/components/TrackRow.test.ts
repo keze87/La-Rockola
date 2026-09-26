@@ -43,4 +43,30 @@ describe('TrackRow.vue', () => {
 		expect(wrapper.emitted('click')).toBeTruthy();
 		expect(wrapper.emitted('click')![0]).toEqual([track]);
 	});
+
+	it('renders playing equalizer and handles contextmenu event', async () => {
+		const track = {
+			path: '/music/song.mp3',
+			display_title: 'Canción',
+			display_artist: 'Artista',
+		};
+		trackMap.value['/music/song.mp3'] = track;
+		currentTrackPath.value = '/music/song.mp3';
+
+		const wrapper = mount(TrackRow, {
+			props: {
+				track,
+				contextSource: 'history',
+				index: 2,
+			},
+			slots: {
+				suffix: '<button class="delete-btn">Borrar</button>',
+			},
+		});
+
+		expect(wrapper.find('.equalizer').exists()).toBe(true);
+		expect(wrapper.find('.delete-btn').exists()).toBe(true);
+
+		await wrapper.trigger('contextmenu', { clientX: 50, clientY: 100 });
+	});
 });

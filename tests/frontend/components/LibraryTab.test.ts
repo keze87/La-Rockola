@@ -149,4 +149,13 @@ describe('LibraryTab.vue', () => {
 		await firstRow.trigger('click');
 		expect(fetchMock).toHaveBeenCalled();
 	});
+
+	it('scrolls to current playing track when clicking "Ir al tema actual"', async () => {
+		currentTrackPath.value = '/music/charly.mp3';
+		const wrapper = mount(LibraryTab);
+
+		const scrollBtn = wrapper.find('button[title="Ir al tema actual"]');
+		expect(scrollBtn.exists()).toBe(true);
+		await scrollBtn.trigger('click');
+	});
 });

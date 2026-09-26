@@ -117,4 +117,85 @@ describe('ControlsTab.vue', () => {
 		expect(qrCode.exists()).toBe(true);
 		expect(qrCode.props('value')).toBe('http://192.168.1.100:1729');
 	});
+
+	it('triggers mute toggle from PillButton', async () => {
+		serverMuted.value = false;
+		const wrapper = mount(ControlsTab);
+
+		const muteBtn = wrapper.findAllComponents({ name: 'PillButton' }).find((w) => w.text().includes('Mutear'));
+		expect(muteBtn).toBeDefined();
+		await muteBtn!.trigger('click');
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({
+				method: 'POST',
+				body: JSON.stringify({ cmd: 'set_mute', state: true }),
+			})
+		);
+	});
+
+	it('triggers library rescan when clicking "Pegale otra escaneada"', async () => {
+		const wrapper = mount(ControlsTab);
+
+		const rescanBtn = wrapper
+			.findAllComponents({ name: 'PillButton' })
+			.find((w) => w.text().includes('Pegale otra escaneada'));
+		expect(rescanBtn).toBeDefined();
+		await rescanBtn!.trigger('click');
+
+		expect(fetchMock).toHaveBeenCalledWith('/scan');
+	});
+
+	it('toggles MPV visibility when clicking MPV toggle button', async () => {
+		mpvVisible.value = true;
+		const wrapper = mount(ControlsTab);
+
+		const hideBtn = wrapper.findAllComponents({ name: 'PillButton' }).find((w) => w.text().includes('Ocultar MPV'));
+		expect(hideBtn).toBeDefined();
+		await hideBtn!.trigger('click');
+
+		expect(fetchMock).toHaveBeenCalledWith('/mpv/hide', expect.anything());
+	});
+
+	it('dispatches fullscreen command when clicking "Todo pantalla, ñeri"', async () => {
+		const wrapper = mount(ControlsTab);
+
+		const fsBtn = wrapper
+			.findAllComponents({ name: 'PillButton' })
+			.find((w) => w.text().includes('Todo pantalla, ñeri'));
+		expect(fsBtn).toBeDefined();
+		await fsBtn!.trigger('click');
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({
+				method: 'POST',
+				body: JSON.stringify({ cmd: 'fullscreen' }),
+			})
+		);
+	});
+
+	it('triggers library sorting when clicking sort buttons', async () => {
+		currentTracks.value = [
+			{ path: '/a.mp3', title: 'B', artist: 'Z', bpm: 100 },
+			{ path: '/b.mp3', title: 'A', artist: 'A', bpm: 140 },
+		];
+		const wrapper = mount(ControlsTab);
+
+		const pills = wrapper.findAllComponents({ name: 'PillButton' });
+		const byArtist = pills.find((w) => w.text().includes('Por el que canta'));
+		const byTime = pills.find((w) => w.text().includes('Como llegaron'));
+		const byMood = pills.find((w) => w.text().includes('Más Manija'));
+		const byShuffle = pills.find((w) => w.text().includes('Mezcladito'));
+
+		await byArtist?.trigger('click');
+		expect(currentTracks.value[0].artist).toBe('A');
+
+		await byMood?.trigger('click');
+		expect(currentTracks.value[0].bpm).toBe(140);
+
+		await byTime?.trigger('click');
+		await byShuffle?.trigger('click');
+	});
 });

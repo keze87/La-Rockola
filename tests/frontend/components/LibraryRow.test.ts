@@ -88,4 +88,53 @@ describe('LibraryRow.vue', () => {
 
 		expect(wrapper.text()).toContain('3'); // 0-indexed position 2 renders '3'
 	});
+
+	it('triggers toggleFavorite when clicking on equalizer or queue position overlay', async () => {
+		const fetchMock = vi.fn().mockResolvedValue({
+			ok: true,
+			json: () => Promise.resolve({ status: 'ok' }),
+		} as unknown as Response);
+		global.fetch = fetchMock;
+
+		const currentWrapper = mount(LibraryRow, {
+			props: {
+				track: mockTrack,
+				isCurrent: true,
+				isPaused: false,
+				queuePosition: -1,
+				contextSource: 'custom_source',
+				index: 5,
+			},
+		});
+
+		const eqContainer = currentWrapper.find('.bg-carpincho-panel.absolute');
+		expect(eqContainer.exists()).toBe(true);
+		await eqContainer.trigger('click');
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({
+				body: JSON.stringify({ cmd: 'toggle_favorite', path: mockTrack.path }),
+			})
+		);
+
+		fetchMock.mockClear();
+		const queuedWrapper = mount(LibraryRow, {
+			props: {
+				track: mockTrack,
+				isCurrent: false,
+				isPaused: false,
+				queuePosition: 0,
+			},
+		});
+
+		const qBadge = queuedWrapper.find('.bg-carpincho-panel.text-carpincho-warning');
+		expect(qBadge.exists()).toBe(true);
+		await qBadge.trigger('click');
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({
+				body: JSON.stringify({ cmd: 'toggle_favorite', path: mockTrack.path }),
+			})
+		);
+	});
 });

@@ -238,4 +238,39 @@ describe('QueueTab.vue', () => {
 		const wrapper = mount(QueueTab);
 		expect(wrapper.text()).toContain('DJ Carpincho eligió: Selección del DJ');
 	});
+
+	it('handles move to first, move to last, and delete queue item buttons', async () => {
+		queueState.value = ['/music/q1.mp3', '/music/q2.mp3', '/music/q3.mp3'];
+		trackMap.value['/music/q2.mp3'] = { path: '/music/q2.mp3', display_title: 'Q2', display_artist: 'A2' };
+		trackMap.value['/music/q3.mp3'] = { path: '/music/q3.mp3', display_title: 'Q3', display_artist: 'A3' };
+
+		const wrapper = mount(QueueTab);
+
+		// Click "Subir a próximo" on index 1
+		const moveFirstBtns = wrapper.findAll('button[title="Subir a próximo"]');
+		expect(moveFirstBtns.length).toBeGreaterThan(0);
+		await moveFirstBtns[1].trigger('click');
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({ body: JSON.stringify({ cmd: 'move_queue_item', index: 1, new_index: 0 }) })
+		);
+
+		// Click "Mover al final" on index 0
+		const moveLastBtns = wrapper.findAll('button[title="Mover al final"]');
+		expect(moveLastBtns.length).toBeGreaterThan(0);
+		await moveLastBtns[0].trigger('click');
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({ body: JSON.stringify({ cmd: 'move_queue_item', index: 0, new_index: 2 }) })
+		);
+
+		// Click "Sacar de la fila" on index 0
+		const removeBtns = wrapper.findAll('button[title="Sacar de la fila"]');
+		expect(removeBtns.length).toBeGreaterThan(0);
+		await removeBtns[0].trigger('click');
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({ body: JSON.stringify({ cmd: 'remove_queue_item', index: 0 }) })
+		);
+	});
 });
