@@ -619,9 +619,22 @@ def format_radio_time(dt: datetime | None = None) -> str:
 	return full_time_str
 
 
+def get_fortune_voice(is_system_fortune: bool, host_voice: str) -> str:
+	"""
+	Determina la voz para sintetizar la fortuna radial.
+	Las fortunas del sistema Unix son leídas EXCLUSIVAMENTE por Elena (VOICE_ELENA),
+	creando una dinámica de co-conducción tipo podcast junto al locutor principal.
+	Las fortunas y avisos carpinchos son leídos por el conductor principal (host_voice).
+	"""
+	if is_system_fortune:
+		return VOICE_ELENA
+	return host_voice
+
+
 def generate_modular_radio_script(
 	dt: datetime | None = None,
 	voice: str | None = None,
+	force_system_fortune: bool | None = None,
 ) -> tuple[str, str, str | None, str, str, bool, str, str, str]:
 	"""
 	Genera los componentes del guión radial de forma modular.
@@ -636,18 +649,31 @@ def generate_modular_radio_script(
 
 	lead_in = random.choice(RADIO_LEAD_INS)
 
-	# 50% de probabilidad de consultar fortuna del sistema si está disponible en español
+	# Selección de fortuna: 50% sistema (si está disponible en español) o frases del carpincho
 	is_system_fortune = False
 	fortuna = None
-	if random.random() < 0.5:
+
+	if force_system_fortune is True:
 		sys_fort = get_system_fortune()
 		if sys_fort and is_spanish_text(sys_fort):
 			fortuna = sys_fort
 			is_system_fortune = True
-
-	if not fortuna:
+		else:
+			fortuna = "El ignorante afirma, el sabio duda y reflexiona."
+			is_system_fortune = True
+	elif force_system_fortune is False:
 		fortuna = random.choice(CARPINCHO_FORTUNES)
 		is_system_fortune = False
+	else:
+		if random.random() < 0.5:
+			sys_fort = get_system_fortune()
+			if sys_fort and is_spanish_text(sys_fort):
+				fortuna = sys_fort
+				is_system_fortune = True
+
+		if not fortuna:
+			fortuna = random.choice(CARPINCHO_FORTUNES)
+			is_system_fortune = False
 
 	outro = random.choice(RADIO_OUTROS)
 	hora_full = f"{hora_seg} {minuto_seg}" if minuto_seg else hora_seg
@@ -959,10 +985,13 @@ async def create_radio_announcement(
 	bg_volume: float = 0.1,
 	db_path: Path | str | None = None,
 	dt: datetime | None = None,
+	force_system_fortune: bool | None = None,
 ) -> tuple[bool, str, str]:
 	"""
 	Sintetiza la locución radial de forma modular (intro, hora, minuto [si aplica], lead_in, fortuna, salida),
 	aprovechando la base de datos de caché SQLite para evitar llamadas redundantes a edge-tts.
+	Las fortunas del sistema Unix son leídas exclusivamente por Elena (estilo podcast / co-conductora)
+	y almacenadas en caché bajo su voz.
 	Opcionalmente superpone de fondo la canción que sigue desde bg_offset con volumen bg_volume.
 	Retorna (éxito, display_title, full_script_text_o_error).
 	"""
@@ -980,10 +1009,14 @@ async def create_radio_announcement(
 		return False, "", err_msg
 
 	intro, hora_seg, minuto_seg, lead_in, fortuna, is_sys, outro, selected_voice, full_script = (
-		generate_modular_radio_script(dt=dt, voice=voice)
+		generate_modular_radio_script(dt=dt, voice=voice, force_system_fortune=force_system_fortune)
 	)
 	locutor_nombre = VOICE_NAMES.get(selected_voice, "Carpincho Locutor")
 	display_title = f"Carpincho locutor: {full_script}"
+
+	# Si es una fortuna del sistema Unix, ÚNICAMENTE la lee Elena (formato co-conducción / podcast)
+	# y ahora sí se guarda en la base de datos de caché SQLite con la voz de Elena.
+	fortune_voice = get_fortune_voice(is_sys, selected_voice)
 
 	# Plan de síntesis de los segmentos modulares
 	plan: list[tuple[str, str, str, bool]] = [
@@ -995,7 +1028,7 @@ async def create_radio_announcement(
 	plan.extend(
 		[
 			(lead_in, selected_voice, "lead_in", True),
-			(f"«{fortuna}».", selected_voice, "fortuna", not is_sys),  # Las del sistema NUNCA se guardan en la DB
+			(f"«{fortuna}».", fortune_voice, "fortuna", True),
 			(outro, selected_voice, "salida", True),
 		]
 	)
@@ -1013,7 +1046,14 @@ async def create_radio_announcement(
 			)
 			segment_results.append((seg_bytes, category))
 
-		logger.info(f"🎙️ Locución radial generada exitosamente con {locutor_nombre} ({selected_voice}): '{full_script}'")
+		if is_sys and selected_voice != VOICE_ELENA:
+			logger.info(
+				f"🎙️ Locución radial generada exitosamente con {locutor_nombre} ({selected_voice}) y Elena ({VOICE_ELENA}) en el oráculo del sistema: '{full_script}'"
+			)
+		else:
+			logger.info(
+				f"🎙️ Locución radial generada exitosamente con {locutor_nombre} ({selected_voice}): '{full_script}'"
+			)
 
 		loop = asyncio.get_running_loop()
 		ok = await loop.run_in_executor(

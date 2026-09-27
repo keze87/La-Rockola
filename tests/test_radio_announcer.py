@@ -211,6 +211,7 @@ async def test_create_radio_announcement_success(tmp_path):
 @pytest.mark.asyncio
 async def test_create_radio_announcement_timeout(tmp_path):
 	out_p = tmp_path / "test.mp3"
+	db_p = tmp_path / "tts_cache_empty.db"
 
 	async def slow_save(*args, **kwargs):
 		await asyncio.sleep(1.0)
@@ -222,7 +223,7 @@ async def test_create_radio_announcement_timeout(tmp_path):
 		patch("scripts.radio_announcer.HAS_EDGE_TTS", True),
 		patch("scripts.radio_announcer.edge_tts.Communicate", return_value=mock_comm),
 	):
-		ok, _title, _text = await radio_announcer.create_radio_announcement(out_p, timeout=0.01)
+		ok, _title, _text = await radio_announcer.create_radio_announcement(out_p, timeout=0.01, db_path=db_p)
 		assert ok is False
 
 
@@ -332,36 +333,94 @@ async def test_synthesize_segment_caching(tmp_path):
 		assert mock_comm_cls.call_count == 1  # No se volvió a llamar
 
 
+def test_get_fortune_voice():
+	# Fortunas del sistema son exclusivas de Elena (podcast co-conducción)
+	assert radio_announcer.get_fortune_voice(True, radio_announcer.VOICE_TOMAS) == radio_announcer.VOICE_ELENA
+	assert radio_announcer.get_fortune_voice(True, radio_announcer.VOICE_MARIA) == radio_announcer.VOICE_ELENA
+	assert radio_announcer.get_fortune_voice(True, radio_announcer.VOICE_VALENTINA) == radio_announcer.VOICE_ELENA
+	assert radio_announcer.get_fortune_voice(True, radio_announcer.VOICE_ELENA) == radio_announcer.VOICE_ELENA
+
+	# Fortunas carpinchas las lee el conductor principal
+	assert radio_announcer.get_fortune_voice(False, radio_announcer.VOICE_TOMAS) == radio_announcer.VOICE_TOMAS
+	assert radio_announcer.get_fortune_voice(False, radio_announcer.VOICE_MARIA) == radio_announcer.VOICE_MARIA
+
+
 @pytest.mark.asyncio
-async def test_system_fortune_never_cached(tmp_path):
+async def test_system_fortune_read_by_elena_and_cached(tmp_path):
 	db_path = tmp_path / "tts_cache.db"
-	voice = radio_announcer.VOICE_TOMAS
-	sys_fortune_text = "«El ignorante afirma, el sabio duda y reflexiona.»"
+	out_p = tmp_path / "radio.mp3"
 
-	async def fake_save(dest):
-		Path(dest).write_bytes(b"SYS_FORTUNE_AUDIO")
+	sys_fortune_text = "El ignorante afirma, el sabio duda y reflexiona."
+	recorded_calls: list[tuple[str, str]] = []
 
-	mock_comm = MagicMock()
-	mock_comm.save = AsyncMock(side_effect=fake_save)
+	def fake_communicate(text, voice):
+		recorded_calls.append((text, voice))
+		mock_c = MagicMock()
+
+		async def fake_save(dest):
+			Path(dest).write_bytes(f"AUDIO_FOR_{voice}_{text[:10]}".encode())
+
+		mock_c.save = AsyncMock(side_effect=fake_save)
+		return mock_c
 
 	with (
 		patch("scripts.radio_announcer.HAS_EDGE_TTS", True),
-		patch("scripts.radio_announcer.edge_tts.Communicate", return_value=mock_comm) as mock_comm_cls,
+		patch("scripts.radio_announcer.get_system_fortune", return_value=sys_fortune_text),
+		patch("scripts.radio_announcer.edge_tts.Communicate", side_effect=fake_communicate),
 	):
-		# allow_cache=False (comportamiento estricto para fortunas de sistema)
-		audio = await radio_announcer.synthesize_segment(
-			sys_fortune_text,
-			voice,
+		# Generamos anuncio con conductor Tomás pero forzando fortuna de sistema
+		ok, _title, text = await radio_announcer.create_radio_announcement(
+			out_p,
+			voice=radio_announcer.VOICE_TOMAS,
+			db_path=db_path,
+			force_system_fortune=True,
+		)
+		assert ok is True
+		assert sys_fortune_text in text
+
+		# Verificamos que los otros segmentos fueron hablados por Tomás, pero la fortuna por Elena
+		fortuna_calls = [(t, v) for t, v in recorded_calls if sys_fortune_text in t]
+		assert len(fortuna_calls) == 1
+		assert fortuna_calls[0][1] == radio_announcer.VOICE_ELENA
+
+		# Verificamos que la intro fue hablada por Tomás
+		intro_calls = [(t, v) for t, v in recorded_calls if t in radio_announcer.RADIO_INTROS]
+		assert len(intro_calls) == 1
+		assert intro_calls[0][1] == radio_announcer.VOICE_TOMAS
+
+		# Verificamos que la fortuna de sistema QUEDÓ GUARDADA en la base con la voz de Elena
+		cached_elena = radio_announcer.get_cached_audio(
 			"fortuna",
-			allow_cache=False,
+			radio_announcer.VOICE_ELENA,
+			f"«{sys_fortune_text}».",
 			db_path=db_path,
 		)
-		assert audio == b"SYS_FORTUNE_AUDIO"
-		assert mock_comm_cls.call_count == 1
+		assert cached_elena is not None
+		assert b"AUDIO_FOR_" in cached_elena
 
-		# Comprobamos que NUNCA se guardó en la base de datos de caché
-		cached = radio_announcer.get_cached_audio("fortuna", voice, sys_fortune_text, db_path=db_path)
-		assert cached is None
+		# Y que NO se guardó para Tomás
+		cached_tomas = radio_announcer.get_cached_audio(
+			"fortuna",
+			radio_announcer.VOICE_TOMAS,
+			f"«{sys_fortune_text}».",
+			db_path=db_path,
+		)
+		assert cached_tomas is None
+
+		# Segunda llamada con conductora María: la fortuna de Elena debe ser un CACHE HIT
+		out_p2 = tmp_path / "radio2.mp3"
+		recorded_calls.clear()
+
+		ok2, _title2, _text2 = await radio_announcer.create_radio_announcement(
+			out_p2,
+			voice=radio_announcer.VOICE_MARIA,
+			db_path=db_path,
+			force_system_fortune=True,
+		)
+		assert ok2 is True
+		# En recorded_calls NUNCA debe haberse llamado a Communicate para la fortuna de Elena porque vino de caché
+		fortuna_remote_calls = [(t, v) for t, v in recorded_calls if sys_fortune_text in t]
+		assert len(fortuna_remote_calls) == 0
 
 
 def test_generate_modular_radio_script():
