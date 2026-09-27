@@ -146,6 +146,7 @@ async def test_create_radio_announcement_no_edge_tts(tmp_path):
 @pytest.mark.asyncio
 async def test_create_radio_announcement_success(tmp_path):
 	out_p = tmp_path / "test.mp3"
+	db_p = tmp_path / "tts_cache.db"
 
 	mock_comm = MagicMock()
 	mock_comm.save = AsyncMock(return_value=None)
@@ -154,12 +155,16 @@ async def test_create_radio_announcement_success(tmp_path):
 		patch("scripts.radio_announcer.HAS_EDGE_TTS", True),
 		patch("scripts.radio_announcer.edge_tts.Communicate", return_value=mock_comm),
 	):
-		ok, title, text = await radio_announcer.create_radio_announcement(out_p, voice=radio_announcer.VOICE_TOMAS)
+		ok, title, text = await radio_announcer.create_radio_announcement(
+			out_p,
+			voice=radio_announcer.VOICE_TOMAS,
+			db_path=db_p,
+		)
 		assert ok is True
-		assert "Tomás" in title
+		assert "Carpincho locutor:" in title
 		assert len(text) > 0
 		assert radio_announcer.is_spanish_text(text) is True
-		mock_comm.save.assert_awaited_once_with(str(out_p))
+		assert out_p.exists()
 
 
 @pytest.mark.asyncio
@@ -184,6 +189,7 @@ async def test_create_radio_announcement_timeout(tmp_path):
 async def test_create_radio_announcement_with_bg_track(tmp_path):
 	song_p = tmp_path / "song.mp3"
 	out_p = tmp_path / "radio.mp3"
+	db_p = tmp_path / "tts_cache.db"
 	song_p.write_bytes(b"DUMMY_SONG_DATA")
 
 	mock_comm = MagicMock()
@@ -200,10 +206,11 @@ async def test_create_radio_announcement_with_bg_track(tmp_path):
 			voice=radio_announcer.VOICE_TOMAS,
 			bg_track_path=song_p,
 			bg_offset=45.0,
-			bg_volume=0.18,
+			bg_volume=0.1,
+			db_path=db_p,
 		)
 		assert ok is True
-		assert "Tomás" in title
+		assert "Carpincho locutor:" in title
 		mock_mix.assert_called_once()
 
 
@@ -211,6 +218,7 @@ async def test_create_radio_announcement_with_bg_track(tmp_path):
 async def test_create_radio_announcement_with_bg_track_fallback(tmp_path):
 	song_p = tmp_path / "song.mp3"
 	out_p = tmp_path / "radio.mp3"
+	db_p = tmp_path / "tts_cache.db"
 	song_p.write_bytes(b"DUMMY_SONG_DATA")
 
 	async def fake_save(dest):
@@ -225,13 +233,119 @@ async def test_create_radio_announcement_with_bg_track_fallback(tmp_path):
 		patch("scripts.radio_announcer.mix_announcement_with_bg_track", return_value=False),
 		patch("shutil.which", return_value="/usr/bin/ffmpeg"),
 	):
-		ok, _title, _text = await radio_announcer.create_radio_announcement(
+		ok, title, _text = await radio_announcer.create_radio_announcement(
 			out_p,
 			voice=radio_announcer.VOICE_TOMAS,
 			bg_track_path=song_p,
 			bg_offset=45.0,
-			bg_volume=0.18,
+			bg_volume=0.1,
+			db_path=db_p,
 		)
 		assert ok is True
+		assert "Carpincho locutor:" in title
 		assert out_p.exists()
-		assert out_p.read_bytes() == b"VOICE_AUDIO"
+
+
+def test_tts_cache_db_crud(tmp_path):
+	db_path = tmp_path / "tts_cache.db"
+	radio_announcer.init_tts_cache_db(db_path)
+	assert db_path.exists()
+
+	# Miss inicial
+	cached = radio_announcer.get_cached_audio("intro", radio_announcer.VOICE_TOMAS, "Hola amigos", db_path=db_path)
+	assert cached is None
+
+	# Guardar audio
+	audio_data = b"FAKE_AUDIO_DATA_FOR_CACHE"
+	radio_announcer.save_cached_audio("intro", radio_announcer.VOICE_TOMAS, "Hola amigos", audio_data, db_path=db_path)
+
+	# Hit posterior
+	retrieved = radio_announcer.get_cached_audio("intro", radio_announcer.VOICE_TOMAS, "hola amigos  ", db_path=db_path)
+	assert retrieved == audio_data
+
+
+@pytest.mark.asyncio
+async def test_synthesize_segment_caching(tmp_path):
+	db_path = tmp_path / "tts_cache.db"
+	voice = radio_announcer.VOICE_TOMAS
+	text = "En el aire de La Rockola del Carpincho,"
+
+	async def fake_save(dest):
+		Path(dest).write_bytes(b"CACHED_AUDIO_TEST")
+
+	mock_comm = MagicMock()
+	mock_comm.save = AsyncMock(side_effect=fake_save)
+
+	with (
+		patch("scripts.radio_announcer.HAS_EDGE_TTS", True),
+		patch("scripts.radio_announcer.edge_tts.Communicate", return_value=mock_comm) as mock_comm_cls,
+	):
+		# Primera llamada: MISS, se sintetiza y se guarda en la base
+		audio1 = await radio_announcer.synthesize_segment(text, voice, "intro", allow_cache=True, db_path=db_path)
+		assert audio1 == b"CACHED_AUDIO_TEST"
+		assert mock_comm_cls.call_count == 1
+
+		# Segunda llamada: HIT, debe venir directo de SQLite sin llamar a edge_tts.Communicate
+		audio2 = await radio_announcer.synthesize_segment(text, voice, "intro", allow_cache=True, db_path=db_path)
+		assert audio2 == b"CACHED_AUDIO_TEST"
+		assert mock_comm_cls.call_count == 1  # No se volvió a llamar
+
+
+@pytest.mark.asyncio
+async def test_system_fortune_never_cached(tmp_path):
+	db_path = tmp_path / "tts_cache.db"
+	voice = radio_announcer.VOICE_TOMAS
+	sys_fortune_text = "«El ignorante afirma, el sabio duda y reflexiona.»"
+
+	async def fake_save(dest):
+		Path(dest).write_bytes(b"SYS_FORTUNE_AUDIO")
+
+	mock_comm = MagicMock()
+	mock_comm.save = AsyncMock(side_effect=fake_save)
+
+	with (
+		patch("scripts.radio_announcer.HAS_EDGE_TTS", True),
+		patch("scripts.radio_announcer.edge_tts.Communicate", return_value=mock_comm) as mock_comm_cls,
+	):
+		# allow_cache=False (comportamiento estricto para fortunas de sistema)
+		audio = await radio_announcer.synthesize_segment(
+			sys_fortune_text,
+			voice,
+			"fortuna",
+			allow_cache=False,
+			db_path=db_path,
+		)
+		assert audio == b"SYS_FORTUNE_AUDIO"
+		assert mock_comm_cls.call_count == 1
+
+		# Comprobamos que NUNCA se guardó en la base de datos de caché
+		cached = radio_announcer.get_cached_audio("fortuna", voice, sys_fortune_text, db_path=db_path)
+		assert cached is None
+
+
+def test_generate_modular_radio_script():
+	intro, hora, lead_in, fortuna, is_sys, outro, voice, full_script = radio_announcer.generate_modular_radio_script(
+		voice=radio_announcer.VOICE_TOMAS
+	)
+	assert voice == radio_announcer.VOICE_TOMAS
+	assert intro in radio_announcer.RADIO_INTROS
+	assert len(hora) > 0
+	assert lead_in in radio_announcer.RADIO_LEAD_INS
+	assert outro in radio_announcer.RADIO_OUTROS
+	assert fortuna in full_script
+	assert isinstance(is_sys, bool)
+	assert radio_announcer.is_spanish_text(full_script) is True
+
+
+def test_assemble_announcement_audio_fallback(tmp_path):
+	out_p = tmp_path / "combined.mp3"
+	segments = [
+		(b"SEGMENT_1_", "intro"),
+		(b"SEGMENT_2_", "hora"),
+		(b"SEGMENT_3", "salida"),
+	]
+	with patch("shutil.which", return_value=None):
+		ok = radio_announcer.assemble_announcement_audio(segments, out_p)
+		assert ok is True
+		assert out_p.exists()
+		assert out_p.read_bytes() == b"SEGMENT_1_SEGMENT_2_SEGMENT_3"

@@ -77,7 +77,7 @@ async def test_play_next_increments_counter_and_triggers_radio():
 			state.radio_announcement_path,
 			bg_track_path="/music/song2.mp3",
 			bg_offset=0.0,
-			bg_volume=0.18,
+			bg_volume=0.1,
 		)
 		assert state.is_playing_radio_announcement is True
 		assert state.current_track == state.radio_announcement_path

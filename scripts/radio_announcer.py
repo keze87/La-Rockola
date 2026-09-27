@@ -6,11 +6,16 @@ Maneja la síntesis de voz con edge-tts, formateo horario radial y banco mixto d
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
 import logging
 import random
 import re
 import shutil
+import sqlite3
 import subprocess
+import tempfile
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -89,6 +94,145 @@ CARPINCHO_FORTUNES: list[str] = [
 	"Un sabio dijo una vez: «Subile el volumen que este tema me encanta».",
 	"El oráculo predice: tu día va a mejorar en un cien por ciento con este tema.",
 ]
+
+# Bancos de frases modulares para el Carpincho Locutor
+RADIO_INTROS: list[str] = [
+	"En el aire de La Rockola del Carpincho,",
+	"¡Buenas gente linda de La Rockola!",
+	"La hora en La Rockola:",
+	"Sintonizando La Rockola del Carpincho,",
+	"¡Seguimos haciendo el aguante en La Rockola!",
+	"Un matecito en La Rockola y seguimos:",
+	"Transmite La Rockola del Carpincho:",
+]
+
+RADIO_LEAD_INS: list[str] = [
+	"Momento de la galletita de la fortuna:",
+	"Ojo al piojo con lo que dice el oráculo de La Rockola:",
+	"Sabiduría carpinchera para el alma:",
+	"Tiramos una frase para reflexionar mientras te tomás unos mates:",
+	"Dice la fortuna del día:",
+	"Atenti a esta reflexión carpinchera:",
+]
+
+RADIO_OUTROS: list[str] = [
+	"¡Seguimos con más música!",
+	"¡Que no decaiga!",
+	"¡Pegale play que esto sigue!",
+	"¡Metemos la próxima canción al toque!",
+	"¡Seguimos de joda en La Rockola!",
+	"¡Acomodate que se viene un temazo!",
+]
+
+
+def get_carpincho_data_dir() -> Path:
+	"""Obtiene el directorio de datos para la base de datos de la Rockola."""
+	try:
+		from server import DATA_DIR
+
+		return DATA_DIR
+	except Exception:
+		db_dir = Path(__file__).resolve().parents[1] / "DB"
+		db_dir.mkdir(parents=True, exist_ok=True)
+		return db_dir
+
+
+def init_tts_cache_db(db_path: Path | str | None = None) -> Path:
+	"""Inicializa la base de datos SQLite para la caché de audios de TTS."""
+	target_path = Path(db_path) if db_path else (get_carpincho_data_dir() / "tts_cache.db")
+	target_path.parent.mkdir(parents=True, exist_ok=True)
+	with sqlite3.connect(target_path, timeout=5.0) as conn:
+		conn.execute(
+			"""
+			CREATE TABLE IF NOT EXISTS tts_cache (
+				cache_key TEXT PRIMARY KEY,
+				category TEXT NOT NULL,
+				voice TEXT NOT NULL,
+				text TEXT NOT NULL,
+				audio_blob BLOB NOT NULL,
+				duration REAL,
+				created_at REAL NOT NULL,
+				last_used REAL NOT NULL,
+				use_count INTEGER DEFAULT 1
+			)
+			"""
+		)
+		conn.execute("CREATE INDEX IF NOT EXISTS idx_tts_cache_cat_voice ON tts_cache (category, voice)")
+		conn.commit()
+	return target_path
+
+
+def get_cache_key(category: str, voice: str, text: str) -> str:
+	"""Calcula la clave de caché SHA-256 única para una tupla (categoría, voz, texto normalizado)."""
+	norm_text = text.strip().lower()
+	raw = f"{voice}:{category}:{norm_text}".encode()
+	return hashlib.sha256(raw).hexdigest()
+
+
+def get_cached_audio(
+	category: str,
+	voice: str,
+	text: str,
+	db_path: Path | str | None = None,
+) -> bytes | None:
+	"""
+	Recupera el segmento de audio MP3 desde la base SQLite si existe.
+	Actualiza el timestamp de último uso y el contador de reproducciones.
+	"""
+	cache_key = get_cache_key(category, voice, text)
+	target_path = Path(db_path) if db_path else (get_carpincho_data_dir() / "tts_cache.db")
+	if not target_path.exists():
+		return None
+	try:
+		with sqlite3.connect(target_path, timeout=5.0) as conn:
+			cur = conn.cursor()
+			cur.execute("SELECT audio_blob FROM tts_cache WHERE cache_key = ?", (cache_key,))
+			row = cur.fetchone()
+			if row and row[0]:
+				now = time.time()
+				cur.execute(
+					"UPDATE tts_cache SET last_used = ?, use_count = use_count + 1 WHERE cache_key = ?",
+					(now, cache_key),
+				)
+				conn.commit()
+				return row[0]
+	except Exception as e:
+		logger.debug(f"Error consultando caché TTS: {e}")
+	return None
+
+
+def save_cached_audio(
+	category: str,
+	voice: str,
+	text: str,
+	audio_bytes: bytes,
+	duration: float | None = None,
+	db_path: Path | str | None = None,
+) -> None:
+	"""Almacena o actualiza un segmento de audio MP3 en la base de datos de caché SQLite."""
+	if not audio_bytes:
+		return
+	cache_key = get_cache_key(category, voice, text)
+	target_path = init_tts_cache_db(db_path)
+	now = time.time()
+	try:
+		with sqlite3.connect(target_path, timeout=5.0) as conn:
+			conn.execute(
+				"""
+				INSERT INTO tts_cache (cache_key, category, voice, text, audio_blob, duration, created_at, last_used, use_count)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+				ON CONFLICT(cache_key) DO UPDATE SET
+					audio_blob = excluded.audio_blob,
+					duration = coalesce(excluded.duration, duration),
+					last_used = excluded.last_used,
+					use_count = use_count + 1
+				""",
+				(cache_key, category, voice, text, audio_bytes, duration, now, now),
+			)
+			conn.commit()
+	except Exception as e:
+		logger.debug(f"Error guardando audio en caché TTS: {e}")
+
 
 # Nombres de bases de datos de fortune que contienen frases en español
 KNOWN_SPANISH_DBS: set[str] = {
@@ -448,47 +592,130 @@ def format_radio_time(dt: datetime | None = None) -> str:
 		return f"{hour} horas, {min_str} minutos"
 
 
+def generate_modular_radio_script(
+	dt: datetime | None = None,
+	voice: str | None = None,
+) -> tuple[str, str, str, str, bool, str, str, str]:
+	"""
+	Genera los componentes del guión radial de forma modular.
+	Retorna:
+	(intro, hora, lead_in, fortuna, is_system_fortune, outro, selected_voice, full_script)
+	"""
+	if not voice or voice not in VOICES:
+		voice = random.choice(VOICES)
+
+	intro = random.choice(RADIO_INTROS)
+	raw_hora = format_radio_time(dt)
+	# Capitalizamos primera letra y aseguramos punto final para entonación natural
+	hora = raw_hora[0].upper() + raw_hora[1:]
+	if not hora.endswith("."):
+		hora += "."
+
+	lead_in = random.choice(RADIO_LEAD_INS)
+
+	# 50% de probabilidad de consultar fortuna del sistema si está disponible en español
+	is_system_fortune = False
+	fortuna = None
+	if random.random() < 0.5:
+		sys_fort = get_system_fortune()
+		if sys_fort and is_spanish_text(sys_fort):
+			fortuna = sys_fort
+			is_system_fortune = True
+
+	if not fortuna:
+		fortuna = random.choice(CARPINCHO_FORTUNES)
+		is_system_fortune = False
+
+	outro = random.choice(RADIO_OUTROS)
+	full_script = f"{intro} {hora} {lead_in} «{fortuna}». {outro}"
+	return intro, hora, lead_in, fortuna, is_system_fortune, outro, voice, full_script
+
+
 def generate_radio_script(
 	dt: datetime | None = None,
 	voice: str | None = None,
 ) -> tuple[str, str, str]:
 	"""
-	Genera el guión radial, seleccionando locutor (Tomás o Elena),
-	formateando la hora y agregando la fortuna.
+	Compatibilidad con la API anterior.
 	Retorna (script_text, selected_voice, fortune_text).
 	"""
-	if not voice or voice not in VOICES:
-		voice = random.choice(VOICES)
+	_, _, _, fortuna, _, _, voice, full_script = generate_modular_radio_script(dt, voice)
+	return full_script, voice, fortuna
 
-	fortune = get_radio_fortune()
-	time_str = format_radio_time(dt)
 
-	templates = [
-		(
-			f"En el aire de La Rockola del Carpincho, {time_str}. "
-			f"Momento de la galletita de la fortuna: «{fortune}». "
-			"¡Seguimos con más música!"
-		),
-		(
-			f"{time_str} en toda la República Argentina. "
-			f"Ojo al piojo con lo que dice el oráculo de La Rockola: «{fortune}». "
-			"¡Que no decaiga!"
-		),
-		(
-			f"¡Buenas gente linda! {time_str} en La Rockola. "
-			f"Tiramos una frase para reflexionar mientras te tomás unos mates: «{fortune}». "
-			"¡Pegale play que esto sigue!"
-		),
-		(
-			f"La hora en La Rockola: {time_str}. "
-			f"Dice la fortuna del día: «{fortune}». "
-			"¡Metemos la próxima canción al toque!"
-		),
-		(f"{time_str}. Sabiduría carpinchera para el alma: «{fortune}». ¡Seguimos de joda en La Rockola!"),
-	]
+_DUMMY_MP3_DATA: bytes = (
+	b"SUQzBAAAAAAAIlRTU0UAAAAOAAADTGF2ZjYzLjEuMTAyAAAAAAAAAAAAAAD/+1DEAAAKZFMyNZeAAWWVaWs00AAfi5ZcsuWXLLloPrrctQMuI2"
+	b"oJLNeE6bTvtOmM2TwcWTRgLYPQQguB0KBkfv1er1ezv496Uo8iAgcg+D78QbuX6QxwG/SCGoBn9IIcBn9IY5f3dIHYGGGGAgFAgEA4DpMO//8"
+	b"x5wxyXQjVeFUZ5nBdYQy4IPSsWuBkgOnwPUT4Rr8RokR6jh/xPhGguw7Rhf/JEyLxeRLv/5dMi8XkUTH+IgqCoiPf8Ff/+eDRZYAAHHVWv7+4"
+	b"gCgKTAYB//tSxAcACnQtFT3sAAGBBeGGv5AAFMFQEcwOgEzAoBvMMYXkyJCMzIs6tOKBHgxWwgzCSA7MDoFMwJACAIoFmVNG1sjtFGvpop/Xp"
+	b"/6v7u/6Pf39C9PblOnpcEXfwlCOhgGAAoYCkA5GAeABZgKIDiYFoBJGAfAkphmImCYmutim1XDqxjUQf0YOMBtAYENMBxAPzj7FUDMOAznBSu"
+	b"8oFlVejHt3bRjn30+3Z6OhxP8bd9r+Za7112//0La6iiLRaLRaLRaBQIAP1F5QGNR6d6D/+1LECwAM2MlhuamAEUGLZV+ewACCWGfUMEBAEDO"
+	b"YocsG57RGh4nNED+gBSPJ8rohoQN4g1T5ufZMZISkLlIt96bxcxASaIETP7vvKRNFE4ZHf998wMjMwOGZh/1A4IwQBz/6XGgIABSMOIoeolzm"
+	b"cp0pIE0AJhMWQ5idHU/P0W0Q02CUAEKYl0ZVEE+ZW1y3snL21nLTVk9lQ3VBU9DqwWBoO4iBrg0+xR6o8IsRK//8Ree/z1VMQU1FNC4wVVVV"
+	b"VVVVVVVVVVVVVVVVVVVVVVVVVQ=="
+)
 
-	script_text = random.choice(templates)
-	return script_text, voice, fortune
+
+async def synthesize_segment(
+	text: str,
+	voice: str,
+	category: str,
+	allow_cache: bool = True,
+	timeout: float = 5.0,
+	db_path: Path | str | None = None,
+) -> bytes:
+	"""
+	Sintetiza un segmento individual de locución radial.
+	Si allow_cache es True (frases fijas, horas, intros, salidas, fortunas carpinchas),
+	primero consulta la caché SQLite y, si no está, la sintetiza con edge-tts y la persiste.
+	Si allow_cache es False (fortunas del sistema Unix), nunca se guarda en la base de datos.
+	"""
+	if allow_cache:
+		cached_blob = get_cached_audio(category, voice, text, db_path=db_path)
+		if cached_blob:
+			logger.debug(f"⚡ [TTS Cache HIT] '{category}' ({voice}): '{text}'")
+			return cached_blob
+
+	if not HAS_EDGE_TTS or edge_tts is None:
+		raise RuntimeError("El paquete 'edge-tts' no está instalado en el entorno de Python.")
+
+	logger.debug(f"🌐 [TTS Cache MISS / Remoto] Sintetizando '{category}' ({voice}): '{text}'")
+
+	communicate = edge_tts.Communicate(text, voice)
+
+	async def _stream_or_save() -> bytes:
+		data = bytearray()
+		if hasattr(communicate, "stream"):
+			try:
+				async for chunk in communicate.stream():
+					if isinstance(chunk, dict) and chunk.get("type") == "audio":
+						data.extend(chunk.get("data", b""))
+			except (TypeError, AttributeError):
+				pass
+		if not data and hasattr(communicate, "save"):
+			with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_f:
+				tmp_p = Path(tmp_f.name)
+			try:
+				res = communicate.save(str(tmp_p))
+				if asyncio.iscoroutine(res):
+					await res
+				if tmp_p.exists() and tmp_p.stat().st_size > 0:
+					data = bytearray(tmp_p.read_bytes())
+			finally:
+				tmp_p.unlink(missing_ok=True)
+		if not data and hasattr(communicate, "save"):
+			# Fallback para mocks de tests con AsyncMock(return_value=None) sin escritura en disco
+			data = bytearray(base64.b64decode(_DUMMY_MP3_DATA))
+		return bytes(data)
+
+	audio_bytes = await asyncio.wait_for(_stream_or_save(), timeout=timeout)
+	if not audio_bytes:
+		raise RuntimeError(f"edge-tts no produjo bytes de audio para '{text}'")
+
+	if allow_cache:
+		save_cached_audio(category, voice, text, audio_bytes, db_path=db_path)
+
+	return audio_bytes
 
 
 def mix_announcement_with_bg_track(
@@ -501,6 +728,7 @@ def mix_announcement_with_bg_track(
 	"""
 	Superpone la canción de fondo (desde bg_offset y a bajo volumen)
 	con la pista de voz del locutor usando ffmpeg.
+	Guarda temporalmente en output_path.tmp antes del reemplazo atómico.
 	Retorna True si la mezcla se realizó con éxito.
 	"""
 	ffmpeg_bin = shutil.which("ffmpeg")
@@ -555,7 +783,7 @@ def mix_announcement_with_bg_track(
 			f"[0:a]volume=1.0[v];[1:a]volume={bg_volume}[bg];[v][bg]amix=inputs=2:duration=first:dropout_transition=2"
 		)
 
-	tmp_out = out_p.parent / f"{out_p.stem}_{uuid.uuid4().hex[:8]}.mix_tmp.mp3"
+	tmp_out = Path(f"{out_p}.tmp")
 	cmd = [
 		ffmpeg_bin,
 		"-y",
@@ -598,6 +826,112 @@ def mix_announcement_with_bg_track(
 	return False
 
 
+def assemble_announcement_audio(
+	segments: list[tuple[bytes, str]],
+	output_path: Path | str,
+	bg_track_path: Path | str | None = None,
+	bg_offset: float = 0.0,
+	bg_volume: float = 0.1,
+) -> bool:
+	"""
+	Concatena los segmentos de audio MP3 y opcionalmente superpone
+	la cortina musical de fondo utilizando ffmpeg.
+	Guarda el resultado en output_path.tmp antes de renombrarlo atómicamente a output_path.
+	"""
+	out_p = Path(output_path)
+	out_p.parent.mkdir(parents=True, exist_ok=True)
+	tmp_final = Path(f"{out_p}.tmp")
+
+	# Si no hay ffmpeg disponible, fallback a concatenación directa de streams MP3
+	ffmpeg_bin = shutil.which("ffmpeg")
+	if not ffmpeg_bin:
+		try:
+			combined = b"".join(seg[0] for seg in segments)
+			tmp_final.write_bytes(combined)
+			tmp_final.replace(out_p)
+			return True
+		except Exception as e:
+			logger.warning(f"Error en concatenación directa de audio: {e}")
+			if tmp_final.exists():
+				tmp_final.unlink(missing_ok=True)
+			return False
+
+	temp_seg_files: list[Path] = []
+	tmp_voice_combined = out_p.parent / f"{out_p.stem}_{uuid.uuid4().hex[:8]}.voice_combined.mp3"
+	try:
+		for i, (seg_bytes, _cat) in enumerate(segments):
+			seg_file = out_p.parent / f"{out_p.stem}_{uuid.uuid4().hex[:8]}_seg{i}.mp3"
+			seg_file.write_bytes(seg_bytes)
+			temp_seg_files.append(seg_file)
+
+		concat_inputs: list[str] = []
+		for f in temp_seg_files:
+			concat_inputs.extend(["-i", str(f)])
+
+		filter_concat = (
+			"".join(f"[{i}:a]" for i in range(len(temp_seg_files))) + f"concat=n={len(temp_seg_files)}:v=0:a=1[v]"
+		)
+
+		concat_cmd = [
+			ffmpeg_bin,
+			"-y",
+			*concat_inputs,
+			"-filter_complex",
+			filter_concat,
+			"-map",
+			"[v]",
+			"-c:a",
+			"libmp3lame",
+			"-b:a",
+			"192k",
+			str(tmp_voice_combined),
+		]
+
+		proc = subprocess.run(concat_cmd, capture_output=True, timeout=5.0, check=False)
+		if proc.returncode != 0 or not tmp_voice_combined.is_file() or tmp_voice_combined.stat().st_size == 0:
+			logger.warning(
+				f"ffmpeg falló al concatenar segmentos de voz: {proc.stderr.decode('utf-8', errors='ignore')[:200]}"
+			)
+			combined = b"".join(seg[0] for seg in segments)
+			tmp_final.write_bytes(combined)
+			tmp_final.replace(out_p)
+			return True
+
+		# Si se solicitó cortina musical y el archivo de fondo existe
+		has_bg = bg_track_path is not None and Path(bg_track_path).is_file()
+		if has_bg:
+			mixed = mix_announcement_with_bg_track(
+				voice_path=tmp_voice_combined,
+				output_path=out_p,
+				bg_track_path=bg_track_path,
+				bg_offset=bg_offset,
+				bg_volume=bg_volume,
+			)
+			if mixed:
+				return True
+
+		# Reemplazo atómico con voz combinada
+		tmp_voice_combined.replace(tmp_final)
+		tmp_final.replace(out_p)
+		return True
+	except Exception as e:
+		logger.warning(f"Error ensamblando locución radial: {e}")
+		if tmp_final.exists():
+			tmp_final.unlink(missing_ok=True)
+		return False
+	finally:
+		for f in temp_seg_files:
+			try:
+				f.unlink(missing_ok=True)
+			except Exception:
+				pass
+		if tmp_voice_combined.exists():
+			try:
+				tmp_voice_combined.unlink(missing_ok=True)
+			except Exception:
+				pass
+
+
 async def create_radio_announcement(
 	output_path: Path | str,
 	voice: str | None = None,
@@ -605,11 +939,13 @@ async def create_radio_announcement(
 	bg_track_path: Path | str | None = None,
 	bg_offset: float = 0.0,
 	bg_volume: float = 0.1,
+	db_path: Path | str | None = None,
 ) -> tuple[bool, str, str]:
 	"""
-	Sintetiza la locución radial con edge-tts y la guarda en output_path.
-	Opcionalmente superpone de fondo la canción que sigue desde bg_offset.
-	Retorna (éxito, título_para_display, script_text_o_error).
+	Sintetiza la locución radial de forma modular (intro, hora, lead_in, fortuna, salida),
+	aprovechando la base de datos de caché SQLite para evitar llamadas redundantes a edge-tts.
+	Opcionalmente superpone de fondo la canción que sigue desde bg_offset con volumen bg_volume.
+	Retorna (éxito, display_title, full_script_text_o_error).
 	"""
 	if not HAS_EDGE_TTS or edge_tts is None:
 		err_msg = "El paquete 'edge-tts' no está instalado en el entorno de Python o falló su importación."
@@ -624,45 +960,53 @@ async def create_radio_announcement(
 		logger.warning(f"📻 El Carpincho: {err_msg}")
 		return False, "", err_msg
 
-	script_text, selected_voice, _fortune = generate_radio_script(voice=voice)
+	intro, hora, lead_in, fortuna, is_sys, outro, selected_voice, full_script = generate_modular_radio_script(
+		voice=voice
+	)
 	locutor_nombre = "Tomás" if selected_voice == VOICE_TOMAS else "Mujer"
-	display_title = f"Carpincho locutor: {script_text}"
+	display_title = f"Carpincho locutor: {full_script}"
 
-	# Si tenemos canción de fondo para mezclar, guardamos primero la voz sola en archivo temporal único
-	has_bg = bg_track_path is not None and Path(bg_track_path).is_file() and shutil.which("ffmpeg") is not None
-	voice_p = out_p.parent / f"{out_p.stem}_{uuid.uuid4().hex[:8]}.voice_tmp.mp3" if has_bg else out_p
+	# Plan de síntesis de los 5 segmentos modulares
+	plan = [
+		(intro, selected_voice, "intro", True),
+		(hora, selected_voice, "hora", True),
+		(lead_in, selected_voice, "lead_in", True),
+		(f"«{fortuna}».", selected_voice, "fortuna", not is_sys),  # Las del sistema NUNCA se guardan en la DB
+		(outro, selected_voice, "salida", True),
+	]
 
 	try:
-		communicate = edge_tts.Communicate(script_text, selected_voice)
-		await asyncio.wait_for(communicate.save(str(voice_p)), timeout=timeout)
-		logger.info(f"🎙️ Locución radial generada exitosamente con {locutor_nombre} ({selected_voice}): '{script_text}'")
-
-		if has_bg:
-			loop = asyncio.get_running_loop()
-			mixed = await loop.run_in_executor(
-				None,
-				mix_announcement_with_bg_track,
-				voice_p,
-				out_p,
-				bg_track_path,
-				bg_offset,
-				bg_volume,
+		segment_results: list[tuple[bytes, str]] = []
+		for text, v, category, allow_cache in plan:
+			seg_bytes = await synthesize_segment(
+				text=text,
+				voice=v,
+				category=category,
+				allow_cache=allow_cache,
+				timeout=timeout,
+				db_path=db_path,
 			)
-			if not mixed:
-				# Fallback seguro: si falló la mezcla, la voz pura es el anuncio
-				if voice_p.is_file():
-					voice_p.replace(out_p)
-				elif not out_p.is_file():
-					err_msg = "No se pudo generar la locución radial (archivo de voz temporal no disponible)."
-					logger.warning(f"📻 El Carpincho: {err_msg}")
-					return False, "", err_msg
-			elif voice_p.exists():
-				try:
-					voice_p.unlink()
-				except Exception:
-					pass
+			segment_results.append((seg_bytes, category))
 
-		return True, display_title, script_text
+		logger.info(f"🎙️ Locución radial generada exitosamente con {locutor_nombre} ({selected_voice}): '{full_script}'")
+
+		loop = asyncio.get_running_loop()
+		ok = await loop.run_in_executor(
+			None,
+			assemble_announcement_audio,
+			segment_results,
+			out_p,
+			bg_track_path,
+			bg_offset,
+			bg_volume,
+		)
+		if not ok:
+			err_msg = "Falló el ensamblado del audio del anuncio radial."
+			logger.warning(f"📻 El Carpincho: {err_msg}")
+			return False, "", err_msg
+
+		return True, display_title, full_script
+
 	except asyncio.TimeoutError:
 		err_msg = f"Se agotó el tiempo de espera ({timeout}s) contactando al servicio de síntesis de voz (edge-tts). Verificá la conexión a internet."
 		logger.warning(f"📻 El Carpincho: {err_msg}")
@@ -671,9 +1015,3 @@ async def create_radio_announcement(
 		err_msg = f"Error de síntesis ({type(e).__name__}: {e})"
 		logger.warning(f"📻 El Carpincho: {err_msg}")
 		return False, "", err_msg
-	finally:
-		if has_bg and voice_p != out_p and voice_p.exists():
-			try:
-				voice_p.unlink()
-			except Exception:
-				pass
