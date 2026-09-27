@@ -19,7 +19,6 @@ import logging
 import random
 import sys
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 # Añadir directorio raíz al sys.path para importar scripts y server
@@ -32,13 +31,13 @@ try:
 		RADIO_INTROS,
 		RADIO_LEAD_INS,
 		RADIO_OUTROS,
+		SPECIAL_HOURS,
 		VOICE_ELENA,
 		VOICE_MARIA,
 		VOICE_NAMES,
 		VOICE_TOMAS,
 		VOICE_VALENTINA,
 		VOICES,
-		format_radio_time,
 		get_cached_audio,
 		init_tts_cache_db,
 		synthesize_segment,
@@ -50,13 +49,13 @@ except ImportError:
 		RADIO_INTROS,
 		RADIO_LEAD_INS,
 		RADIO_OUTROS,
+		SPECIAL_HOURS,
 		VOICE_ELENA,
 		VOICE_MARIA,
 		VOICE_NAMES,
 		VOICE_TOMAS,
 		VOICE_VALENTINA,
 		VOICES,
-		format_radio_time,
 		get_cached_audio,
 		init_tts_cache_db,
 		synthesize_segment,
@@ -70,18 +69,18 @@ logging.basicConfig(
 logger = logging.getLogger("rockola.preload")
 
 
-def format_hour_for_cache(dt: datetime) -> str:
-	"""Formatea la hora de manera idéntica a como la construye el locutor radial."""
-	raw = format_radio_time(dt)
-	hora = raw[0].upper() + raw[1:]
-	if not hora.endswith("."):
-		hora += "."
-	return hora
-
-
 def collect_phrases(all_minutes: bool = False) -> list[tuple[str, str]]:
 	"""
 	Recolecta todas las frases a precargar estructuradas en tuplas (categoría, texto).
+	Incluye:
+	- Intros radiales
+	- Conectores / Lead-ins
+	- Fortunas y propagandas carpinchas
+	- Salidas radiales
+	- 24 Horas especiales (minuto 0 en punto con impronta carpincha)
+	- 24 Segmentos de hora ("0 horas," a "23 horas,")
+	- 59 Segmentos de minuto ("un minuto." a "59 minutos.")
+	Total: ~192 frases que cubren el 100% de cualquier locución posible.
 	"""
 	items: list[tuple[str, str]] = []
 
@@ -101,32 +100,19 @@ def collect_phrases(all_minutes: bool = False) -> list[tuple[str, str]]:
 	for outro in RADIO_OUTROS:
 		items.append(("salida", outro))
 
-	# 5. Horas
-	added_hours: set[str] = set()
-	if all_minutes:
-		logger.info("⏰ Modo completo: generando las 1.440 combinaciones horarias posibles...")
-		for h in range(24):
-			for m in range(60):
-				dt = datetime(2026, 1, 1, h, m, tzinfo=timezone.utc)
-				formatted = format_hour_for_cache(dt)
-				if formatted not in added_hours:
-					added_hours.add(formatted)
-					items.append(("hora", formatted))
-	else:
-		logger.info("⏰ Modo estándar: generando horarios en punto, y cuarto, y media, menos cuarto...")
-		for h in range(24):
-			for m in (0, 15, 30, 45):
-				dt = datetime(2026, 1, 1, h, m, tzinfo=timezone.utc)
-				formatted = format_hour_for_cache(dt)
-				if formatted not in added_hours:
-					added_hours.add(formatted)
-					items.append(("hora", formatted))
-		# Incluir la hora actual exacta
-		now_dt = datetime.now(timezone.utc).astimezone()
-		now_str = format_hour_for_cache(now_dt)
-		if now_str not in added_hours:
-			added_hours.add(now_str)
-			items.append(("hora", now_str))
+	# 5. Horas especiales (las 24 horas cuando el minuto es 0 en punto)
+	for special in SPECIAL_HOURS.values():
+		items.append(("hora", special))
+
+	# 6. Segmentos modulares de horas (0 a 23)
+	for h in range(24):
+		hora_str = "1 hora," if h == 1 else f"{h} horas,"
+		items.append(("hora", hora_str))
+
+	# 7. Segmentos modulares de minutos (1 a 59)
+	for m in range(1, 60):
+		minuto_str = "un minuto." if m == 1 else f"{m} minutos."
+		items.append(("minuto", minuto_str))
 
 	return items
 
@@ -263,7 +249,7 @@ def main():
 	parser.add_argument(
 		"--all-minutes",
 		action="store_true",
-		help="Precargar las 1.440 combinaciones de minutos (por defecto precarga cuartos de hora: :00, :15, :30, :45).",
+		help="Mantenido por retrocompatibilidad: ahora el sistema modular cubre el 100%% de los horarios en 107 frases.",
 	)
 	parser.add_argument(
 		"--concurrency",

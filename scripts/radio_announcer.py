@@ -160,6 +160,34 @@ RADIO_OUTROS: list[str] = [
 	"¡Acomodate que se viene un temazo!...",
 ]
 
+# Horas especiales del Carpincho Locutor (cuando el minuto es 0 en punto)
+SPECIAL_HOURS: dict[int, str] = {
+	0: "Las doce de la noche en punto, arranca la trasnoche en La Rockola.",
+	1: "Las una en punto, es hora de mimir.",
+	2: "Las dos de la madrugada en punto, silencio en la laguna.",
+	3: "Las tres de la mañana en punto, hora de los carpinchos sonámbulos.",
+	4: "Las cuatro de la mañana en punto, el que no duerme pega en el palo.",
+	5: "Las cinco de la mañana en punto, ya clarea en los bañados.",
+	6: "Las seis de la mañana en punto, arriba que canta el chajá.",
+	7: "Las siete de la mañana en punto, el agua está para unos buenos mates.",
+	8: "Las ocho de la mañana en punto, arranca la jornada con toda la onda.",
+	9: "Las nueve de la mañana en punto, el sol calienta la barranca.",
+	10: "Las diez de la mañana en punto, una pastura tierna para picar.",
+	11: "Las once de la mañana en punto, se siente el olorcito a comida.",
+	12: "Las doce del mediodía en punto, hora de prender el fuego para el asado.",
+	13: "Las una de la tarde en punto, la panza llena y el corazón contento.",
+	14: "Las dos de la tarde en punto, sagrada hora de la siesta carpincha.",
+	15: "Las tres de la tarde en punto, un chapuzón para refrescar las ideas.",
+	16: "Las cuatro de la tarde en punto, salen esos mates con tortas fritas.",
+	17: "Las cinco de la tarde en punto, la merienda no se negocia con nadie.",
+	18: "Las seis de la tarde en punto, cae el solcito en el pajonal.",
+	19: "Las siete de la tarde en punto, la tardecita pide buena música.",
+	20: "Las ocho de la noche en punto, se va cerrando el boliche y abriendo la fiesta.",
+	21: "Las nueve de la noche en punto, la mesa está servida en la madriguera.",
+	22: "Las diez de la noche en punto, brindis con amigos y a disfrutar.",
+	23: "Las once de la noche en punto, la última ronda antes de cerrar los ojales.",
+}
+
 
 def get_carpincho_data_dir() -> Path:
 	"""Obtiene el directorio de datos para la base de datos de la Rockola."""
@@ -556,15 +584,15 @@ def get_radio_fortune() -> str:
 	return random.choice(CARPINCHO_FORTUNES)
 
 
-def format_radio_time(dt: datetime | None = None) -> str:
+def get_modular_time_segments(dt: datetime | None = None) -> tuple[str, str | None, str]:
 	"""
-	Formatea la hora en estilo locutor de radio argentino rioplatense.
-	Ejemplos:
-	- 15:00 -> "15 horas en punto"
-	- 15:15 -> "las tres y cuarto de la tarde"
-	- 15:30 -> "las tres y media de la tarde"
-	- 15:45 -> "las cuatro menos cuarto de la tarde"
-	- 15:23 -> "15 horas, 23 minutos"
+	Divide el anuncio de la hora en segmentos modulares (hora y minutos)
+	para minimizar drásticamente las combinaciones que se deben cachear en SQLite.
+
+	- Si minute == 0: Retorna una de las 24 horas especiales del Carpincho (minuto_seg es None).
+	  Ej: ("Las una en punto, es hora de mimir.", None, "Las una en punto, es hora de mimir.")
+	- Si minute != 0: Retorna (hora_seg, minuto_seg, full_time_str) separados.
+	  Ej: ("15 horas,", "23 minutos.", "15 horas, 23 minutos.")
 	"""
 	if dt is None:
 		dt = datetime.now(timezone.utc).astimezone()
@@ -572,80 +600,39 @@ def format_radio_time(dt: datetime | None = None) -> str:
 	hour = dt.hour
 	minute = dt.minute
 
-	# Frase de momento del día para horas de 12h
-	if 5 <= hour < 12:
-		period = "de la mañana"
-	elif hour == 12:
-		period = "del mediodía"
-	elif 13 <= hour < 20:
-		period = "de la tarde"
-	elif 20 <= hour <= 23:
-		period = "de la noche"
-	else:
-		period = "de la madrugada"
-
-	# Convertir a formato 12h para frases coloquiales
-	hour_12 = hour % 12
-	if hour_12 == 0:
-		hour_12 = 12
-
-	# Nombres de horas coloquiales
-	hour_names = {
-		1: "la una",
-		2: "las dos",
-		3: "las tres",
-		4: "las cuatro",
-		5: "las cinco",
-		6: "las seis",
-		7: "las siete",
-		8: "las ocho",
-		9: "las nueve",
-		10: "las diez",
-		11: "las once",
-		12: "las doce",
-	}
-
-	next_hour_12 = (hour_12 % 12) + 1
-	current_h_str = hour_names.get(hour_12, f"las {hour_12}")
-	next_h_str = hour_names.get(next_hour_12, f"las {next_hour_12}")
-
-	# Patrones coloquiales clásicos de radio
 	if minute == 0:
-		if random.random() < 0.5:
-			return f"{hour} horas en punto"
-		return f"{current_h_str} en punto {period}"
-	elif minute == 15:
-		return f"{current_h_str} y cuarto {period}"
-	elif minute == 30:
-		return f"{current_h_str} y media {period}"
-	elif minute == 45:
-		return f"{next_h_str} menos cuarto {period}"
-	else:
-		# Formato radial tradicional: "15 horas, 24 minutos"
-		min_str = f"0{minute}" if minute < 10 else f"{minute}"
-		if minute == 1:
-			return f"{hour} horas, un minuto"
-		return f"{hour} horas, {min_str} minutos"
+		special = SPECIAL_HOURS.get(hour, f"{hour} horas en punto.")
+		return special, None, special
+
+	hora_seg = "1 hora," if hour == 1 else f"{hour} horas,"
+	minuto_seg = "un minuto." if minute == 1 else f"{minute} minutos."
+	full_time_str = f"{hora_seg} {minuto_seg}"
+	return hora_seg, minuto_seg, full_time_str
+
+
+def format_radio_time(dt: datetime | None = None) -> str:
+	"""
+	Formatea la hora en estilo locutor de radio argentino rioplatense.
+	Compatibilidad con la API anterior.
+	"""
+	_, _, full_time_str = get_modular_time_segments(dt)
+	return full_time_str
 
 
 def generate_modular_radio_script(
 	dt: datetime | None = None,
 	voice: str | None = None,
-) -> tuple[str, str, str, str, bool, str, str, str]:
+) -> tuple[str, str, str | None, str, str, bool, str, str, str]:
 	"""
 	Genera los componentes del guión radial de forma modular.
 	Retorna:
-	(intro, hora, lead_in, fortuna, is_system_fortune, outro, selected_voice, full_script)
+	(intro, hora_seg, minuto_seg, lead_in, fortuna, is_system_fortune, outro, selected_voice, full_script)
 	"""
 	if not voice or voice not in VOICES:
 		voice = random.choice(VOICES)
 
 	intro = random.choice(RADIO_INTROS)
-	raw_hora = format_radio_time(dt)
-	# Capitalizamos primera letra y aseguramos punto final para entonación natural
-	hora = raw_hora[0].upper() + raw_hora[1:]
-	if not hora.endswith("."):
-		hora += "."
+	hora_seg, minuto_seg, _ = get_modular_time_segments(dt)
 
 	lead_in = random.choice(RADIO_LEAD_INS)
 
@@ -663,8 +650,9 @@ def generate_modular_radio_script(
 		is_system_fortune = False
 
 	outro = random.choice(RADIO_OUTROS)
-	full_script = f"{intro} {hora} {lead_in} «{fortuna}». {outro}"
-	return intro, hora, lead_in, fortuna, is_system_fortune, outro, voice, full_script
+	hora_full = f"{hora_seg} {minuto_seg}" if minuto_seg else hora_seg
+	full_script = f"{intro} {hora_full} {lead_in} «{fortuna}». {outro}"
+	return intro, hora_seg, minuto_seg, lead_in, fortuna, is_system_fortune, outro, voice, full_script
 
 
 def generate_radio_script(
@@ -675,7 +663,7 @@ def generate_radio_script(
 	Compatibilidad con la API anterior.
 	Retorna (script_text, selected_voice, fortune_text).
 	"""
-	_, _, _, fortuna, _, _, voice, full_script = generate_modular_radio_script(dt, voice)
+	_, _, _, _, fortuna, _, _, voice, full_script = generate_modular_radio_script(dt, voice)
 	return full_script, voice, fortuna
 
 
@@ -970,9 +958,10 @@ async def create_radio_announcement(
 	bg_offset: float = 0.0,
 	bg_volume: float = 0.1,
 	db_path: Path | str | None = None,
+	dt: datetime | None = None,
 ) -> tuple[bool, str, str]:
 	"""
-	Sintetiza la locución radial de forma modular (intro, hora, lead_in, fortuna, salida),
+	Sintetiza la locución radial de forma modular (intro, hora, minuto [si aplica], lead_in, fortuna, salida),
 	aprovechando la base de datos de caché SQLite para evitar llamadas redundantes a edge-tts.
 	Opcionalmente superpone de fondo la canción que sigue desde bg_offset con volumen bg_volume.
 	Retorna (éxito, display_title, full_script_text_o_error).
@@ -990,20 +979,26 @@ async def create_radio_announcement(
 		logger.warning(f"📻 El Carpincho: {err_msg}")
 		return False, "", err_msg
 
-	intro, hora, lead_in, fortuna, is_sys, outro, selected_voice, full_script = generate_modular_radio_script(
-		voice=voice
+	intro, hora_seg, minuto_seg, lead_in, fortuna, is_sys, outro, selected_voice, full_script = (
+		generate_modular_radio_script(dt=dt, voice=voice)
 	)
 	locutor_nombre = VOICE_NAMES.get(selected_voice, "Carpincho Locutor")
 	display_title = f"Carpincho locutor: {full_script}"
 
-	# Plan de síntesis de los 5 segmentos modulares
-	plan = [
+	# Plan de síntesis de los segmentos modulares
+	plan: list[tuple[str, str, str, bool]] = [
 		(intro, selected_voice, "intro", True),
-		(hora, selected_voice, "hora", True),
-		(lead_in, selected_voice, "lead_in", True),
-		(f"«{fortuna}».", selected_voice, "fortuna", not is_sys),  # Las del sistema NUNCA se guardan en la DB
-		(outro, selected_voice, "salida", True),
+		(hora_seg, selected_voice, "hora", True),
 	]
+	if minuto_seg:
+		plan.append((minuto_seg, selected_voice, "minuto", True))
+	plan.extend(
+		[
+			(lead_in, selected_voice, "lead_in", True),
+			(f"«{fortuna}».", selected_voice, "fortuna", not is_sys),  # Las del sistema NUNCA se guardan en la DB
+			(outro, selected_voice, "salida", True),
+		]
+	)
 
 	try:
 		segment_results: list[tuple[bytes, str]] = []

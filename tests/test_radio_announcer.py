@@ -94,31 +94,72 @@ def test_get_radio_fortune_is_always_spanish():
 
 
 def test_format_radio_time():
-	# 15:15
-	dt_quarter = datetime(2026, 9, 26, 15, 15, tzinfo=timezone.utc)
-	t_str = radio_announcer.format_radio_time(dt_quarter)
-	assert "tres y cuarto" in t_str
-	assert "tarde" in t_str
+	# 01:00 - Hora especial
+	dt_one = datetime(2026, 9, 26, 1, 0, tzinfo=timezone.utc)
+	t_str = radio_announcer.format_radio_time(dt_one)
+	assert "Las una en punto, es hora de mimir." in t_str
 
-	# 15:30
-	dt_half = datetime(2026, 9, 26, 15, 30, tzinfo=timezone.utc)
-	t_str = radio_announcer.format_radio_time(dt_half)
-	assert "tres y media" in t_str
+	# 12:00 - Hora especial mediodía
+	dt_noon = datetime(2026, 9, 26, 12, 0, tzinfo=timezone.utc)
+	t_str = radio_announcer.format_radio_time(dt_noon)
+	assert "Las doce del mediodía en punto" in t_str
 
-	# 15:45
-	dt_three_q = datetime(2026, 9, 26, 15, 45, tzinfo=timezone.utc)
-	t_str = radio_announcer.format_radio_time(dt_three_q)
-	assert "cuatro menos cuarto" in t_str
-
-	# 15:23
+	# 15:23 - Modular minutos plural
 	dt_exact = datetime(2026, 9, 26, 15, 23, tzinfo=timezone.utc)
 	t_str = radio_announcer.format_radio_time(dt_exact)
 	assert "15 horas, 23 minutos" in t_str
 
-	# 09:01
+	# 09:01 - Modular minuto singular
 	dt_one_min = datetime(2026, 9, 26, 9, 1, tzinfo=timezone.utc)
 	t_str = radio_announcer.format_radio_time(dt_one_min)
 	assert "9 horas, un minuto" in t_str
+
+	# 01:15 - Modular hora singular
+	dt_one_fifteen = datetime(2026, 9, 26, 1, 15, tzinfo=timezone.utc)
+	t_str = radio_announcer.format_radio_time(dt_one_fifteen)
+	assert "1 hora, 15 minutos" in t_str
+
+
+def test_get_modular_time_segments():
+	# Especial 01:00
+	dt_one = datetime(2026, 9, 26, 1, 0, tzinfo=timezone.utc)
+	h_seg, m_seg, full = radio_announcer.get_modular_time_segments(dt_one)
+	assert h_seg == "Las una en punto, es hora de mimir."
+	assert m_seg is None
+	assert full == "Las una en punto, es hora de mimir."
+
+	# Especial 00:00 (medianoche)
+	dt_mid = datetime(2026, 9, 26, 0, 0, tzinfo=timezone.utc)
+	h_seg, m_seg, full = radio_announcer.get_modular_time_segments(dt_mid)
+	assert "Las doce de la noche en punto" in h_seg
+	assert m_seg is None
+
+	# Modular 15:23
+	dt_mod = datetime(2026, 9, 26, 15, 23, tzinfo=timezone.utc)
+	h_seg, m_seg, full = radio_announcer.get_modular_time_segments(dt_mod)
+	assert h_seg == "15 horas,"
+	assert m_seg == "23 minutos."
+	assert full == "15 horas, 23 minutos."
+
+	# Modular 09:01
+	dt_one_min = datetime(2026, 9, 26, 9, 1, tzinfo=timezone.utc)
+	h_seg, m_seg, full = radio_announcer.get_modular_time_segments(dt_one_min)
+	assert h_seg == "9 horas,"
+	assert m_seg == "un minuto."
+	assert full == "9 horas, un minuto."
+
+	# Modular 01:45
+	dt_one_forty_five = datetime(2026, 9, 26, 1, 45, tzinfo=timezone.utc)
+	h_seg, m_seg, full = radio_announcer.get_modular_time_segments(dt_one_forty_five)
+	assert h_seg == "1 hora,"
+	assert m_seg == "45 minutos."
+	assert full == "1 hora, 45 minutos."
+
+	# Las 24 horas especiales deben existir y ser válidas en español
+	assert len(radio_announcer.SPECIAL_HOURS) == 24
+	for phrase in radio_announcer.SPECIAL_HOURS.values():
+		assert isinstance(phrase, str)
+		assert radio_announcer.is_spanish_text(phrase) is True
 
 
 def test_generate_radio_script():
@@ -324,12 +365,13 @@ async def test_system_fortune_never_cached(tmp_path):
 
 
 def test_generate_modular_radio_script():
-	intro, hora, lead_in, fortuna, is_sys, outro, voice, full_script = radio_announcer.generate_modular_radio_script(
-		voice=radio_announcer.VOICE_TOMAS
+	intro, hora, minuto, lead_in, fortuna, is_sys, outro, voice, full_script = (
+		radio_announcer.generate_modular_radio_script(voice=radio_announcer.VOICE_TOMAS)
 	)
 	assert voice == radio_announcer.VOICE_TOMAS
 	assert intro in radio_announcer.RADIO_INTROS
 	assert len(hora) > 0
+	assert minuto is None or len(minuto) > 0
 	assert lead_in in radio_announcer.RADIO_LEAD_INS
 	assert outro in radio_announcer.RADIO_OUTROS
 	assert fortuna in full_script
@@ -429,3 +471,65 @@ async def test_preload_tts_cache_skips_and_synthesizes(tmp_path):
 		# Verificar que quedó guardado en la base de datos
 		cached = radio_announcer.get_cached_audio("intro", voice, text_nuevo, db_path=db_path)
 		assert cached == b"NUEVO_AUDIO"
+
+
+def test_preload_collect_phrases():
+	from scripts import preload_tts_cache
+
+	items = preload_tts_cache.collect_phrases()
+	categories = {cat for cat, _ in items}
+	assert "intro" in categories
+	assert "lead_in" in categories
+	assert "fortuna" in categories
+	assert "salida" in categories
+	assert "hora" in categories
+	assert "minuto" in categories
+
+	# Verificamos que contenga horas especiales y modulares
+	horas = [text for cat, text in items if cat == "hora"]
+	assert "Las una en punto, es hora de mimir." in horas
+	assert "15 horas," in horas
+	assert "1 hora," in horas
+	assert len(horas) == 48  # 24 especiales + 24 modulares
+
+	# Verificamos que contenga los 59 minutos
+	minutos = [text for cat, text in items if cat == "minuto"]
+	assert "un minuto." in minutos
+	assert "59 minutos." in minutos
+	assert len(minutos) == 59
+
+
+@pytest.mark.asyncio
+async def test_create_radio_announcement_with_special_and_modular_dt(tmp_path):
+	out_p1 = tmp_path / "special.mp3"
+	out_p2 = tmp_path / "modular.mp3"
+	db_p = tmp_path / "tts_cache.db"
+
+	mock_comm = MagicMock()
+	mock_comm.save = AsyncMock(return_value=None)
+
+	with (
+		patch("scripts.radio_announcer.HAS_EDGE_TTS", True),
+		patch("scripts.radio_announcer.edge_tts.Communicate", return_value=mock_comm),
+	):
+		# 1. Hora especial 01:00
+		dt_special = datetime(2026, 9, 26, 1, 0, tzinfo=timezone.utc)
+		ok1, _title1, text1 = await radio_announcer.create_radio_announcement(
+			out_p1,
+			voice=radio_announcer.VOICE_TOMAS,
+			db_path=db_p,
+			dt=dt_special,
+		)
+		assert ok1 is True
+		assert "Las una en punto, es hora de mimir." in text1
+
+		# 2. Hora modular 15:23
+		dt_modular = datetime(2026, 9, 26, 15, 23, tzinfo=timezone.utc)
+		ok2, _title2, text2 = await radio_announcer.create_radio_announcement(
+			out_p2,
+			voice=radio_announcer.VOICE_ELENA,
+			db_path=db_p,
+			dt=dt_modular,
+		)
+		assert ok2 is True
+		assert "15 horas, 23 minutos." in text2
