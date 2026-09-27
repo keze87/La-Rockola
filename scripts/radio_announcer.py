@@ -490,13 +490,124 @@ def generate_radio_script(
 	return script_text, voice, fortune
 
 
+def mix_announcement_with_bg_track(
+	voice_path: Path | str,
+	output_path: Path | str,
+	bg_track_path: Path | str,
+	bg_offset: float = 0.0,
+	bg_volume: float = 0.18,
+) -> bool:
+	"""
+	Superpone la canción de fondo (desde bg_offset y a bajo volumen)
+	con la pista de voz del locutor usando ffmpeg.
+	Retorna True si la mezcla se realizó con éxito.
+	"""
+	ffmpeg_bin = shutil.which("ffmpeg")
+	if not ffmpeg_bin:
+		logger.debug("ffmpeg no disponible para mezclar cortina musical.")
+		return False
+
+	voice_p = Path(voice_path)
+	bg_p = Path(bg_track_path)
+	out_p = Path(output_path)
+
+	if not voice_p.is_file() or not bg_p.is_file():
+		return False
+
+	# Averiguamos la duración de la voz para calibrar el fade-out
+	voice_dur = 0.0
+	ffprobe_bin = shutil.which("ffprobe")
+	if ffprobe_bin:
+		try:
+			res = subprocess.run(
+				[
+					ffprobe_bin,
+					"-v",
+					"error",
+					"-show_entries",
+					"format=duration",
+					"-of",
+					"default=noprint_wrappers=1:nokey=1",
+					str(voice_p),
+				],
+				capture_output=True,
+				text=True,
+				timeout=2.0,
+				check=False,
+			)
+			if res.returncode == 0 and res.stdout.strip():
+				voice_dur = float(res.stdout.strip())
+		except Exception:
+			pass
+
+	if voice_dur > 2.0:
+		fade_in = 1.0
+		fade_out = 1.5
+		fade_out_start = max(0.0, voice_dur - fade_out)
+		filter_complex = (
+			f"[0:a]volume=1.0[v];"
+			f"[1:a]volume={bg_volume},afade=t=in:ss=0:d={fade_in},afade=t=out:st={fade_out_start:.2f}:d={fade_out}[bg];"
+			f"[v][bg]amix=inputs=2:duration=first:dropout_transition=2"
+		)
+	else:
+		filter_complex = (
+			f"[0:a]volume=1.0[v];[1:a]volume={bg_volume}[bg];[v][bg]amix=inputs=2:duration=first:dropout_transition=2"
+		)
+
+	tmp_out = out_p.with_suffix(".mix_tmp.mp3")
+	cmd = [
+		ffmpeg_bin,
+		"-y",
+		"-i",
+		str(voice_p),
+		"-ss",
+		str(max(0.0, bg_offset)),
+		"-i",
+		str(bg_p),
+		"-filter_complex",
+		filter_complex,
+		"-c:a",
+		"libmp3lame",
+		"-b:a",
+		"192k",
+		str(tmp_out),
+	]
+
+	try:
+		proc = subprocess.run(cmd, capture_output=True, timeout=5.0, check=False)
+		if proc.returncode == 0 and tmp_out.is_file() and tmp_out.stat().st_size > 0:
+			tmp_out.replace(out_p)
+			logger.info(
+				f"🎵 Cortina musical superpuesta con éxito desde el segundo {bg_offset:.1f} de '{bg_p.name}' (volumen {bg_volume * 100:.0f}%)"
+			)
+			return True
+		else:
+			logger.warning(
+				f"ffmpeg falló al mezclar cortina musical: {proc.stderr.decode('utf-8', errors='ignore')[:200]}"
+			)
+	except Exception as e:
+		logger.warning(f"Error mezclando cortina musical con ffmpeg: {e}")
+	finally:
+		if tmp_out.exists():
+			try:
+				tmp_out.unlink()
+			except Exception:
+				pass
+
+	return False
+
+
 async def create_radio_announcement(
 	output_path: Path | str,
 	voice: str | None = None,
 	timeout: float = 5.0,
+	bg_track_path: Path | str | None = None,
+	bg_offset: float = 0.0,
+	bg_volume: float = 0.18,
 ) -> tuple[bool, str, str]:
 	"""
 	Sintetiza la locución radial con edge-tts y la guarda en output_path.
+	Opcionalmente superpone de fondo la canción que sigue desde bg_offset.
 	Retorna (éxito, título_para_display, script_text_o_error).
 	"""
 	if not HAS_EDGE_TTS or edge_tts is None:
@@ -516,10 +627,35 @@ async def create_radio_announcement(
 	locutor_nombre = "Tomás" if selected_voice == VOICE_TOMAS else "Mujer"
 	display_title = f"Carpincho locutor: {script_text}"
 
+	# Si tenemos canción de fondo para mezclar, guardamos primero la voz sola en archivo temporal
+	has_bg = bg_track_path is not None and Path(bg_track_path).is_file() and shutil.which("ffmpeg") is not None
+	voice_p = out_p.with_suffix(".voice_tmp.mp3") if has_bg else out_p
+
 	try:
 		communicate = edge_tts.Communicate(script_text, selected_voice)
-		await asyncio.wait_for(communicate.save(str(out_p)), timeout=timeout)
+		await asyncio.wait_for(communicate.save(str(voice_p)), timeout=timeout)
 		logger.info(f"🎙️ Locución radial generada exitosamente con {locutor_nombre} ({selected_voice}): '{script_text}'")
+
+		if has_bg:
+			loop = asyncio.get_running_loop()
+			mixed = await loop.run_in_executor(
+				None,
+				mix_announcement_with_bg_track,
+				voice_p,
+				out_p,
+				bg_track_path,
+				bg_offset,
+				bg_volume,
+			)
+			if not mixed:
+				# Fallback seguro: si falló la mezcla, la voz pura es el anuncio
+				voice_p.replace(out_p)
+			elif voice_p.exists():
+				try:
+					voice_p.unlink()
+				except Exception:
+					pass
+
 		return True, display_title, script_text
 	except asyncio.TimeoutError:
 		err_msg = f"Se agotó el tiempo de espera ({timeout}s) contactando al servicio de síntesis de voz (edge-tts). Verificá la conexión a internet."
@@ -527,5 +663,11 @@ async def create_radio_announcement(
 		return False, "", err_msg
 	except Exception as e:
 		err_msg = f"Error de síntesis ({type(e).__name__}: {e})"
-		logger.warning(f"📻 DJ Carpincho: {err_msg}")
+		logger.warning(f"📻 El Carpincho: {err_msg}")
 		return False, "", err_msg
+	finally:
+		if has_bg and voice_p.exists():
+			try:
+				voice_p.unlink()
+			except Exception:
+				pass

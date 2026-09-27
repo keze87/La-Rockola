@@ -198,9 +198,9 @@
 		<ToggleRow
 			v-if="hasEdgeTts"
 			:model-value="radioModeEnabled"
-			icon="radio"
-			title="Modo Radio Carpincha"
-			description="DJ Carpincho tira la hora, una fortuna y comenta entre temas"
+			icon="record_voice_over"
+			title="Carpincho locutor"
+			description="Tira la hora, una fortuna y comenta entre temas"
 			active-class="bg-carpincho-success"
 			@update:model-value="toggleRadioMode"
 		/>

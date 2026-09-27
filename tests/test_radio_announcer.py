@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime, timezone
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -177,3 +178,60 @@ async def test_create_radio_announcement_timeout(tmp_path):
 	):
 		ok, _title, _text = await radio_announcer.create_radio_announcement(out_p, timeout=0.01)
 		assert ok is False
+
+
+@pytest.mark.asyncio
+async def test_create_radio_announcement_with_bg_track(tmp_path):
+	song_p = tmp_path / "song.mp3"
+	out_p = tmp_path / "radio.mp3"
+	song_p.write_bytes(b"DUMMY_SONG_DATA")
+
+	mock_comm = MagicMock()
+	mock_comm.save = AsyncMock(return_value=None)
+
+	with (
+		patch("scripts.radio_announcer.HAS_EDGE_TTS", True),
+		patch("scripts.radio_announcer.edge_tts.Communicate", return_value=mock_comm),
+		patch("scripts.radio_announcer.mix_announcement_with_bg_track", return_value=True) as mock_mix,
+		patch("shutil.which", return_value="/usr/bin/ffmpeg"),
+	):
+		ok, title, _text = await radio_announcer.create_radio_announcement(
+			out_p,
+			voice=radio_announcer.VOICE_TOMAS,
+			bg_track_path=song_p,
+			bg_offset=45.0,
+			bg_volume=0.18,
+		)
+		assert ok is True
+		assert "Tomás" in title
+		mock_mix.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_create_radio_announcement_with_bg_track_fallback(tmp_path):
+	song_p = tmp_path / "song.mp3"
+	out_p = tmp_path / "radio.mp3"
+	song_p.write_bytes(b"DUMMY_SONG_DATA")
+
+	async def fake_save(dest):
+		Path(dest).write_bytes(b"VOICE_AUDIO")
+
+	mock_comm = MagicMock()
+	mock_comm.save = AsyncMock(side_effect=fake_save)
+
+	with (
+		patch("scripts.radio_announcer.HAS_EDGE_TTS", True),
+		patch("scripts.radio_announcer.edge_tts.Communicate", return_value=mock_comm),
+		patch("scripts.radio_announcer.mix_announcement_with_bg_track", return_value=False),
+		patch("shutil.which", return_value="/usr/bin/ffmpeg"),
+	):
+		ok, _title, _text = await radio_announcer.create_radio_announcement(
+			out_p,
+			voice=radio_announcer.VOICE_TOMAS,
+			bg_track_path=song_p,
+			bg_offset=45.0,
+			bg_volume=0.18,
+		)
+		assert ok is True
+		assert out_p.exists()
+		assert out_p.read_bytes() == b"VOICE_AUDIO"

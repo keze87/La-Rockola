@@ -119,7 +119,7 @@
 		if (isSynthesizingRadio.value || (isPlayingRadioAnnouncement.value && !currentTrackPath.value)) {
 			return {
 				title: 'El locutor carpincho se está preparando...',
-				artist: 'DJ Carpincho 🎙️',
+				artist: 'Carpincho Locutor 🎙️',
 				isComing: true,
 			};
 		}

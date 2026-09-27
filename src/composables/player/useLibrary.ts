@@ -27,7 +27,7 @@ export function useLibrary() {
 			return {
 				path,
 				display_title: 'Locución radial',
-				display_artist: 'DJ Carpincho 🎙️',
+				display_artist: 'Carpincho Locutor 🎙️',
 			};
 		}
 

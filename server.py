@@ -2279,6 +2279,58 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
+def parse_duration_str(duration_str: str | None) -> float:
+	"""Convierte una cadena tipo '03:45' o '1:02:15' a segundos en float."""
+	if not duration_str or duration_str == "0:00":
+		return 0.0
+	try:
+		parts = [float(p) for p in str(duration_str).split(":")]
+		if len(parts) == 1:
+			return parts[0]
+		elif len(parts) == 2:
+			return parts[0] * 60 + parts[1]
+		elif len(parts) == 3:
+			return parts[0] * 3600 + parts[1] * 60 + parts[2]
+	except Exception:
+		pass
+	return 0.0
+
+
+def get_track_duration_seconds(path: str | None, tracks_cache: list[dict] | None = None) -> float:
+	"""Obtiene la duración en segundos de una pista consultando el cache o ffprobe."""
+	if not path:
+		return 0.0
+	if tracks_cache:
+		for t in tracks_cache:
+			if t.get("path") == path:
+				dur = parse_duration_str(t.get("duration_str"))
+				if dur > 0:
+					return dur
+	if Path(path).is_file() and shutil.which("ffprobe"):
+		try:
+			res = subprocess.run(
+				[
+					shutil.which("ffprobe"),
+					"-v",
+					"error",
+					"-show_entries",
+					"format=duration",
+					"-of",
+					"default=noprint_wrappers=1:nokey=1",
+					str(path),
+				],
+				capture_output=True,
+				text=True,
+				timeout=2.0,
+				check=False,
+			)
+			if res.returncode == 0 and res.stdout.strip():
+				return float(res.stdout.strip())
+		except Exception:
+			pass
+	return 0.0
+
+
 # --- App State & Server Logic ---
 class APIState:
 	def __init__(self, initial_dir=None, secondary_dir=None):
@@ -3058,12 +3110,37 @@ class APIState:
 			self.radio_track_counter += 1
 			if self.radio_track_counter >= self.radio_tracks_until_next:
 				logger.info(
-					f"📻 Modo Radio: turno de locución radial (canción #{self.radio_track_counter}). Sintetizando..."
+					f"🎙️ Carpincho Locutor: turno de locución radial (canción #{self.radio_track_counter}). Sintetizando..."
 				)
 				self.is_synthesizing_radio = True
 				await broadcast_state()
+
+				# Averiguamos qué tema viene para superponerlo como cortina bajo la voz del locutor
+				next_track_path = None
+				if self.queue:
+					next_track_path = self.queue[0]
+				elif self.dj_next_track:
+					next_track_path = self.dj_next_track.get("path")
+				elif self.dj_carpincho_enabled and self.tracks_cache:
+					self._pick_dj_next()
+					if self.dj_next_track:
+						next_track_path = self.dj_next_track.get("path")
+
+				bg_offset = 0.0
+				if next_track_path:
+					total_dur = get_track_duration_seconds(next_track_path, self.tracks_cache)
+					if total_dur > 10.0:
+						bg_offset = total_dur / 2.0  # Desde la mitad de la canción
+					elif total_dur > 0:
+						bg_offset = total_dur * 0.4
+
 				try:
-					ok, display_title, script_or_err = await create_radio_announcement(self.radio_announcement_path)
+					ok, display_title, script_or_err = await create_radio_announcement(
+						self.radio_announcement_path,
+						bg_track_path=next_track_path,
+						bg_offset=bg_offset,
+						bg_volume=0.18,
+					)
 				except Exception as e:
 					ok, display_title, script_or_err = False, "", f"{type(e).__name__}: {e}"
 				finally:
@@ -3076,7 +3153,7 @@ class APIState:
 					self.url_metadata[self.radio_announcement_path] = {
 						"path": self.radio_announcement_path,
 						"display_title": display_title,
-						"display_artist": "Radio Carpincho 📻",
+						"display_artist": "Carpincho Locutor 🎙️",
 						"album": "La Rockola del Carpincho",
 						"duration_str": "0:12",
 					}
@@ -3088,7 +3165,7 @@ class APIState:
 					return
 				else:
 					logger.warning(
-						f"📻 Modo Radio: No se pudo sintetizar la locución radial ({script_or_err}). Pasando al tema siguiente..."
+						f"🎙️ Carpincho Locutor: No se pudo sintetizar la locución radial ({script_or_err}). Pasando al tema siguiente..."
 					)
 
 		if self.queue:
@@ -3853,7 +3930,7 @@ async def handle_command(req: CommandRequest):
 			state.radio_mode_enabled = req.state
 		else:
 			state.radio_mode_enabled = not state.radio_mode_enabled
-		logger.info(f"Modo Radio cambiado a: {state.radio_mode_enabled}")
+		logger.info(f"Carpincho Locutor cambiado a: {state.radio_mode_enabled}")
 		if state.radio_mode_enabled:
 			state.radio_tracks_until_next = random.randint(1, 2)
 			state.radio_track_counter = 0
