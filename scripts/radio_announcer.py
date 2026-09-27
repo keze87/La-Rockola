@@ -14,6 +14,7 @@ import re
 import shutil
 import sqlite3
 import subprocess
+import sys
 import tempfile
 import time
 import uuid
@@ -878,16 +879,102 @@ def mix_announcement_with_bg_track(
 	return False
 
 
+def get_carpincho_cover_path() -> Path | None:
+	"""Localiza la imagen del carpincho (public/favicon.png o dist/favicon.png) para coverart."""
+	candidates = [
+		Path(__file__).resolve().parents[1] / "public" / "favicon.png",
+		Path(__file__).resolve().parents[1] / "dist" / "favicon.png",
+	]
+	if hasattr(sys, "_MEIPASS"):
+		candidates.insert(0, Path(sys._MEIPASS) / "public" / "favicon.png")
+		candidates.insert(1, Path(sys._MEIPASS) / "dist" / "favicon.png")
+
+	for c in candidates:
+		if c.is_file():
+			return c
+	return None
+
+
+def is_valid_mp3_stream(data: bytes) -> bool:
+	"""Determina si un encabezado de bytes corresponde a un stream o archivo MP3 real."""
+	if len(data) < 4:
+		return False
+	if data.startswith(b"ID3"):
+		return True
+	return bool(data[0] == 0xFF and (data[1] & 0xE0) == 0xE0)
+
+
+def embed_cover_art_in_mp3(
+	mp3_path: Path | str,
+	cover_image_path: Path | str | None = None,
+	title: str | None = "Locución radial",
+	artist: str | None = "Carpincho Locutor 🎙️",
+	album: str = "La Rockola del Carpincho",
+) -> bool:
+	"""
+	Incrusta la carátula del carpincho y metadatos ID3 (título, artista, álbum, APIC)
+	directamente dentro del archivo MP3 de la locución radial usando mutagen.
+	"""
+	mp3_p = Path(mp3_path)
+	if not mp3_p.is_file():
+		return False
+
+	data_head = mp3_p.read_bytes()[:10]
+	if not is_valid_mp3_stream(data_head):
+		return False
+
+	cover_p = Path(cover_image_path) if cover_image_path else get_carpincho_cover_path()
+	if not cover_p or not cover_p.is_file():
+		return False
+
+	try:
+		from mutagen.id3 import APIC, ID3, TALB, TIT2, TPE1, ID3NoHeaderError
+
+		try:
+			tags = ID3(str(mp3_p))
+		except ID3NoHeaderError:
+			tags = ID3()
+
+		cover_bytes = cover_p.read_bytes()
+		mime = "image/png" if cover_p.suffix.lower() == ".png" else "image/jpeg"
+
+		tags.add(
+			APIC(
+				encoding=3,  # UTF-8
+				mime=mime,
+				type=3,  # Front cover
+				desc="Cover",
+				data=cover_bytes,
+			)
+		)
+		if title:
+			tags.add(TIT2(encoding=3, text=[title]))
+		if artist:
+			tags.add(TPE1(encoding=3, text=[artist]))
+		if album:
+			tags.add(TALB(encoding=3, text=[album]))
+
+		tags.save(str(mp3_p))
+		logger.debug(f"🖼️ Carátula del carpincho incrustada con éxito en '{mp3_p.name}'")
+		return True
+	except Exception as e:
+		logger.debug(f"No se pudo incrustar la carátula en {mp3_p}: {e}")
+		return False
+
+
 def assemble_announcement_audio(
 	segments: list[tuple[bytes, str]],
 	output_path: Path | str,
 	bg_track_path: Path | str | None = None,
 	bg_offset: float = 0.0,
 	bg_volume: float = 0.1,
+	cover_image_path: Path | str | None = None,
+	title: str | None = "Locución radial",
+	artist: str | None = "Carpincho Locutor 🎙️",
 ) -> bool:
 	"""
-	Concatena los segmentos de audio MP3 y opcionalmente superpone
-	la cortina musical de fondo utilizando ffmpeg.
+	Concatena los segmentos de audio MP3, opcionalmente superpone
+	la cortina musical de fondo utilizando ffmpeg e incrusta la carátula del carpincho.
 	Todas las operaciones intermedias se ejecutan en un directorio temporal en /tmp (RAM tmpfs),
 	evitando escrituras intermedias en disco duro físico antes de copiar el archivo final.
 	"""
@@ -903,6 +990,7 @@ def assemble_announcement_audio(
 			combined = b"".join(seg[0] for seg in segments)
 			tmp_ram = work_dir / "combined_fallback.mp3"
 			tmp_ram.write_bytes(combined)
+			embed_cover_art_in_mp3(tmp_ram, cover_image_path=cover_image_path, title=title, artist=artist)
 			shutil.copyfile(tmp_ram, tmp_dest)
 			tmp_dest.replace(out_p)
 			return True
@@ -946,6 +1034,7 @@ def assemble_announcement_audio(
 			combined = b"".join(seg[0] for seg in segments)
 			tmp_ram = work_dir / "combined_fallback.mp3"
 			tmp_ram.write_bytes(combined)
+			embed_cover_art_in_mp3(tmp_ram, cover_image_path=cover_image_path, title=title, artist=artist)
 			shutil.copyfile(tmp_ram, tmp_dest)
 			tmp_dest.replace(out_p)
 			return True
@@ -961,10 +1050,12 @@ def assemble_announcement_audio(
 				bg_volume=bg_volume,
 			)
 			if mixed:
+				embed_cover_art_in_mp3(out_p, cover_image_path=cover_image_path, title=title, artist=artist)
 				return True
 
 		# Copia segura al destino desde RAM
 		shutil.copyfile(tmp_voice_combined, tmp_dest)
+		embed_cover_art_in_mp3(tmp_dest, cover_image_path=cover_image_path, title=title, artist=artist)
 		tmp_dest.replace(out_p)
 		return True
 	except Exception as e:
@@ -986,12 +1077,14 @@ async def create_radio_announcement(
 	db_path: Path | str | None = None,
 	dt: datetime | None = None,
 	force_system_fortune: bool | None = None,
+	cover_image_path: Path | str | None = None,
 ) -> tuple[bool, str, str]:
 	"""
 	Sintetiza la locución radial de forma modular (intro, hora, minuto [si aplica], lead_in, fortuna, salida),
 	aprovechando la base de datos de caché SQLite para evitar llamadas redundantes a edge-tts.
 	Las fortunas del sistema Unix son leídas exclusivamente por Elena (estilo podcast / co-conductora)
 	y almacenadas en caché bajo su voz.
+	Incrusta la imagen del carpincho como cover art ID3 en el MP3 generado.
 	Opcionalmente superpone de fondo la canción que sigue desde bg_offset con volumen bg_volume.
 	Retorna (éxito, display_title, full_script_text_o_error).
 	"""
@@ -1064,6 +1157,9 @@ async def create_radio_announcement(
 			bg_track_path,
 			bg_offset,
 			bg_volume,
+			cover_image_path,
+			display_title,
+			locutor_nombre,
 		)
 		if not ok:
 			err_msg = "Falló el ensamblado del audio del anuncio radial."

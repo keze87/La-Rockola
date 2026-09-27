@@ -68,13 +68,14 @@ except ImportError:
 	from binary_utils import ensure_display_env, get_clean_env
 
 try:
-	from scripts.radio_announcer import HAS_EDGE_TTS, create_radio_announcement
+	from scripts.radio_announcer import HAS_EDGE_TTS, create_radio_announcement, get_carpincho_cover_path
 except ImportError:
 	try:
-		from radio_announcer import HAS_EDGE_TTS, create_radio_announcement
+		from radio_announcer import HAS_EDGE_TTS, create_radio_announcement, get_carpincho_cover_path
 	except ImportError:
 		HAS_EDGE_TTS = False
 		create_radio_announcement = None
+		get_carpincho_cover_path = None
 
 
 _system_librosa_python: str | None = None
@@ -1325,6 +1326,14 @@ def get_cover_art_uri(path: str) -> str:
 	if not path or path.startswith("http"):
 		return ""
 	try:
+		if (
+			("state" in globals() and path == getattr(globals()["state"], "radio_announcement_path", None))
+			or Path(path).name == "radio_announcement.mp3"
+		) and get_carpincho_cover_path:
+			carpincho_p = get_carpincho_cover_path()
+			if carpincho_p and carpincho_p.is_file():
+				return f"file://{carpincho_p.resolve()}"
+
 		path_hash = hashlib.md5(path.encode("utf-8")).hexdigest()
 		tmp_dir = os.path.join(tempfile.gettempdir(), "carpincho_covers")
 		os.makedirs(tmp_dir, exist_ok=True)
@@ -2374,7 +2383,13 @@ class APIState:
 		self.radio_tracks_until_next = random.randint(1, 2)
 		self.is_playing_radio_announcement = False
 		self.is_synthesizing_radio = False
-		self.radio_announcement_path = str(DATA_DIR / "radio_announcement.mp3")
+		self.radio_announcement_path = str(Path(tempfile.gettempdir()) / "radio_announcement.mp3")
+		old_radio_file = DATA_DIR / "radio_announcement.mp3"
+		if old_radio_file.is_file():
+			try:
+				old_radio_file.unlink()
+			except Exception:
+				pass
 
 		# Server network & browser state
 		self.open_browser = True
@@ -3663,7 +3678,12 @@ _MAX_COVER_MEM_CACHE = 500
 @app.get("/cover")
 async def serve_cover(path: str = Query(...), request: Request = None):
 	try:
-		if path == getattr(state, "radio_announcement_path", None):
+		if path == getattr(state, "radio_announcement_path", None) or Path(path).name == "radio_announcement.mp3":
+			if get_carpincho_cover_path:
+				carpincho_img = get_carpincho_cover_path()
+				if carpincho_img and carpincho_img.is_file():
+					mime = "image/png" if carpincho_img.suffix.lower() == ".png" else "image/jpeg"
+					return FileResponse(carpincho_img, media_type=mime)
 			favicon_p = Path(__file__).resolve().parent / "public" / "favicon.png"
 			if favicon_p.exists():
 				return FileResponse(favicon_p, media_type="image/png")
@@ -3739,7 +3759,7 @@ async def serve_cover(path: str = Query(...), request: Request = None):
 async def stream_audio(path: str = Query(...)):
 	"""Endpoint para mandarle la música al navegador del cliente si quiere escuchar ahí."""
 	# Validar que el path exista en nuestra librería para no servir archivos confidenciales
-	is_radio = path == getattr(state, "radio_announcement_path", None)
+	is_radio = path == getattr(state, "radio_announcement_path", None) or Path(path).name == "radio_announcement.mp3"
 	if not is_radio and path not in state.path_to_id and not any(t["path"] == path for t in state.tracks_cache):
 		return Response(status_code=404)
 	# FileResponse en Starlette maneja encabezados 'Range' si el browser los pide

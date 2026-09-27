@@ -592,3 +592,56 @@ async def test_create_radio_announcement_with_special_and_modular_dt(tmp_path):
 		)
 		assert ok2 is True
 		assert "15 horas, 23 minutos." in text2
+
+
+def test_get_carpincho_cover_path():
+	cover_p = radio_announcer.get_carpincho_cover_path()
+	assert cover_p is not None
+	assert cover_p.is_file()
+	assert cover_p.name == "favicon.png"
+
+
+def test_is_valid_mp3_stream():
+	assert radio_announcer.is_valid_mp3_stream(b"ID3\x03\x00\x00") is True
+	assert radio_announcer.is_valid_mp3_stream(b"\xff\xfb\x90\x64") is True
+	assert radio_announcer.is_valid_mp3_stream(b"\xff\xe0\x00\x00") is True
+	assert radio_announcer.is_valid_mp3_stream(b"RIFF") is False
+	assert radio_announcer.is_valid_mp3_stream(b"") is False
+	assert radio_announcer.is_valid_mp3_stream(b"abc") is False
+
+
+def test_embed_cover_art_in_mp3(tmp_path):
+	from mutagen.id3 import ID3
+
+	dummy_mp3 = tmp_path / "test.mp3"
+	# Valid MP3 sync frame + dummy audio bytes
+	dummy_mp3.write_bytes(b"\xff\xfb\x90\x64" + b"\x00" * 1024)
+
+	dummy_cover = tmp_path / "cover.png"
+	dummy_cover.write_bytes(b"\x89PNG\r\n\x1a\nfakeimagebytes")
+
+	ok = radio_announcer.embed_cover_art_in_mp3(
+		dummy_mp3,
+		cover_image_path=dummy_cover,
+		title="Test Carpincho",
+		artist="El Carpincho",
+		album="La Rockola",
+	)
+	assert ok is True
+
+	tags = ID3(str(dummy_mp3))
+	assert "TIT2" in tags and str(tags["TIT2"]) == "Test Carpincho"
+	assert "TPE1" in tags and str(tags["TPE1"]) == "El Carpincho"
+	assert "TALB" in tags and str(tags["TALB"]) == "La Rockola"
+	assert "APIC:Cover" in tags
+	apic = tags["APIC:Cover"]
+	assert apic.mime == "image/png"
+	assert apic.data == b"\x89PNG\r\n\x1a\nfakeimagebytes"
+
+	# Non-existent file
+	assert radio_announcer.embed_cover_art_in_mp3(tmp_path / "nope.mp3") is False
+
+	# Non-mp3 file
+	non_mp3 = tmp_path / "not_an_mp3.txt"
+	non_mp3.write_text("just text")
+	assert radio_announcer.embed_cover_art_in_mp3(non_mp3) is False

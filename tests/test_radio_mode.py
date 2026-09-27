@@ -224,3 +224,32 @@ async def test_toggle_queue_initial_playback_does_not_trigger_radio():
 		# Locutor should NOT speak before any song has started playing
 		mock_create.assert_not_called()
 		mock_play.assert_awaited_once_with("/music/song1.mp3")
+
+
+def test_radio_announcement_path_is_in_temp_dir():
+	import tempfile
+
+	from server import APIState
+
+	new_state = APIState()
+	assert Path(new_state.radio_announcement_path).parent == Path(tempfile.gettempdir())
+	assert Path(new_state.radio_announcement_path).name == "radio_announcement.mp3"
+
+
+def test_radio_announcement_cleans_legacy_file(tmp_path):
+	from server import APIState
+
+	with patch("server.DATA_DIR", tmp_path):
+		legacy = tmp_path / "radio_announcement.mp3"
+		legacy.write_text("old")
+		assert legacy.exists()
+		_ = APIState()
+		assert not legacy.exists()
+
+
+def test_get_cover_art_uri_for_radio():
+	from server import get_cover_art_uri, state
+
+	uri = get_cover_art_uri(state.radio_announcement_path)
+	assert uri.startswith("file://")
+	assert uri.endswith("favicon.png")
