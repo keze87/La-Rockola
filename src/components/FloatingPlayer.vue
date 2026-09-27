@@ -13,6 +13,7 @@
 		getTrackInfo,
 		haptic,
 		isPlaying,
+		isSynthesizingRadio,
 		pauseAfterPath,
 		queueState,
 		switchTab,
@@ -20,6 +21,8 @@
 	} = usePlayer();
 
 	const upNextTitle = computed(() => {
+		if (isSynthesizingRadio.value) return 'El locutor carpincho se está preparando... 🎙️';
+
 		if (queueState.value.length > 0) {
 			const t = getTrackInfo(queueState.value[0]);
 			return `${t.display_title} - ${t.display_artist}`;

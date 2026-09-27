@@ -20,6 +20,8 @@
 		isDraggingSeek,
 		isFogonMode,
 		isPlaying,
+		isPlayingRadioAnnouncement,
+		isSynthesizingRadio,
 		listenLocally,
 		localPlayerRef,
 		localTimePos,
@@ -114,6 +116,14 @@
 	);
 
 	const currentTrackInfo = computed(() => {
+		if (isSynthesizingRadio.value || (isPlayingRadioAnnouncement.value && !currentTrackPath.value)) {
+			return {
+				title: 'El locutor carpincho se está preparando...',
+				artist: 'DJ Carpincho 🎙️',
+				isComing: true,
+			};
+		}
+
 		if (currentTrackPath.value) {
 			const info = player.getTrackInfo(currentTrackPath.value);
 			return {

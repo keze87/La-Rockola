@@ -497,18 +497,24 @@ async def create_radio_announcement(
 ) -> tuple[bool, str, str]:
 	"""
 	Sintetiza la locución radial con edge-tts y la guarda en output_path.
-	Retorna (éxito, título_para_display, script_text).
+	Retorna (éxito, título_para_display, script_text_o_error).
 	"""
 	if not HAS_EDGE_TTS or edge_tts is None:
-		logger.warning("edge-tts no está disponible. No se puede generar la locución radial.")
-		return False, "", ""
+		err_msg = "El paquete 'edge-tts' no está instalado en el entorno de Python o falló su importación."
+		logger.warning(f"📻 El Carpincho no puede locutar: {err_msg}")
+		return False, "", err_msg
 
 	out_p = Path(output_path)
-	out_p.parent.mkdir(parents=True, exist_ok=True)
+	try:
+		out_p.parent.mkdir(parents=True, exist_ok=True)
+	except Exception as e:
+		err_msg = f"No se pudo crear el directorio de destino '{out_p.parent}': {type(e).__name__}: {e}"
+		logger.warning(f"📻 El Carpincho: {err_msg}")
+		return False, "", err_msg
 
 	script_text, selected_voice, _fortune = generate_radio_script(voice=voice)
 	locutor_nombre = "Tomás" if selected_voice == VOICE_TOMAS else "Mujer"
-	display_title = f"{script_text}"
+	display_title = f"Carpincho locutor: {script_text}"
 
 	try:
 		communicate = edge_tts.Communicate(script_text, selected_voice)
@@ -516,8 +522,10 @@ async def create_radio_announcement(
 		logger.info(f"🎙️ Locución radial generada exitosamente con {locutor_nombre} ({selected_voice}): '{script_text}'")
 		return True, display_title, script_text
 	except asyncio.TimeoutError:
-		logger.warning(f"Timeout ({timeout}s) generando locución radial con edge-tts.")
+		err_msg = f"Se agotó el tiempo de espera ({timeout}s) contactando al servicio de síntesis de voz (edge-tts). Verificá la conexión a internet."
+		logger.warning(f"📻 El Carpincho: {err_msg}")
+		return False, "", err_msg
 	except Exception as e:
-		logger.warning(f"Error generando locución radial con edge-tts: {e}")
-
-	return False, "", ""
+		err_msg = f"Error de síntesis ({type(e).__name__}: {e})"
+		logger.warning(f"📻 DJ Carpincho: {err_msg}")
+		return False, "", err_msg

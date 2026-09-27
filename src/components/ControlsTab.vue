@@ -200,7 +200,7 @@
 			:model-value="radioModeEnabled"
 			icon="radio"
 			title="Modo Radio Carpincha"
-			description="DJ Carpincho tira una fortuna cada 2 o 3 temas"
+			description="DJ Carpincho tira la hora, una fortuna y comenta entre temas"
 			active-class="bg-carpincho-success"
 			@update:model-value="toggleRadioMode"
 		/>

@@ -43,6 +43,8 @@ export const djSafeModeEnabled = ref<boolean>(false);
 
 // Radio Mode (locutor con hora y fortunas entre temas)
 export const radioModeEnabled = ref<boolean>(false);
+export const isSynthesizingRadio = ref<boolean>(false);
+export const isPlayingRadioAnnouncement = ref<boolean>(false);
 
 // Local audio playback & Media Session
 export const duration = ref<number>(0);

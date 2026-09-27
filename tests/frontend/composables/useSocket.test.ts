@@ -12,7 +12,9 @@ import {
 	historyState,
 	isDraggingSeek,
 	isPaused,
+	isPlayingRadioAnnouncement,
 	isScanning,
+	isSynthesizingRadio,
 	listenLocally,
 	localTimePos,
 	mpvVisible,
@@ -167,6 +169,8 @@ describe('useSocket.ts', () => {
 			paused: true,
 			queue: ['/music/q1.mp3'],
 			radio_mode_enabled: true,
+			is_synthesizing_radio: true,
+			is_playing_radio_announcement: true,
 			has_edge_tts: true,
 			server_muted: true,
 			top_played: [{ path: '/music/spinetta.mp3', count: 10 }],
@@ -181,6 +185,8 @@ describe('useSocket.ts', () => {
 		expect(currentTrackPath.value).toBe('/music/spinetta.mp3');
 		expect(djCarpinchoEnabled.value).toBe(true);
 		expect(radioModeEnabled.value).toBe(true);
+		expect(isSynthesizingRadio.value).toBe(true);
+		expect(isPlayingRadioAnnouncement.value).toBe(true);
 		expect(hasEdgeTts.value).toBe(true);
 		expect(djNextTrack.value?.title).toBe('DJ Tune');
 		expect(djSafeModeEnabled.value).toBe(true);

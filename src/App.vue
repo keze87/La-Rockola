@@ -31,7 +31,9 @@
 		isDraggingSeek,
 		isFogonMode,
 		isPlaying,
+		isPlayingRadioAnnouncement,
 		isScanning,
+		isSynthesizingRadio,
 		listenLocally,
 		loadLibrary,
 		localPlayerRef,
@@ -81,6 +83,9 @@
 	];
 
 	const currentTrackTitle = computed(() => {
+		if (isSynthesizingRadio.value || (isPlayingRadioAnnouncement.value && !currentTrackPath.value)) {
+			return 'El locutor carpincho se está preparando... 🎙️';
+		}
 		if (!currentTrackPath.value) return 'Silencio estampa. Poné algo, fiera.';
 
 		const t = getTrackInfo(currentTrackPath.value);

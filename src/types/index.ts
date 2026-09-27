@@ -20,7 +20,9 @@ export interface PlayerState {
 	has_edge_tts?: boolean;
 	has_librosa?: boolean;
 	history?: string[];
+	is_playing_radio_announcement?: boolean;
 	is_scanning?: boolean;
+	is_synthesizing_radio?: boolean;
 	library?: Track[];
 	local_ip?: string;
 	mpv_visible?: boolean;

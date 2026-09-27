@@ -15,8 +15,10 @@ import {
 	historyState,
 	isDraggingSeek,
 	isPaused,
+	isPlayingRadioAnnouncement,
 	isScanning,
 	isSocketConnected,
+	isSynthesizingRadio,
 	listenLocally,
 	localIp,
 	localTimePos,
@@ -101,6 +103,10 @@ export function useSocket() {
 						if (state.has_librosa !== undefined) hasLibrosa.value = state.has_librosa;
 						if (state.history) historyState.value = state.history;
 						if (state.is_scanning !== undefined) isScanning.value = state.is_scanning;
+						if (state.is_synthesizing_radio !== undefined)
+							isSynthesizingRadio.value = state.is_synthesizing_radio;
+						if (state.is_playing_radio_announcement !== undefined)
+							isPlayingRadioAnnouncement.value = state.is_playing_radio_announcement;
 						if (state.mpv_visible !== undefined) mpvVisible.value = state.mpv_visible;
 						if (state.pause_after_path !== undefined) pauseAfterPath.value = state.pause_after_path;
 						if (state.paused !== undefined) isPaused.value = state.paused;

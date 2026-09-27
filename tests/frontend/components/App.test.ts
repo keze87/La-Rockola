@@ -1,7 +1,15 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import App from '@/App.vue';
-import { activeTab, currentTrackPath, isFogonMode, isScanning, queueState, trackMap } from '@/composables/player/state';
+import {
+	activeTab,
+	currentTrackPath,
+	isFogonMode,
+	isScanning,
+	isSynthesizingRadio,
+	queueState,
+	trackMap,
+} from '@/composables/player/state';
 
 describe('App.vue', () => {
 	beforeEach(() => {
@@ -64,5 +72,22 @@ describe('App.vue', () => {
 
 		const wrapper = mount(App);
 		expect(wrapper.text()).toContain('Serú Girán - Seminare');
+	});
+
+	it('renders locutor preparing in header when isSynthesizingRadio is true instead of silencio estampa', () => {
+		currentTrackPath.value = null;
+		isSynthesizingRadio.value = true;
+
+		const wrapper = mount(App);
+		expect(wrapper.text()).toContain('El locutor carpincho se está preparando... 🎙️');
+		expect(wrapper.text()).not.toContain('Silencio estampa');
+	});
+
+	it('renders "Silencio estampa" when no song is playing and locutor is not preparing', () => {
+		currentTrackPath.value = null;
+		isSynthesizingRadio.value = false;
+
+		const wrapper = mount(App);
+		expect(wrapper.text()).toContain('Silencio estampa. Poné algo, fiera.');
 	});
 });

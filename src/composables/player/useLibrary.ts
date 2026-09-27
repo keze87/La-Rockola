@@ -23,6 +23,14 @@ export function useLibrary() {
 
 		if (urlMetadata.value[path]) return urlMetadata.value[path];
 
+		if (path.includes('radio_announcement')) {
+			return {
+				path,
+				display_title: 'Locución radial',
+				display_artist: 'DJ Carpincho 🎙️',
+			};
+		}
+
 		const isUrl = path.startsWith('http');
 		return {
 			path,

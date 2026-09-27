@@ -42,6 +42,8 @@ async def test_toggle_radio_mode_command():
 def test_state_to_dict_includes_radio_fields():
 	d = state.get_full_state_dict()
 	assert "radio_mode_enabled" in d
+	assert "is_synthesizing_radio" in d
+	assert "is_playing_radio_announcement" in d
 	assert "has_edge_tts" in d
 	assert d["radio_mode_enabled"] is False
 
@@ -162,3 +164,35 @@ async def test_cover_serves_favicon_for_radio_announcement(tmp_path):
 		if favicon_p.exists():
 			assert res.status_code == 200
 			assert res.headers.get("content-type") == "image/png"
+
+
+@pytest.mark.asyncio
+async def test_radio_announcement_failure_logs_reason(caplog):
+	import logging
+
+	state.radio_mode_enabled = True
+	state.radio_track_counter = 1
+	state.radio_tracks_until_next = 2
+	state.queue = ["/music/song2.mp3"]
+	state.current_track = "/music/song1.mp3"
+
+	mock_create = AsyncMock(return_value=(False, "", "Fallo simulado de conexión"))
+
+	with (
+		patch("server.HAS_EDGE_TTS", True),
+		patch("server.create_radio_announcement", mock_create),
+		patch.object(state, "play_track", AsyncMock()) as mock_play,
+		patch("server.broadcast_state", AsyncMock()),
+		caplog.at_level(logging.WARNING),
+	):
+		await state.play_next(skipped_by_user=False)
+
+		# Synthesizing flag should be cleared
+		assert state.is_synthesizing_radio is False
+		assert state.is_playing_radio_announcement is False
+
+		# The warning log must explain the failure reason
+		assert any("Fallo simulado de conexión" in record.message for record in caplog.records)
+
+		# Next track in queue plays because radio failed
+		mock_play.assert_awaited_once_with("/music/song2.mp3")

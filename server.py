@@ -2321,6 +2321,7 @@ class APIState:
 		self.radio_track_counter = 0
 		self.radio_tracks_until_next = random.randint(1, 2)
 		self.is_playing_radio_announcement = False
+		self.is_synthesizing_radio = False
 		self.radio_announcement_path = str(DATA_DIR / "radio_announcement.mp3")
 
 		# Server network & browser state
@@ -2386,6 +2387,8 @@ class APIState:
 			"paused": self.mpv_paused,
 			"queue": list(self.queue),
 			"radio_mode_enabled": self.radio_mode_enabled,
+			"is_playing_radio_announcement": self.is_playing_radio_announcement,
+			"is_synthesizing_radio": self.is_synthesizing_radio,
 			"server_muted": self.server_muted,
 			"server_url": self.server_url,
 			"time_pos": self.time_pos,
@@ -3057,7 +3060,15 @@ class APIState:
 				logger.info(
 					f"📻 Modo Radio: turno de locución radial (canción #{self.radio_track_counter}). Sintetizando..."
 				)
-				ok, display_title, _script_text = await create_radio_announcement(self.radio_announcement_path)
+				self.is_synthesizing_radio = True
+				await broadcast_state()
+				try:
+					ok, display_title, script_or_err = await create_radio_announcement(self.radio_announcement_path)
+				except Exception as e:
+					ok, display_title, script_or_err = False, "", f"{type(e).__name__}: {e}"
+				finally:
+					self.is_synthesizing_radio = False
+
 				if ok:
 					self.radio_track_counter = 0
 					self.radio_tracks_until_next = random.randint(2, 3)
@@ -3076,7 +3087,9 @@ class APIState:
 					await broadcast_state()
 					return
 				else:
-					logger.warning("📻 Modo Radio: No se pudo sintetizar locución, pasando al tema siguiente.")
+					logger.warning(
+						f"📻 Modo Radio: No se pudo sintetizar la locución radial ({script_or_err}). Pasando al tema siguiente..."
+					)
 
 		if self.queue:
 			next_path = self.queue.pop(0)
@@ -3731,6 +3744,7 @@ async def handle_command(req: CommandRequest):
 		state.mpv_paused = False
 		state.dj_carpincho_enabled = False
 		state.is_playing_radio_announcement = False
+		state.is_synthesizing_radio = False
 		state.time_pos = 0
 		await state.mpv._send('{"command": ["stop"]}')
 		await state.mpv._send('{"command": ["set_property", "force-window", "no"]}')
