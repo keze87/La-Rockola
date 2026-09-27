@@ -659,8 +659,8 @@ def generate_modular_radio_script(
 			fortuna = sys_fort
 			is_system_fortune = True
 		else:
-			fortuna = "El ignorante afirma, el sabio duda y reflexiona."
-			is_system_fortune = True
+			fortuna = random.choice(CARPINCHO_FORTUNES)
+			is_system_fortune = False
 	elif force_system_fortune is False:
 		fortuna = random.choice(CARPINCHO_FORTUNES)
 		is_system_fortune = False
