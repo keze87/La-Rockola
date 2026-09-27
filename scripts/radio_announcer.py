@@ -44,8 +44,36 @@ VOICE_NAMES: dict[str, str] = {
 	VOICE_VALENTINA: "Valentina",
 }
 
+# Prosodia fija por locutor (personajes con impronta propia para sonar naturales y no robóticos)
+VOICE_PROSODY: dict[str, dict[str, str]] = {
+	VOICE_TOMAS: {
+		"rate": "-4%",
+		"pitch": "-3Hz",
+		"volume": "+0%",
+	},
+	VOICE_ELENA: {
+		"rate": "-6%",
+		"pitch": "-4Hz",
+		"volume": "+0%",
+	},
+	VOICE_MARIA: {
+		"rate": "+3%",
+		"pitch": "+1Hz",
+		"volume": "+0%",
+	},
+	VOICE_VALENTINA: {
+		"rate": "+2%",
+		"pitch": "+0Hz",
+		"volume": "+0%",
+	},
+}
+
 # Banco curado de sabiduría, humor y frases del carpincho con tono argentino
 CARPINCHO_FORTUNES: list[str] = [
+	"Che, no te apurés; el agua siempre llega a la orilla.",
+	"Posta: el secreto del éxito carpincho es mate caliente, buena música y cero drama.",
+	"Un carpinchazo de tema te arregla cualquier lunes; comprobado científicamente.",
+	"Tranqui en el agua; que las olas se las lleven los apurados.",
 	"El carpincho no se apura: sabe que el agua siempre llega.",
 	"Tomate un mate, bajá un cambio y disfrutá el temazo que viene.",
 	"La vida es corta como pata de carpincho: no te hagas drama por pavadas.",
@@ -131,13 +159,17 @@ CARPINCHO_FORTUNES.extend(CARPINCHO_ADS)
 
 # Bancos de frases modulares para el Carpincho Locutor
 RADIO_INTROS: list[str] = [
-	"... En el aire de La Rockola del Carpincho,",
-	"... ¡Buenas gente linda de La Rockola!",
-	"... La hora en La Rockola:",
-	"... Sintonizando La Rockola del Carpincho,",
-	"... ¡Seguimos haciendo el aguante en La Rockola!",
-	"... Un matecito en La Rockola y seguimos:",
-	"... Transmite La Rockola del Carpincho:",
+	"En el aire de La Rockola del Carpincho,",
+	"¡Buenas gente linda de La Rockola!",
+	"La hora en La Rockola:",
+	"Sintonizando La Rockola del Carpincho,",
+	"¡Seguimos haciendo el aguante en La Rockola!",
+	"Un matecito en La Rockola y seguimos:",
+	"Transmite La Rockola del Carpincho:",
+	"Che, buenas y santas gente linda; acá estamos en La Rockola del Carpincho.",
+	"Posta, qué lindo estar acá en La Rockola; sintonizando buena onda.",
+	"¡Al pelo la música en La Rockola del Carpincho!",
+	"Tranqui en el agua, mate en mano; transmite La Rockola del Carpincho.",
 ]
 
 RADIO_LEAD_INS: list[str] = [
@@ -150,15 +182,22 @@ RADIO_LEAD_INS: list[str] = [
 	"Espacio publicitario en La Rockola:",
 	"Atenti a este aviso de la comunidad carpinchera:",
 	"Mensaje de nuestros queridos auspiciantes:",
+	"Che, atenti al oráculo; sabiduría pura de la laguna:",
+	"Posta, escuchate esta reflexión carpinchera:",
+	"Pará la oreja; mirá lo que nos deja el oráculo hoy:",
 ]
 
 RADIO_OUTROS: list[str] = [
-	"¡Seguimos con más música!...",
-	"¡Que no decaiga!...",
-	"¡Pegale play que esto sigue!...",
-	"¡Metemos la próxima canción al toque!...",
-	"¡Seguimos de joda en La Rockola!...",
-	"¡Acomodate que se viene un temazo!...",
+	"¡Seguimos con más música!",
+	"¡Que no decaiga!",
+	"¡Pegale play que esto sigue!",
+	"¡Metemos la próxima canción al toque!",
+	"¡Seguimos de joda en La Rockola!",
+	"¡Acomodate que se viene un temazo!",
+	"¡Un carpinchazo de tema para vos; metele play!",
+	"Tranqui en el agua, mate en mano... ¡a disfrutar lo que viene!",
+	"¡Al pelo el ritmo; seguimos con todo en La Rockola!",
+	"Posta, qué temazo se viene ahora; no te muevas de ahí.",
 ]
 
 # Horas especiales del Carpincho Locutor (cuando el minuto es 0 en punto)
@@ -354,6 +393,7 @@ COMMON_SPANISH_WORDS: set[str] = {
 	"cada",
 	"carpincho",
 	"casi",
+	"che",
 	"como",
 	"con",
 	"contra",
@@ -414,6 +454,7 @@ COMMON_SPANISH_WORDS: set[str] = {
 	"me",
 	"medio",
 	"mejor",
+	"mensaje",
 	"menos",
 	"mi",
 	"mí",
@@ -429,7 +470,9 @@ COMMON_SPANISH_WORDS: set[str] = {
 	"noche",
 	"nos",
 	"nuestra",
+	"nuestras",
 	"nuestro",
+	"nuestros",
 	"nunca",
 	"o",
 	"ojo",
@@ -438,11 +481,13 @@ COMMON_SPANISH_WORDS: set[str] = {
 	"otro",
 	"otros",
 	"para",
+	"pelo",
 	"pero",
 	"play",
 	"poco",
 	"por",
 	"porque",
+	"posta",
 	"proverbio",
 	"que",
 	"qué",
@@ -783,9 +828,17 @@ async def synthesize_segment(
 	last_err: Exception | None = None
 	audio_bytes = b""
 
+	prosody = VOICE_PROSODY.get(voice, {})
+	rate = prosody.get("rate", "+0%")
+	pitch = prosody.get("pitch", "+0Hz")
+	volume = prosody.get("volume", "+0%")
+
 	for attempt in range(max_retries + 1):
 		try:
-			communicate = edge_tts.Communicate(text, voice)
+			try:
+				communicate = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch, volume=volume)
+			except TypeError:
+				communicate = edge_tts.Communicate(text, voice)
 			audio_bytes = await asyncio.wait_for(_stream_or_save(communicate), timeout=timeout)
 			if not audio_bytes:
 				raise RuntimeError(f"edge-tts no produjo bytes de audio para '{text}'")
@@ -1062,7 +1115,7 @@ def embed_cover_art_in_mp3(
 
 
 def assemble_announcement_audio(
-	segments: list[tuple[bytes, str]],
+	segments: list[tuple[bytes, str] | tuple[bytes, str, str]],
 	output_path: Path | str,
 	bg_track_path: Path | str | None = None,
 	bg_offset: float = 0.0,
@@ -1073,8 +1126,9 @@ def assemble_announcement_audio(
 	timeout: float = 10.0,
 ) -> bool:
 	"""
-	Concatena los segmentos de audio MP3, opcionalmente superpone
-	la cortina musical de fondo utilizando ffmpeg e incrusta la carátula del carpincho.
+	Concatena los segmentos de audio MP3 intercalando pausas reales de silencio (~200-350ms),
+	aplicando crossfade suave (~50ms) entre la hora y los minutos de un mismo locutor,
+	opcionalmente superponiendo cortina musical de fondo utilizando ffmpeg e incrustando cover art.
 	Todas las operaciones intermedias se ejecutan en un directorio temporal en /tmp (RAM tmpfs),
 	evitando escrituras intermedias en disco duro físico antes de copiar el archivo final.
 	"""
@@ -1088,19 +1142,151 @@ def assemble_announcement_audio(
 		tmp_voice_combined = work_dir / "voice_combined.mp3"
 		ffmpeg_timeout = max(5.0, timeout)
 
+		# Normalizar segmentos a tuplas (bytes, categoria, voz)
+		parsed_segments: list[tuple[bytes, str, str]] = []
+		for s in segments:
+			if len(s) >= 3:
+				parsed_segments.append((s[0], str(s[1]), str(s[2])))
+			elif len(s) == 2:
+				parsed_segments.append((s[0], str(s[1]), ""))
+			else:
+				parsed_segments.append((s[0], "", ""))
+
 		if ffmpeg_bin:
+			# Generar archivos MP3 temporales para cada segmento
 			temp_seg_files: list[Path] = []
-			for i, (seg_bytes, _cat) in enumerate(segments):
-				seg_file = work_dir / f"seg_{i}.mp3"
+			for i, (seg_bytes, _cat, _v) in enumerate(parsed_segments):
+				seg_file = work_dir / f"raw_seg_{i}.mp3"
 				seg_file.write_bytes(seg_bytes)
 				temp_seg_files.append(seg_file)
 
+			# Crossfade corto (~50ms) entre 'hora' y 'minuto' consecutivos de la misma voz
+			blocks: list[tuple[Path, str, str]] = []
+			skip_next = False
+			for i in range(len(parsed_segments)):
+				if skip_next:
+					skip_next = False
+					continue
+
+				_bytes_i, cat_i, voice_i = parsed_segments[i]
+				file_i = temp_seg_files[i]
+
+				if cat_i == "hora" and i + 1 < len(parsed_segments):
+					_bytes_next, cat_next, voice_next = parsed_segments[i + 1]
+					if cat_next == "minuto" and (voice_i == voice_next or not voice_i or not voice_next):
+						file_next = temp_seg_files[i + 1]
+						time_combined = work_dir / "time_combined.mp3"
+						fade_cmd = [
+							ffmpeg_bin,
+							"-y",
+							"-i",
+							str(file_i),
+							"-i",
+							str(file_next),
+							"-filter_complex",
+							"[0:a][1:a]acrossfade=d=0.05:c1=tri:c2=tri[a]",
+							"-map",
+							"[a]",
+							"-c:a",
+							"libmp3lame",
+							"-b:a",
+							"192k",
+							str(time_combined),
+						]
+						try:
+							proc_fade = subprocess.run(
+								fade_cmd,
+								capture_output=True,
+								timeout=ffmpeg_timeout,
+								check=False,
+							)
+							if (
+								proc_fade.returncode == 0
+								and time_combined.is_file()
+								and time_combined.stat().st_size > 0
+							):
+								blocks.append((time_combined, "hora_minuto", voice_i))
+								skip_next = True
+								continue
+						except Exception as e:
+							logger.debug(f"Fallo en acrossfade hora/minuto: {e}")
+
+				blocks.append((file_i, cat_i, voice_i))
+
+			def make_silence(duration_sec: float, filename: str) -> Path | None:
+				sil_path = work_dir / filename
+				cmd = [
+					ffmpeg_bin,
+					"-y",
+					"-f",
+					"lavfi",
+					"-i",
+					"anullsrc=r=44100:cl=mono",
+					"-t",
+					f"{duration_sec:.2f}",
+					"-c:a",
+					"libmp3lame",
+					"-b:a",
+					"192k",
+					str(sil_path),
+				]
+				try:
+					res = subprocess.run(cmd, capture_output=True, timeout=ffmpeg_timeout, check=False)
+					if res.returncode == 0 and sil_path.is_file() and sil_path.stat().st_size > 0:
+						return sil_path
+				except Exception as e:
+					logger.debug(f"No se pudo generar silencio ({duration_sec}s): {e}")
+				return None
+
+			# Construir cadena de archivos intercalando pausas reales de respiración y ritmo radial
+			chain_files: list[Path] = []
+
+			# Silencio muy corto (~200ms) inicial para arrancar natural al aire
+			sil_start = make_silence(0.20, "sil_start.mp3")
+			if sil_start:
+				chain_files.append(sil_start)
+
+			for i, (block_file, block_cat, _block_voice) in enumerate(blocks):
+				chain_files.append(block_file)
+				is_last = i == len(blocks) - 1
+				if is_last:
+					continue
+
+				if block_cat == "intro":
+					# Pausa tras el saludo de apertura antes de la hora (~300ms)
+					sil = make_silence(0.30, f"sil_intro_{i}.mp3")
+					if sil:
+						chain_files.append(sil)
+				elif block_cat in ("hora", "hora_minuto", "minuto"):
+					# Pausa tras la hora antes del lead-in (~250ms)
+					next_cat = blocks[i + 1][1] if i + 1 < len(blocks) else ""
+					if next_cat != "minuto":
+						sil = make_silence(0.25, f"sil_time_{i}.mp3")
+						if sil:
+							chain_files.append(sil)
+				elif block_cat == "lead_in":
+					# Pausa dramática/suspenso antes de la frase u oráculo (~350ms)
+					sil = make_silence(0.35, f"sil_leadin_{i}.mp3")
+					if sil:
+						chain_files.append(sil)
+				elif block_cat == "fortuna":
+					# Pausa reflexiva tras la frase antes del remate/salida (~250ms)
+					sil = make_silence(0.25, f"sil_fortune_{i}.mp3")
+					if sil:
+						chain_files.append(sil)
+				else:
+					# Pausa tras la frase de salida (~250ms)
+					sil = make_silence(0.25, f"sil_out_{i}.mp3")
+					if sil:
+						chain_files.append(sil)
+
+			# Concatena todos los archivos de la cadena
 			concat_inputs: list[str] = []
-			for f in temp_seg_files:
+			for f in chain_files:
 				concat_inputs.extend(["-i", str(f)])
 
 			filter_concat = (
-				"".join(f"[{i}:a]" for i in range(len(temp_seg_files))) + f"concat=n={len(temp_seg_files)}:v=0:a=1[v]"
+				"".join(f"[{k}:a]" for k in range(len(chain_files))) + f"concat=n={len(chain_files)}:v=0:a=1[v]"
 			)
 
 			concat_cmd = [
@@ -1121,13 +1307,13 @@ def assemble_announcement_audio(
 			proc = subprocess.run(concat_cmd, capture_output=True, timeout=ffmpeg_timeout, check=False)
 			concat_ok = proc.returncode == 0 and tmp_voice_combined.is_file() and tmp_voice_combined.stat().st_size > 0
 
-			# Si falla el filter_complex, intentar concat demuxer simple
+			# Si falla el filter_complex, intentar concat demuxer simple con chain_files
 			if not concat_ok:
 				logger.warning(
 					f"ffmpeg filter_complex falló ({proc.stderr.decode('utf-8', errors='ignore')[:150]}). Probando concat demuxer..."
 				)
 				concat_list = work_dir / "concat_list.txt"
-				concat_list.write_text("\n".join(f"file '{f.name}'" for f in temp_seg_files), encoding="utf-8")
+				concat_list.write_text("\n".join(f"file '{f.name}'" for f in chain_files), encoding="utf-8")
 				demux_cmd = [
 					ffmpeg_bin,
 					"-y",
@@ -1156,11 +1342,11 @@ def assemble_announcement_audio(
 
 			if not concat_ok:
 				logger.warning("ffmpeg concat demuxer también falló. Recurriendo a concatenación directa de bytes.")
-				combined = b"".join(seg[0] for seg in segments)
+				combined = b"".join(seg[0] for seg in parsed_segments)
 				tmp_voice_combined.write_bytes(combined)
 		else:
 			# Si no hay ffmpeg disponible, concatenación directa de streams MP3
-			combined = b"".join(seg[0] for seg in segments)
+			combined = b"".join(seg[0] for seg in parsed_segments)
 			tmp_voice_combined.write_bytes(combined)
 
 		# Si se solicitó cortina musical y el archivo de fondo existe
@@ -1277,7 +1463,9 @@ async def create_radio_announcement(
 			for text, v, category, allow_cache in plan
 		]
 		raw_segments = await asyncio.wait_for(asyncio.gather(*tasks), timeout=timeout)
-		segment_results: list[tuple[bytes, str]] = [(seg_bytes, plan[i][2]) for i, seg_bytes in enumerate(raw_segments)]
+		segment_results: list[tuple[bytes, str, str]] = [
+			(seg_bytes, plan[i][2], plan[i][1]) for i, seg_bytes in enumerate(raw_segments)
+		]
 
 		if is_sys and selected_voice != VOICE_ELENA:
 			logger.info(

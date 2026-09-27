@@ -791,3 +791,129 @@ def test_assemble_announcement_audio_concat_demuxer_fallback(tmp_path):
 		ok = radio_announcer.assemble_announcement_audio(segments, out_p)
 		assert ok is True
 		assert out_p.read_bytes() == b"DEMUX_CONCAT_RESULT"
+
+
+def test_voice_prosody_mapping():
+	"""Verifica que las 4 voces tengan prosodia fija definida y calibrada."""
+	assert len(radio_announcer.VOICE_PROSODY) == 4
+	for v in radio_announcer.VOICES:
+		assert v in radio_announcer.VOICE_PROSODY
+		p = radio_announcer.VOICE_PROSODY[v]
+		assert "rate" in p and (p["rate"].endswith("%"))
+		assert "pitch" in p and (p["pitch"].endswith("Hz"))
+		assert "volume" in p and (p["volume"].endswith("%"))
+
+	# Tomás y Elena tienen ritmo más pausado/solemne (rate negativo)
+	assert radio_announcer.VOICE_PROSODY[radio_announcer.VOICE_TOMAS]["rate"].startswith("-")
+	assert radio_announcer.VOICE_PROSODY[radio_announcer.VOICE_ELENA]["rate"].startswith("-")
+	# María y Valentina tienen ritmo más ágil/vivaz (rate positivo)
+	assert radio_announcer.VOICE_PROSODY[radio_announcer.VOICE_MARIA]["rate"].startswith("+")
+	assert radio_announcer.VOICE_PROSODY[radio_announcer.VOICE_VALENTINA]["rate"].startswith("+")
+
+
+@pytest.mark.asyncio
+async def test_synthesize_segment_uses_prosody(tmp_path):
+	"""Verifica que synthesize_segment pase los parámetros de prosodia a edge_tts.Communicate."""
+	db_p = tmp_path / "tts.db"
+	captured_kwargs = {}
+
+	class ProsodyCheckingCommunicator:
+		def __init__(self, text, voice, *args, **kwargs):
+			nonlocal captured_kwargs
+			captured_kwargs = kwargs
+			self.text = text
+			self.voice = voice
+
+		async def stream(self):
+			yield {"type": "audio", "data": b"PROSODY_AUDIO"}
+
+	with (
+		patch("scripts.radio_announcer.HAS_EDGE_TTS", True),
+		patch("scripts.radio_announcer.edge_tts.Communicate", side_effect=ProsodyCheckingCommunicator),
+	):
+		blob = await radio_announcer.synthesize_segment(
+			"Texto con prosodia",
+			radio_announcer.VOICE_TOMAS,
+			"intro",
+			allow_cache=False,
+			db_path=db_p,
+		)
+		assert blob == b"PROSODY_AUDIO"
+		expected_prosody = radio_announcer.VOICE_PROSODY[radio_announcer.VOICE_TOMAS]
+		assert captured_kwargs.get("rate") == expected_prosody["rate"]
+		assert captured_kwargs.get("pitch") == expected_prosody["pitch"]
+		assert captured_kwargs.get("volume") == expected_prosody["volume"]
+
+
+def test_phrase_banks_cleaned_ellipses_and_slang():
+	"""Verifica que los intros y outros no tengan '...' pegados y contengan modismos carpinchos."""
+	for intro in radio_announcer.RADIO_INTROS:
+		assert not intro.startswith("..."), f"Intro no debe empezar con '...': {intro}"
+		assert radio_announcer.is_spanish_text(intro) is True
+
+	for outro in radio_announcer.RADIO_OUTROS:
+		assert not outro.endswith("..."), f"Outro no debe terminar con '...': {outro}"
+		assert radio_announcer.is_spanish_text(outro) is True
+
+	# Verificar presencia de modismos y jerga carpincha
+	all_phrases = radio_announcer.RADIO_INTROS + radio_announcer.RADIO_LEAD_INS + radio_announcer.RADIO_OUTROS
+	has_che = any("che" in p.lower() or "che," in p.lower() for p in all_phrases)
+	has_posta = any("posta" in p.lower() for p in all_phrases)
+	has_carpinchazo = any("carpinchazo" in p.lower() for p in all_phrases)
+	assert has_che is True
+	assert has_posta is True
+	assert has_carpinchazo is True
+
+
+def test_assemble_announcement_audio_acrossfade_and_pauses(tmp_path):
+	"""Verifica que assemble_announcement_audio invoque acrossfade para hora+minuto de la misma voz y anullsrc para pausas."""
+	out_p = tmp_path / "assembled.mp3"
+	segments = [
+		(b"AUDIO_INTRO", "intro", radio_announcer.VOICE_TOMAS),
+		(b"AUDIO_HORA", "hora", radio_announcer.VOICE_TOMAS),
+		(b"AUDIO_MINUTO", "minuto", radio_announcer.VOICE_TOMAS),
+		(b"AUDIO_LEADIN", "lead_in", radio_announcer.VOICE_TOMAS),
+		(b"AUDIO_FORTUNA", "fortuna", radio_announcer.VOICE_ELENA),
+		(b"AUDIO_SALIDA", "salida", radio_announcer.VOICE_TOMAS),
+	]
+
+	invoked_commands: list[list[str]] = []
+	orig_run = subprocess.run
+
+	def tracking_run(cmd, *args, **kwargs):
+		invoked_commands.append(cmd)
+		# Si es comando acrossfade
+		if any("acrossfade" in arg for arg in cmd):
+			dest = Path(cmd[-1])
+			dest.write_bytes(b"ACROSSFADED_TIME_AUDIO")
+			return MagicMock(returncode=0, stderr=b"")
+		# Si es generador de silencio
+		elif any("anullsrc" in arg for arg in cmd):
+			dest = Path(cmd[-1])
+			dest.write_bytes(b"SILENCE_AUDIO")
+			return MagicMock(returncode=0, stderr=b"")
+		# Si es concatenación final
+		elif "-filter_complex" in cmd and any("concat=n=" in arg for arg in cmd):
+			dest = Path(cmd[-1])
+			dest.write_bytes(b"FINAL_CONCATENATED_AUDIO")
+			return MagicMock(returncode=0, stderr=b"")
+		return orig_run(cmd, *args, **kwargs)
+
+	with (
+		patch("shutil.which", return_value="/usr/bin/ffmpeg"),
+		patch("subprocess.run", side_effect=tracking_run),
+	):
+		ok = radio_announcer.assemble_announcement_audio(segments, out_p)
+		assert ok is True
+		assert out_p.exists()
+		assert out_p.read_bytes() == b"FINAL_CONCATENATED_AUDIO"
+
+		# Verificar llamada a acrossfade para hora + minuto
+		fade_calls = [c for c in invoked_commands if any("acrossfade" in a for a in c)]
+		assert len(fade_calls) == 1
+		assert "acrossfade=d=0.05:c1=tri:c2=tri" in str(fade_calls[0])
+
+		# Verificar llamadas a anullsrc para los silencios intercalados
+		silence_calls = [c for c in invoked_commands if any("anullsrc" in a for a in c)]
+		# Silencio inicial (0.20), tras intro (0.30), tras hora_minuto (0.25), tras lead-in (0.35), tras fortuna (0.25)
+		assert len(silence_calls) >= 4
