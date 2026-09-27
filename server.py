@@ -3141,7 +3141,7 @@ class APIState:
 						self.radio_announcement_path,
 						bg_track_path=next_track_path,
 						bg_offset=bg_offset,
-						bg_volume=0.18,
+						bg_volume=0.1,
 					)
 				except Exception as e:
 					ok, display_title, script_or_err = False, "", f"{type(e).__name__}: {e}"

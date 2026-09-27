@@ -496,7 +496,7 @@ def mix_announcement_with_bg_track(
 	output_path: Path | str,
 	bg_track_path: Path | str,
 	bg_offset: float = 0.0,
-	bg_volume: float = 0.18,
+	bg_volume: float = 0.1,
 ) -> bool:
 	"""
 	Superpone la canción de fondo (desde bg_offset y a bajo volumen)
@@ -604,7 +604,7 @@ async def create_radio_announcement(
 	timeout: float = 5.0,
 	bg_track_path: Path | str | None = None,
 	bg_offset: float = 0.0,
-	bg_volume: float = 0.18,
+	bg_volume: float = 0.1,
 ) -> tuple[bool, str, str]:
 	"""
 	Sintetiza la locución radial con edge-tts y la guarda en output_path.
