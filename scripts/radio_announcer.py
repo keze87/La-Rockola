@@ -26,7 +26,9 @@ except ImportError:
 
 VOICE_TOMAS = "es-AR-TomasNeural"
 VOICE_ELENA = "es-AR-ElenaNeural"
-VOICES = [VOICE_TOMAS, VOICE_ELENA]
+VOICE_MARIA = "es-CR-MariaNeural"
+VOICE_VALENTINA = "es-UY-ValentinaNeural"
+VOICES = [VOICE_TOMAS, VOICE_ELENA, VOICE_MARIA, VOICE_VALENTINA]
 
 # Banco curado de sabiduría, humor y frases del carpincho con tono argentino
 CARPINCHO_FORTUNES: list[str] = [
@@ -505,8 +507,8 @@ async def create_radio_announcement(
 	out_p.parent.mkdir(parents=True, exist_ok=True)
 
 	script_text, selected_voice, _fortune = generate_radio_script(voice=voice)
-	locutor_nombre = "Tomás" if selected_voice == VOICE_TOMAS else "Elena"
-	display_title = f"Momento de la Fortuna 🥠 ({locutor_nombre})"
+	locutor_nombre = "Tomás" if selected_voice == VOICE_TOMAS else "Mujer"
+	display_title = f"{script_text}"
 
 	try:
 		communicate = edge_tts.Communicate(script_text, selected_voice)
