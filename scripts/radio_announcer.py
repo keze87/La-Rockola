@@ -130,13 +130,13 @@ CARPINCHO_FORTUNES.extend(CARPINCHO_ADS)
 
 # Bancos de frases modulares para el Carpincho Locutor
 RADIO_INTROS: list[str] = [
-	"En el aire de La Rockola del Carpincho,",
-	"¡Buenas gente linda de La Rockola!",
-	"La hora en La Rockola:",
-	"Sintonizando La Rockola del Carpincho,",
-	"¡Seguimos haciendo el aguante en La Rockola!",
-	"Un matecito en La Rockola y seguimos:",
-	"Transmite La Rockola del Carpincho:",
+	"... En el aire de La Rockola del Carpincho,",
+	"... ¡Buenas gente linda de La Rockola!",
+	"... La hora en La Rockola:",
+	"... Sintonizando La Rockola del Carpincho,",
+	"... ¡Seguimos haciendo el aguante en La Rockola!",
+	"... Un matecito en La Rockola y seguimos:",
+	"... Transmite La Rockola del Carpincho:",
 ]
 
 RADIO_LEAD_INS: list[str] = [
@@ -152,12 +152,12 @@ RADIO_LEAD_INS: list[str] = [
 ]
 
 RADIO_OUTROS: list[str] = [
-	"¡Seguimos con más música!",
-	"¡Que no decaiga!",
-	"¡Pegale play que esto sigue!",
-	"¡Metemos la próxima canción al toque!",
-	"¡Seguimos de joda en La Rockola!",
-	"¡Acomodate que se viene un temazo!",
+	"¡Seguimos con más música!...",
+	"¡Que no decaiga!...",
+	"¡Pegale play que esto sigue!...",
+	"¡Metemos la próxima canción al toque!...",
+	"¡Seguimos de joda en La Rockola!...",
+	"¡Acomodate que se viene un temazo!...",
 ]
 
 
