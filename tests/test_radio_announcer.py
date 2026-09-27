@@ -349,3 +349,83 @@ def test_assemble_announcement_audio_fallback(tmp_path):
 		assert ok is True
 		assert out_p.exists()
 		assert out_p.read_bytes() == b"SEGMENT_1_SEGMENT_2_SEGMENT_3"
+
+
+def test_four_voices_available():
+	assert len(radio_announcer.VOICES) == 4
+	assert radio_announcer.VOICE_TOMAS in radio_announcer.VOICES
+	assert radio_announcer.VOICE_ELENA in radio_announcer.VOICES
+	assert radio_announcer.VOICE_MARIA in radio_announcer.VOICES
+	assert radio_announcer.VOICE_VALENTINA in radio_announcer.VOICES
+
+	for v in radio_announcer.VOICES:
+		assert v in radio_announcer.VOICE_NAMES
+		assert len(radio_announcer.VOICE_NAMES[v]) > 0
+
+
+def test_carpincho_ads_in_fortunes():
+	assert len(radio_announcer.CARPINCHO_ADS) >= 15
+	for ad in radio_announcer.CARPINCHO_ADS:
+		assert ad in radio_announcer.CARPINCHO_FORTUNES
+		assert radio_announcer.is_spanish_text(ad) is True
+
+
+@pytest.mark.asyncio
+async def test_preload_tts_cache_skips_and_synthesizes(tmp_path):
+	from scripts import preload_tts_cache
+
+	db_path = tmp_path / "tts_cache.db"
+	preload_tts_cache.init_tts_cache_db(db_path)
+
+	# 1. Precargar manualmente un audio para simular que ya existe
+	voice = radio_announcer.VOICE_TOMAS
+	text_existente = "¡Buenas gente linda de La Rockola!"
+	radio_announcer.save_cached_audio("intro", voice, text_existente, b"AUDIO_PREEXISTENTE", db_path=db_path)
+
+	semaphore = asyncio.Semaphore(2)
+	stats = {"skipped": 0, "synthesized": 0, "failed": 0}
+
+	# Procesar el que ya existe -> debe incrementar skipped sin llamar a la red
+	with patch("scripts.radio_announcer.edge_tts.Communicate") as mock_comm:
+		await preload_tts_cache.process_item(
+			semaphore=semaphore,
+			category="intro",
+			text=text_existente,
+			voice=voice,
+			db_path=db_path,
+			delay=0.0,
+			max_retries=2,
+			stats=stats,
+		)
+		assert stats["skipped"] == 1
+		assert stats["synthesized"] == 0
+		assert mock_comm.call_count == 0
+
+	# Procesar uno nuevo -> debe sintetizar e incrementar synthesized
+	text_nuevo = "Un matecito en La Rockola y seguimos:"
+
+	async def fake_save(dest):
+		Path(dest).write_bytes(b"NUEVO_AUDIO")
+
+	mock_comm_instance = MagicMock()
+	mock_comm_instance.save = AsyncMock(side_effect=fake_save)
+
+	with (
+		patch("scripts.radio_announcer.HAS_EDGE_TTS", True),
+		patch("scripts.radio_announcer.edge_tts.Communicate", return_value=mock_comm_instance),
+	):
+		await preload_tts_cache.process_item(
+			semaphore=semaphore,
+			category="intro",
+			text=text_nuevo,
+			voice=voice,
+			db_path=db_path,
+			delay=0.0,
+			max_retries=2,
+			stats=stats,
+		)
+		assert stats["synthesized"] == 1
+		assert stats["failed"] == 0
+		# Verificar que quedó guardado en la base de datos
+		cached = radio_announcer.get_cached_audio("intro", voice, text_nuevo, db_path=db_path)
+		assert cached == b"NUEVO_AUDIO"

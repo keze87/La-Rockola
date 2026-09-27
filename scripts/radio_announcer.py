@@ -36,6 +36,13 @@ VOICE_MARIA = "es-CR-MariaNeural"
 VOICE_VALENTINA = "es-UY-ValentinaNeural"
 VOICES = [VOICE_TOMAS, VOICE_ELENA, VOICE_MARIA, VOICE_VALENTINA]
 
+VOICE_NAMES: dict[str, str] = {
+	VOICE_TOMAS: "Tomás",
+	VOICE_ELENA: "Elena",
+	VOICE_MARIA: "María",
+	VOICE_VALENTINA: "Valentina",
+}
+
 # Banco curado de sabiduría, humor y frases del carpincho con tono argentino
 CARPINCHO_FORTUNES: list[str] = [
 	"El carpincho no se apura: sabe que el agua siempre llega.",
@@ -95,6 +102,32 @@ CARPINCHO_FORTUNES: list[str] = [
 	"El oráculo predice: tu día va a mejorar en un cien por ciento con este tema.",
 ]
 
+# Propagandas y avisos comerciales ficticios de radio para carpinchos
+CARPINCHO_ADS: list[str] = [
+	"Espacio publicitario: Yerba Mate «El Carpincho Mimoso», estacionada dos años en laguna natural. Un mate que te acaricia el alma.",
+	"Publicidad: Pastos y Juncos Don Pedro. Los mejores brotes tiernos del Delta para rumiar en la orilla mientras suena La Rockola.",
+	"Aviso inmobiliario: Inmobiliaria El Bañado. Venta de lotes con costa propia y vista panorámica a Nordelta. Cero expensas, pura paz.",
+	"Publicidad: Protector solar «Piel de Carpincho», factor ochenta. Tomate un solazo en la barranca sin quemarte el cuero.",
+	"Espacio publicitario: Ponchos y Boinas El Yacaré. Elegancia criolla para las noches frescas en el pajonal.",
+	"Aviso comercial: Remises La Nutria. Te cruzamos el río a nado o en canoa. Más rápidos que doradillo en bajante.",
+	"Espacio publicitario: Fernet «Laguna Negra» con dos hielos y coca. El combustible oficial de los carpinchos trasnochadores.",
+	"Publicidad: Spa Termal Los Esteros. Baños de fango curativo y masajes con caña tacuara. Salís como nuevo, hecho una seda.",
+	"Aviso comercial: Seguros La Madriguera. Si la crecida te llega al cogote, nosotros te cubrimos la cueva. Dormí sin frazada.",
+	"Publicidad: Ferretería Don Roedor. Bombas de achique, alambrados olímpicos y machetes para desmalezar la isla.",
+	"Espacio publicitario: Barbería y Peluquería Bigote Criollo. Corte degrade, recorte de bigotes y peinado a contrapelo para deslumbrar en la laguna.",
+	"Aviso parroquial: Academia Los Carpincheros. Clases de natación sincronizada y flotación tipo tronco para principiantes.",
+	"Publicidad: Astilleros La Balsa. Botes a remo, kayaks de madera y balsas de totora con garantía de por vida.",
+	"Espacio publicitario: Café de Algarroba y Facturas Don Ceibo. El desayuno ideal antes de tirarse a la sombra a hacer la siesta.",
+	"Publicidad: Colchones Sommier «Paja Brava». Firmeza garantizada para dormir doce horas seguidas como un señor carpincho.",
+	"Aviso comercial: Cervecería Artesanal El Pantano. Con lúpulo silvestre y agua fresca de vertiente isleña. Pedite una pinta bien helada.",
+	"Espacio publicitario: Sombreros de Paja Don Bigote. Frescura, sombra y porte gaucho para caminar por el terraplén.",
+	"Aviso parroquial: Repelente «Chau Mosquito». Para que no te piquen las orejas mientras disfrutás de un buen chamamé.",
+	"Publicidad: Panadería La Espiga Verde. Medialunas de grasa calentitas a toda hora para acompañar los amargos.",
+	"Espacio publicitario: Neumáticos La Huella. Cámaras inflables para flotar panza arriba toda la tarde en el arroyo.",
+]
+
+CARPINCHO_FORTUNES.extend(CARPINCHO_ADS)
+
 # Bancos de frases modulares para el Carpincho Locutor
 RADIO_INTROS: list[str] = [
 	"En el aire de La Rockola del Carpincho,",
@@ -113,6 +146,9 @@ RADIO_LEAD_INS: list[str] = [
 	"Tiramos una frase para reflexionar mientras te tomás unos mates:",
 	"Dice la fortuna del día:",
 	"Atenti a esta reflexión carpinchera:",
+	"Espacio publicitario en La Rockola:",
+	"Atenti a este aviso de la comunidad carpinchera:",
+	"Mensaje de nuestros queridos auspiciantes:",
 ]
 
 RADIO_OUTROS: list[str] = [
@@ -728,7 +764,7 @@ def mix_announcement_with_bg_track(
 	"""
 	Superpone la canción de fondo (desde bg_offset y a bajo volumen)
 	con la pista de voz del locutor usando ffmpeg.
-	Guarda temporalmente en output_path.tmp antes del reemplazo atómico.
+	Guarda temporalmente en el directorio /tmp (tmpfs en RAM) para evitar el uso del disco duro.
 	Retorna True si la mezcla se realizó con éxito.
 	"""
 	ffmpeg_bin = shutil.which("ffmpeg")
@@ -783,7 +819,7 @@ def mix_announcement_with_bg_track(
 			f"[0:a]volume=1.0[v];[1:a]volume={bg_volume}[bg];[v][bg]amix=inputs=2:duration=first:dropout_transition=2"
 		)
 
-	tmp_out = Path(f"{out_p}.tmp")
+	tmp_out = Path(tempfile.gettempdir()) / f"rockola_mix_{uuid.uuid4().hex[:8]}.mp3"
 	cmd = [
 		ffmpeg_bin,
 		"-y",
@@ -805,7 +841,9 @@ def mix_announcement_with_bg_track(
 	try:
 		proc = subprocess.run(cmd, capture_output=True, timeout=5.0, check=False)
 		if proc.returncode == 0 and tmp_out.is_file() and tmp_out.stat().st_size > 0:
-			tmp_out.replace(out_p)
+			tmp_dest = out_p.parent / f".tmp_{out_p.name}"
+			shutil.copyfile(tmp_out, tmp_dest)
+			tmp_dest.replace(out_p)
 			logger.info(
 				f"🎵 Cortina musical superpuesta con éxito desde el segundo {bg_offset:.1f} de '{bg_p.name}' (volumen {bg_volume * 100:.0f}%)"
 			)
@@ -836,31 +874,30 @@ def assemble_announcement_audio(
 	"""
 	Concatena los segmentos de audio MP3 y opcionalmente superpone
 	la cortina musical de fondo utilizando ffmpeg.
-	Guarda el resultado en output_path.tmp antes de renombrarlo atómicamente a output_path.
+	Todas las operaciones intermedias se ejecutan en un directorio temporal en /tmp (RAM tmpfs),
+	evitando escrituras intermedias en disco duro físico antes de copiar el archivo final.
 	"""
 	out_p = Path(output_path)
 	out_p.parent.mkdir(parents=True, exist_ok=True)
-	tmp_final = Path(f"{out_p}.tmp")
+	work_dir = Path(tempfile.mkdtemp(prefix="rockola_announcement_"))
+	tmp_dest = out_p.parent / f".tmp_{out_p.name}"
 
-	# Si no hay ffmpeg disponible, fallback a concatenación directa de streams MP3
-	ffmpeg_bin = shutil.which("ffmpeg")
-	if not ffmpeg_bin:
-		try:
-			combined = b"".join(seg[0] for seg in segments)
-			tmp_final.write_bytes(combined)
-			tmp_final.replace(out_p)
-			return True
-		except Exception as e:
-			logger.warning(f"Error en concatenación directa de audio: {e}")
-			if tmp_final.exists():
-				tmp_final.unlink(missing_ok=True)
-			return False
-
-	temp_seg_files: list[Path] = []
-	tmp_voice_combined = out_p.parent / f"{out_p.stem}_{uuid.uuid4().hex[:8]}.voice_combined.mp3"
 	try:
+		ffmpeg_bin = shutil.which("ffmpeg")
+		# Si no hay ffmpeg disponible, fallback a concatenación directa de streams MP3
+		if not ffmpeg_bin:
+			combined = b"".join(seg[0] for seg in segments)
+			tmp_ram = work_dir / "combined_fallback.mp3"
+			tmp_ram.write_bytes(combined)
+			shutil.copyfile(tmp_ram, tmp_dest)
+			tmp_dest.replace(out_p)
+			return True
+
+		temp_seg_files: list[Path] = []
+		tmp_voice_combined = work_dir / "voice_combined.mp3"
+
 		for i, (seg_bytes, _cat) in enumerate(segments):
-			seg_file = out_p.parent / f"{out_p.stem}_{uuid.uuid4().hex[:8]}_seg{i}.mp3"
+			seg_file = work_dir / f"seg_{i}.mp3"
 			seg_file.write_bytes(seg_bytes)
 			temp_seg_files.append(seg_file)
 
@@ -893,8 +930,10 @@ def assemble_announcement_audio(
 				f"ffmpeg falló al concatenar segmentos de voz: {proc.stderr.decode('utf-8', errors='ignore')[:200]}"
 			)
 			combined = b"".join(seg[0] for seg in segments)
-			tmp_final.write_bytes(combined)
-			tmp_final.replace(out_p)
+			tmp_ram = work_dir / "combined_fallback.mp3"
+			tmp_ram.write_bytes(combined)
+			shutil.copyfile(tmp_ram, tmp_dest)
+			tmp_dest.replace(out_p)
 			return True
 
 		# Si se solicitó cortina musical y el archivo de fondo existe
@@ -910,26 +949,17 @@ def assemble_announcement_audio(
 			if mixed:
 				return True
 
-		# Reemplazo atómico con voz combinada
-		tmp_voice_combined.replace(tmp_final)
-		tmp_final.replace(out_p)
+		# Copia segura al destino desde RAM
+		shutil.copyfile(tmp_voice_combined, tmp_dest)
+		tmp_dest.replace(out_p)
 		return True
 	except Exception as e:
 		logger.warning(f"Error ensamblando locución radial: {e}")
-		if tmp_final.exists():
-			tmp_final.unlink(missing_ok=True)
+		if tmp_dest.exists():
+			tmp_dest.unlink(missing_ok=True)
 		return False
 	finally:
-		for f in temp_seg_files:
-			try:
-				f.unlink(missing_ok=True)
-			except Exception:
-				pass
-		if tmp_voice_combined.exists():
-			try:
-				tmp_voice_combined.unlink(missing_ok=True)
-			except Exception:
-				pass
+		shutil.rmtree(work_dir, ignore_errors=True)
 
 
 async def create_radio_announcement(
@@ -963,7 +993,7 @@ async def create_radio_announcement(
 	intro, hora, lead_in, fortuna, is_sys, outro, selected_voice, full_script = generate_modular_radio_script(
 		voice=voice
 	)
-	locutor_nombre = "Tomás" if selected_voice == VOICE_TOMAS else "Mujer"
+	locutor_nombre = VOICE_NAMES.get(selected_voice, "Carpincho Locutor")
 	display_title = f"Carpincho locutor: {full_script}"
 
 	# Plan de síntesis de los 5 segmentos modulares
