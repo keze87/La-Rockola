@@ -2390,6 +2390,7 @@ class APIState:
 		self.mpris_player = None
 		self.mpris_registered = False
 		self._mpris_lock = asyncio.Lock()
+		self._play_next_lock = asyncio.Lock()
 
 		self.mpv = AsyncMpvController(
 			{
@@ -3105,6 +3106,7 @@ class APIState:
 			and HAS_EDGE_TTS
 			and create_radio_announcement is not None
 			and has_next_track
+			and just_finished is not None
 			and just_finished != self.radio_announcement_path
 		):
 			self.radio_track_counter += 1
@@ -3269,8 +3271,8 @@ class APIState:
 			self.queue.remove(path)
 		else:
 			self.queue.append(path)
-			if not self.current_track:
-				await self.play_next()
+			if not self.current_track and not self.is_synthesizing_radio:
+				await self.play_next(skipped_by_user=True)
 				return
 		self._pick_dj_next()  # Actualiza la pre-elección del DJ cuando cambia la fila
 
@@ -3857,7 +3859,7 @@ async def handle_command(req: CommandRequest):
 		if req.path:
 			state.queue.append(req.path)
 			state._pick_dj_next()
-			if not state.current_track:
+			if not state.current_track and not state.is_synthesizing_radio:
 				await state.play_next(skipped_by_user=True)
 			asyncio.create_task(state.fetch_yt_dlp_metadata(req.path))
 	elif cmd == "jump":

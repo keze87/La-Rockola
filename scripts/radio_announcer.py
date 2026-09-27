@@ -11,6 +11,7 @@ import random
 import re
 import shutil
 import subprocess
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -554,7 +555,7 @@ def mix_announcement_with_bg_track(
 			f"[0:a]volume=1.0[v];[1:a]volume={bg_volume}[bg];[v][bg]amix=inputs=2:duration=first:dropout_transition=2"
 		)
 
-	tmp_out = out_p.with_suffix(".mix_tmp.mp3")
+	tmp_out = out_p.parent / f"{out_p.stem}_{uuid.uuid4().hex[:8]}.mix_tmp.mp3"
 	cmd = [
 		ffmpeg_bin,
 		"-y",
@@ -627,9 +628,9 @@ async def create_radio_announcement(
 	locutor_nombre = "Tomás" if selected_voice == VOICE_TOMAS else "Mujer"
 	display_title = f"Carpincho locutor: {script_text}"
 
-	# Si tenemos canción de fondo para mezclar, guardamos primero la voz sola en archivo temporal
+	# Si tenemos canción de fondo para mezclar, guardamos primero la voz sola en archivo temporal único
 	has_bg = bg_track_path is not None and Path(bg_track_path).is_file() and shutil.which("ffmpeg") is not None
-	voice_p = out_p.with_suffix(".voice_tmp.mp3") if has_bg else out_p
+	voice_p = out_p.parent / f"{out_p.stem}_{uuid.uuid4().hex[:8]}.voice_tmp.mp3" if has_bg else out_p
 
 	try:
 		communicate = edge_tts.Communicate(script_text, selected_voice)
@@ -649,7 +650,12 @@ async def create_radio_announcement(
 			)
 			if not mixed:
 				# Fallback seguro: si falló la mezcla, la voz pura es el anuncio
-				voice_p.replace(out_p)
+				if voice_p.is_file():
+					voice_p.replace(out_p)
+				elif not out_p.is_file():
+					err_msg = "No se pudo generar la locución radial (archivo de voz temporal no disponible)."
+					logger.warning(f"📻 El Carpincho: {err_msg}")
+					return False, "", err_msg
 			elif voice_p.exists():
 				try:
 					voice_p.unlink()
@@ -666,7 +672,7 @@ async def create_radio_announcement(
 		logger.warning(f"📻 El Carpincho: {err_msg}")
 		return False, "", err_msg
 	finally:
-		if has_bg and voice_p.exists():
+		if has_bg and voice_p != out_p and voice_p.exists():
 			try:
 				voice_p.unlink()
 			except Exception:

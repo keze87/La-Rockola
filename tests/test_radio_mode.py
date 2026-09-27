@@ -201,3 +201,26 @@ async def test_radio_announcement_failure_logs_reason(caplog):
 
 		# Next track in queue plays because radio failed
 		mock_play.assert_awaited_once_with("/music/song2.mp3")
+
+
+@pytest.mark.asyncio
+async def test_toggle_queue_initial_playback_does_not_trigger_radio():
+	state.radio_mode_enabled = True
+	state.radio_track_counter = 1
+	state.radio_tracks_until_next = 1
+	state.current_track = None
+	state.queue = []
+
+	mock_create = AsyncMock()
+
+	with (
+		patch("server.HAS_EDGE_TTS", True),
+		patch("server.create_radio_announcement", mock_create),
+		patch.object(state, "play_track", AsyncMock()) as mock_play,
+		patch("server.broadcast_state", AsyncMock()),
+	):
+		await state.toggle_queue("/music/song1.mp3")
+
+		# Locutor should NOT speak before any song has started playing
+		mock_create.assert_not_called()
+		mock_play.assert_awaited_once_with("/music/song1.mp3")
