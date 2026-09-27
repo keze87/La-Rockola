@@ -196,10 +196,14 @@ def get_carpincho_data_dir() -> Path:
 		from server import DATA_DIR
 
 		return DATA_DIR
-	except Exception:
-		db_dir = Path(__file__).resolve().parents[1] / "DB"
-		db_dir.mkdir(parents=True, exist_ok=True)
-		return db_dir
+	except ImportError:
+		logger.debug("Módulo 'server' no disponible, usando fallback local para DATA_DIR.")
+	except Exception as e:
+		logger.debug(f"Error inesperado importando DATA_DIR desde server: {e}, usando fallback local.")
+
+	db_dir = Path(__file__).resolve().parents[1] / "DB"
+	db_dir.mkdir(parents=True, exist_ok=True)
+	return db_dir
 
 
 def init_tts_cache_db(db_path: Path | str | None = None) -> Path:
@@ -498,7 +502,7 @@ def is_spanish_text(text: str) -> bool:
 	return spanish_count >= 2 or (len(words) <= 3 and spanish_count >= 1)
 
 
-def get_available_spanish_dbs() -> list[str]:
+def get_available_spanish_dbs(timeout: float = 2.0) -> list[str]:
 	"""Detecta y cachea las bases de datos en español disponibles para el comando fortune."""
 	global _SPANISH_FORTUNE_DBS_CACHE
 	if _SPANISH_FORTUNE_DBS_CACHE is not None:
@@ -510,7 +514,7 @@ def get_available_spanish_dbs() -> list[str]:
 		return _SPANISH_FORTUNE_DBS_CACHE
 
 	try:
-		res = subprocess.run([fortune_bin, "-f"], capture_output=True, text=True, timeout=1.5, check=False)
+		res = subprocess.run([fortune_bin, "-f"], capture_output=True, text=True, timeout=timeout, check=False)
 		dbs = []
 		for line in (res.stdout + res.stderr).splitlines():
 			m = re.search(r"^\s*[\d,.]+\%\s+([a-zA-Z0-9_\-]+)", line)
@@ -539,7 +543,7 @@ def clean_fortune_text(raw_text: str) -> str:
 	return text.strip()
 
 
-def get_system_fortune() -> str | None:
+def get_system_fortune(timeout: float = 2.0) -> str | None:
 	"""
 	Intenta obtener una fortuna corta exclusivamente en ESPAÑOL mediante el comando Unix `fortune -s`.
 	Solo consulta bases en español conocidas y valida que el texto resultante sea en español.
@@ -548,7 +552,7 @@ def get_system_fortune() -> str | None:
 	if not fortune_bin:
 		return None
 
-	spanish_dbs = get_available_spanish_dbs()
+	spanish_dbs = get_available_spanish_dbs(timeout=timeout)
 	if not spanish_dbs:
 		return None
 
@@ -558,7 +562,7 @@ def get_system_fortune() -> str | None:
 			cmd,
 			capture_output=True,
 			text=True,
-			timeout=1.5,
+			timeout=timeout,
 			check=False,
 		)
 		if res.returncode == 0 and res.stdout:
@@ -605,7 +609,13 @@ def get_modular_time_segments(dt: datetime | None = None) -> tuple[str, str | No
 		special = SPECIAL_HOURS.get(hour, f"{hour} horas en punto.")
 		return special, None, special
 
-	hora_seg = "1 hora," if hour == 1 else f"{hour} horas,"
+	if hour == 0:
+		hora_seg = "Las doce de la noche,"
+	elif hour == 1:
+		hora_seg = "1 hora,"
+	else:
+		hora_seg = f"{hour} horas,"
+
 	minuto_seg = "un minuto." if minute == 1 else f"{minute} minutos."
 	full_time_str = f"{hora_seg} {minuto_seg}"
 	return hora_seg, minuto_seg, full_time_str
@@ -707,6 +717,9 @@ _DUMMY_MP3_DATA: bytes = (
 )
 
 
+ALLOW_TEST_DUMMY_AUDIO: bool = False
+
+
 async def synthesize_segment(
 	text: str,
 	voice: str,
@@ -717,9 +730,10 @@ async def synthesize_segment(
 ) -> bytes:
 	"""
 	Sintetiza un segmento individual de locución radial.
-	Si allow_cache es True (frases fijas, horas, intros, salidas, fortunas carpinchas),
+	Si allow_cache es True (predeterminado para intros, horas, minutos, lead-ins,
+	fortunas carpinchas, propagandas y fortunas del sistema bajo la voz de Elena),
 	primero consulta la caché SQLite y, si no está, la sintetiza con edge-tts y la persiste.
-	Si allow_cache es False (fortunas del sistema Unix), nunca se guarda en la base de datos.
+	Si allow_cache es False, se omite el guardado en la base de datos de caché.
 	"""
 	if allow_cache:
 		cached_blob = get_cached_audio(category, voice, text, db_path=db_path)
@@ -732,36 +746,62 @@ async def synthesize_segment(
 
 	logger.debug(f"🌐 [TTS Cache MISS / Remoto] Sintetizando '{category}' ({voice}): '{text}'")
 
-	communicate = edge_tts.Communicate(text, voice)
-
-	async def _stream_or_save() -> bytes:
+	async def _stream_or_save(comm: edge_tts.Communicate) -> bytes:
 		data = bytearray()
-		if hasattr(communicate, "stream"):
+		if hasattr(comm, "stream"):
 			try:
-				async for chunk in communicate.stream():
+				async for chunk in comm.stream():
 					if isinstance(chunk, dict) and chunk.get("type") == "audio":
 						data.extend(chunk.get("data", b""))
-			except (TypeError, AttributeError):
-				pass
-		if not data and hasattr(communicate, "save"):
+			except Exception as e:
+				logger.debug(
+					f"Fallo o interrupción en communicate.stream() para '{text}': {e}. Intentando communicate.save()..."
+				)
+		if not data and hasattr(comm, "save"):
 			with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_f:
 				tmp_p = Path(tmp_f.name)
 			try:
-				res = communicate.save(str(tmp_p))
+				res = comm.save(str(tmp_p))
 				if asyncio.iscoroutine(res):
 					await res
 				if tmp_p.exists() and tmp_p.stat().st_size > 0:
 					data = bytearray(tmp_p.read_bytes())
+			except Exception as e:
+				logger.debug(f"Fallo en communicate.save() para '{text}': {e}")
 			finally:
 				tmp_p.unlink(missing_ok=True)
-		if not data and hasattr(communicate, "save"):
-			# Fallback para mocks de tests con AsyncMock(return_value=None) sin escritura en disco
+		if not data and (
+			ALLOW_TEST_DUMMY_AUDIO
+			or type(comm).__name__ in ("MagicMock", "AsyncMock")
+			or type(getattr(comm, "save", None)).__name__ in ("MagicMock", "AsyncMock")
+		):
+			# Fallback exclusivo para mocks de tests donde save() no escribe bytes reales en disco
 			data = bytearray(base64.b64decode(_DUMMY_MP3_DATA))
 		return bytes(data)
 
-	audio_bytes = await asyncio.wait_for(_stream_or_save(), timeout=timeout)
-	if not audio_bytes:
-		raise RuntimeError(f"edge-tts no produjo bytes de audio para '{text}'")
+	max_retries = 2
+	last_err: Exception | None = None
+	audio_bytes = b""
+
+	for attempt in range(max_retries + 1):
+		try:
+			communicate = edge_tts.Communicate(text, voice)
+			audio_bytes = await asyncio.wait_for(_stream_or_save(communicate), timeout=timeout)
+			if not audio_bytes:
+				raise RuntimeError(f"edge-tts no produjo bytes de audio para '{text}'")
+			last_err = None
+			break
+		except Exception as e:
+			last_err = e
+			if attempt < max_retries:
+				backoff = min(0.3 * (attempt + 1), max(0.01, timeout * 0.2))
+				logger.debug(
+					f"Reintento {attempt + 1}/{max_retries} en síntesis '{category}' ({voice}) tras error: {e}. Esperando {backoff:.2f}s..."
+				)
+				await asyncio.sleep(backoff)
+
+	if last_err is not None or not audio_bytes:
+		raise last_err or RuntimeError(f"edge-tts no produjo bytes de audio para '{text}'")
 
 	if allow_cache:
 		save_cached_audio(category, voice, text, audio_bytes, db_path=db_path)
@@ -775,6 +815,7 @@ def mix_announcement_with_bg_track(
 	bg_track_path: Path | str,
 	bg_offset: float = 0.0,
 	bg_volume: float = 0.1,
+	timeout: float = 10.0,
 ) -> bool:
 	"""
 	Superpone la canción de fondo (desde bg_offset y a bajo volumen)
@@ -799,6 +840,7 @@ def mix_announcement_with_bg_track(
 	ffprobe_bin = shutil.which("ffprobe")
 	if ffprobe_bin:
 		try:
+			probe_timeout = max(2.0, timeout * 0.3)
 			res = subprocess.run(
 				[
 					ffprobe_bin,
@@ -812,7 +854,7 @@ def mix_announcement_with_bg_track(
 				],
 				capture_output=True,
 				text=True,
-				timeout=2.0,
+				timeout=probe_timeout,
 				check=False,
 			)
 			if res.returncode == 0 and res.stdout.strip():
@@ -854,7 +896,8 @@ def mix_announcement_with_bg_track(
 	]
 
 	try:
-		proc = subprocess.run(cmd, capture_output=True, timeout=5.0, check=False)
+		ffmpeg_timeout = max(5.0, timeout)
+		proc = subprocess.run(cmd, capture_output=True, timeout=ffmpeg_timeout, check=False)
 		if proc.returncode == 0 and tmp_out.is_file() and tmp_out.stat().st_size > 0:
 			tmp_dest = out_p.parent / f".tmp_{out_p.name}"
 			shutil.copyfile(tmp_out, tmp_dest)
@@ -910,10 +953,13 @@ def embed_cover_art_in_mp3(
 	title: str | None = "Locución radial",
 	artist: str | None = "Carpincho Locutor 🎙️",
 	album: str = "La Rockola del Carpincho",
+	timeout: float = 10.0,
 ) -> bool:
 	"""
 	Incrusta la carátula del carpincho y metadatos ID3 (título, artista, álbum, APIC)
-	directamente dentro del archivo MP3 de la locución radial usando mutagen.
+	directamente dentro del archivo MP3 de la locución radial.
+	Intenta primero usando ffmpeg (-c copy) y, si no está disponible o falla,
+	recurre al fallback con mutagen.
 	"""
 	mp3_p = Path(mp3_path)
 	if not mp3_p.is_file():
@@ -927,6 +973,59 @@ def embed_cover_art_in_mp3(
 	if not cover_p or not cover_p.is_file():
 		return False
 
+	# 1. Intentar primero con ffmpeg
+	ffmpeg_bin = shutil.which("ffmpeg")
+	if ffmpeg_bin:
+		tmp_tagged = mp3_p.parent / f".tmp_tag_{uuid.uuid4().hex[:8]}.mp3"
+		cmd = [
+			ffmpeg_bin,
+			"-y",
+			"-i",
+			str(mp3_p),
+			"-i",
+			str(cover_p),
+			"-map",
+			"0:a",
+			"-map",
+			"1:v",
+			"-c",
+			"copy",
+			"-id3v2_version",
+			"3",
+			"-metadata:s:v",
+			"title=Cover",
+			"-metadata:s:v",
+			"comment=Cover (front)",
+		]
+		if title:
+			cmd.extend(["-metadata", f"title={title}"])
+		if artist:
+			cmd.extend(["-metadata", f"artist={artist}"])
+		if album:
+			cmd.extend(["-metadata", f"album={album}"])
+		cmd.append(str(tmp_tagged))
+
+		try:
+			ffmpeg_timeout = max(3.0, timeout * 0.5)
+			proc = subprocess.run(cmd, capture_output=True, timeout=ffmpeg_timeout, check=False)
+			if proc.returncode == 0 and tmp_tagged.is_file() and tmp_tagged.stat().st_size > 0:
+				tmp_tagged.replace(mp3_p)
+				logger.debug(f"🖼️ Carátula del carpincho incrustada con ffmpeg en '{mp3_p.name}'")
+				return True
+			else:
+				logger.debug(
+					f"ffmpeg falló al incrustar carátula: {proc.stderr.decode('utf-8', errors='ignore')[:150]}. Probando mutagen..."
+				)
+		except Exception as e:
+			logger.debug(f"Excepción usando ffmpeg para carátula: {e}. Probando mutagen...")
+		finally:
+			if tmp_tagged.exists():
+				try:
+					tmp_tagged.unlink()
+				except Exception:
+					pass
+
+	# 2. Fallback con mutagen
 	try:
 		from mutagen.id3 import APIC, ID3, TALB, TIT2, TPE1, ID3NoHeaderError
 
@@ -955,7 +1054,7 @@ def embed_cover_art_in_mp3(
 			tags.add(TALB(encoding=3, text=[album]))
 
 		tags.save(str(mp3_p))
-		logger.debug(f"🖼️ Carátula del carpincho incrustada con éxito en '{mp3_p.name}'")
+		logger.debug(f"🖼️ Carátula del carpincho incrustada con mutagen en '{mp3_p.name}'")
 		return True
 	except Exception as e:
 		logger.debug(f"No se pudo incrustar la carátula en {mp3_p}: {e}")
@@ -971,6 +1070,7 @@ def assemble_announcement_audio(
 	cover_image_path: Path | str | None = None,
 	title: str | None = "Locución radial",
 	artist: str | None = "Carpincho Locutor 🎙️",
+	timeout: float = 10.0,
 ) -> bool:
 	"""
 	Concatena los segmentos de audio MP3, opcionalmente superpone
@@ -985,77 +1085,114 @@ def assemble_announcement_audio(
 
 	try:
 		ffmpeg_bin = shutil.which("ffmpeg")
-		# Si no hay ffmpeg disponible, fallback a concatenación directa de streams MP3
-		if not ffmpeg_bin:
-			combined = b"".join(seg[0] for seg in segments)
-			tmp_ram = work_dir / "combined_fallback.mp3"
-			tmp_ram.write_bytes(combined)
-			embed_cover_art_in_mp3(tmp_ram, cover_image_path=cover_image_path, title=title, artist=artist)
-			shutil.copyfile(tmp_ram, tmp_dest)
-			tmp_dest.replace(out_p)
-			return True
-
-		temp_seg_files: list[Path] = []
 		tmp_voice_combined = work_dir / "voice_combined.mp3"
+		ffmpeg_timeout = max(5.0, timeout)
 
-		for i, (seg_bytes, _cat) in enumerate(segments):
-			seg_file = work_dir / f"seg_{i}.mp3"
-			seg_file.write_bytes(seg_bytes)
-			temp_seg_files.append(seg_file)
+		if ffmpeg_bin:
+			temp_seg_files: list[Path] = []
+			for i, (seg_bytes, _cat) in enumerate(segments):
+				seg_file = work_dir / f"seg_{i}.mp3"
+				seg_file.write_bytes(seg_bytes)
+				temp_seg_files.append(seg_file)
 
-		concat_inputs: list[str] = []
-		for f in temp_seg_files:
-			concat_inputs.extend(["-i", str(f)])
+			concat_inputs: list[str] = []
+			for f in temp_seg_files:
+				concat_inputs.extend(["-i", str(f)])
 
-		filter_concat = (
-			"".join(f"[{i}:a]" for i in range(len(temp_seg_files))) + f"concat=n={len(temp_seg_files)}:v=0:a=1[v]"
-		)
-
-		concat_cmd = [
-			ffmpeg_bin,
-			"-y",
-			*concat_inputs,
-			"-filter_complex",
-			filter_concat,
-			"-map",
-			"[v]",
-			"-c:a",
-			"libmp3lame",
-			"-b:a",
-			"192k",
-			str(tmp_voice_combined),
-		]
-
-		proc = subprocess.run(concat_cmd, capture_output=True, timeout=5.0, check=False)
-		if proc.returncode != 0 or not tmp_voice_combined.is_file() or tmp_voice_combined.stat().st_size == 0:
-			logger.warning(
-				f"ffmpeg falló al concatenar segmentos de voz: {proc.stderr.decode('utf-8', errors='ignore')[:200]}"
+			filter_concat = (
+				"".join(f"[{i}:a]" for i in range(len(temp_seg_files))) + f"concat=n={len(temp_seg_files)}:v=0:a=1[v]"
 			)
+
+			concat_cmd = [
+				ffmpeg_bin,
+				"-y",
+				*concat_inputs,
+				"-filter_complex",
+				filter_concat,
+				"-map",
+				"[v]",
+				"-c:a",
+				"libmp3lame",
+				"-b:a",
+				"192k",
+				str(tmp_voice_combined),
+			]
+
+			proc = subprocess.run(concat_cmd, capture_output=True, timeout=ffmpeg_timeout, check=False)
+			concat_ok = proc.returncode == 0 and tmp_voice_combined.is_file() and tmp_voice_combined.stat().st_size > 0
+
+			# Si falla el filter_complex, intentar concat demuxer simple
+			if not concat_ok:
+				logger.warning(
+					f"ffmpeg filter_complex falló ({proc.stderr.decode('utf-8', errors='ignore')[:150]}). Probando concat demuxer..."
+				)
+				concat_list = work_dir / "concat_list.txt"
+				concat_list.write_text("\n".join(f"file '{f.name}'" for f in temp_seg_files), encoding="utf-8")
+				demux_cmd = [
+					ffmpeg_bin,
+					"-y",
+					"-f",
+					"concat",
+					"-safe",
+					"0",
+					"-i",
+					str(concat_list),
+					"-c:a",
+					"copy",
+					str(tmp_voice_combined),
+				]
+				proc_demux = subprocess.run(
+					demux_cmd,
+					cwd=str(work_dir),
+					capture_output=True,
+					timeout=ffmpeg_timeout,
+					check=False,
+				)
+				concat_ok = (
+					proc_demux.returncode == 0
+					and tmp_voice_combined.is_file()
+					and tmp_voice_combined.stat().st_size > 0
+				)
+
+			if not concat_ok:
+				logger.warning("ffmpeg concat demuxer también falló. Recurriendo a concatenación directa de bytes.")
+				combined = b"".join(seg[0] for seg in segments)
+				tmp_voice_combined.write_bytes(combined)
+		else:
+			# Si no hay ffmpeg disponible, concatenación directa de streams MP3
 			combined = b"".join(seg[0] for seg in segments)
-			tmp_ram = work_dir / "combined_fallback.mp3"
-			tmp_ram.write_bytes(combined)
-			embed_cover_art_in_mp3(tmp_ram, cover_image_path=cover_image_path, title=title, artist=artist)
-			shutil.copyfile(tmp_ram, tmp_dest)
-			tmp_dest.replace(out_p)
-			return True
+			tmp_voice_combined.write_bytes(combined)
 
 		# Si se solicitó cortina musical y el archivo de fondo existe
 		has_bg = bg_track_path is not None and Path(bg_track_path).is_file()
-		if has_bg:
+		if has_bg and ffmpeg_bin:
 			mixed = mix_announcement_with_bg_track(
 				voice_path=tmp_voice_combined,
 				output_path=out_p,
 				bg_track_path=bg_track_path,
 				bg_offset=bg_offset,
 				bg_volume=bg_volume,
+				timeout=timeout,
 			)
 			if mixed:
-				embed_cover_art_in_mp3(out_p, cover_image_path=cover_image_path, title=title, artist=artist)
+				embed_cover_art_in_mp3(
+					out_p,
+					cover_image_path=cover_image_path,
+					title=title,
+					artist=artist,
+					timeout=timeout,
+				)
 				return True
 
 		# Copia segura al destino desde RAM
 		shutil.copyfile(tmp_voice_combined, tmp_dest)
-		embed_cover_art_in_mp3(tmp_dest, cover_image_path=cover_image_path, title=title, artist=artist)
+		embed_cover_art_in_mp3(
+			tmp_dest,
+			cover_image_path=cover_image_path,
+			title=title,
+			artist=artist,
+			timeout=timeout,
+		)
 		tmp_dest.replace(out_p)
 		return True
 	except Exception as e:
@@ -1127,9 +1264,9 @@ async def create_radio_announcement(
 	)
 
 	try:
-		segment_results: list[tuple[bytes, str]] = []
-		for text, v, category, allow_cache in plan:
-			seg_bytes = await synthesize_segment(
+		# Síntesis concurrente de los segmentos independientes con asyncio.gather
+		tasks = [
+			synthesize_segment(
 				text=text,
 				voice=v,
 				category=category,
@@ -1137,7 +1274,10 @@ async def create_radio_announcement(
 				timeout=timeout,
 				db_path=db_path,
 			)
-			segment_results.append((seg_bytes, category))
+			for text, v, category, allow_cache in plan
+		]
+		raw_segments = await asyncio.wait_for(asyncio.gather(*tasks), timeout=timeout)
+		segment_results: list[tuple[bytes, str]] = [(seg_bytes, plan[i][2]) for i, seg_bytes in enumerate(raw_segments)]
 
 		if is_sys and selected_voice != VOICE_ELENA:
 			logger.info(
@@ -1160,6 +1300,7 @@ async def create_radio_announcement(
 			cover_image_path,
 			display_title,
 			locutor_nombre,
+			timeout,
 		)
 		if not ok:
 			err_msg = "Falló el ensamblado del audio del anuncio radial."

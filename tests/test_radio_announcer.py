@@ -1,4 +1,5 @@
 import asyncio
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -645,3 +646,148 @@ def test_embed_cover_art_in_mp3(tmp_path):
 	non_mp3 = tmp_path / "not_an_mp3.txt"
 	non_mp3.write_text("just text")
 	assert radio_announcer.embed_cover_art_in_mp3(non_mp3) is False
+
+
+def test_modular_time_hour_zero_with_minutes():
+	dt = datetime(2026, 9, 27, 0, 15, tzinfo=timezone.utc)
+	hora_seg, minuto_seg, full_time_str = radio_announcer.get_modular_time_segments(dt)
+	assert hora_seg == "Las doce de la noche,"
+	assert minuto_seg == "15 minutos."
+	assert full_time_str == "Las doce de la noche, 15 minutos."
+
+
+@pytest.mark.asyncio
+async def test_stream_error_falls_back_to_save(tmp_path):
+	db_p = tmp_path / "tts.db"
+
+	class StreamFailingCommunicator:
+		def __init__(self, text, voice):
+			self.text = text
+			self.voice = voice
+
+		async def stream(self):
+			raise ConnectionResetError("Conexión reseteada por edge-tts")
+			yield None
+
+		async def save(self, dest):
+			Path(dest).write_bytes(b"VALID_SAVED_AUDIO")
+
+	with (
+		patch("scripts.radio_announcer.HAS_EDGE_TTS", True),
+		patch("scripts.radio_announcer.edge_tts.Communicate", side_effect=StreamFailingCommunicator),
+	):
+		blob = await radio_announcer.synthesize_segment(
+			"Texto de prueba",
+			radio_announcer.VOICE_TOMAS,
+			"intro",
+			allow_cache=False,
+			db_path=db_p,
+		)
+		assert blob == b"VALID_SAVED_AUDIO"
+
+
+@pytest.mark.asyncio
+async def test_production_does_not_leak_dummy_audio(tmp_path):
+	db_p = tmp_path / "tts.db"
+
+	class EmptyFailingCommunicator:
+		def __init__(self, text, voice):
+			self.text = text
+			self.voice = voice
+
+		async def stream(self):
+			return
+			yield None
+
+		async def save(self, dest):
+			# Simula falla sin excepción pero sin escribir nada en disco
+			pass
+
+	with (
+		patch("scripts.radio_announcer.HAS_EDGE_TTS", True),
+		patch("scripts.radio_announcer.edge_tts.Communicate", side_effect=EmptyFailingCommunicator),
+		patch("scripts.radio_announcer.ALLOW_TEST_DUMMY_AUDIO", False),
+	):
+		with pytest.raises(RuntimeError) as exc_info:
+			await radio_announcer.synthesize_segment(
+				"Texto sin audio",
+				radio_announcer.VOICE_TOMAS,
+				"intro",
+				allow_cache=True,
+				db_path=db_p,
+			)
+		assert "edge-tts no produjo bytes de audio" in str(exc_info.value)
+		# Verificar que no se guardó nada en la caché
+		assert (
+			radio_announcer.get_cached_audio("intro", radio_announcer.VOICE_TOMAS, "Texto sin audio", db_path=db_p)
+			is None
+		)
+
+
+@pytest.mark.asyncio
+async def test_synthesize_segment_retry_success(tmp_path):
+	db_p = tmp_path / "tts.db"
+	call_count = 0
+
+	class FlakyCommunicator:
+		def __init__(self, text, voice):
+			self.text = text
+			self.voice = voice
+
+		async def stream(self):
+			nonlocal call_count
+			call_count += 1
+			if call_count == 1:
+				raise OSError("Falla transitoria de red")
+			yield {"type": "audio", "data": b"RETRY_SUCCESS_AUDIO"}
+
+	with (
+		patch("scripts.radio_announcer.HAS_EDGE_TTS", True),
+		patch("scripts.radio_announcer.edge_tts.Communicate", side_effect=FlakyCommunicator),
+	):
+		blob = await radio_announcer.synthesize_segment(
+			"Texto reintentado",
+			radio_announcer.VOICE_TOMAS,
+			"intro",
+			allow_cache=False,
+			db_path=db_p,
+		)
+		assert blob == b"RETRY_SUCCESS_AUDIO"
+		assert call_count == 2
+
+
+def test_get_carpincho_data_dir_fallback():
+	import sys
+
+	# Simular que server no existe
+	with patch.dict(sys.modules, {"server": None}):
+		data_dir = radio_announcer.get_carpincho_data_dir()
+		assert data_dir.name == "DB"
+		assert data_dir.is_dir()
+
+
+def test_assemble_announcement_audio_concat_demuxer_fallback(tmp_path):
+	out_p = tmp_path / "out_demux.mp3"
+	segments = [
+		(b"AUDIO_1_", "intro"),
+		(b"AUDIO_2", "hora"),
+	]
+
+	orig_run = subprocess.run
+
+	def fake_run(cmd, *args, **kwargs):
+		if "-filter_complex" in cmd:
+			return MagicMock(returncode=1, stderr=b"Filter complex error")
+		elif "-f" in cmd and "concat" in cmd:
+			dest = Path(cmd[-1])
+			dest.write_bytes(b"DEMUX_CONCAT_RESULT")
+			return MagicMock(returncode=0, stderr=b"")
+		return orig_run(cmd, *args, **kwargs)
+
+	with (
+		patch("shutil.which", return_value="/usr/bin/ffmpeg"),
+		patch("subprocess.run", side_effect=fake_run),
+	):
+		ok = radio_announcer.assemble_announcement_audio(segments, out_p)
+		assert ok is True
+		assert out_p.read_bytes() == b"DEMUX_CONCAT_RESULT"

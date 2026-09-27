@@ -106,7 +106,12 @@ def collect_phrases(all_minutes: bool = False) -> list[tuple[str, str]]:
 
 	# 6. Segmentos modulares de horas (0 a 23)
 	for h in range(24):
-		hora_str = "1 hora," if h == 1 else f"{h} horas,"
+		if h == 0:
+			hora_str = "Las doce de la noche,"
+		elif h == 1:
+			hora_str = "1 hora,"
+		else:
+			hora_str = f"{h} horas,"
 		items.append(("hora", hora_str))
 
 	# 7. Segmentos modulares de minutos (1 a 59)
