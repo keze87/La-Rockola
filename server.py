@@ -432,7 +432,7 @@ import tempfile
 import time
 import warnings
 import webbrowser
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI, Query, Request, WebSocket, WebSocketDisconnect
@@ -495,12 +495,6 @@ def get_carpincho_data_dir() -> Path:
 
 DATA_DIR = get_carpincho_data_dir()
 DB_PATH = DATA_DIR / "rockola.db"
-
-# Migración automática desde ~/.carpincho.db
-_LEGACY_DB = Path.home() / ".carpincho.db"
-if _LEGACY_DB.exists() and not DB_PATH.exists():
-	with suppress(OSError):
-		shutil.copy2(_LEGACY_DB, DB_PATH)
 
 
 def backup_db():
@@ -691,24 +685,7 @@ def get_config_path(custom_path: str | None = None) -> Path:
 	"""Determina la ruta del archivo de configuración rockola_config.json dentro de la carpeta de la base de datos (DATA_DIR)."""
 	if custom_path:
 		return Path(custom_path).expanduser().resolve()
-
-	target_path = DATA_DIR / "rockola_config.json"
-
-	# Migración automática si existía un config previo en la raíz o al lado del ejecutable
-	if not target_path.exists():
-		legacy_candidates = [
-			Path(__file__).resolve().parent / "rockola_config.json",
-		]
-		if getattr(sys, "frozen", False):
-			legacy_candidates.append(Path(sys.executable).parent / "rockola_config.json")
-
-		for leg in legacy_candidates:
-			if leg.is_file() and leg != target_path:
-				with suppress(OSError):
-					shutil.copy2(leg, target_path)
-				break
-
-	return target_path
+	return DATA_DIR / "rockola_config.json"
 
 
 def load_config(config_path: Path | None = None) -> dict:
@@ -1693,6 +1670,7 @@ class Track:
 			"search_string": self.search_string,
 			"title": self.title,
 			"artist": self.artist,
+			"track_hash": self.track_hash,
 			"bpm": self.bpm,
 			"energy": self.energy,
 			"spectral_centroid": self.spectral_centroid,
@@ -2378,18 +2356,12 @@ class APIState:
 		self.favorites = self._load_favs_from_db()
 
 		# Radio Mode
-		self.radio_mode_enabled = False
+		self.radio_mode_enabled = True
 		self.radio_track_counter = 0
 		self.radio_tracks_until_next = random.randint(1, 2)
 		self.is_playing_radio_announcement = False
 		self.is_synthesizing_radio = False
 		self.radio_announcement_path = str(Path(tempfile.gettempdir()) / "radio_announcement.mp3")
-		old_radio_file = DATA_DIR / "radio_announcement.mp3"
-		if old_radio_file.is_file():
-			try:
-				old_radio_file.unlink()
-			except Exception:
-				pass
 
 		# Server network & browser state
 		self.open_browser = True
@@ -2543,10 +2515,6 @@ class APIState:
 						"INSERT INTO play_history (track_id, played_at) VALUES (?, ?)",
 						(track_id, now),
 					)
-
-					# PODA AUTOMÁTICA: Borramos reproducciones de más de 60 días en 1 milisegundo
-					# two_months_ago = now - (30 * 24 * 3600 * 2)
-					# conn.execute("DELETE FROM play_history WHERE played_at < ?", (two_months_ago,))
 					conn.commit()
 
 				logger.debug(f"Tema completado, sumando +1 al top: {str_path}")
@@ -2728,7 +2696,6 @@ class APIState:
 				track_obj = Track(f)
 				track_dict = track_obj.to_dict()
 				track_hash = track_obj.track_hash
-				track_dict["track_hash"] = track_hash
 
 				# Lo anotamos para mandarlo a la DB al final
 				tracks_to_insert.append(
@@ -3089,6 +3056,26 @@ class APIState:
 				return random.choice(normals)
 		return random.choice(unplayed)
 
+	async def set_pause(self, paused: bool = True):
+		self.mpv_paused = paused
+		await self.mpv._send(json.dumps({"command": ["set_property", "pause", paused]}))
+
+	async def set_volume(self, volume: float):
+		self.volume = max(0, min(110, int(volume)))
+		await self.mpv._send(json.dumps({"command": ["set_property", "volume", self.volume]}))
+
+	async def stop_playback(self, reset_ui_state: bool = False):
+		self.dj_next_track = None
+		self.current_track = None
+		if reset_ui_state:
+			self.mpv_paused = False
+			self.dj_carpincho_enabled = False
+			self.is_playing_radio_announcement = False
+			self.is_synthesizing_radio = False
+			self.time_pos = 0
+		await self.mpv._send('{"command": ["stop"]}')
+		await self.mpv._send('{"command": ["set_property", "force-window", "no"]}')
+
 	async def play_next(self, skipped_by_user=False):
 		# Si hay un countdown del DJ corriendo en otra task que no sea esta, lo matamos
 		if (
@@ -3176,8 +3163,7 @@ class APIState:
 					}
 					await self.play_track(self.radio_announcement_path)
 					if should_pause:
-						self.mpv_paused = True
-						await self.mpv._send(json.dumps({"command": ["set_property", "pause", True]}))
+						await self.set_pause(True)
 					await broadcast_state()
 					return
 				else:
@@ -3190,8 +3176,7 @@ class APIState:
 			self.dj_next_track = None  # Limpiamos (si la fila tenía temas, el DJ no pre-eligió)
 			await self.play_track(next_path)
 			if should_pause:
-				self.mpv_paused = True
-				await self.mpv._send(json.dumps({"command": ["set_property", "pause", True]}))
+				await self.set_pause(True)
 		elif self.dj_carpincho_enabled and self.tracks_cache:
 			# Usamos la pre-elección del DJ si existe; sino elegimos ahora
 			if self.dj_next_track:
@@ -3230,24 +3215,17 @@ class APIState:
 
 				await self.play_track(chosen["path"])
 				if should_pause:
-					self.mpv_paused = True
-					await self.mpv._send(json.dumps({"command": ["set_property", "pause", True]}))
+					await self.set_pause(True)
 				# Pre-elegimos el siguiente para el front
 				self._pick_dj_next()
 				return
 			else:
 				logger.info("DJ Carpincho se quedó sin temas nuevos esta sesión.")
 				self.dj_carpincho_enabled = False
-				self.dj_next_track = None
-				self.current_track = None
-				await self.mpv._send('{"command": ["stop"]}')
-				await self.mpv._send('{"command": ["set_property", "force-window", "no"]}')
+				await self.stop_playback()
 		else:
 			# Sin fila ni DJ: frena
-			self.dj_next_track = None
-			self.current_track = None
-			await self.mpv._send('{"command": ["stop"]}')
-			await self.mpv._send('{"command": ["set_property", "force-window", "no"]}')
+			await self.stop_playback()
 
 		self._pick_dj_next()  # Actualiza la preview después de tocar la fila
 
@@ -3828,41 +3806,25 @@ async def handle_command(req: CommandRequest):
 			await state.play_next(skipped_by_user=True)
 		else:
 			# Comportamiento normal: pausa o despausa el tema actual
-			state.mpv_paused = not state.mpv_paused
-			cmd_payload = json.dumps({"command": ["set_property", "pause", state.mpv_paused]})
-			await state.mpv._send(cmd_payload)
+			await state.set_pause(not state.mpv_paused)
 	elif cmd == "skip":
 		await state.play_next(skipped_by_user=True)
 	elif cmd == "prev":
 		await state.play_prev()
 	elif cmd == "stop":
-		if state.current_track:
-			if state.current_track != state.radio_announcement_path:
-				state.history.append(state.current_track)
-			state.current_track = None
-		state.mpv_paused = False
-		state.dj_carpincho_enabled = False
-		state.is_playing_radio_announcement = False
-		state.is_synthesizing_radio = False
-		state.time_pos = 0
-		await state.mpv._send('{"command": ["stop"]}')
-		await state.mpv._send('{"command": ["set_property", "force-window", "no"]}')
+		if state.current_track and state.current_track != state.radio_announcement_path:
+			state.history.append(state.current_track)
+		await state.stop_playback(reset_ui_state=True)
 	elif cmd == "clear_queue":
 		state.queue.clear()
 		state.history.clear()
 	elif cmd == "vol_up":
-		state.volume = min(110, state.volume + 5)
-		cmd_payload = json.dumps({"command": ["set_property", "volume", state.volume]})
-		await state.mpv._send(cmd_payload)
+		await state.set_volume(state.volume + 5)
 	elif cmd == "vol_down":
-		state.volume = max(0, state.volume - 5)
-		cmd_payload = json.dumps({"command": ["set_property", "volume", state.volume]})
-		await state.mpv._send(cmd_payload)
+		await state.set_volume(state.volume - 5)
 	elif cmd == "set_volume":
 		if req.vollevel is not None:
-			state.volume = max(0, min(110, req.vollevel))
-			cmd_payload = json.dumps({"command": ["set_property", "volume", state.volume]})
-			await state.mpv._send(cmd_payload)
+			await state.set_volume(req.vollevel)
 	elif cmd == "set_mute":
 		if req.state is not None:
 			state.server_muted = req.state

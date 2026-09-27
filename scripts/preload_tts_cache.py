@@ -69,7 +69,7 @@ logging.basicConfig(
 logger = logging.getLogger("rockola.preload")
 
 
-def collect_phrases(all_minutes: bool = False) -> list[tuple[str, str]]:
+def collect_phrases() -> list[tuple[str, str]]:
 	"""
 	Recolecta todas las frases a precargar estructuradas en tuplas (categoría, texto).
 	Incluye:
@@ -184,7 +184,6 @@ async def process_item(
 
 async def run_preload(
 	voices: list[str],
-	all_minutes: bool = False,
 	concurrency: int = 2,
 	delay: float = 0.25,
 	max_retries: int = 3,
@@ -198,7 +197,7 @@ async def run_preload(
 	target_db = init_tts_cache_db(db_path)
 	logger.info(f"🧉 Iniciando precarga de caché TTS en: {target_db}")
 
-	phrase_items = collect_phrases(all_minutes=all_minutes)
+	phrase_items = collect_phrases()
 	total_combinations = len(phrase_items) * len(voices)
 	logger.info(
 		f"📋 Total de frases: {len(phrase_items)} | Voces: {len(voices)} ({', '.join(VOICE_NAMES.get(v, v) for v in voices)})"
@@ -250,11 +249,6 @@ def main():
 		type=str,
 		default="all",
 		help="Voces a precargar separadas por coma ('tomas', 'elena', 'maria', 'valentina' o 'all'). Default: all",
-	)
-	parser.add_argument(
-		"--all-minutes",
-		action="store_true",
-		help="Mantenido por retrocompatibilidad: ahora el sistema modular cubre el 100%% de los horarios en 107 frases.",
 	)
 	parser.add_argument(
 		"--concurrency",
@@ -312,7 +306,6 @@ def main():
 	asyncio.run(
 		run_preload(
 			voices=selected_voices,
-			all_minutes=args.all_minutes,
 			concurrency=args.concurrency,
 			delay=args.delay,
 			max_retries=args.retries,

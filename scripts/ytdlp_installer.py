@@ -222,18 +222,13 @@ def ensure_ytdlp(log_fn=default_logger) -> str | None:
 
 		existing = server.find_binary("yt-dlp")
 	except Exception:
-		existing = shutil.which("yt-dlp")
 		existing = shutil.which("yt-dlp") or shutil.which("yt-dlp.exe")
 
 	if existing:
 		return existing
 
-	installed = install_ytdlp(log_fn=log_fn)
 	installed = install_ytdlp(force=False, log_fn=log_fn)
 	return str(installed) if installed else None
-
-
-_get_clean_env = get_clean_env
 
 
 def update_ytdlp(bin_path: str | None = None, log_fn=default_logger) -> bool:
@@ -266,7 +261,7 @@ def update_ytdlp(bin_path: str | None = None, log_fn=default_logger) -> bool:
 			text=True,
 			timeout=60,
 			check=False,
-			env=_get_clean_env(),
+			env=get_clean_env(),
 		)
 		stdout = res.stdout.strip()
 		if stdout:

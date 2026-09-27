@@ -94,31 +94,15 @@ def test_get_radio_fortune_is_always_spanish():
 		assert radio_announcer.is_spanish_text(fortune) is True
 
 
-def test_format_radio_time():
-	# 01:00 - Hora especial
-	dt_one = datetime(2026, 9, 26, 1, 0, tzinfo=timezone.utc)
-	t_str = radio_announcer.format_radio_time(dt_one)
-	assert "Las una en punto, es hora de mimir." in t_str
+def test_select_fortune():
+	with patch("scripts.radio_announcer.get_system_fortune", return_value="En muerte y en boda, verás quien te honra."):
+		f, is_sys = radio_announcer.select_fortune(force_system_fortune=True)
+		assert f == "En muerte y en boda, verás quien te honra."
+		assert is_sys is True
 
-	# 12:00 - Hora especial mediodía
-	dt_noon = datetime(2026, 9, 26, 12, 0, tzinfo=timezone.utc)
-	t_str = radio_announcer.format_radio_time(dt_noon)
-	assert "Las doce del mediodía en punto" in t_str
-
-	# 15:23 - Modular minutos plural
-	dt_exact = datetime(2026, 9, 26, 15, 23, tzinfo=timezone.utc)
-	t_str = radio_announcer.format_radio_time(dt_exact)
-	assert "15 horas, 23 minutos" in t_str
-
-	# 09:01 - Modular minuto singular
-	dt_one_min = datetime(2026, 9, 26, 9, 1, tzinfo=timezone.utc)
-	t_str = radio_announcer.format_radio_time(dt_one_min)
-	assert "9 horas, un minuto" in t_str
-
-	# 01:15 - Modular hora singular
-	dt_one_fifteen = datetime(2026, 9, 26, 1, 15, tzinfo=timezone.utc)
-	t_str = radio_announcer.format_radio_time(dt_one_fifteen)
-	assert "1 hora, 15 minutos" in t_str
+	f, is_sys = radio_announcer.select_fortune(force_system_fortune=False)
+	assert f in radio_announcer.CARPINCHO_FORTUNES
+	assert is_sys is False
 
 
 def test_get_modular_time_segments():
@@ -161,19 +145,6 @@ def test_get_modular_time_segments():
 	for phrase in radio_announcer.SPECIAL_HOURS.values():
 		assert isinstance(phrase, str)
 		assert radio_announcer.is_spanish_text(phrase) is True
-
-
-def test_generate_radio_script():
-	script, voice, fortune = radio_announcer.generate_radio_script(voice=radio_announcer.VOICE_TOMAS)
-	assert voice == radio_announcer.VOICE_TOMAS
-	assert fortune in script
-	assert "La Rockola" in script
-	assert radio_announcer.is_spanish_text(script) is True
-
-	script_elena, voice_elena, _ = radio_announcer.generate_radio_script(voice=radio_announcer.VOICE_ELENA)
-	assert voice_elena == radio_announcer.VOICE_ELENA
-	assert len(script_elena) > 10
-	assert radio_announcer.is_spanish_text(script_elena) is True
 
 
 @pytest.mark.asyncio

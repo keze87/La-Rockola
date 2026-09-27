@@ -3,8 +3,10 @@ binary_utils.py — Utilidades compartidas para resolución de plataforma, arqui
 y sanitización de entorno de ejecución en La Rockola del Carpincho.
 """
 
+import glob
 import os
 import platform
+import subprocess
 import sys
 
 
@@ -33,10 +35,6 @@ def resolve_platform_and_arch(platform_name: str | None = None, arch: str | None
 			arch = mach
 
 	return platform_name, arch
-
-
-import glob
-import subprocess
 
 
 def ensure_display_env(env: dict) -> None:

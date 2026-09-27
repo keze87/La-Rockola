@@ -35,9 +35,6 @@ except (ImportError, ValueError):
 	from binary_utils import get_clean_env, resolve_platform_and_arch
 
 
-_get_clean_env = get_clean_env
-
-
 def _parse_version(v_str: str | None) -> tuple[int, ...]:
 	"""Convierte una cadena de versión como 'v0.41.0' o '0.38' en una tupla de enteros (0, 41, 0)."""
 	if not v_str:
@@ -72,7 +69,7 @@ def get_installed_mpv_version(bin_path: str | Path) -> str | None:
 			text=True,
 			timeout=5,
 			check=False,
-			env=_get_clean_env(),
+			env=get_clean_env(),
 		)
 		output = res.stdout or res.stderr or ""
 		match = re.search(r"mpv\s+(v?[\d\.]+)", output, re.IGNORECASE)

@@ -621,17 +621,24 @@ def get_system_fortune(timeout: float = 2.0) -> str | None:
 	return None
 
 
-def get_radio_fortune() -> str:
+def select_fortune(force_system_fortune: bool | None = None) -> tuple[str, bool]:
 	"""
-	Devuelve una fortuna garantizada en español, combinando frases criollas del carpincho
-	y el comando fortune del sistema si tiene bases en español disponibles.
+	Selecciona una fortuna garantizada en español y retorna (texto_fortuna, es_del_sistema).
+	Por defecto intenta con probabilidad 1/6 consultar una fortuna del sistema si está disponible en español,
+	o recurre al banco curado de frases criollas del carpincho.
 	"""
-	if random.random() < 0.5:
-		sys_fortune = get_system_fortune()
-		if sys_fortune and is_spanish_text(sys_fortune):
-			return sys_fortune
+	if force_system_fortune is not False and (force_system_fortune is True or random.random() < 1 / 6):
+		sys_fort = get_system_fortune()
+		if sys_fort and is_spanish_text(sys_fort):
+			return sys_fort, True
 
-	return random.choice(CARPINCHO_FORTUNES)
+	return random.choice(CARPINCHO_FORTUNES), False
+
+
+def get_radio_fortune() -> str:
+	"""Devuelve una frase o fortuna garantizada en español."""
+	fortuna, _ = select_fortune()
+	return fortuna
 
 
 def get_modular_time_segments(dt: datetime | None = None) -> tuple[str, str | None, str]:
@@ -666,15 +673,6 @@ def get_modular_time_segments(dt: datetime | None = None) -> tuple[str, str | No
 	return hora_seg, minuto_seg, full_time_str
 
 
-def format_radio_time(dt: datetime | None = None) -> str:
-	"""
-	Formatea la hora en estilo locutor de radio argentino rioplatense.
-	Compatibilidad con la API anterior.
-	"""
-	_, _, full_time_str = get_modular_time_segments(dt)
-	return full_time_str
-
-
 def get_fortune_voice(is_system_fortune: bool, host_voice: str) -> str:
 	"""
 	Determina la voz para sintetizar la fortuna radial.
@@ -702,51 +700,12 @@ def generate_modular_radio_script(
 
 	intro = random.choice(RADIO_INTROS)
 	hora_seg, minuto_seg, _ = get_modular_time_segments(dt)
-
 	lead_in = random.choice(RADIO_LEAD_INS)
-
-	# Selección de fortuna: 50% sistema (si está disponible en español) o frases del carpincho
-	is_system_fortune = False
-	fortuna = None
-
-	if force_system_fortune is True:
-		sys_fort = get_system_fortune()
-		if sys_fort and is_spanish_text(sys_fort):
-			fortuna = sys_fort
-			is_system_fortune = True
-		else:
-			fortuna = random.choice(CARPINCHO_FORTUNES)
-			is_system_fortune = False
-	elif force_system_fortune is False:
-		fortuna = random.choice(CARPINCHO_FORTUNES)
-		is_system_fortune = False
-	else:
-		if random.random() < 0.5:
-			sys_fort = get_system_fortune()
-			if sys_fort and is_spanish_text(sys_fort):
-				fortuna = sys_fort
-				is_system_fortune = True
-
-		if not fortuna:
-			fortuna = random.choice(CARPINCHO_FORTUNES)
-			is_system_fortune = False
-
+	fortuna, is_system_fortune = select_fortune(force_system_fortune)
 	outro = random.choice(RADIO_OUTROS)
 	hora_full = f"{hora_seg} {minuto_seg}" if minuto_seg else hora_seg
 	full_script = f"{intro} {hora_full} {lead_in} «{fortuna}». {outro}"
 	return intro, hora_seg, minuto_seg, lead_in, fortuna, is_system_fortune, outro, voice, full_script
-
-
-def generate_radio_script(
-	dt: datetime | None = None,
-	voice: str | None = None,
-) -> tuple[str, str, str]:
-	"""
-	Compatibilidad con la API anterior.
-	Retorna (script_text, selected_voice, fortune_text).
-	"""
-	_, _, _, _, fortuna, _, _, voice, full_script = generate_modular_radio_script(dt, voice)
-	return full_script, voice, fortuna
 
 
 _DUMMY_MP3_DATA: bytes = (

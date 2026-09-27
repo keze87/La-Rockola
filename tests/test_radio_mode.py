@@ -236,17 +236,6 @@ def test_radio_announcement_path_is_in_temp_dir():
 	assert Path(new_state.radio_announcement_path).name == "radio_announcement.mp3"
 
 
-def test_radio_announcement_cleans_legacy_file(tmp_path):
-	from server import APIState
-
-	with patch("server.DATA_DIR", tmp_path):
-		legacy = tmp_path / "radio_announcement.mp3"
-		legacy.write_text("old")
-		assert legacy.exists()
-		_ = APIState()
-		assert not legacy.exists()
-
-
 def test_get_cover_art_uri_for_radio():
 	from server import get_cover_art_uri, state
 
