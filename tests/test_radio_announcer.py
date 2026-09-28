@@ -1088,3 +1088,40 @@ async def test_create_radio_announcement_weather_failure_does_not_break_and_does
 		# Al haber fallado, no debe figurar la hora como ya anunciada
 		assert radio_announcer.get_radio_state("last_weather_hour", db_path=db_p) is None
 		assert mock_fetch.call_count == 1
+
+
+def test_tts_default_constants():
+	assert radio_announcer.DEFAULT_TTS_TIMEOUT == 12.0
+	assert radio_announcer.DEFAULT_TTS_RETRIES == 3
+
+
+@pytest.mark.asyncio
+async def test_synthesize_segment_retry_multiple_attempts_success(tmp_path):
+	db_p = tmp_path / "tts.db"
+	call_count = 0
+
+	class MultiRetryCommunicator:
+		def __init__(self, text, voice):
+			self.text = text
+			self.voice = voice
+
+		async def stream(self):
+			nonlocal call_count
+			call_count += 1
+			if call_count < 3:
+				raise OSError("Falla transitoria de red")
+			yield {"type": "audio", "data": b"SUCCESS_ON_THIRD_TRY"}
+
+	with (
+		patch("scripts.radio_announcer.HAS_EDGE_TTS", True),
+		patch("scripts.radio_announcer.edge_tts.Communicate", side_effect=MultiRetryCommunicator),
+	):
+		blob = await radio_announcer.synthesize_segment(
+			"Texto reintentado múltiple",
+			radio_announcer.VOICE_TOMAS,
+			"intro",
+			allow_cache=False,
+			db_path=db_p,
+		)
+		assert blob == b"SUCCESS_ON_THIRD_TRY"
+		assert call_count == 3

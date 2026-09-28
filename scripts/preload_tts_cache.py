@@ -27,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 try:
 	from scripts.radio_announcer import (
 		CARPINCHO_FORTUNES,
+		DEFAULT_TTS_TIMEOUT,
 		HAS_EDGE_TTS,
 		RADIO_INTROS,
 		RADIO_LEAD_INS,
@@ -45,6 +46,7 @@ try:
 except ImportError:
 	from radio_announcer import (
 		CARPINCHO_FORTUNES,
+		DEFAULT_TTS_TIMEOUT,
 		HAS_EDGE_TTS,
 		RADIO_INTROS,
 		RADIO_LEAD_INS,
@@ -156,7 +158,7 @@ async def process_item(
 					voice=voice,
 					category=category,
 					allow_cache=True,
-					timeout=8.0,
+					timeout=DEFAULT_TTS_TIMEOUT,
 					db_path=db_path,
 				)
 				stats["synthesized"] += 1

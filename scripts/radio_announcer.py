@@ -48,6 +48,9 @@ VOICE_NAMES: dict[str, str] = {
 	VOICE_VALENTINA: "Valentina",
 }
 
+DEFAULT_TTS_TIMEOUT: float = 12.0
+DEFAULT_TTS_RETRIES: int = 3
+
 # Prosodia fija por locutor (personajes con impronta propia para sonar naturales y no robóticos)
 VOICE_PROSODY: dict[str, dict[str, str]] = {
 	VOICE_TOMAS: {
@@ -202,8 +205,6 @@ RADIO_OUTROS: list[str] = [
 	"Tranqui en el agua, mate en mano... ¡a disfrutar lo que viene!",
 	"¡Al pelo el ritmo; seguimos con todo en La Rockola!",
 	"Posta, qué temazo se viene ahora; no te muevas de ahí.",
-	"¡Saludos a Maru, que nos escucha desde casa! ¡Seguimos con más música!",
-	"Rooo no te olvides de invitar a Gi. ¡Cambiame la música!",
 ]
 
 # Horas especiales del Carpincho Locutor (cuando el minuto es 0 en punto)
@@ -854,7 +855,8 @@ async def synthesize_segment(
 	voice: str,
 	category: str,
 	allow_cache: bool = True,
-	timeout: float = 5.0,
+	timeout: float = DEFAULT_TTS_TIMEOUT,
+	max_retries: int = DEFAULT_TTS_RETRIES,
 	db_path: Path | str | None = None,
 ) -> bytes:
 	"""
@@ -908,7 +910,6 @@ async def synthesize_segment(
 			data = bytearray(base64.b64decode(_DUMMY_MP3_DATA))
 		return bytes(data)
 
-	max_retries = 2
 	last_err: Exception | None = None
 	audio_bytes = b""
 
@@ -917,13 +918,17 @@ async def synthesize_segment(
 	pitch = prosody.get("pitch", "+0Hz")
 	volume = prosody.get("volume", "+0%")
 
+	# Si hay reintentos configurados, el timeout de cada intento individual se ajusta
+	# para no quemar todo el tiempo si la conexión se cuelga sin responder.
+	attempt_timeout = min(timeout, max(4.0, timeout * 0.7)) if max_retries > 0 else timeout
+
 	for attempt in range(max_retries + 1):
 		try:
 			try:
 				communicate = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch, volume=volume)
 			except TypeError:
 				communicate = edge_tts.Communicate(text, voice)
-			audio_bytes = await asyncio.wait_for(_stream_or_save(communicate), timeout=timeout)
+			audio_bytes = await asyncio.wait_for(_stream_or_save(communicate), timeout=attempt_timeout)
 			if not audio_bytes:
 				raise RuntimeError(f"edge-tts no produjo bytes de audio para '{text}'")
 			last_err = None
@@ -1482,7 +1487,8 @@ def assemble_announcement_audio(
 async def create_radio_announcement(
 	output_path: Path | str,
 	voice: str | None = None,
-	timeout: float = 5.0,
+	timeout: float = DEFAULT_TTS_TIMEOUT,
+	max_retries: int = DEFAULT_TTS_RETRIES,
 	bg_track_path: Path | str | None = None,
 	bg_offset: float = 0.0,
 	bg_volume: float = 0.1,
@@ -1582,6 +1588,7 @@ async def create_radio_announcement(
 				category=category,
 				allow_cache=allow_cache,
 				timeout=timeout,
+				max_retries=max_retries,
 				db_path=db_path,
 			)
 			for text, v, category, allow_cache in plan
