@@ -1573,12 +1573,17 @@ def assemble_announcement_audio(
 				_bytes_i, cat_i, voice_i = parsed_segments[i]
 				file_i = temp_seg_files[i]
 
-				# Caso 1: crossfade corto (~50ms) entre 'hora' y 'minuto' consecutivos de la misma voz
+				# Caso 1: fusión continua (sin gap de silencio) entre 'hora' y 'minuto' consecutivos de la misma voz
 				if cat_i == "hora" and i + 1 < len(parsed_segments):
 					_bytes_next, cat_next, voice_next = parsed_segments[i + 1]
 					if cat_next == "minuto" and (voice_i == voice_next or not voice_i or not voice_next):
 						file_next = temp_seg_files[i + 1]
 						time_combined = work_dir / f"time_combined_{i}.mp3"
+						filter_fade = (
+							"[0:a]areverse,silenceremove=start_periods=1:start_threshold=-35dB:start_duration=0.02,areverse[h];"
+							"[1:a]silenceremove=start_periods=1:start_threshold=-35dB:start_duration=0.02[m];"
+							"[h][m]acrossfade=d=0.05:c1=tri:c2=tri[a]"
+						)
 						fade_cmd = [
 							ffmpeg_bin,
 							"-y",
@@ -1587,7 +1592,7 @@ def assemble_announcement_audio(
 							"-i",
 							str(file_next),
 							"-filter_complex",
-							"[0:a][1:a]acrossfade=d=0.05:c1=tri:c2=tri[a]",
+							filter_fade,
 							"-map",
 							"[a]",
 							"-c:a",
@@ -1729,11 +1734,15 @@ def assemble_announcement_audio(
 				if is_last:
 					continue
 
+				next_cat = blocks[i + 1][1]
 				next_voice = blocks[i + 1][2]
 				is_speaker_change = bool(block_voice and next_voice and block_voice != next_voice)
 				if is_speaker_change:
 					# Cambio de locutor: gap corto (60-150 ms)
 					gap_sec = 0.10
+				elif block_cat == "hora" and next_cat == "minuto":
+					# Sin gap de silencio entre la hora y los minutos
+					gap_sec = 0.0
 				elif block_cat == "intro":
 					gap_sec = 0.30
 				elif block_cat in ("hora", "hora_minuto", "minuto"):
@@ -1747,9 +1756,10 @@ def assemble_announcement_audio(
 				else:
 					gap_sec = 0.25
 
-				tone = make_room_tone(gap_sec, f"tone_gap_{i}.mp3")
-				if tone:
-					chain_files.append(tone)
+				if gap_sec > 0.0:
+					tone = make_room_tone(gap_sec, f"tone_gap_{i}.mp3")
+					if tone:
+						chain_files.append(tone)
 
 			# Concatena todos los archivos de la cadena
 			concat_inputs: list[str] = []
