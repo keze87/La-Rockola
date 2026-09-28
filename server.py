@@ -63,9 +63,15 @@ enable_system_site_packages()
 
 
 try:
-	from scripts.binary_utils import ensure_display_env, get_clean_env
+	from scripts.binary_utils import check_internet_async, ensure_display_env, get_clean_env
 except ImportError:
-	from binary_utils import ensure_display_env, get_clean_env
+	try:
+		from binary_utils import check_internet_async, ensure_display_env, get_clean_env
+	except ImportError:
+
+		async def check_internet_async(timeout: float = 0.8) -> bool:
+			return True
+
 
 try:
 	from scripts.radio_announcer import HAS_EDGE_TTS, create_radio_announcement, get_carpincho_cover_path
@@ -3113,63 +3119,69 @@ class APIState:
 		):
 			self.radio_track_counter += 1
 			if self.radio_track_counter >= self.radio_tracks_until_next:
-				logger.info(
-					f"🎙️ Carpincho Locutor: turno de locución radial (canción #{self.radio_track_counter}). Sintetizando..."
-				)
-				self.is_synthesizing_radio = True
-				await broadcast_state()
-
-				# Averiguamos qué tema viene para superponerlo como cortina bajo la voz del locutor
-				next_track_path = None
-				if self.queue:
-					next_track_path = self.queue[0]
-				elif self.dj_next_track:
-					next_track_path = self.dj_next_track.get("path")
-				elif self.dj_carpincho_enabled and self.tracks_cache:
-					self._pick_dj_next()
-					if self.dj_next_track:
-						next_track_path = self.dj_next_track.get("path")
-
-				bg_offset = 0.0
-				if next_track_path:
-					total_dur = get_track_duration_seconds(next_track_path, self.tracks_cache)
-					if total_dur > 10.0:
-						bg_offset = total_dur / 2.0  # Desde la mitad de la canción
-					elif total_dur > 0:
-						bg_offset = total_dur * 0.4
-
-				try:
-					ok, display_title, script_or_err = await create_radio_announcement(
-						self.radio_announcement_path,
-						bg_track_path=next_track_path,
-						bg_offset=bg_offset,
-						bg_volume=0.1,
-					)
-				except Exception as e:
-					ok, display_title, script_or_err = False, "", f"{type(e).__name__}: {e}"
-				finally:
-					self.is_synthesizing_radio = False
-
-				if ok:
-					self.radio_track_counter = 0
-					self.radio_tracks_until_next = random.randint(2, 3)
-					self.is_playing_radio_announcement = True
-					self.url_metadata[self.radio_announcement_path] = {
-						"path": self.radio_announcement_path,
-						"display_title": display_title,
-						"display_artist": "Carpincho Locutor 🎙️",
-						"album": "La Rockola del Carpincho",
-						"duration_str": "0:12",
-					}
-					await self.play_track(self.radio_announcement_path)
-					if should_pause:
-						await self.set_pause(True)
-					await broadcast_state()
-					return
-				else:
+				# Preguntamos si hay internet puntualmente antes de activar la síntesis radial
+				if not await check_internet_async(timeout=0.8):
 					logger.warning(
-						f"🎙️ Carpincho Locutor: No se pudo sintetizar la locución radial ({script_or_err}). Pasando al tema siguiente..."
+						"📻 Carpincho Locutor: no hay conexión a internet disponible. Omitiendo locución radial para no demorar la reproducción."
 					)
+				else:
+					logger.info(
+						f"🎙️ Carpincho Locutor: turno de locución radial (canción #{self.radio_track_counter}). Sintetizando..."
+					)
+					self.is_synthesizing_radio = True
+					await broadcast_state()
+
+					# Averiguamos qué tema viene para superponerlo como cortina bajo la voz del locutor
+					next_track_path = None
+					if self.queue:
+						next_track_path = self.queue[0]
+					elif self.dj_next_track:
+						next_track_path = self.dj_next_track.get("path")
+					elif self.dj_carpincho_enabled and self.tracks_cache:
+						self._pick_dj_next()
+						if self.dj_next_track:
+							next_track_path = self.dj_next_track.get("path")
+
+					bg_offset = 0.0
+					if next_track_path:
+						total_dur = get_track_duration_seconds(next_track_path, self.tracks_cache)
+						if total_dur > 10.0:
+							bg_offset = total_dur / 2.0  # Desde la mitad de la canción
+						elif total_dur > 0:
+							bg_offset = total_dur * 0.4
+
+					try:
+						ok, display_title, script_or_err = await create_radio_announcement(
+							self.radio_announcement_path,
+							bg_track_path=next_track_path,
+							bg_offset=bg_offset,
+							bg_volume=0.1,
+						)
+					except Exception as e:
+						ok, display_title, script_or_err = False, "", f"{type(e).__name__}: {e}"
+					finally:
+						self.is_synthesizing_radio = False
+
+					if ok:
+						self.radio_track_counter = 0
+						self.radio_tracks_until_next = random.randint(2, 3)
+						self.is_playing_radio_announcement = True
+						self.url_metadata[self.radio_announcement_path] = {
+							"path": self.radio_announcement_path,
+							"display_title": display_title,
+							"display_artist": "Carpincho Locutor 🎙️",
+							"album": "La Rockola del Carpincho",
+							"duration_str": "0:12",
+						}
+						await self.play_track(self.radio_announcement_path)
+						if should_pause:
+							await self.set_pause(True)
+						await broadcast_state()
+						return
+					else:
+						logger.warning(
+							f"🎙️ Carpincho Locutor: No se pudo sintetizar la locución radial ({script_or_err}). Pasando al tema siguiente..."
+						)
 
 		if self.queue:
 			next_path = self.queue.pop(0)

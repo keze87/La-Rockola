@@ -256,3 +256,30 @@ def test_get_cover_art_uri_for_radio():
 	uri = get_cover_art_uri(state.radio_announcement_path)
 	assert uri.startswith("file://")
 	assert uri.endswith("favicon.png")
+
+
+@pytest.mark.asyncio
+async def test_play_next_skips_radio_locution_when_no_internet():
+	state.radio_mode_enabled = True
+	state.radio_track_counter = 1
+	state.radio_tracks_until_next = 2
+	state.queue = ["/music/song2.mp3"]
+	state.current_track = "/music/song1.mp3"
+
+	mock_create = AsyncMock()
+
+	with (
+		patch("server.HAS_EDGE_TTS", True),
+		patch("server.create_radio_announcement", mock_create),
+		patch("server.check_internet_async", AsyncMock(return_value=False)),
+		patch.object(state, "play_track", AsyncMock()) as mock_play,
+		patch("server.broadcast_state", AsyncMock()),
+	):
+		await state.play_next(skipped_by_user=False)
+
+		# create_radio_announcement no debe llamarse
+		mock_create.assert_not_called()
+		# is_synthesizing_radio debe permanecer en False
+		assert state.is_synthesizing_radio is False
+		# Pasa directamente al siguiente tema de la cola
+		mock_play.assert_awaited_once_with("/music/song2.mp3")

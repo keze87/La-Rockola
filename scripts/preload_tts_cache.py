@@ -41,6 +41,7 @@ try:
 		VOICES,
 		get_cached_audio,
 		init_tts_cache_db,
+		is_internet_available,
 		synthesize_segment,
 	)
 except ImportError:
@@ -60,6 +61,7 @@ except ImportError:
 		VOICES,
 		get_cached_audio,
 		init_tts_cache_db,
+		is_internet_available,
 		synthesize_segment,
 	)
 
@@ -205,6 +207,10 @@ async def run_preload(
 		f"📋 Total de frases: {len(phrase_items)} | Voces: {len(voices)} ({', '.join(VOICE_NAMES.get(v, v) for v in voices)})"
 	)
 	logger.info(f"🎯 Total de clips a evaluar: {total_combinations}")
+
+	if not is_internet_available(timeout=0.8):
+		logger.error("❌ No hay conexión a internet disponible. Abortando precarga de frases.")
+		return
 
 	semaphore = asyncio.Semaphore(max(1, concurrency))
 	stats = {"skipped": 0, "synthesized": 0, "failed": 0}

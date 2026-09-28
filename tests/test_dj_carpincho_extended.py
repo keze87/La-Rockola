@@ -26,6 +26,7 @@ async def test_dj_carpincho_natural_transition_with_countdown(clean_state):
 	t1 = {"path": "/m/1.mp3", "display_title": "Song 1"}
 	t2 = {"path": "/m/2.mp3", "display_title": "Song 2"}
 	state.tracks_cache = [t1, t2]
+	state.radio_mode_enabled = False
 	state.dj_carpincho_enabled = True
 	state.current_track = "/m/1.mp3"
 

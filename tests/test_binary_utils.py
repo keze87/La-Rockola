@@ -2,6 +2,9 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock
+
+import pytest
 
 from scripts import binary_utils
 
@@ -87,3 +90,34 @@ def test_standalone_installer_scripts_execution():
 	assert res_ytdlp.returncode == 0
 	assert "ytdlp_installer.py" in res_ytdlp.stdout
 	assert "ModuleNotFoundError" not in res_ytdlp.stderr
+
+
+def test_is_internet_available_success(monkeypatch):
+	called = False
+
+	def fake_conn(addr, timeout=0.8):
+		nonlocal called
+		called = True
+		return MagicMock()
+
+	monkeypatch.setattr(binary_utils.socket, "create_connection", fake_conn)
+	assert binary_utils.is_internet_available(timeout=0.8) is True
+	assert called is True
+
+
+def test_is_internet_available_failure(monkeypatch):
+	def fake_conn(addr, timeout=0.8):
+		raise OSError("Network unreachable")
+
+	monkeypatch.setattr(binary_utils.socket, "create_connection", fake_conn)
+	assert binary_utils.is_internet_available(timeout=0.8) is False
+
+
+@pytest.mark.asyncio
+async def test_check_internet_async(monkeypatch):
+	def fake_conn(addr, timeout=0.8):
+		return MagicMock()
+
+	monkeypatch.setattr(binary_utils.socket, "create_connection", fake_conn)
+	res = await binary_utils.check_internet_async(timeout=0.8)
+	assert res is True

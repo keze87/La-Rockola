@@ -3,9 +3,11 @@ binary_utils.py — Utilidades compartidas para resolución de plataforma, arqui
 y sanitización de entorno de ejecución en La Rockola del Carpincho.
 """
 
+import asyncio
 import glob
 import os
 import platform
+import socket
 import subprocess
 import sys
 
@@ -169,3 +171,24 @@ def get_clean_env() -> dict:
 	ensure_display_env(env)
 
 	return env
+
+
+def is_internet_available(timeout: float = 0.8) -> bool:
+	"""
+	Comprueba puntualmente si hay conectividad a internet intentando abrir
+	un socket TCP a servidores DNS públicos conocidos (Cloudflare y Google).
+	"""
+	endpoints = [("1.1.1.1", 53), ("8.8.8.8", 53)]
+	for host, port in endpoints:
+		try:
+			with socket.create_connection((host, port), timeout=timeout):
+				return True
+		except (OSError, TimeoutError):
+			continue
+
+	return False
+
+
+async def check_internet_async(timeout: float = 0.8) -> bool:
+	"""Versión asíncrona de is_internet_available que ejecuta el sondeo en un hilo para no bloquear el bucle de eventos."""
+	return await asyncio.to_thread(is_internet_available, timeout)
