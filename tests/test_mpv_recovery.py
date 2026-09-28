@@ -12,6 +12,7 @@ async def test_handle_song_ended_advances_queue(clean_state, clean_manager, monk
 	"""Test handle_song_ended registers play stat and advances queue."""
 	monkeypatch.setattr(server, "manager", clean_manager)
 	state = clean_state
+	state.radio_mode_enabled = False
 	state.current_track = "/m/song1.mp3"
 	state.queue = ["/m/song2.mp3"]
 

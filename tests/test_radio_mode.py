@@ -8,7 +8,12 @@ from server import CommandRequest, app, handle_command, state
 
 @pytest.fixture(autouse=True)
 def reset_radio_state(tmp_path):
-	state.radio_mode_enabled = False
+	orig_radio = state.radio_mode_enabled
+	orig_counter = state.radio_track_counter
+	orig_until = state.radio_tracks_until_next
+	orig_playing = state.is_playing_radio_announcement
+	orig_path = state.radio_announcement_path
+	state.radio_mode_enabled = True
 	state.radio_track_counter = 0
 	state.radio_tracks_until_next = 2
 	state.is_playing_radio_announcement = False
@@ -19,24 +24,33 @@ def reset_radio_state(tmp_path):
 	state.mpv = MagicMock()
 	state.mpv._send = AsyncMock()
 	state.mpv.is_running = True
+	try:
+		yield
+	finally:
+		state.radio_mode_enabled = orig_radio
+		state.radio_track_counter = orig_counter
+		state.radio_tracks_until_next = orig_until
+		state.is_playing_radio_announcement = orig_playing
+		state.radio_announcement_path = orig_path
 
 
 @pytest.mark.asyncio
 async def test_toggle_radio_mode_command():
 	req = CommandRequest(cmd="toggle_radio_mode")
+	# Starts enabled -> toggle turns it off
+	await handle_command(req)
+	assert state.radio_mode_enabled is False
+
+	# Toggle back on
 	await handle_command(req)
 	assert state.radio_mode_enabled is True
 	assert state.radio_track_counter == 0
 	assert 1 <= state.radio_tracks_until_next <= 2
 
-	# Toggle off
-	await handle_command(req)
-	assert state.radio_mode_enabled is False
-
-	# Explicit state
-	req_explicit = CommandRequest(cmd="toggle_radio_mode", state=True)
+	# Explicit state to False
+	req_explicit = CommandRequest(cmd="toggle_radio_mode", state=False)
 	await handle_command(req_explicit)
-	assert state.radio_mode_enabled is True
+	assert state.radio_mode_enabled is False
 
 
 def test_state_to_dict_includes_radio_fields():
@@ -45,7 +59,7 @@ def test_state_to_dict_includes_radio_fields():
 	assert "is_synthesizing_radio" in d
 	assert "is_playing_radio_announcement" in d
 	assert "has_edge_tts" in d
-	assert d["radio_mode_enabled"] is False
+	assert d["radio_mode_enabled"] is True
 
 
 @pytest.mark.asyncio

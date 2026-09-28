@@ -1,4 +1,5 @@
 import asyncio
+import json
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -888,3 +889,202 @@ def test_assemble_announcement_audio_acrossfade_and_pauses(tmp_path):
 		silence_calls = [c for c in invoked_commands if any("anullsrc" in a for a in c)]
 		# Silencio inicial (0.20), tras intro (0.30), tras hora_minuto (0.25), tras lead-in (0.35), tras fortuna (0.25)
 		assert len(silence_calls) >= 4
+
+
+# --- Tests para Reporte del Clima (wttr.in) ---
+
+
+def test_construir_url_json():
+	url = radio_announcer.construir_url_json("San Miguel de Tucumán", "es")
+	assert "wttr.in/San%20Miguel%20de%20Tucum%C3%A1n" in url
+	assert "format=j1" in url
+	assert "lang=es" in url
+
+	url_empty = radio_announcer.construir_url_json("", "en")
+	assert url_empty == "https://wttr.in/?format=j1&lang=en"
+
+
+def test_fetch_weather_json_success():
+	sample_data = {
+		"current_condition": [{"temp_C": "25"}],
+		"weather": [
+			{"mintempC": "18", "maxtempC": "28", "hourly": [{"chanceofrain": "10"}]},
+			{"mintempC": "17", "maxtempC": "27", "hourly": [{"chanceofrain": "20"}]},
+		],
+	}
+	mock_resp = MagicMock()
+	mock_resp.status = 200
+	mock_resp.read.return_value = json.dumps(sample_data).encode("utf-8")
+	mock_resp.__enter__.return_value = mock_resp
+
+	with patch("urllib.request.urlopen", return_value=mock_resp):
+		data = radio_announcer.fetch_weather_json("Buenos Aires")
+		assert data is not None
+		assert data["current_condition"][0]["temp_C"] == "25"
+
+
+def test_fetch_weather_json_failure():
+	with patch("urllib.request.urlopen", side_effect=Exception("Timeout / Connection reset")):
+		data = radio_announcer.fetch_weather_json("LugarInvalido", timeout=0.1)
+		assert data is None
+
+
+def test_describir_lluvias():
+	# Ninguno
+	desc_none = radio_announcer.describir_lluvias(False, False)
+	assert "De lluvias ni hablemos" in desc_none
+
+	# Sólo hoy
+	desc_today = radio_announcer.describir_lluvias(True, False)
+	assert "hoy se esperan lluvias" in desc_today
+	assert "mañana ya zafamos" in desc_today
+
+	# Sólo mañana
+	desc_tomorrow = radio_announcer.describir_lluvias(False, True)
+	assert "Hoy zafamos del agua" in desc_tomorrow
+	assert "mañana se vienen las lluvias" in desc_tomorrow
+
+	# Ambos
+	desc_both = radio_announcer.describir_lluvias(True, True)
+	assert "tanto para hoy como para mañana" in desc_both
+
+
+def test_build_weather_phrase_valid():
+	sample = {
+		"current_condition": [{"temp_C": "22.4"}],
+		"weather": [
+			{
+				"mintempC": "15",
+				"maxtempC": "28",
+				"hourly": [{"chanceofrain": "10"}, {"chanceofrain": "30"}],
+			},
+			{
+				"mintempC": "14",
+				"maxtempC": "26",
+				"hourly": [{"chanceofrain": "60"}, {"chanceofrain": "80"}],
+			},
+		],
+	}
+	phrase = radio_announcer.build_weather_phrase(sample, lead_in="Atenti:")
+	assert phrase is not None
+	assert "Atenti:" in phrase
+	assert "22 grados" in phrase
+	assert "mínima es de 15" in phrase
+	assert "máxima alcanzará los 28" in phrase
+	assert "entre 14 y 26 grados" in phrase
+	assert "mañana se vienen las lluvias" in phrase
+
+
+def test_build_weather_phrase_invalid():
+	assert radio_announcer.build_weather_phrase({}) is None
+	assert radio_announcer.build_weather_phrase({"current_condition": []}) is None
+	assert radio_announcer.build_weather_phrase({"current_condition": [{"temp_C": "abc"}]}) is None
+
+
+@pytest.fixture(autouse=True)
+def reset_radio_memory_state_fixture():
+	radio_announcer.reset_radio_memory_state()
+	yield
+	radio_announcer.reset_radio_memory_state()
+
+
+def test_radio_state_get_and_set(tmp_path):
+	db_p = tmp_path / "tts_cache.db"
+	assert radio_announcer.get_radio_state("last_weather_hour", db_path=db_p) is None
+	assert radio_announcer.get_radio_state("last_weather_hour", default="0", db_path=db_p) == "0"
+
+	radio_announcer.set_radio_state("last_weather_hour", "14", db_path=db_p)
+	assert radio_announcer.get_radio_state("last_weather_hour", db_path=db_p) == "14"
+
+	# Update existing key
+	radio_announcer.set_radio_state("last_weather_hour", "15", db_path=db_p)
+	assert radio_announcer.get_radio_state("last_weather_hour", db_path=db_p) == "15"
+
+	radio_announcer.reset_radio_memory_state()
+	assert radio_announcer.get_radio_state("last_weather_hour") is None
+
+
+@pytest.mark.asyncio
+async def test_create_radio_announcement_weather_once_per_hour(tmp_path):
+	out1 = tmp_path / "announcement1.mp3"
+	out2 = tmp_path / "announcement2.mp3"
+	out3 = tmp_path / "announcement3.mp3"
+	db_p = tmp_path / "tts_cache.db"
+
+	mock_weather = {
+		"current_condition": [{"temp_C": "20"}],
+		"weather": [
+			{"mintempC": "12", "maxtempC": "24", "hourly": [{"chanceofrain": "5"}]},
+			{"mintempC": "13", "maxtempC": "25", "hourly": [{"chanceofrain": "5"}]},
+		],
+	}
+
+	mock_comm = MagicMock()
+	mock_comm.save = AsyncMock(return_value=None)
+
+	dt_hour14_a = datetime(2026, 9, 27, 14, 5, tzinfo=timezone.utc)
+	dt_hour14_b = datetime(2026, 9, 27, 14, 35, tzinfo=timezone.utc)
+	dt_hour15 = datetime(2026, 9, 27, 15, 10, tzinfo=timezone.utc)
+
+	with (
+		patch("scripts.radio_announcer.HAS_EDGE_TTS", True),
+		patch("scripts.radio_announcer.edge_tts.Communicate", return_value=mock_comm),
+		patch("scripts.radio_announcer.fetch_weather_json", return_value=mock_weather) as mock_fetch,
+	):
+		# 1era locución a las 14:05 -> DEBE tener reporte de clima
+		ok1, _title1, text1 = await radio_announcer.create_radio_announcement(
+			out1,
+			db_path=db_p,
+			dt=dt_hour14_a,
+		)
+		assert ok1 is True
+		assert "20 grados" in text1
+		assert radio_announcer.get_radio_state("last_weather_hour", db_path=db_p) == "14"
+		assert mock_fetch.call_count == 1
+
+		# 2da locución en la misma hora (14:35) -> NO debe tener reporte de clima ni reintentar fetch
+		ok2, _title2, text2 = await radio_announcer.create_radio_announcement(
+			out2,
+			db_path=db_p,
+			dt=dt_hour14_b,
+		)
+		assert ok2 is True
+		assert "20 grados" not in text2
+		assert mock_fetch.call_count == 1  # No se volvió a llamar
+
+		# 3ra locución en la siguiente hora (15:10) -> DEBE volver a incluir el clima
+		ok3, _title3, text3 = await radio_announcer.create_radio_announcement(
+			out3,
+			db_path=db_p,
+			dt=dt_hour15,
+		)
+		assert ok3 is True
+		assert "20 grados" in text3
+		assert radio_announcer.get_radio_state("last_weather_hour", db_path=db_p) == "15"
+		assert mock_fetch.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_create_radio_announcement_weather_failure_does_not_break_and_does_not_mark_hour(tmp_path):
+	out = tmp_path / "announcement.mp3"
+	db_p = tmp_path / "tts_cache.db"
+
+	mock_comm = MagicMock()
+	mock_comm.save = AsyncMock(return_value=None)
+	dt_hour = datetime(2026, 9, 27, 16, 20, tzinfo=timezone.utc)
+
+	with (
+		patch("scripts.radio_announcer.HAS_EDGE_TTS", True),
+		patch("scripts.radio_announcer.edge_tts.Communicate", return_value=mock_comm),
+		patch("scripts.radio_announcer.fetch_weather_json", return_value=None) as mock_fetch,
+	):
+		ok, _title, _text = await radio_announcer.create_radio_announcement(
+			out,
+			db_path=db_p,
+			dt=dt_hour,
+		)
+		assert ok is True
+		assert out.exists()
+		# Al haber fallado, no debe figurar la hora como ya anunciada
+		assert radio_announcer.get_radio_state("last_weather_hour", db_path=db_p) is None
+		assert mock_fetch.call_count == 1

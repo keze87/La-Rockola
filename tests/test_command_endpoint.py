@@ -369,6 +369,7 @@ async def test_playback_queue_edge_cases(clean_state):
 			clean_state.current_track = path
 
 		mock_play.side_effect = fake_play
+		clean_state.radio_mode_enabled = False
 		# 1. Cuando no hay archivos
 		clean_state.history = []
 		clean_state.current_track = None

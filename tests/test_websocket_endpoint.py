@@ -116,6 +116,7 @@ def test_websocket_local_player_time_drift_reconciliation(clean_state, clean_man
 
 def test_websocket_local_player_duration_paused_and_song_ended(clean_state, clean_manager, temp_db):
 	"""Test duration, pause updates, and song_ended advancing queue with stats recorded."""
+	clean_state.radio_mode_enabled = False
 	clean_state.current_track = "/music/song1.mp3"
 	clean_state.queue = ["/music/song2.mp3"]
 	clean_state.path_to_id["/music/song1.mp3"] = "track_1_hash"

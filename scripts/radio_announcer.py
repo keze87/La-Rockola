@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import json
 import logging
 import random
 import re
@@ -17,9 +18,12 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.parse
+import urllib.request
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger("rockola.radio")
 
@@ -198,6 +202,8 @@ RADIO_OUTROS: list[str] = [
 	"Tranqui en el agua, mate en mano... ¡a disfrutar lo que viene!",
 	"¡Al pelo el ritmo; seguimos con todo en La Rockola!",
 	"Posta, qué temazo se viene ahora; no te muevas de ahí.",
+	"¡Saludos a Maru, que nos escucha desde casa! ¡Seguimos con más música!",
+	"Rooo no te olvides de invitar a Gi. ¡Cambiame la música!",
 ]
 
 # Horas especiales del Carpincho Locutor (cuando el minuto es 0 en punto)
@@ -227,6 +233,106 @@ SPECIAL_HOURS: dict[int, str] = {
 	22: "Las diez de la noche en punto, brindis con amigos y a disfrutar.",
 	23: "Las once de la noche en punto, la última ronda antes de cerrar los ojales.",
 }
+
+DEFAULT_WEATHER_LOCATION: str = "San Miguel de Tucumán"
+WEATHER_RAIN_THRESHOLD: int = 50
+
+WEATHER_LEAD_INS: list[str] = [
+	"El informe del tiempo carpincho nos canta la posta:",
+	"Mirá por la ventana o pará la oreja, que así viene el clima:",
+	"Atenti con el servicio meteorológico de La Rockola:",
+	"Momento de chequear cómo viene la mano con el cielo:",
+	"Pará un segundo el mate que te paso el parte meteorológico:",
+]
+
+
+def construir_url_json(lugar: str, idioma: str = "es") -> str:
+	lugar_limpio = lugar.strip() if lugar else ""
+	lugar_escapado = urllib.parse.quote(lugar_limpio, safe=",~-")
+	return f"https://wttr.in/{lugar_escapado}?format=j1&lang={idioma}"
+
+
+def fetch_weather_json(
+	lugar: str = DEFAULT_WEATHER_LOCATION,
+	idioma: str = "es",
+	timeout: float = 5.0,
+) -> dict | None:
+	"""
+	Obtiene los datos meteorológicos en formato JSON (format=j1) desde wttr.in de forma sincrónica.
+	Retorna el diccionario parseado o None si ocurre cualquier error (timeout, HTTP, DNS o JSON inválido).
+	"""
+	url = construir_url_json(lugar, idioma)
+	try:
+		req = urllib.request.Request(
+			url,
+			headers={"User-Agent": "LaRockolaDelCarpincho/1.0"},
+		)
+		with urllib.request.urlopen(req, timeout=timeout) as resp:
+			if resp.status != 200:
+				logger.debug(f"Respuesta no exitosa de wttr.in ({resp.status}) para '{lugar}'")
+				return None
+			raw_body = resp.read()
+			return json.loads(raw_body.decode("utf-8", errors="ignore"))
+	except Exception as e:
+		logger.debug(f"No se pudo consultar el clima en wttr.in para '{lugar}': {e}")
+		return None
+
+
+def describir_lluvias(llueve_hoy: bool, llueve_manana: bool) -> str:
+	"""
+	Describe la previsión de precipitaciones para hoy y mañana con impronta carpinchera.
+	Cubre las 4 variantes posibles.
+	"""
+	if not llueve_hoy and not llueve_manana:
+		return "De lluvias ni hablemos: cielo despejado, ideal para unos buenos mates al sol."
+	if llueve_hoy and not llueve_manana:
+		return "Atenti que hoy se esperan lluvias y chaparrones, pero mañana ya zafamos y mejora la cosa."
+	if not llueve_hoy and llueve_manana:
+		return "Hoy zafamos del agua, pero andá aprontando el paraguas porque mañana se vienen las lluvias."
+	return "Se vienen lluvias tanto para hoy como para mañana, ¡clima soñado para andar chapoteando en el agua!"
+
+
+def build_weather_phrase(data: dict, lead_in: str | None = None) -> str | None:
+	"""
+	Extrae y arma la frase del reporte del clima a partir del JSON format=j1 de wttr.in.
+	Incluye únicamente:
+	- Temperatura actual.
+	- Mínima, máxima y probabilidad de lluvia para HOY.
+	- Mínima, máxima y probabilidad de lluvia para MAÑANA.
+	Retorna None si la estructura no contiene las claves esperadas.
+	"""
+	try:
+		current_temp = round(float(data["current_condition"][0]["temp_C"]))
+		today = data["weather"][0]
+		min_today = round(float(today["mintempC"]))
+		max_today = round(float(today["maxtempC"]))
+		tomorrow = data["weather"][1]
+		min_tomorrow = round(float(tomorrow["mintempC"]))
+		max_tomorrow = round(float(tomorrow["maxtempC"]))
+
+		rain_today = max(
+			(int(h.get("chanceofrain", 0)) for h in today.get("hourly", [])),
+			default=0,
+		)
+		rain_tomorrow = max(
+			(int(h.get("chanceofrain", 0)) for h in tomorrow.get("hourly", [])),
+			default=0,
+		)
+
+		llueve_hoy = rain_today >= WEATHER_RAIN_THRESHOLD
+		llueve_manana = rain_tomorrow >= WEATHER_RAIN_THRESHOLD
+		lluvia_desc = describir_lluvias(llueve_hoy, llueve_manana)
+
+		lead = lead_in if lead_in is not None else random.choice(WEATHER_LEAD_INS)
+		return (
+			f"{lead} tenemos {current_temp} grados de temperatura actual. "
+			f"Para hoy la mínima es de {min_today} y la máxima alcanzará los {max_today} grados. "
+			f"Para mañana esperamos entre {min_tomorrow} y {max_tomorrow} grados. "
+			f"{lluvia_desc}"
+		)
+	except (KeyError, IndexError, ValueError, TypeError) as e:
+		logger.debug(f"Estructura de datos de clima incompleta o inválida: {e}")
+		return None
 
 
 def get_carpincho_data_dir() -> Path:
@@ -340,6 +446,25 @@ def save_cached_audio(
 			conn.commit()
 	except Exception as e:
 		logger.debug(f"Error guardando audio en caché TTS: {e}")
+
+
+# Estado volátil en memoria para el locutor de radio (no requiere persistencia en base de datos)
+_RADIO_MEMORY_STATE: dict[str, Any] = {}
+
+
+def get_radio_state(key: str, default: Any = None, db_path: Path | str | None = None) -> Any:
+	"""Recupera un valor de estado en memoria del locutor de radio (db_path opcional conservado por retrocompatibilidad)."""
+	return _RADIO_MEMORY_STATE.get(key, default)
+
+
+def set_radio_state(key: str, value: Any, db_path: Path | str | None = None) -> None:
+	"""Almacena o actualiza un valor de estado en memoria del locutor de radio (db_path opcional conservado por retrocompatibilidad)."""
+	_RADIO_MEMORY_STATE[key] = value
+
+
+def reset_radio_memory_state() -> None:
+	"""Limpia el estado en memoria del locutor de radio (útil para pruebas y reinicio limpio)."""
+	_RADIO_MEMORY_STATE.clear()
 
 
 # Nombres de bases de datos de fortune que contienen frases en español
@@ -1217,12 +1342,17 @@ def assemble_announcement_audio(
 					if sil:
 						chain_files.append(sil)
 				elif block_cat in ("hora", "hora_minuto", "minuto"):
-					# Pausa tras la hora antes del lead-in (~250ms)
+					# Pausa tras la hora antes del clima o lead-in (~250ms)
 					next_cat = blocks[i + 1][1] if i + 1 < len(blocks) else ""
 					if next_cat != "minuto":
 						sil = make_silence(0.25, f"sil_time_{i}.mp3")
 						if sil:
 							chain_files.append(sil)
+				elif block_cat == "clima":
+					# Pausa tras el reporte del clima antes del lead-in (~300ms)
+					sil = make_silence(0.30, f"sil_clima_{i}.mp3")
+					if sil:
+						chain_files.append(sil)
 				elif block_cat == "lead_in":
 					# Pausa dramática/suspenso antes de la frase u oráculo (~350ms)
 					sil = make_silence(0.35, f"sil_leadin_{i}.mp3")
@@ -1360,9 +1490,10 @@ async def create_radio_announcement(
 	dt: datetime | None = None,
 	force_system_fortune: bool | None = None,
 	cover_image_path: Path | str | None = None,
+	weather_location: str | None = None,
 ) -> tuple[bool, str, str]:
 	"""
-	Sintetiza la locución radial de forma modular (intro, hora, minuto [si aplica], lead_in, fortuna, salida),
+	Sintetiza la locución radial de forma modular (intro, hora, minuto [si aplica], clima [1ra vez por hora], lead_in, fortuna, salida),
 	aprovechando la base de datos de caché SQLite para evitar llamadas redundantes a edge-tts.
 	Las fortunas del sistema Unix son leídas exclusivamente por Elena (estilo podcast / co-conductora)
 	y almacenadas en caché bajo su voz.
@@ -1383,10 +1514,42 @@ async def create_radio_announcement(
 		logger.warning(f"📻 El Carpincho: {err_msg}")
 		return False, "", err_msg
 
-	intro, hora_seg, minuto_seg, lead_in, fortuna, is_sys, outro, selected_voice, full_script = (
-		generate_modular_radio_script(dt=dt, voice=voice, force_system_fortune=force_system_fortune)
+	effective_dt = dt if dt is not None else datetime.now(timezone.utc).astimezone()
+
+	intro, hora_seg, minuto_seg, lead_in, fortuna, is_sys, outro, selected_voice, _base_script = (
+		generate_modular_radio_script(dt=effective_dt, voice=voice, force_system_fortune=force_system_fortune)
 	)
 	locutor_nombre = VOICE_NAMES.get(selected_voice, "Carpincho Locutor")
+
+	# Reporte del clima con wttr.in (anunciado únicamente la primera vez dentro de cada hora de programa)
+	weather_text: str | None = None
+	current_hour_str = str(effective_dt.hour)
+	last_weather_hour = get_radio_state("last_weather_hour", db_path=db_path)
+
+	if last_weather_hour != current_hour_str:
+		try:
+			weather_timeout = min(timeout, 5.0)
+			weather_data = await asyncio.to_thread(
+				fetch_weather_json,
+				weather_location or DEFAULT_WEATHER_LOCATION,
+				"es",
+				weather_timeout,
+			)
+			if weather_data:
+				phrase = build_weather_phrase(weather_data)
+				if phrase:
+					weather_text = phrase
+					set_radio_state("last_weather_hour", current_hour_str, db_path=db_path)
+					logger.debug(f"🌤️ Reporte del clima incorporado a la locución: '{weather_text}'")
+		except Exception as e:
+			logger.debug(f"Fallo no crítico obteniendo/procesando reporte del clima: {e}")
+
+	hora_full = f"{hora_seg} {minuto_seg}" if minuto_seg else hora_seg
+	if weather_text:
+		full_script = f"{intro} {hora_full} {weather_text} {lead_in} «{fortuna}». {outro}"
+	else:
+		full_script = f"{intro} {hora_full} {lead_in} «{fortuna}». {outro}"
+
 	display_title = f"Carpincho locutor: {full_script}"
 
 	# Si es una fortuna del sistema Unix, ÚNICAMENTE la lee Elena (formato co-conducción / podcast)
@@ -1400,6 +1563,8 @@ async def create_radio_announcement(
 	]
 	if minuto_seg:
 		plan.append((minuto_seg, selected_voice, "minuto", True))
+	if weather_text:
+		plan.append((weather_text, selected_voice, "clima", False))
 	plan.extend(
 		[
 			(lead_in, selected_voice, "lead_in", True),

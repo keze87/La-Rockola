@@ -51,6 +51,7 @@ async def test_get_full_state_dict_strips_heavy_keys(clean_state):
 async def test_play_track_and_navigation(clean_state):
 	"""Test play_track, play_next, and play_prev track navigation."""
 	state = clean_state
+	state.radio_mode_enabled = False
 	track1 = "/music/track1.mp3"
 	track2 = "/music/track2.mp3"
 	track3 = "/music/track3.mp3"
@@ -132,6 +133,7 @@ async def test_dj_carpincho_selection(clean_state):
 async def test_pause_after_path_handling(clean_state):
 	"""Test that pause_after_path pauses playback once the target track finishes."""
 	state = clean_state
+	state.radio_mode_enabled = False
 	track1 = "/music/track1.mp3"
 	track2 = "/music/track2.mp3"
 
