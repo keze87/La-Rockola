@@ -237,7 +237,10 @@ def test_select_folder_linux_kdialog(tmp_path, monkeypatch):
 	mock_proc.stdout = f"{test_dir}\n"
 	mock_proc.stderr = ""
 
-	with patch("subprocess.run", return_value=mock_proc) as mock_run:
+	with (
+		patch("scripts.binary_utils.ensure_display_env"),
+		patch("subprocess.run", return_value=mock_proc) as mock_run,
+	):
 		res = server._select_folder_linux(title="Test Title", initial_dir=str(tmp_path))
 		assert res == str(test_dir)
 		mock_run.assert_called_once()
@@ -257,7 +260,10 @@ def test_select_folder_linux_yad_fallback(tmp_path, monkeypatch):
 	mock_proc.stdout = f"{test_dir}\n"
 	mock_proc.stderr = ""
 
-	with patch("subprocess.run", return_value=mock_proc) as mock_run:
+	with (
+		patch("scripts.binary_utils.ensure_display_env"),
+		patch("subprocess.run", return_value=mock_proc) as mock_run,
+	):
 		res = server._select_folder_linux(title="Yad Title", initial_dir=str(tmp_path))
 		assert res == str(test_dir)
 		mock_run.assert_called_once()
