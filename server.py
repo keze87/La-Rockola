@@ -74,14 +74,25 @@ except ImportError:
 
 
 try:
-	from scripts.radio_announcer import HAS_EDGE_TTS, create_radio_announcement, get_carpincho_cover_path
+	from scripts.radio_announcer import (
+		DEFAULT_WEATHER_LOCATION,
+		HAS_EDGE_TTS,
+		create_radio_announcement,
+		get_carpincho_cover_path,
+	)
 except ImportError:
 	try:
-		from radio_announcer import HAS_EDGE_TTS, create_radio_announcement, get_carpincho_cover_path
+		from radio_announcer import (
+			DEFAULT_WEATHER_LOCATION,
+			HAS_EDGE_TTS,
+			create_radio_announcement,
+			get_carpincho_cover_path,
+		)
 	except ImportError:
 		HAS_EDGE_TTS = False
 		create_radio_announcement = None
 		get_carpincho_cover_path = None
+		DEFAULT_WEATHER_LOCATION = "San Miguel de Tucumán"
 
 
 _system_librosa_python: str | None = None
@@ -684,6 +695,7 @@ DEFAULT_CONFIG = {
 	"host": "0.0.0.0",
 	"open_browser": True,
 	"url": None,
+	"weather_location": DEFAULT_WEATHER_LOCATION,
 }
 
 
@@ -863,6 +875,7 @@ def print_startup_banner(
 	open_browser: bool,
 	config_path: Path | None = None,
 	custom_url: str | None = None,
+	weather_location: str | None = None,
 ) -> None:
 	"""Imprime una pantalla de bienvenida e instrucciones claras en la consola al iniciar."""
 	urls = get_server_urls(host, port, custom_url=custom_url)
@@ -893,10 +906,12 @@ def print_startup_banner(
 
 	print("       (¡o escaneá el código QR en la pestaña 'Controles'!)")
 
-	print("\n  📁 CARPETA DE MÚSICA:")
-	print(f"     • Principal:           {resolved_dir}")
+	print("\n  📁 CONFIGURACIÓN:")
+	print(f"     • Carpeta de música:   {resolved_dir}")
 	if resolved_dir2:
-		print(f"     • Secundaria:          {resolved_dir2}")
+		print(f"     • Carpeta secundaria:  {resolved_dir2}")
+	if weather_location:
+		print(f"     • Clima radial:        {weather_location}")
 
 	print("\n  💡 GUÍA RÁPIDA DE USO:")
 	if open_browser:
@@ -1235,6 +1250,20 @@ def run_interactive_wizard(config_path: Path, current_config: dict | None = None
 		else:
 			cfg["music_dir"] = str(expanded)
 			break
+
+	# Ubicación para el reporte del clima en la radio
+	default_weather = cfg.get("weather_location") or DEFAULT_WEATHER_LOCATION
+	print("\n🌤️  Ubicación para el reporte del clima en la radio:")
+	print("   El Carpincho Locutor te canta el tiempo al aire usando el servicio meteorológico.")
+	print(f"   Podés ingresar tu ciudad o localidad [default: {default_weather}]:\n")
+	try:
+		weather_ans = input(f"Ciudad/Localidad [{default_weather}]: ").strip()
+	except (EOFError, KeyboardInterrupt, StopIteration):
+		weather_ans = ""
+
+	chosen_weather = weather_ans if weather_ans else default_weather
+	cfg["weather_location"] = chosen_weather
+	print(f"✅ Clima configurado para: {chosen_weather}")
 
 	# Guardar configuración
 	save_config(config_path, cfg)
@@ -2368,6 +2397,7 @@ class APIState:
 		self.is_playing_radio_announcement = False
 		self.is_synthesizing_radio = False
 		self.radio_announcement_path = str(Path(tempfile.gettempdir()) / "radio_announcement.mp3")
+		self.weather_location = DEFAULT_WEATHER_LOCATION
 
 		# Server network & browser state
 		self.open_browser = True
@@ -3158,6 +3188,7 @@ class APIState:
 							bg_track_path=next_track_path,
 							bg_offset=bg_offset,
 							bg_volume=0.1,
+							weather_location=self.weather_location,
 						)
 					except Exception as e:
 						ok, display_title, script_or_err = False, "", f"{type(e).__name__}: {e}"
@@ -4227,6 +4258,13 @@ if __name__ == "__main__":
 		help="No ejecutar asistente interactivo automáticamente en la primera ejecución",
 	)
 	parser.add_argument(
+		"--weather-location",
+		dest="weather_location",
+		type=str,
+		default=None,
+		help="Ciudad o localidad para el reporte del clima en la radio (default: del config o San Miguel de Tucumán)",
+	)
+	parser.add_argument(
 		"--open-browser",
 		dest="open_browser",
 		action="store_true",
@@ -4268,6 +4306,8 @@ if __name__ == "__main__":
 			config["port"] = args.port
 		if args.host is not None:
 			config["host"] = args.host
+		if args.weather_location is not None:
+			config["weather_location"] = args.weather_location
 		save_config(config_path, config)
 
 	# Los argumentos pasados explícitamente por CLI tienen prioridad sobre el archivo de configuración
@@ -4276,6 +4316,11 @@ if __name__ == "__main__":
 	final_dir = args.dir if args.dir is not None else config.get("music_dir")
 	final_dir2 = args.dir2 if args.dir2 is not None else config.get("music_dir2")
 	final_url = args.url if args.url is not None else config.get("url")
+	final_weather_location = (
+		args.weather_location
+		if args.weather_location is not None
+		else config.get("weather_location", DEFAULT_WEATHER_LOCATION)
+	)
 	if args.open_browser is not None:
 		final_open_browser = args.open_browser
 	else:
@@ -4294,6 +4339,7 @@ if __name__ == "__main__":
 	state.local_ip = urls["local_ip"]
 	state.server_url = urls["local_url"]
 	state.open_browser = final_open_browser
+	state.weather_location = final_weather_location
 
 	print_startup_banner(
 		host=final_host,
@@ -4303,6 +4349,7 @@ if __name__ == "__main__":
 		open_browser=final_open_browser,
 		config_path=config_path,
 		custom_url=final_url,
+		weather_location=final_weather_location,
 	)
 
 	uvicorn.run(app, host=final_host, port=final_port, proxy_headers=True, forwarded_allow_ips="*")

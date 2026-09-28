@@ -233,6 +233,23 @@ def test_run_interactive_wizard_using_default_option(tmp_path):
 
 	assert cfg["music_dir"] == str(default_folder.resolve())
 	assert cfg["music_dir2"] is None
+	assert cfg["weather_location"] == "San Miguel de Tucumán"
+
+
+def test_run_interactive_wizard_custom_weather_location(tmp_path):
+	"""Test wizard configuring custom weather location."""
+	cfg_file = tmp_path / "rockola_config.json"
+	music_folder = tmp_path / "RockolaMusic"
+	music_folder.mkdir()
+
+	inputs = [str(music_folder), "Córdoba, Argentina"]
+
+	with patch("builtins.input", side_effect=inputs):
+		cfg = server.run_interactive_wizard(cfg_file)
+
+	assert cfg["weather_location"] == "Córdoba, Argentina"
+	loaded = server.load_config(cfg_file)
+	assert loaded["weather_location"] == "Córdoba, Argentina"
 
 
 def test_build_windows_zip_structure(tmp_path, monkeypatch):

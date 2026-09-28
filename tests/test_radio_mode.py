@@ -92,6 +92,7 @@ async def test_play_next_increments_counter_and_triggers_radio():
 			bg_track_path="/music/song2.mp3",
 			bg_offset=0.0,
 			bg_volume=0.1,
+			weather_location=state.weather_location,
 		)
 		assert state.is_playing_radio_announcement is True
 		assert state.current_track == state.radio_announcement_path
@@ -286,3 +287,32 @@ async def test_play_next_skips_radio_locution_when_no_internet():
 		assert state.radio_tracks_until_next in (2, 3)
 		# Pasa directamente al siguiente tema de la cola
 		mock_play.assert_awaited_once_with("/music/song2.mp3")
+
+
+@pytest.mark.asyncio
+async def test_play_next_passes_configured_weather_location():
+	state.radio_mode_enabled = True
+	state.radio_track_counter = 1
+	state.radio_tracks_until_next = 2
+	state.queue = ["/music/song2.mp3"]
+	state.current_track = "/music/song1.mp3"
+	state.weather_location = "Rosario, Santa Fe"
+
+	mock_create = AsyncMock(return_value=(True, "Carpincho Locutor", "Locución"))
+
+	with (
+		patch("server.HAS_EDGE_TTS", True),
+		patch("server.create_radio_announcement", mock_create),
+		patch("server.check_internet_async", AsyncMock(return_value=True)),
+		patch.object(state, "play_track", AsyncMock()),
+		patch("server.broadcast_state", AsyncMock()),
+	):
+		await state.play_next(skipped_by_user=False)
+
+		mock_create.assert_awaited_once_with(
+			state.radio_announcement_path,
+			bg_track_path="/music/song2.mp3",
+			bg_offset=0.0,
+			bg_volume=0.1,
+			weather_location="Rosario, Santa Fe",
+		)
