@@ -125,6 +125,27 @@ CARPINCHO_FORTUNES: list[str] = [
 	"Hacete amigo del yacaré: no para abrazarlo, sino para saber bien por dónde nada.",
 	"La paz mental es ver pasar la lancha a motor y ni siquiera parpadear.",
 	"No le pidas peras al olmo ni velocidad a un roedor de setenta kilos.",
+	# Cotidianeidad de humedal, dilemas criollos y refranero refactorizado
+	"El que no nada se ahoga, y el que no chupa el mate a tiempo se le enfría la pava.",
+	"A seguro se lo llevó la correntada del Paraná, pero al carpincho lo salvó la paciencia.",
+	"En casa de herrero, cuchillo de tacuara y la bombilla tapada con yerba barbacuá.",
+	"La vida es como remar contra la corriente: si no le metés ritmo, terminás en el juncal de enfrente.",
+	"El verdadero dilema nacional no es la grieta: es si el vacío a la estaca se come a punto o jugoso.",
+	"No te pelees por quién lavó la bombilla: poné pava nueva y cebate otro con espuma.",
+	"Hacer la cola en la orilla para esperar la lancha colectiva enseña más templanza que diez años de yoga.",
+	"Con el precio del kilo de yerba por las nubes, al mate se lo estira hasta que parezca sopa de pasto.",
+	"La pizza de molde sostiene el alma, pero la de piedra te apura las ganas de seguir bailando.",
+	"Mucho hielo en el fernet es de cobarde, pero sin hielo es una locura de verano.",
+	"El carpincho no le teme a la sudestada: acomoda las ramas y se echa un sueñito reparador.",
+	"Si la lancha te llena de olas el rancho, no te enojes: disfrutá el vaivén y metele otro amargo.",
+	"Más vale mate lavado en mano que diez termos importados vacíos.",
+	"El que madruga en la isla ve salir el sol, pero el que duerme la siesta llega entero al fogón.",
+	"No hay trámite en la orilla que un buen chamamé de fondo no te haga más llevadero.",
+	"En la mesa del asado no se discute de política: se discute quién se quedó con el último pedazo de tira.",
+	"El secreto de la paz interior: cara de nada, lomo al sol y que el barro tape las malas ondas.",
+	"Gato escaldado del agua huye, pero carpincho curtido se tira de panza con cualquier marea.",
+	"El mundo gira muy rápido para los que andan a los piques; en el arroyo todo tiene su compás.",
+	"El oráculo de la laguna sentencia: si la yerba todavía tiene palo, ese mate aguanta tres vueltas más.",
 ]
 
 CARPINCHO_ADS: list[str] = [
@@ -153,6 +174,21 @@ CARPINCHO_ADS: list[str] = [
 	"Espacio publicitario: Colchones de Totora El Descanso. Si te despertás contracturado, te devolvemos dos atados de juncos.",
 	"Aviso comercial: Pizzería El Camalote. Muzzarella elástica y masa a la piedra cocinada con leña de espinillo. Envío en canoa a todo el brazo del río.",
 	"Publicidad: Alarma La Nutria. Avisamos cuando sube la marea a los gritos limpios. Sin cables ni internet.",
+	"Publicidad: Plomería El Remanso. Destape de madrigueras inundadas y desagües de bañados con caña tacuara. Presupuestos sin cargo en la bajada del puente.",
+	"Espacio publicitario: Escuela de Canotaje La Nutria Feliz. Clases de remo y timonel para principiantes. Aprendé a no chocar los troncos con estilo.",
+	"Aviso parroquial: Trueque del Delta. Cambio dos bolsas de pasto tierno recién cortado por un vinilo de cumbia santafesina en buen estado. Tratar en el muelle tres.",
+	"Publicidad: Fletes Fluviales Don Bigote. Mudanzas de rancho, traslado de fardos de totora y transporte de leña seca. Si flota, te lo llevamos.",
+	"Espacio publicitario: Guardería de Camalotes El Espinillo. Dejá flotando tus plantas acuáticas en un ambiente seguro mientras te vas de viaje.",
+	"Aviso comercial: Venta de Bombillas Autolimpiantes La Criolla. No se tapan ni con la yerba más polvorienta del almacén isleño.",
+	"Publicidad: Herrería Ribereña El Sauce. Parrillas flotantes, asadores a la estaca inoxidables y ganchos para amarrar la canoa sin perder el sueño.",
+	"Espacio publicitario: Cooperativa La Totora. Teñido artesanal de juncos y esterillas para que tu cueva parezca una postal de revista.",
+	"Aviso parroquial: Atención vecinos del arroyo: se extravió un termo de acero inoxidable con calcomanías de cumbia. Si lo ven flotando, avisen a la radio.",
+	"Publicidad: Zapatería El Carpincho Andariego. Botas de goma reforzadas para caminar el fango sin dejar la chancleta pegada en el fondo.",
+	"Espacio publicitario: Panadería y Confitería El Hornero. Pastelitos de membrillo con masa hojaldrada y cañoncitos de dulce de leche para el mate de la tarde.",
+	"Aviso comercial: Astillero Los Tres Bagres. Calafateado de botes a remo y reparación de quillas con brea natural del monte.",
+	"Publicidad: Fumigaciones La Garza. Control ecológico de tábanos y jejenes con sapos adiestrados. Eficacia comprobada en todo el humedal.",
+	"Espacio publicitario: Almacén de Ramos Generales La Bajada. Harina, grasa de pella, yerba por bolsa y alpargatas de todos los números.",
+	"Aviso parroquial: Taller de Payadas y Guitarreadas Don Ceferino. Clases abiertas los sábados bajo el sauce llorón. Traer instrumento y mate propio.",
 ]
 
 CARPINCHO_FORTUNES.extend(CARPINCHO_ADS)
@@ -179,6 +215,16 @@ RADIO_INTROS: list[str] = [
 	"Posta, qué lindo estar acá en La Rockola; sintonizando buena onda.",
 	"¡Al pelo la música en La Rockola del Carpincho!",
 	"Tranqui en el agua, mate en mano... transmite La Rockola del Carpincho.",
+	"Aire en el Delta, brisa en la cara y la pava silbando en la consola. ¡Arranca La Rockola!",
+	"Con el agua a media pata y el mate recién espumado, abrimos los micrófonos en La Rockola.",
+	"Se escucha el rumor del río de fondo y el mejor ritmo en el dial. ¡Bienvenidos a La Rockola del Carpincho!",
+	"La marea sube pero la música sube todavía más. Sintonizás La Rockola desde la orilla.",
+	"Dejamos la canoa bien amarrada al sauce y nos metemos al estudio. ¡En el aire La Rockola!",
+	"Despertando a los bagres del fondo con buen volumen. ¡Transmite La Rockola del Carpincho!",
+	"Olorcito a sauce mojado, mates amargos y la mejor compañía en el aire de La Rockola.",
+	"Desde la cabina de madera sobre pilotes, tiramos buena vibra a todo el humedal. ¡Esto es La Rockola!",
+	"Corré el camalote de la antena que salimos al aire con todo en La Rockola del Carpincho.",
+	"Tardecita dorada en la ribera y nosotros listos para hacerte el aguante en La Rockola.",
 ]
 
 RADIO_LEAD_INS: list[str] = [
@@ -200,6 +246,16 @@ RADIO_LEAD_INS: list[str] = [
 	"Che, atenti al oráculo; sabiduría pura de la laguna.",
 	"Posta, escuchate esta reflexión carpinchera.",
 	"Pará la oreja; mirá lo que nos deja el oráculo hoy.",
+	"Pará un segundo el remo que bajó línea el oráculo del pajonal.",
+	"Atenti a la orilla, que el carpincho sabio nos dejó este mensaje.",
+	"Dejá la pava en la mesa y abrí bien las orejas con esta reflexión.",
+	"Mirá la frase que nos mandaron desde el fondo de los esteros.",
+	"Anotate esta máxima isleña antes de cebar el próximo amargo.",
+	"El oráculo de la ribera tiene un consejo que te va a volar la boina.",
+	"Frená un cambio y escuchá lo que enseña la calma de la laguna.",
+	"Palabra santa que llega navegando entre los camalotes.",
+	"Abrí la mente y sentí la posta que nos trae la corriente.",
+	"Para vos que andás medio a las corridas, prestale atención a esta joyita.",
 ]
 
 RADIO_OUTROS: list[str] = [
@@ -219,6 +275,16 @@ RADIO_OUTROS: list[str] = [
 	"Tranqui en el agua, mate en mano... ¡a disfrutar lo que viene!",
 	"¡Al pelo el ritmo; seguimos con todo en La Rockola!",
 	"Posta, qué temazo se viene ahora; no te muevas de ahí.",
+	"¡Basta de cháchara y que reviente el parche! ¡Metele play!",
+	"¡Subile dos rayitas al volumen que este tema te levanta de la reposera!",
+	"¡Agarrate fuerte de la borda que se viene un temazo al palo!",
+	"¡A sacudirse el barro de las patas y meterle baile con esto que suena!",
+	"¡Largá el remo un minuto y mandate a la pista con esta canción!",
+	"¡Este tema te saca la fiaca de un tirón! ¡Dale gas!",
+	"¡Temazo de aquellos para escuchar con la ventanilla baja y el viento en la cara!",
+	"¡Dejate llevar por el compás que la tarde pide fiesta en la orilla!",
+	"¡Volumen al mango que los carpinchos quieren cumbia!",
+	"¡Acomodá el parlante mirando al río y disfrutá de este cañonazo musical!",
 ]
 
 # ---------------------------------------------------------------------------
@@ -371,6 +437,14 @@ PASES_A_CLIMA: list[str] = [
 	"Contame qué dice el servicio meteorológico, {cohost}.",
 	"¿Qué tenemos en el pronóstico para hoy, {cohost}?",
 	"Che, {cohost}, ¿cómo pinta el clima en el bañado?",
+	"Che {cohost}, con esta sudestada que amaga con subir el río, ¿qué dice el pronóstico?",
+	"Decime {cohost}, con esta humedad que te riza hasta los bigotes, ¿se viene el chaparrón o zafamos?",
+	"A ver {cohost}, asomate al muelle y decime si el viento del este nos trae agua.",
+	"{cohost}, tirame la posta del tiempo: ¿está para meter panzada al río o nos refugiamos en la cueva?",
+	"Che {cohost}, mirá cómo vuelan bajo las golondrinas... ¿qué marca el radar para hoy?",
+	"Cantame los números del clima {cohost}, que la tarde está tan pesada que ni los mosquitos vuelan.",
+	"¿Cómo viene la mano con el cielo {cohost}, sale sol para secar el cuero o preparamos el piloto?",
+	"{cohost}, compadre de cabina, ¿cómo pinta el tiempo para los que andan navegando la cuenca?",
 ]
 
 RADIO_HANDOFFS: list[str] = [
@@ -432,6 +506,16 @@ REACCIONES_FORTUNA: list[str] = [
 	"¡Mirá vos! Justo lo que hacía falta escuchar.",
 	"¡Palabra santa! A guardarla en el corazón.",
 	"¡De una! Nada más que agregar.",
+	"¡Clarito como agua de arroyo en bajante!",
+	"¡Naaa, qué filósofo de bañado tenemos hoy!",
+	"¡Aplaudo de pie con las dos patas delanteras!",
+	"¡Esa frase te acomoda las ideas de una sola cebada!",
+	"¡Una obra de arte! Ni un poeta del Delta lo decía mejor.",
+	"¡Totalmente! Guardalo en un frasco de mermelada y no lo pierdas.",
+	"¡Qué profundidad criolla! Me quedé sin palabras, compadre.",
+	"¡Eso no fue un consejo, fue una caricia al alma!",
+	"¡Para ponerlo en un cartelito de madera en la entrada del rancho!",
+	"¡Posta pura! Al que no le guste, que vaya a rumiar pasto amargo.",
 ]
 
 RADIO_REACTIONS: list[str] = [
@@ -445,6 +529,14 @@ RADIO_REACTIONS: list[str] = [
 	"La posta pura.",
 	"¡Ojo al piojo!",
 	"Así se habla en el pago.",
+	"¡Qué pedazo de tema, por favor!",
+	"Ese solo te afloja hasta las junturas.",
+	"¡Inolvidable! Para escucharlo en loop todo el domingo.",
+	"¡Qué ritmo sabroso, compadre!",
+	"Te deja con el corazón saltando como boga en la red.",
+	"¡Una locura total! Música de la buena.",
+	"Ese tema te levanta cualquier día nublado.",
+	"¡Qué swing ribereño metió esa banda!",
 ]
 
 # ---------------------------------------------------------------------------
