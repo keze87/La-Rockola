@@ -52,6 +52,7 @@ VOICE_PROSODY: dict[str, dict[str, str]] = {
 
 DEFAULT_TTS_TIMEOUT: float = 12.0
 DEFAULT_TTS_RETRIES: int = 3
+DEFAULT_BG_VOLUME: float = 0.1
 
 # ---------------------------------------------------------------------------
 # Fortunas del Carpincho y Avisos Publicitarios

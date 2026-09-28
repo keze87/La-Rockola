@@ -45,6 +45,7 @@ try:
 		COMMON_ENGLISH_WORDS,
 		COMMON_SPANISH_VERBS,
 		COMMON_SPANISH_WORDS,
+		DEFAULT_BG_VOLUME,
 		DEFAULT_TTS_RETRIES,
 		DEFAULT_TTS_TIMEOUT,
 		DEFAULT_WEATHER_LOCATION,
@@ -84,6 +85,7 @@ except ImportError:
 		COMMON_ENGLISH_WORDS,
 		COMMON_SPANISH_VERBS,
 		COMMON_SPANISH_WORDS,
+		DEFAULT_BG_VOLUME,
 		DEFAULT_TTS_RETRIES,
 		DEFAULT_TTS_TIMEOUT,
 		DEFAULT_WEATHER_LOCATION,
@@ -123,6 +125,7 @@ __all__ = [
 	"COMMON_ENGLISH_WORDS",
 	"COMMON_SPANISH_VERBS",
 	"COMMON_SPANISH_WORDS",
+	"DEFAULT_BG_VOLUME",
 	"DEFAULT_TTS_RETRIES",
 	"DEFAULT_TTS_TIMEOUT",
 	"DEFAULT_WEATHER_LOCATION",
@@ -1213,7 +1216,7 @@ def mix_announcement_with_bg_track(
 	output_path: Path | str,
 	bg_track_path: Path | str,
 	bg_offset: float = 0.0,
-	bg_volume: float = 0.1,
+	bg_volume: float = DEFAULT_BG_VOLUME,
 	timeout: float = 10.0,
 ) -> bool:
 	"""
@@ -1268,12 +1271,10 @@ def mix_announcement_with_bg_track(
 		filter_complex = (
 			f"[0:a]volume=1.0[v];"
 			f"[1:a]volume={bg_volume},afade=t=in:ss=0:d={fade_in},afade=t=out:st={fade_out_start:.2f}:d={fade_out}[bg];"
-			f"[v][bg]amix=inputs=2:duration=first:dropout_transition=2"
+			f"[v][bg]amix=inputs=2:duration=first:dropout_transition=2:normalize=0"
 		)
 	else:
-		filter_complex = (
-			f"[0:a]volume=1.0[v];[1:a]volume={bg_volume}[bg];[v][bg]amix=inputs=2:duration=first:dropout_transition=2"
-		)
+		filter_complex = f"[0:a]volume=1.0[v];[1:a]volume={bg_volume}[bg];[v][bg]amix=inputs=2:duration=first:dropout_transition=2:normalize=0"
 
 	tmp_out = Path(tempfile.gettempdir()) / f"rockola_mix_{uuid.uuid4().hex[:8]}.mp3"
 	cmd = [
@@ -1494,7 +1495,7 @@ def assemble_announcement_audio(
 	output_path: Path | str,
 	bg_track_path: Path | str | None = None,
 	bg_offset: float = 0.0,
-	bg_volume: float = 0.1,
+	bg_volume: float = DEFAULT_BG_VOLUME,
 	cover_image_path: Path | str | None = None,
 	title: str | None = "Locución radial",
 	artist: str | None = "Carpincho Locutor 🎙️",
@@ -1810,7 +1811,7 @@ def assemble_announcement_audio(
 					and tmp_voice_combined.stat().st_size > 0
 				)
 
-			# Mastering final de voz: filtro paso-alto ~80 Hz y compresión suave
+			# Mastering final de voz: filtro paso-alto ~80 Hz, compresión y normalización broadcast (-14 LUFS)
 			if concat_ok:
 				tmp_voice_mastered = work_dir / "voice_mastered.mp3"
 				master_cmd = [
@@ -1819,7 +1820,7 @@ def assemble_announcement_audio(
 					"-i",
 					str(tmp_voice_combined),
 					"-af",
-					"highpass=f=80,acompressor=threshold=-18dB:ratio=2.5:attack=20:release=250",
+					"highpass=f=80,acompressor=threshold=-18dB:ratio=2.5:attack=20:release=250:makeup=2,loudnorm=I=-14:TP=-1.5:LRA=7",
 					"-c:a",
 					"libmp3lame",
 					"-b:a",
@@ -1899,7 +1900,7 @@ async def create_radio_announcement(
 	max_retries: int = DEFAULT_TTS_RETRIES,
 	bg_track_path: Path | str | None = None,
 	bg_offset: float = 0.0,
-	bg_volume: float = 0.1,
+	bg_volume: float = DEFAULT_BG_VOLUME,
 	db_path: Path | str | None = None,
 	dt: datetime | None = None,
 	force_system_fortune: bool | None = None,
