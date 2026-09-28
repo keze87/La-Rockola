@@ -12,11 +12,170 @@ from scripts import radio_announcer
 
 
 def test_clean_fortune_text():
+	# 1. URLs, tags HTML y firmas con guiones
 	raw = '  "El éxito no es la clave."  \n\n  -- Albert Schweitzer  https://example.com  <nick>  '
 	cleaned = radio_announcer.clean_fortune_text(raw)
 	assert "El éxito no es la clave." in cleaned
 	assert "https://" not in cleaned
 	assert "<nick>" not in cleaned
+
+	# 2. Comillas tipográficas, simples y dobles
+	raw_quotes = "«El único modo de hacer un gran trabajo es amar lo que hacés»"
+	assert radio_announcer.clean_fortune_text(raw_quotes) == (
+		"El único modo de hacer un gran trabajo es amar lo que hacés."
+	)
+
+	# 3. Corchetes editoriales y paréntesis bibliográficos (años, tomos, páginas)
+	raw_biblio = "La paciencia [de los sabios] es amarga (1890, pág. 12), pero sus frutos son dulces."
+	cleaned_biblio = radio_announcer.clean_fortune_text(raw_biblio)
+	assert "[de los sabios]" not in cleaned_biblio
+	assert "(1890, pág. 12)" not in cleaned_biblio
+	assert "La paciencia es amarga, pero sus frutos son dulces." == cleaned_biblio
+
+	# 4. Atribuciones al final entre paréntesis
+	raw_attrib = "No dejes para mañana lo que puedas hacer hoy (Refrán Popular)."
+	assert radio_announcer.clean_fortune_text(raw_attrib) == ("No dejes para mañana lo que puedas hacer hoy.")
+
+
+def test_is_valid_spoken_sentence_positive():
+	"""Verifica oraciones completas válidas para emisión radial."""
+	assert radio_announcer.is_valid_spoken_sentence("El ignorante afirma, el sabio duda y reflexiona.") is True
+	assert (
+		radio_announcer.is_valid_spoken_sentence("La paciencia es amarga, pero sus frutos son siempre dulces.") is True
+	)
+	assert (
+		radio_announcer.is_valid_spoken_sentence(
+			"El carpincho no compite con la corriente, sino que flota con dignidad."
+		)
+		is True
+	)
+	assert (
+		radio_announcer.is_valid_spoken_sentence("¿Qué podemos esperar del tiempo si no cuidamos el agua de la laguna?")
+		is True
+	)
+	assert (
+		radio_announcer.is_valid_spoken_sentence("¡Al mal tiempo buena cara y unos buenos mates bien calientes!")
+		is True
+	)
+
+
+def test_is_valid_spoken_sentence_length_limits():
+	"""Verifica los límites de longitud (5 a 88 palabras)."""
+	# Menos de 5 palabras
+	assert radio_announcer.is_valid_spoken_sentence("El agua siempre hierve.") is False
+	assert radio_announcer.is_valid_spoken_sentence("Hola gente de la radio.") is False
+
+	# Exactamente 5 palabras con verbo
+	assert radio_announcer.is_valid_spoken_sentence("El carpincho nada muy bien.") is True
+
+	# Más de 88 palabras
+	long_text = "El carpincho sabe nadar muy bien en la laguna fresca y tranquila " * 10
+	words = long_text.split()
+	assert len(words) > 88
+	assert radio_announcer.is_valid_spoken_sentence(long_text) is False
+
+
+def test_is_valid_spoken_sentence_verb_requirement():
+	"""Verifica que requiera al menos un verbo conjugado común en español."""
+	# Frase nominal sin ningún verbo conjugado
+	assert radio_announcer.is_valid_spoken_sentence("Tranquilo como carpincho en Nordelta y alrededores.") is False
+	# Misma frase con verbo conjugado
+	assert (
+		radio_announcer.is_valid_spoken_sentence("El carpincho descansa tranquilo en Nordelta y alrededores.") is True
+	)
+	# Verbo detectado por sufijo morfológico (-aban)
+	assert (
+		radio_announcer.is_valid_spoken_sentence("Los carpinchos caminaban bajo el sol radiante del humedal.") is True
+	)
+
+
+def test_is_valid_spoken_sentence_rejects_lists():
+	"""Verifica que descarte listas numeradas y viñetas."""
+	assert radio_announcer.is_valid_spoken_sentence("1. Primero ponemos la pava para tomar el mate.") is False
+	assert radio_announcer.is_valid_spoken_sentence("2) Segundo paso para nadar en el bañado profundo.") is False
+	assert radio_announcer.is_valid_spoken_sentence("- Una opción interesante para disfrutar de la tarde.") is False
+	assert radio_announcer.is_valid_spoken_sentence("* Otra alternativa para pasar la tarde en la orilla.") is False
+	assert radio_announcer.is_valid_spoken_sentence("Opciones disponibles: 1) nadar 2) dormir 3) tomar mate.") is False
+
+
+def test_is_valid_spoken_sentence_rejects_formatting_and_math():
+	"""Verifica que descarte caracteres de formato, código y símbolos matemáticos."""
+	assert radio_announcer.is_valid_spoken_sentence("El 50% de la laguna tiene juncos tiernos y frescos.") is False
+	assert radio_announcer.is_valid_spoken_sentence("Tomar mate / tereré es lo mejor de toda la tarde.") is False
+	assert (
+		radio_announcer.is_valid_spoken_sentence("La suma de esfuerzos 1+1 da los mejores resultados posibles.")
+		is False
+	)
+	assert radio_announcer.is_valid_spoken_sentence("El carpincho | la nutria | el yacaré en el agua.") is False
+	assert radio_announcer.is_valid_spoken_sentence("El valor del junco es > que cualquier pastura seca.") is False
+	assert (
+		radio_announcer.is_valid_spoken_sentence("Texto con *énfasis exagerado* en la locución radial comunitaria.")
+		is False
+	)
+
+
+def test_is_valid_spoken_sentence_rejects_broken_poetry():
+	"""Verifica que descarte versos aislados o poesía rota con cláusulas cortas."""
+	# 5 cláusulas de 2 palabras cada una
+	assert (
+		radio_announcer.is_valid_spoken_sentence("Rosa roja, flor hermosa, tarde gris, viento sur, lluvia leve.")
+		is False
+	)
+	# Lista de números aislados
+	assert radio_announcer.is_valid_spoken_sentence("Uno, dos, tres, cuatro, cinco.") is False
+
+
+def test_is_valid_spoken_sentence_rejects_truncated_and_lowercase():
+	"""Verifica que descarte textos truncados, iniciados en minúscula o terminados en dos puntos."""
+	assert radio_announcer.is_valid_spoken_sentence("...y nada más que agregar a esta charla de radio.") is False
+	assert radio_announcer.is_valid_spoken_sentence("y nada más que agregar a esta linda charla de radio.") is False
+	assert radio_announcer.is_valid_spoken_sentence("Dice el viejo refrán carpincho en la orilla del arroyo:") is False
+	assert radio_announcer.is_valid_spoken_sentence("El hombre propone y la naturaleza en su inmensidad,") is False
+
+
+def test_is_valid_spoken_sentence_rejects_blacklists():
+	"""Verifica el filtrado de mal gusto y jerga robótica o de asistente IA."""
+	# 1. Mal gusto / profanidad
+	assert radio_announcer.is_valid_spoken_sentence("Ese tipo es un pelotudo que no entiende nada de radio.") is False
+	assert radio_announcer.is_valid_spoken_sentence("Me importa una mierda lo que digan en el pueblo cercano.") is False
+	assert radio_announcer.is_valid_spoken_sentence("Qué carajo pasa con la música en esta estación isleña.") is False
+	assert (
+		radio_announcer.is_valid_spoken_sentence("No seas hijo de puta y compartí los mates con los amigos.") is False
+	)
+
+	# 2. Jerga robótica o asistente IA (Filtro anti-robot)
+	assert (
+		radio_announcer.is_valid_spoken_sentence(
+			"Como modelo de lenguaje, no poseo opiniones personales sobre la música."
+		)
+		is False
+	)
+	assert (
+		radio_announcer.is_valid_spoken_sentence("¡Buenas tardes! ¿En qué puedo ayudarte hoy en la sintonía radial?")
+		is False
+	)
+	assert (
+		radio_announcer.is_valid_spoken_sentence("El error 404 indica que la melodía no fue encontrada en el servidor.")
+		is False
+	)
+	assert (
+		radio_announcer.is_valid_spoken_sentence(
+			"Estamos procesando datos para optimizar la lista de reproducción musical."
+		)
+		is False
+	)
+	assert (
+		radio_announcer.is_valid_spoken_sentence(
+			"El sistema operativo de la emisora funciona a la perfección en la máquina."
+		)
+		is False
+	)
+	assert (
+		radio_announcer.is_valid_spoken_sentence(
+			"El algoritmo seleccionó las mejores canciones para disfrutar la tarde."
+		)
+		is False
+	)
 
 
 def test_is_spanish_text():
@@ -83,8 +242,40 @@ def test_get_system_fortune_too_short_or_long():
 		patch("scripts.radio_announcer.get_available_spanish_dbs", return_value=["refranes"]),
 		patch("subprocess.run", return_value=MagicMock(returncode=0, stdout="Hola carpincho " * 20)),
 	):
-		# Más de 160 caracteres
+		# Sin verbos o longitud excesiva
 		assert radio_announcer.get_system_fortune() is None
+
+
+def test_get_system_fortune_retries_on_invalid_sentence():
+	"""Verifica que get_system_fortune reintente si el primer resultado no es una oración hablada válida."""
+	mock_call_1 = MagicMock(
+		returncode=0,
+		stdout="Rosa roja, flor hermosa, tarde gris, viento sur, lluvia leve.\n",
+	)
+	mock_call_2 = MagicMock(
+		returncode=0,
+		stdout="El ignorante afirma, el sabio duda y reflexiona.\n",
+	)
+
+	with (
+		patch("shutil.which", return_value="/usr/bin/fortune"),
+		patch("scripts.radio_announcer.get_available_spanish_dbs", return_value=["refranes"]),
+		patch("subprocess.run", side_effect=[mock_call_1, mock_call_2]),
+	):
+		res = radio_announcer.get_system_fortune(max_attempts=3)
+		assert res == "El ignorante afirma, el sabio duda y reflexiona."
+
+	# Si todos los intentos devuelven jerga robótica o inválida, retorna None
+	mock_ai = MagicMock(
+		returncode=0,
+		stdout="Como modelo de lenguaje, no poseo opiniones personales sobre la música.\n",
+	)
+	with (
+		patch("shutil.which", return_value="/usr/bin/fortune"),
+		patch("scripts.radio_announcer.get_available_spanish_dbs", return_value=["refranes"]),
+		patch("subprocess.run", return_value=mock_ai),
+	):
+		assert radio_announcer.get_system_fortune(max_attempts=2) is None
 
 
 def test_get_radio_fortune_is_always_spanish():

@@ -834,19 +834,999 @@ COMMON_SPANISH_WORDS: set[str] = {
 }
 
 
+COMMON_ENGLISH_WORDS: set[str] = {
+	"about",
+	"all",
+	"an",
+	"and",
+	"are",
+	"as",
+	"at",
+	"be",
+	"been",
+	"but",
+	"by",
+	"call",
+	"can",
+	"come",
+	"could",
+	"day",
+	"did",
+	"do",
+	"down",
+	"each",
+	"find",
+	"first",
+	"for",
+	"from",
+	"get",
+	"go",
+	"had",
+	"has",
+	"have",
+	"he",
+	"her",
+	"him",
+	"his",
+	"how",
+	"i",
+	"if",
+	"in",
+	"into",
+	"is",
+	"it",
+	"its",
+	"like",
+	"look",
+	"made",
+	"make",
+	"many",
+	"may",
+	"more",
+	"my",
+	"no",
+	"not",
+	"now",
+	"number",
+	"on",
+	"one",
+	"or",
+	"other",
+	"out",
+	"part",
+	"people",
+	"said",
+	"see",
+	"she",
+	"so",
+	"some",
+	"than",
+	"that",
+	"the",
+	"their",
+	"them",
+	"then",
+	"there",
+	"these",
+	"they",
+	"this",
+	"time",
+	"two",
+	"up",
+	"use",
+	"was",
+	"water",
+	"way",
+	"we",
+	"were",
+	"what",
+	"when",
+	"which",
+	"who",
+	"will",
+	"with",
+	"would",
+	"write",
+	"you",
+	"your",
+}
+
+
 def is_spanish_text(text: str) -> bool:
-	"""Determina si un texto está en idioma español."""
-	if not text:
+	"""
+	Determina con precisión mediante NLP liviano si un texto está redactado en español.
+	Utiliza análisis de frecuencia de palabras funcionales (stopwords), detección
+	contrastiva de términos en inglés y caracteres ortográficos distintivos del español.
+	"""
+	if not text or not isinstance(text, str):
 		return False
-	# 1. Caracteres distintivos del español (acentos, ñ, signos de apertura)
-	if any(c in SPANISH_CHARS for c in text):
-		return True
-	# 2. Conteo de palabras frecuentes en español
-	words = [w.lower() for w in re.findall(r"\b[a-zA-ZáéíóúñüÁÉÍÓÚÑÜ]+\b", text)]
+
+	words = [w.lower() for w in re.findall(r"\b[a-zA-ZáéíóúüñÁÉÍÓÚÜÑ]+\b", text)]
 	if not words:
 		return False
-	spanish_count = sum(1 for w in words if w in COMMON_SPANISH_WORDS)
-	return spanish_count >= 2 or (len(words) <= 3 and spanish_count >= 1)
+
+	spanish_hits = sum(1 for w in words if w in COMMON_SPANISH_WORDS)
+	english_hits = sum(1 for w in words if w in COMMON_ENGLISH_WORDS)
+
+	# Si predominan fuertemente palabras funcionales en inglés, descartar
+	if english_hits > spanish_hits and english_hits >= 2:
+		return False
+	if english_hits >= 2 and spanish_hits == 0:
+		return False
+	if english_hits > 0 and len(words) <= 5 and spanish_hits == 0:
+		return False
+
+	# Presencia de caracteres distintivos del español (ñ, ¿, ¡)
+	has_spanish_exclusive = any(c in "ñÑ¿¡" for c in text)
+	if has_spanish_exclusive and english_hits <= 1:
+		return True
+
+	# Coincidencia con palabras funcionales en español
+	if spanish_hits >= 2:
+		return True
+	if len(words) <= 4 and spanish_hits >= 1 and english_hits == 0:
+		return True
+
+	# Acentos en vocales (á, é, í, ó, ú, ü) si no hay presencia de inglés
+	has_accent = any(c in "áéíóúüÁÉÍÓÚÜ" for c in text)
+	return bool(has_accent and english_hits == 0 and len(words) >= 2)
+
+
+# ---------------------------------------------------------------------------
+# Blacklists para locución radial del Carpincho (Mal gusto y Jerga IA/Robot)
+# ---------------------------------------------------------------------------
+
+PROFANITY_TERMS: set[str] = {
+	"boluda",
+	"boludas",
+	"boludo",
+	"boludos",
+	"cabron",
+	"cabrón",
+	"cabrones",
+	"carajo",
+	"carajos",
+	"chingada",
+	"chingar",
+	"chota",
+	"chotas",
+	"choto",
+	"chotos",
+	"chupala",
+	"concha",
+	"conchas",
+	"conchuda",
+	"conchudas",
+	"conchudo",
+	"conchudos",
+	"culiada",
+	"culiadas",
+	"culiado",
+	"culiados",
+	"culiao",
+	"culiaos",
+	"culo",
+	"culos",
+	"estupida",
+	"estúpida",
+	"estupidas",
+	"estúpidas",
+	"estupido",
+	"estúpido",
+	"estupidos",
+	"estúpidos",
+	"forra",
+	"forras",
+	"forro",
+	"forros",
+	"imbecil",
+	"imbécil",
+	"imbeciles",
+	"imbéciles",
+	"malparida",
+	"malparido",
+	"mamada",
+	"mamadas",
+	"maricon",
+	"maricón",
+	"maricones",
+	"mierda",
+	"mierdas",
+	"ojete",
+	"ojetes",
+	"orto",
+	"ortos",
+	"pelotuda",
+	"pelotudas",
+	"pelotudo",
+	"pelotudos",
+	"pendeja",
+	"pendejas",
+	"pendejo",
+	"pendejos",
+	"pija",
+	"pijas",
+	"puta",
+	"putas",
+	"puto",
+	"putos",
+	"sorete",
+	"soretes",
+	"tarada",
+	"taradas",
+	"tarado",
+	"tarados",
+	"verga",
+	"vergas",
+}
+
+PROFANITY_PHRASES: list[str] = [
+	"hijo de puta",
+	"hija de puta",
+	"hijos de puta",
+	"hdp",
+	"la puta madre",
+	"la concha de",
+	"andate a la mierda",
+	"la puta que te",
+]
+
+AI_ROBOTIC_PHRASES: list[str] = [
+	"como modelo de lenguaje",
+	"como un modelo de lenguaje",
+	"modelo de lenguaje",
+	"en que puedo ayudarte",
+	"en qué puedo ayudarte",
+	"en qué puedo asistirte",
+	"en que puedo asistirte",
+	"procesando datos",
+	"sistema operativo",
+	"algoritmo",
+	"algoritmos",
+	"error 404",
+	"404 not found",
+	"código de error",
+	"inteligencia artificial",
+	"red neuronal",
+	"redes neuronales",
+	"asistente virtual",
+	"asistente de ia",
+	"asistente ia",
+	"open ai",
+	"openai",
+	"chatgpt",
+	"deepmind",
+	"prompt",
+	"prompts",
+	"lenguaje de programación",
+	"nullpointerexception",
+	"segmentation fault",
+	"stack overflow",
+]
+
+
+def contains_blacklisted_content(text: str) -> bool:
+	"""
+	Verifica si el texto contiene términos o conceptos prohibidos para la personalidad
+	del Carpincho (mal gusto / vulgaridades o jerga de asistente IA / robótica).
+	"""
+	norm = text.lower()
+
+	# 1. Jerga robótica o de asistente IA
+	for phrase in AI_ROBOTIC_PHRASES:
+		if phrase in norm:
+			return True
+
+	# 2. Frases compuestas vulgares
+	for phrase in PROFANITY_PHRASES:
+		if phrase in norm:
+			return True
+
+	# 3. Palabras individuales de mal gusto con límites de palabra (\b)
+	words = set(re.findall(r"\b[a-zA-ZáéíóúüñÁÉÍÓÚÜÑ]+\b", norm))
+	return any(w in PROFANITY_TERMS for w in words)
+
+
+# ---------------------------------------------------------------------------
+# Verificación de verbos y sintaxis para oraciones habladas
+# ---------------------------------------------------------------------------
+
+COMMON_SPANISH_VERBS: set[str] = {
+	"acaba",
+	"acaban",
+	"acabó",
+	"afirma",
+	"afirman",
+	"afirmó",
+	"ama",
+	"aman",
+	"amaba",
+	"amó",
+	"anda",
+	"andan",
+	"andaba",
+	"anduvo",
+	"aprende",
+	"aprenden",
+	"aprendió",
+	"ayuda",
+	"ayudan",
+	"ayudó",
+	"basta",
+	"bastan",
+	"bastó",
+	"bebe",
+	"beben",
+	"bebió",
+	"brilla",
+	"brillan",
+	"brilló",
+	"busca",
+	"buscan",
+	"buscaba",
+	"buscó",
+	"cae",
+	"caen",
+	"caía",
+	"calla",
+	"callan",
+	"calló",
+	"cambia",
+	"cambian",
+	"cambió",
+	"camina",
+	"caminan",
+	"caminó",
+	"canta",
+	"cantan",
+	"cantó",
+	"cayó",
+	"cayeron",
+	"come",
+	"comen",
+	"comía",
+	"comió",
+	"comienza",
+	"comienzan",
+	"comenzó",
+	"conoce",
+	"conocen",
+	"conoció",
+	"corre",
+	"corren",
+	"corrió",
+	"cree",
+	"creen",
+	"creía",
+	"creyó",
+	"creyeron",
+	"cuesta",
+	"cuestan",
+	"costó",
+	"cura",
+	"curan",
+	"curó",
+	"da",
+	"daba",
+	"daban",
+	"damos",
+	"dan",
+	"dará",
+	"darán",
+	"das",
+	"dé",
+	"decía",
+	"decían",
+	"decimos",
+	"decís",
+	"deja",
+	"dejaba",
+	"dejan",
+	"dejar",
+	"dejes",
+	"dejó",
+	"den",
+	"dice",
+	"dicen",
+	"dices",
+	"digo",
+	"diga",
+	"digan",
+	"dijo",
+	"dijeron",
+	"dio",
+	"dieron",
+	"dirá",
+	"dirán",
+	"doler",
+	"doy",
+	"duele",
+	"duelen",
+	"dolió",
+	"duerme",
+	"duermen",
+	"durmió",
+	"duda",
+	"dudan",
+	"dudó",
+	"dura",
+	"duran",
+	"duró",
+	"empieza",
+	"empiezan",
+	"empezó",
+	"encuentra",
+	"encuentran",
+	"encontró",
+	"enseña",
+	"enseñan",
+	"enseñó",
+	"entiende",
+	"entienden",
+	"entendió",
+	"entra",
+	"entran",
+	"entró",
+	"era",
+	"eran",
+	"eres",
+	"es",
+	"escucha",
+	"escuchan",
+	"escuchó",
+	"espera",
+	"esperaba",
+	"esperan",
+	"esperó",
+	"está",
+	"estaba",
+	"estaban",
+	"estamos",
+	"están",
+	"estará",
+	"estarán",
+	"estás",
+	"esté",
+	"estén",
+	"estoy",
+	"estuvo",
+	"estuvieron",
+	"falta",
+	"faltan",
+	"faltó",
+	"fue",
+	"fueron",
+	"gana",
+	"ganan",
+	"ganó",
+	"gusta",
+	"gustan",
+	"gustó",
+	"ha",
+	"había",
+	"habla",
+	"hablaba",
+	"hablan",
+	"habló",
+	"habrá",
+	"hace",
+	"hacemos",
+	"hacen",
+	"haces",
+	"hacés",
+	"hacía",
+	"hacían",
+	"haga",
+	"hagan",
+	"hago",
+	"han",
+	"hará",
+	"harán",
+	"has",
+	"hay",
+	"haya",
+	"hayan",
+	"he",
+	"hemos",
+	"hizo",
+	"hicieron",
+	"honra",
+	"honran",
+	"honró",
+	"hubo",
+	"huye",
+	"huyen",
+	"huyó",
+	"iba",
+	"iban",
+	"importa",
+	"importan",
+	"importó",
+	"irá",
+	"irán",
+	"juzga",
+	"juzgan",
+	"juzgó",
+	"llega",
+	"llegan",
+	"llegó",
+	"lleva",
+	"llevan",
+	"llevó",
+	"llora",
+	"lloran",
+	"lloró",
+	"madruga",
+	"madrugan",
+	"madrugó",
+	"manda",
+	"mandan",
+	"mandó",
+	"mira",
+	"miraba",
+	"miran",
+	"miró",
+	"morir",
+	"muere",
+	"mueren",
+	"murió",
+	"nace",
+	"nacen",
+	"nació",
+	"nada",
+	"nadan",
+	"nadó",
+	"necesita",
+	"necesitan",
+	"necesitó",
+	"oculta",
+	"ocultan",
+	"ocultó",
+	"odia",
+	"odian",
+	"odió",
+	"olvida",
+	"olvidan",
+	"olvidó",
+	"oye",
+	"oyen",
+	"oyó",
+	"paga",
+	"pagan",
+	"pagó",
+	"parece",
+	"parecen",
+	"pareció",
+	"parte",
+	"parten",
+	"partió",
+	"pasa",
+	"pasan",
+	"pasó",
+	"pide",
+	"piden",
+	"pidió",
+	"piensa",
+	"piensan",
+	"pensó",
+	"pierde",
+	"pierden",
+	"perdió",
+	"puede",
+	"pueden",
+	"puedes",
+	"puedo",
+	"podemos",
+	"podía",
+	"podían",
+	"podés",
+	"podrá",
+	"podrán",
+	"ponga",
+	"pongan",
+	"pone",
+	"ponemos",
+	"ponen",
+	"pones",
+	"ponés",
+	"pongo",
+	"ponía",
+	"ponían",
+	"pondrá",
+	"pondrán",
+	"pudo",
+	"pudieron",
+	"pueda",
+	"puedan",
+	"puso",
+	"pusieron",
+	"queda",
+	"quedan",
+	"quedó",
+	"quema",
+	"queman",
+	"quemó",
+	"quiere",
+	"quieren",
+	"quieres",
+	"quiero",
+	"queremos",
+	"querés",
+	"quería",
+	"querían",
+	"quiera",
+	"quieran",
+	"quiso",
+	"quisieron",
+	"querrá",
+	"querrán",
+	"recibe",
+	"reciben",
+	"recibió",
+	"recuerda",
+	"recuerdan",
+	"recordó",
+	"reflexiona",
+	"reflexionan",
+	"reflexionó",
+	"rie",
+	"ríe",
+	"rien",
+	"ríen",
+	"rió",
+	"rompe",
+	"rompen",
+	"rompió",
+	"sabe",
+	"sabemos",
+	"saben",
+	"sabes",
+	"sabés",
+	"sabía",
+	"sabían",
+	"sabrá",
+	"sabrán",
+	"sale",
+	"salen",
+	"salió",
+	"salva",
+	"salvan",
+	"salvó",
+	"se",
+	"sé",
+	"sea",
+	"sean",
+	"seguir",
+	"sepa",
+	"sepan",
+	"será",
+	"serán",
+	"sería",
+	"serían",
+	"siente",
+	"sienten",
+	"sintió",
+	"sigue",
+	"siguen",
+	"siguió",
+	"sirve",
+	"sirven",
+	"sirvió",
+	"sobra",
+	"sobran",
+	"sobró",
+	"somos",
+	"son",
+	"sos",
+	"soy",
+	"suena",
+	"suenan",
+	"sonó",
+	"sufre",
+	"sufren",
+	"sufrió",
+	"supo",
+	"supieron",
+	"teme",
+	"temen",
+	"temió",
+	"tendrá",
+	"tendrán",
+	"tenga",
+	"tengan",
+	"tengo",
+	"tenemos",
+	"tenía",
+	"tenían",
+	"tiene",
+	"tienen",
+	"tienes",
+	"tenés",
+	"termina",
+	"terminan",
+	"terminó",
+	"toca",
+	"tocan",
+	"tocó",
+	"toques",
+	"toma",
+	"toman",
+	"tomó",
+	"trae",
+	"traen",
+	"trajo",
+	"tuvo",
+	"tuvieron",
+	"va",
+	"vamos",
+	"van",
+	"vas",
+	"vaya",
+	"vayan",
+	"ve",
+	"vea",
+	"vean",
+	"veía",
+	"veían",
+	"vemos",
+	"ven",
+	"vendrá",
+	"vendrán",
+	"venga",
+	"vengan",
+	"vengo",
+	"venimos",
+	"venir",
+	"venís",
+	"venía",
+	"venían",
+	"veo",
+	"verá",
+	"verán",
+	"verás",
+	"ves",
+	"vino",
+	"vinieron",
+	"vio",
+	"vieron",
+	"vive",
+	"viven",
+	"vivía",
+	"vivió",
+	"voló",
+	"volar",
+	"volvió",
+	"volver",
+	"voy",
+	"vuela",
+	"vuelan",
+	"vuelve",
+	"vuelven",
+	# Formas verbales comunes adicionales (refranes, proverbios, voseo y coloquial)
+	"acomoda",
+	"acomodan",
+	"acomodó",
+	"arregla",
+	"arreglan",
+	"arregló",
+	"avisa",
+	"avisan",
+	"avisamos",
+	"avisó",
+	"baila",
+	"bailan",
+	"bailó",
+	"baja",
+	"bajan",
+	"bajó",
+	"bajá",
+	"calienta",
+	"calientan",
+	"calientes",
+	"calentó",
+	"calentar",
+	"cierra",
+	"cierran",
+	"cerró",
+	"compite",
+	"compiten",
+	"compitió",
+	"competir",
+	"concluye",
+	"concluyen",
+	"concluyó",
+	"consigue",
+	"consiguen",
+	"consiguió",
+	"conseguís",
+	"crece",
+	"crecen",
+	"creció",
+	"cruza",
+	"cruzan",
+	"cruzamos",
+	"cruzó",
+	"cuenta",
+	"cuentan",
+	"cuente",
+	"cuenten",
+	"cuentes",
+	"contó",
+	"cuida",
+	"cuidan",
+	"cuidamos",
+	"cuidó",
+	"cuidar",
+	"descansa",
+	"descansan",
+	"descansó",
+	"descansar",
+	"despeina",
+	"despeinan",
+	"despeinó",
+	"despierta",
+	"despiertan",
+	"despertó",
+	"despertás",
+	"devuelve",
+	"devuelven",
+	"devolvemos",
+	"devolvió",
+	"disfruta",
+	"disfrutan",
+	"disfrutás",
+	"disfrutó",
+	"disfrutá",
+	"fija",
+	"fijan",
+	"fijó",
+	"fijate",
+	"flota",
+	"flotan",
+	"flotó",
+	"flotar",
+	"hacé",
+	"juega",
+	"juegan",
+	"jugó",
+	"limpia",
+	"limpian",
+	"limpió",
+	"mata",
+	"matan",
+	"mató",
+	"mete",
+	"meten",
+	"metió",
+	"metele",
+	"pesa",
+	"pesan",
+	"pesó",
+	"pica",
+	"pican",
+	"piquen",
+	"picó",
+	"pida",
+	"pidan",
+	"pidas",
+	"recibirás",
+	"relaja",
+	"relajan",
+	"relajó",
+	"relajá",
+	"respira",
+	"respiran",
+	"respiró",
+	"salpica",
+	"salpican",
+	"salpicar",
+	"salpicó",
+	"separa",
+	"separan",
+	"separó",
+	"sube",
+	"suben",
+	"subió",
+	"subile",
+	"tira",
+	"tiran",
+	"tiró",
+	"tomás",
+	"tomate",
+	"traiga",
+	"traigan",
+	"une",
+	"unen",
+	"unió",
+	"vale",
+	"valen",
+	"valió",
+	"viene",
+	"vienen",
+	"viaja",
+	"viajan",
+	"viajó",
+}
+
+VERBAL_SUFFIXES_REGEX = re.compile(
+	r"^[a-záéíóúñ]{3,}(?:aron|ieron|aban|iendo|ando|aría|arían|ería|erían|iría|irían|ará|arán|arás|erá|erán|erás|irá|irán|irás|aste|iste|ábamos|áramos|iéramos|asen|iesen|ase|iese)$"
+)
+
+
+def has_conjugated_verb(words: list[str]) -> bool:
+	"""Determina si una lista de palabras contiene al menos un verbo conjugado común en español."""
+	for w in words:
+		w_low = w.lower()
+		if w_low in COMMON_SPANISH_VERBS:
+			return True
+		if VERBAL_SUFFIXES_REGEX.match(w_low):
+			return True
+	return False
+
+
+FORBIDDEN_FORMAT_CHARS: set[str] = set(r"*\/|+=>%^~@#$_[]{}&")
+
+
+def is_valid_spoken_sentence(text: str) -> bool:
+	"""
+	Determina si el texto es apto para ser locutado por radio como una oración completa.
+	Criterios:
+	1. Longitud: entre 5 y 88 palabras inclusive (ni fragmento trunco ni párrafo denso).
+	2. Contiene al menos un verbo conjugado común en español.
+	3. No es una lista numerada ni de viñetas, ni contiene caracteres de formato (*, /, |, símbolos matemáticos).
+	4. Descarta poesía rimada rota o versos aislados (múltiples cláusulas de menos de 3 palabras).
+	5. No es un fragmento truncado (no empieza con puntos suspensivos ni termina en dos puntos o comas).
+	6. No contiene términos de mal gusto ni jerga de asistente de IA / robótica.
+	"""
+	if not text or not isinstance(text, str):
+		return False
+
+	clean = text.strip()
+
+	# Descartar si empieza con elipsis o puntuación huérfana
+	if clean.startswith(("...", "…", ",", ";", ":", "-", "—", "–")):
+		return False
+
+	# Descartar oraciones truncas que terminan en dos puntos, punto y coma, coma o guion
+	if clean.endswith((":", ";", ",", "-", "—", "–")):
+		return False
+
+	# Debe iniciar con mayúscula (o signo de apertura ¿ o ¡ seguido de letra)
+	first_alpha = re.search(r"[a-zA-ZáéíóúüñÁÉÍÓÚÜÑ]", clean)
+	if not first_alpha or first_alpha.group(0).islower():
+		return False
+
+	# Caracteres de formato, código o matemáticos prohibidos
+	if any(c in clean for c in FORBIDDEN_FORMAT_CHARS):
+		return False
+
+	# No debe ser una lista numerada o con viñetas al inicio
+	if re.match(r"^\s*(?:\d+[\.\)\-]|[a-zA-Z][\.\)]|[-*•])\s+", clean):
+		return False
+
+	# No debe contener listas numeradas internas (ej: "1) primer punto 2) segundo punto")
+	if re.search(r"\b\d+[\.\)]\s+[a-zA-ZáéíóúüñÁÉÍÓÚÜÑ]", clean):
+		return False
+
+	words = re.findall(r"\b[a-zA-ZáéíóúüñÁÉÍÓÚÜÑ0-9]+\b", clean)
+
+	# Longitud entre 5 y 88 palabras
+	if not (5 <= len(words) <= 88):
+		return False
+
+	# Descartar poesía rimada rota o versos aislados (múltiples cláusulas de menos de 3 palabras)
+	clauses = [re.findall(r"\b[a-zA-ZáéíóúüñÁÉÍÓÚÜÑ0-9]+\b", c) for c in re.split(r"[,;:\—–\n]+", clean) if c.strip()]
+	if len(clauses) >= 3:
+		short_clauses = sum(1 for c in clauses if 1 <= len(c) < 3)
+		if short_clauses >= 3 or (len(clauses) >= 4 and short_clauses >= 2 and (short_clauses / len(clauses)) >= 0.5):
+			return False
+
+	# Debe contener al menos un verbo conjugado común en español
+	if not has_conjugated_verb(words):
+		return False
+
+	# Filtro de mal gusto y jerga robótica / IA
+	return not contains_blacklisted_content(clean)
 
 
 def get_available_spanish_dbs(timeout: float = 2.0) -> list[str]:
@@ -878,22 +1858,68 @@ def get_available_spanish_dbs(timeout: float = 2.0) -> list[str]:
 
 
 def clean_fortune_text(raw_text: str) -> str:
-	"""Limpia el texto de una fortuna quitando saltos de línea excesivos, URLs y caracteres extraños."""
-	# Reemplazar múltiples saltos de línea y tabulaciones por espacios
-	text = re.sub(r"\s+", " ", raw_text).strip()
-	# Quitar comillas externas si ya las trae
-	text = text.strip("\"'«»")
-	# Quitar firmas de autores o URLs largas
-	text = re.sub(r"https?://\S+", "", text).strip()
-	text = re.sub(r"--\s*.*$", "", text).strip()
-	text = re.sub(r"<[^>]+>", "", text).strip()
-	return text.strip()
+	"""
+	Limpia el texto de una fortuna o cita de Unix:
+	- Elimina comillas dobles, simples y tipográficas (« » “ ” ‘ ’ " ' `).
+	- Limpia saltos de línea y normaliza espacios en blanco.
+	- Quita enlaces web (URLs), tags HTML y firmas de autor (-- Autor, — Autor, ~ Autor).
+	- Remueve corchetes [...] y paréntesis bibliográficos o de atribución.
+	"""
+	if not raw_text:
+		return ""
+
+	text = raw_text
+
+	# 1. Quitar firmas de autores precedidas por guiones o tildes (-- Autor, — Autor, ~ Autor)
+	text = re.sub(r"(?:--|—|~)\s*.*$", "", text, flags=re.MULTILINE)
+
+	# 2. Quitar URLs y enlaces web
+	text = re.sub(r"https?://\S+|www\.\S+", "", text)
+
+	# 3. Quitar etiquetas tipo HTML (<...>)
+	text = re.sub(r"<[^>]+>", "", text)
+
+	# 4. Quitar corchetes editoriales o bibliográficos: [...]
+	text = re.sub(r"\[[^\]]*\]", "", text)
+
+	# 5. Quitar paréntesis bibliográficos (años, fechas, tomos, páginas, referencias)
+	# Ej: (1879-1955), (siglo IV a.C.), (pág. 12), (op. cit.), (Ed. Losada, 1980)
+	text = re.sub(
+		r"\([^)]*(?:\b\d{1,4}\b|siglo|pág|pag|ibid|op\.?\s*cit|ed\.?|vol\.?|cap\.?|trad\.?)[^)]*\)",
+		"",
+		text,
+		flags=re.IGNORECASE,
+	)
+
+	# 6. Quitar paréntesis de atribución al final del texto: ej. "... (Proverbio Chino)." o "... (Confucio)"
+	text = re.sub(r"\s*\([A-ZÁÉÍÓÚÑa-záéíóúñ\s.,-]{2,50}\)\s*([.!?]?)$", r"\1", text)
+
+	# 7. Eliminar comillas dobles, simples y tipográficas (« » “ ” ‘ ’ " ' `)
+	text = re.sub(r"[«»“”‘’\"'`]", "", text)
+
+	# 8. Espacios antes de signos de puntuación creados al remover paréntesis
+	text = re.sub(r"\s+([,.:;!?])", r"\1", text)
+
+	# 9. Normalizar saltos de línea y múltiples espacios en blanco
+	text = re.sub(r"\s+", " ", text).strip()
+
+	# 10. Limpiar puntuación huérfana al inicio (ej: "... y nada más", ", dijo")
+	text = re.sub(r"^[.,;:—–\s]+", "", text).strip()
+
+	# 11. Asegurar puntuación terminal (. ! ? …) si termina en carácter alfanumérico
+	if text and text[-1].isalnum():
+		text = f"{text}."
+
+	return text
 
 
-def get_system_fortune(timeout: float = 2.0) -> str | None:
+def get_system_fortune(timeout: float = 2.0, max_attempts: int = 3) -> str | None:
 	"""
 	Intenta obtener una fortuna corta exclusivamente en ESPAÑOL mediante el comando Unix `fortune -s`.
-	Solo consulta bases en español conocidas y valida que el texto resultante sea en español.
+	Solo consulta bases en español conocidas y valida que el texto resultante:
+	1. Esté redactado en idioma español (is_spanish_text).
+	2. Sea una oración completa y apta para locución radial (is_valid_spoken_sentence).
+	Realiza hasta max_attempts reintentos ante fragmentos incoherentes o poesía rota antes de desistir.
 	"""
 	fortune_bin = shutil.which("fortune")
 	if not fortune_bin:
@@ -903,22 +1929,23 @@ def get_system_fortune(timeout: float = 2.0) -> str | None:
 	if not spanish_dbs:
 		return None
 
-	try:
-		cmd = [fortune_bin, "-s"] + spanish_dbs
-		res = subprocess.run(
-			cmd,
-			capture_output=True,
-			text=True,
-			timeout=timeout,
-			check=False,
-		)
-		if res.returncode == 0 and res.stdout:
-			cleaned = clean_fortune_text(res.stdout)
-			# Solo aceptar fortunas en español de longitud razonable para locución (entre 15 y 160 caracteres)
-			if 15 <= len(cleaned) <= 160 and is_spanish_text(cleaned):
-				return cleaned
-	except Exception as e:
-		logger.debug(f"Error consultando bases en español de fortune: {e}")
+	cmd = [fortune_bin, "-s"] + spanish_dbs
+	for _ in range(max_attempts):
+		try:
+			res = subprocess.run(
+				cmd,
+				capture_output=True,
+				text=True,
+				timeout=timeout,
+				check=False,
+			)
+			if res.returncode == 0 and res.stdout:
+				cleaned = clean_fortune_text(res.stdout)
+				if is_spanish_text(cleaned) and is_valid_spoken_sentence(cleaned):
+					return cleaned
+		except Exception as e:
+			logger.debug(f"Error consultando bases en español de fortune: {e}")
+			break
 
 	return None
 
