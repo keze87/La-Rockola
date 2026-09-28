@@ -281,5 +281,8 @@ async def test_play_next_skips_radio_locution_when_no_internet():
 		mock_create.assert_not_called()
 		# is_synthesizing_radio debe permanecer en False
 		assert state.is_synthesizing_radio is False
+		# El contador se reinicia y se sortea el próximo intervalo
+		assert state.radio_track_counter == 0
+		assert state.radio_tracks_until_next in (2, 3)
 		# Pasa directamente al siguiente tema de la cola
 		mock_play.assert_awaited_once_with("/music/song2.mp3")

@@ -25,6 +25,17 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 try:
+	from scripts.binary_utils import is_internet_available
+except ImportError:
+	try:
+		from binary_utils import is_internet_available
+	except ImportError:
+
+		def is_internet_available(timeout: float = 0.8) -> bool:
+			return True
+
+
+try:
 	from scripts.radio_announcer import (
 		CARPINCHO_FORTUNES,
 		DEFAULT_TTS_TIMEOUT,
@@ -41,7 +52,6 @@ try:
 		VOICES,
 		get_cached_audio,
 		init_tts_cache_db,
-		is_internet_available,
 		synthesize_segment,
 	)
 except ImportError:
@@ -61,7 +71,6 @@ except ImportError:
 		VOICES,
 		get_cached_audio,
 		init_tts_cache_db,
-		is_internet_available,
 		synthesize_segment,
 	)
 

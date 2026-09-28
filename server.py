@@ -3121,6 +3121,8 @@ class APIState:
 			if self.radio_track_counter >= self.radio_tracks_until_next:
 				# Preguntamos si hay internet puntualmente antes de activar la síntesis radial
 				if not await check_internet_async(timeout=0.8):
+					self.radio_track_counter = 0
+					self.radio_tracks_until_next = random.randint(2, 3)
 					logger.warning(
 						"📻 Carpincho Locutor: no hay conexión a internet disponible. Omitiendo locución radial para no demorar la reproducción."
 					)
