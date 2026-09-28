@@ -1,6 +1,7 @@
 import asyncio
 import json
 import subprocess
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -1039,7 +1040,7 @@ async def test_create_radio_announcement_weather_once_per_hour(tmp_path):
 		)
 		assert ok1 is True
 		assert "20 grados" in text1
-		assert radio_announcer.get_radio_state("last_weather_hour", db_path=db_p) == "14"
+		assert radio_announcer.get_radio_state("last_weather_hour", db_path=db_p) == "2026-09-27 14"
 		assert mock_fetch.call_count == 1
 
 		# 2da locución en la misma hora (14:35) -> NO debe tener reporte de clima ni reintentar fetch
@@ -1060,7 +1061,7 @@ async def test_create_radio_announcement_weather_once_per_hour(tmp_path):
 		)
 		assert ok3 is True
 		assert "20 grados" in text3
-		assert radio_announcer.get_radio_state("last_weather_hour", db_path=db_p) == "15"
+		assert radio_announcer.get_radio_state("last_weather_hour", db_path=db_p) == "2026-09-27 15"
 		assert mock_fetch.call_count == 2
 
 
@@ -1125,3 +1126,135 @@ async def test_synthesize_segment_retry_multiple_attempts_success(tmp_path):
 		)
 		assert blob == b"SUCCESS_ON_THIRD_TRY"
 		assert call_count == 3
+
+
+def test_fetch_weather_json_cache_success_and_ttl(monkeypatch):
+	"""Verifica que fetch_weather_json almacena en caché y recurre a ella ante fallas de red."""
+	radio_announcer.reset_weather_cache()
+
+	sample_data = {
+		"current_condition": [{"temp_C": "25"}],
+		"weather": [{"mintempC": "18", "maxtempC": "30", "hourly": []}],
+	}
+
+	# 1. Petición exitosa -> guarda en caché
+	mock_resp = MagicMock()
+	mock_resp.status = 200
+	mock_resp.read.return_value = json.dumps(sample_data).encode("utf-8")
+	mock_resp.__enter__.return_value = mock_resp
+
+	with patch("urllib.request.urlopen", return_value=mock_resp):
+		data = radio_announcer.fetch_weather_json("Tucumán", timeout=2.0)
+		assert data == sample_data
+
+	# 2. Fallo de red dentro de los 30 min -> debe devolver la caché
+	with patch("urllib.request.urlopen", side_effect=OSError("Network down")):
+		cached = radio_announcer.fetch_weather_json("Tucumán", timeout=2.0)
+		assert cached == sample_data
+
+	# 3. Fallo de red pero la caché expiró (más de 30 minutos) -> debe devolver None
+	fake_now = time.time() + radio_announcer.WEATHER_CACHE_TTL + 10
+	monkeypatch.setattr(time, "time", lambda: fake_now)
+	with patch("urllib.request.urlopen", side_effect=OSError("Network down")):
+		expired = radio_announcer.fetch_weather_json("Tucumán", timeout=2.0)
+		assert expired is None
+
+
+def test_build_weather_phrase_with_current_hour_filtering():
+	"""Verifica que los slots horarios de lluvia pasados se descarten y solo apliquen los de la hora actual en adelante."""
+	# Slot de las 9:00 tuvo 90% lluvia, slots de las 12:00, 15:00, 18:00 tuvieron 10%
+	weather_data = {
+		"current_condition": [{"temp_C": "21"}],
+		"weather": [
+			{
+				"mintempC": "14",
+				"maxtempC": "25",
+				"hourly": [
+					{"time": "900", "chanceofrain": "90"},
+					{"time": "1200", "chanceofrain": "10"},
+					{"time": "1500", "chanceofrain": "10"},
+					{"time": "1800", "chanceofrain": "10"},
+				],
+			},
+			{
+				"mintempC": "15",
+				"maxtempC": "26",
+				"hourly": [{"time": "1200", "chanceofrain": "10"}],
+			},
+		],
+	}
+
+	# Si son las 14:00 (current_hour=14), el slot de las 9:00 ya pasó (9 + 2 = 11 < 14) -> NO llueve hoy
+	phrase_afternoon = radio_announcer.build_weather_phrase(weather_data, current_hour=14)
+	assert phrase_afternoon is not None
+	assert "De lluvias ni hablemos" in phrase_afternoon
+
+	# Si son las 8:00 (current_hour=8), el slot de las 9:00 está vigente (9 + 2 = 11 >= 8) -> SÍ llueve hoy
+	phrase_morning = radio_announcer.build_weather_phrase(weather_data, current_hour=8)
+	assert phrase_morning is not None
+	assert "Atenti que hoy se esperan lluvias" in phrase_morning
+
+
+@pytest.mark.asyncio
+async def test_create_radio_announcement_assembly_failure_does_not_mark_weather(tmp_path):
+	"""Verifica que si el ensamblado final falla, la hora del clima NO se marque en el estado."""
+	out = tmp_path / "announcement.mp3"
+	db_p = tmp_path / "tts_cache.db"
+	dt_hour = datetime(2026, 9, 27, 18, 15, tzinfo=timezone.utc)
+
+	mock_weather = {
+		"current_condition": [{"temp_C": "20"}],
+		"weather": [
+			{"mintempC": "12", "maxtempC": "24", "hourly": []},
+			{"mintempC": "13", "maxtempC": "25", "hourly": []},
+		],
+	}
+
+	mock_comm = MagicMock()
+	mock_comm.save = AsyncMock(return_value=None)
+
+	with (
+		patch("scripts.radio_announcer.HAS_EDGE_TTS", True),
+		patch("scripts.radio_announcer.edge_tts.Communicate", return_value=mock_comm),
+		patch("scripts.radio_announcer.fetch_weather_json", return_value=mock_weather),
+		patch("scripts.radio_announcer.assemble_announcement_audio", return_value=False),
+	):
+		ok, _title, err = await radio_announcer.create_radio_announcement(out, db_path=db_p, dt=dt_hour)
+		assert ok is False
+		assert "Falló el ensamblado" in err
+		# El estado no debe haber sido guardado porque falló el ensamblado
+		assert radio_announcer.get_radio_state("last_weather_hour", db_path=db_p) is None
+
+
+def test_modular_helpers_and_preload_integration():
+	"""Verifica los helpers modulares de horas, minutos, grados, pases y reacciones."""
+	hours = radio_announcer.get_modular_hour_segments()
+	assert len(hours) == 24
+	assert hours[0] == "Las doce de la noche,"
+	assert hours[1] == "1 hora,"
+	assert hours[2] == "2 horas,"
+
+	minutes = radio_announcer.get_modular_minute_segments()
+	assert len(minutes) == 59
+	assert minutes[0] == "un minuto."
+	assert minutes[58] == "59 minutos."
+
+	degrees = radio_announcer.get_all_degree_segments(0, 10)
+	assert len(degrees) == 11
+	assert degrees[0] == "0 grados"
+	assert degrees[10] == "10 grados"
+
+	assert len(radio_announcer.RADIO_HANDOFFS) > 0
+	assert len(radio_announcer.RADIO_REACTIONS) > 0
+
+	# Preload collect_phrases
+	from scripts import preload_tts_cache
+
+	phrases = preload_tts_cache.collect_phrases()
+	categories = {cat for cat, _ in phrases}
+	assert "hora" in categories
+	assert "minuto" in categories
+	assert "pase" in categories
+	assert "reaccion" in categories
+	assert any(text == "Las doce de la noche," for cat, text in phrases if cat == "hora")
+	assert any(text == "un minuto." for cat, text in phrases if cat == "minuto")

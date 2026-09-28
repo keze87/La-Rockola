@@ -247,6 +247,15 @@ WEATHER_LEAD_INS: list[str] = [
 ]
 
 
+_WEATHER_CACHE: dict[tuple[str, str], tuple[float, dict]] = {}
+WEATHER_CACHE_TTL: float = 30 * 60  # 30 minutos
+
+
+def reset_weather_cache() -> None:
+	"""Limpia la caché en memoria de wttr.in (útil para pruebas y reinicio)."""
+	_WEATHER_CACHE.clear()
+
+
 def construir_url_json(lugar: str, idioma: str = "es") -> str:
 	lugar_limpio = lugar.strip() if lugar else ""
 	lugar_escapado = urllib.parse.quote(lugar_limpio, safe=",~-")
@@ -261,7 +270,9 @@ def fetch_weather_json(
 	"""
 	Obtiene los datos meteorológicos en formato JSON (format=j1) desde wttr.in de forma sincrónica.
 	Retorna el diccionario parseado o None si ocurre cualquier error (timeout, HTTP, DNS o JSON inválido).
+	Si la solicitud remota falla, intenta recuperar la última respuesta válida en caché si tiene menos de 30 minutos.
 	"""
+	cache_key = (lugar.strip().lower() if lugar else "", idioma.strip().lower() if idioma else "es")
 	url = construir_url_json(lugar, idioma)
 	try:
 		req = urllib.request.Request(
@@ -269,14 +280,27 @@ def fetch_weather_json(
 			headers={"User-Agent": "LaRockolaDelCarpincho/1.0"},
 		)
 		with urllib.request.urlopen(req, timeout=timeout) as resp:
-			if resp.status != 200:
-				logger.debug(f"Respuesta no exitosa de wttr.in ({resp.status}) para '{lugar}'")
-				return None
-			raw_body = resp.read()
-			return json.loads(raw_body.decode("utf-8", errors="ignore"))
+			if resp.status == 200:
+				raw_body = resp.read()
+				parsed = json.loads(raw_body.decode("utf-8", errors="ignore"))
+				if isinstance(parsed, dict) and "current_condition" in parsed:
+					_WEATHER_CACHE[cache_key] = (time.time(), parsed)
+					return parsed
+			logger.debug(f"Respuesta no exitosa de wttr.in ({resp.status}) para '{lugar}'")
 	except Exception as e:
 		logger.debug(f"No se pudo consultar el clima en wttr.in para '{lugar}': {e}")
-		return None
+
+	# Si la petición remota falló, verificar si tenemos una respuesta previa válida de menos de 30 minutos
+	if cache_key in _WEATHER_CACHE:
+		cached_time, cached_data = _WEATHER_CACHE[cache_key]
+		age = time.time() - cached_time
+		if age <= WEATHER_CACHE_TTL:
+			logger.debug(
+				f"🌤️ Usando reporte del clima en caché ({age / 60:.1f} min de antigüedad) para '{lugar}' ante fallo de red."
+			)
+			return cached_data
+
+	return None
 
 
 def describir_lluvias(llueve_hoy: bool, llueve_manana: bool) -> str:
@@ -293,13 +317,31 @@ def describir_lluvias(llueve_hoy: bool, llueve_manana: bool) -> str:
 	return "Se vienen lluvias tanto para hoy como para mañana, ¡clima soñado para andar chapoteando en el agua!"
 
 
-def build_weather_phrase(data: dict, lead_in: str | None = None) -> str | None:
+def _is_slot_relevant_for_hour(h: dict, current_hour: int) -> bool:
+	"""Determina si un slot hourly de wttr.in cubre desde la hora actual en adelante."""
+	time_val = h.get("time")
+	if time_val is None:
+		return True
+	try:
+		# wttr.in usa enteros como 0, 300, 600, 900, 1200, 1500, etc.
+		# Cada slot cubre 3 horas: [slot_hour, slot_hour + 2]
+		slot_hour = int(time_val) // 100
+		return (slot_hour + 2) >= current_hour
+	except (ValueError, TypeError):
+		return True
+
+
+def build_weather_phrase(
+	data: dict,
+	lead_in: str | None = None,
+	current_hour: int | None = None,
+) -> str | None:
 	"""
 	Extrae y arma la frase del reporte del clima a partir del JSON format=j1 de wttr.in.
 	Incluye únicamente:
 	- Temperatura actual.
-	- Mínima, máxima y probabilidad de lluvia para HOY.
-	- Mínima, máxima y probabilidad de lluvia para MAÑANA.
+	- Mínima, máxima y probabilidad de lluvia para HOY (considerando slots desde la hora actual).
+	- Mínima, máxima y probabilidad de lluvia para MAÑANA (día completo).
 	Retorna None si la estructura no contiene las claves esperadas.
 	"""
 	try:
@@ -311,8 +353,12 @@ def build_weather_phrase(data: dict, lead_in: str | None = None) -> str | None:
 		min_tomorrow = round(float(tomorrow["mintempC"]))
 		max_tomorrow = round(float(tomorrow["maxtempC"]))
 
+		today_hourly = today.get("hourly", [])
+		if current_hour is not None:
+			today_hourly = [h for h in today_hourly if _is_slot_relevant_for_hour(h, current_hour)]
+
 		rain_today = max(
-			(int(h.get("chanceofrain", 0)) for h in today.get("hourly", [])),
+			(int(h.get("chanceofrain", 0)) for h in today_hourly),
 			default=0,
 		)
 		rain_tomorrow = max(
@@ -767,6 +813,65 @@ def get_radio_fortune() -> str:
 	return fortuna
 
 
+# Pases de cabina criollos entre carpinchos locutores ("charla de cabina")
+RADIO_HANDOFFS: list[str] = [
+	"¿Cómo viene la mano afuera, che?",
+	"Contame qué dice el servicio meteorológico:",
+	"¿Qué tenemos en el pronóstico para hoy?",
+	"Tirate esa data de la laguna:",
+	"Pará que quiero saber qué dice el oráculo:",
+	"¿Qué nos espera en el cielo, compadre?",
+	"Tirame el parte meteorológico carpincho:",
+]
+
+# Reacciones de cabina criollas ("charla de cabina")
+RADIO_REACTIONS: list[str] = [
+	"¡Qué lo tiró, che!",
+	"Mirá vos, qué momento.",
+	"Lindo momento para unos buenos mates.",
+	"Una pinturita.",
+	"Totalmente, compadre.",
+	"Tal cual, fiera.",
+	"¡Qué temazo metiste!",
+	"La posta pura.",
+	"¡Ojo al piojo!",
+	"Así se habla en el pago.",
+]
+
+
+def get_modular_hour_segments() -> list[str]:
+	"""Genera la lista con los 24 segmentos modulares de hora ('Las doce de la noche,', '1 hora,', ... '23 horas,')."""
+	segments = []
+	for h in range(24):
+		if h == 0:
+			segments.append("Las doce de la noche,")
+		elif h == 1:
+			segments.append("1 hora,")
+		else:
+			segments.append(f"{h} horas,")
+	return segments
+
+
+def get_modular_minute_segments() -> list[str]:
+	"""Genera la lista con los 59 segmentos modulares de minutos ('un minuto.' a '59 minutos.')."""
+	return ["un minuto." if m == 1 else f"{m} minutos." for m in range(1, 60)]
+
+
+def get_all_degree_segments(min_deg: int = -5, max_deg: int = 42) -> list[str]:
+	"""Devuelve las frases de temperaturas en grados para locución modular del clima."""
+	return [f"{d} grados" for d in range(min_deg, max_deg + 1)]
+
+
+def get_all_reaction_segments() -> list[str]:
+	"""Devuelve la lista de reacciones de cabina."""
+	return list(RADIO_REACTIONS)
+
+
+def get_all_handoff_segments() -> list[str]:
+	"""Devuelve la lista de pases de cabina."""
+	return list(RADIO_HANDOFFS)
+
+
 def get_modular_time_segments(dt: datetime | None = None) -> tuple[str, str | None, str]:
 	"""
 	Divide el anuncio de la hora en segmentos modulares (hora y minutos)
@@ -787,14 +892,11 @@ def get_modular_time_segments(dt: datetime | None = None) -> tuple[str, str | No
 		special = SPECIAL_HOURS.get(hour, f"{hour} horas en punto.")
 		return special, None, special
 
-	if hour == 0:
-		hora_seg = "Las doce de la noche,"
-	elif hour == 1:
-		hora_seg = "1 hora,"
-	else:
-		hora_seg = f"{hour} horas,"
+	hour_segments = get_modular_hour_segments()
+	hora_seg = hour_segments[hour]
 
-	minuto_seg = "un minuto." if minute == 1 else f"{minute} minutos."
+	minute_segments = get_modular_minute_segments()
+	minuto_seg = minute_segments[minute - 1]
 	full_time_str = f"{hora_seg} {minuto_seg}"
 	return hora_seg, minuto_seg, full_time_str
 
@@ -1529,10 +1631,11 @@ async def create_radio_announcement(
 
 	# Reporte del clima con wttr.in (anunciado únicamente la primera vez dentro de cada hora de programa)
 	weather_text: str | None = None
-	current_hour_str = str(effective_dt.hour)
+	current_weather_slot = effective_dt.strftime("%Y-%m-%d %H")
 	last_weather_hour = get_radio_state("last_weather_hour", db_path=db_path)
+	pending_weather_slot: str | None = None
 
-	if last_weather_hour != current_hour_str:
+	if last_weather_hour != current_weather_slot:
 		try:
 			weather_timeout = min(timeout, 5.0)
 			weather_data = await asyncio.to_thread(
@@ -1542,10 +1645,10 @@ async def create_radio_announcement(
 				weather_timeout,
 			)
 			if weather_data:
-				phrase = build_weather_phrase(weather_data)
+				phrase = build_weather_phrase(weather_data, current_hour=effective_dt.hour)
 				if phrase:
 					weather_text = phrase
-					set_radio_state("last_weather_hour", current_hour_str, db_path=db_path)
+					pending_weather_slot = current_weather_slot
 					logger.debug(f"🌤️ Reporte del clima incorporado a la locución: '{weather_text}'")
 		except Exception as e:
 			logger.debug(f"Fallo no crítico obteniendo/procesando reporte del clima: {e}")
@@ -1580,20 +1683,27 @@ async def create_radio_announcement(
 	)
 
 	try:
-		# Síntesis concurrente de los segmentos independientes con asyncio.gather
-		tasks = [
-			synthesize_segment(
-				text=text,
-				voice=v,
-				category=category,
-				allow_cache=allow_cache,
-				timeout=timeout,
-				max_retries=max_retries,
-				db_path=db_path,
-			)
-			for text, v, category, allow_cache in plan
-		]
-		raw_segments = await asyncio.wait_for(asyncio.gather(*tasks), timeout=timeout)
+		# Síntesis concurrente con TaskGroup: si una falla, cancela a las hermanas de inmediato
+		margin = 5.0 if timeout >= 1.0 else max(0.05, timeout)
+		total_timeout = (timeout * max_retries) + margin
+
+		async with asyncio.timeout(total_timeout):
+			async with asyncio.TaskGroup() as tg:
+				task_objs = [
+					tg.create_task(
+						synthesize_segment(
+							text=text,
+							voice=v,
+							category=category,
+							allow_cache=allow_cache,
+							timeout=timeout,
+							max_retries=max_retries,
+							db_path=db_path,
+						)
+					)
+					for text, v, category, allow_cache in plan
+				]
+		raw_segments = [t.result() for t in task_objs]
 		segment_results: list[tuple[bytes, str, str]] = [
 			(seg_bytes, plan[i][2], plan[i][1]) for i, seg_bytes in enumerate(raw_segments)
 		]
@@ -1626,13 +1736,22 @@ async def create_radio_announcement(
 			logger.warning(f"📻 El Carpincho: {err_msg}")
 			return False, "", err_msg
 
+		# Guardar el slot horario recién después de que la síntesis y el ensamblado terminaron bien
+		if pending_weather_slot:
+			set_radio_state("last_weather_hour", pending_weather_slot, db_path=db_path)
+
 		return True, display_title, full_script
 
-	except asyncio.TimeoutError:
-		err_msg = f"Se agotó el tiempo de espera ({timeout}s) contactando al servicio de síntesis de voz (edge-tts). Verificá la conexión a internet."
-		logger.warning(f"📻 El Carpincho: {err_msg}")
-		return False, "", err_msg
 	except Exception as e:
+		is_timeout = isinstance(e, (asyncio.TimeoutError, TimeoutError)) or (
+			hasattr(e, "exceptions")
+			and any(isinstance(sub, (asyncio.TimeoutError, TimeoutError)) for sub in getattr(e, "exceptions", []))
+		)
+		if is_timeout:
+			err_msg = f"Se agotó el tiempo de espera ({timeout}s) contactando al servicio de síntesis de voz (edge-tts). Verificá la conexión a internet."
+			logger.warning(f"📻 El Carpincho: {err_msg}")
+			return False, "", err_msg
+
 		err_msg = f"Error de síntesis ({type(e).__name__}: {e})"
 		logger.warning(f"📻 El Carpincho: {err_msg}")
 		return False, "", err_msg

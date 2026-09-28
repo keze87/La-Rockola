@@ -40,9 +40,11 @@ try:
 		CARPINCHO_FORTUNES,
 		DEFAULT_TTS_TIMEOUT,
 		HAS_EDGE_TTS,
+		RADIO_HANDOFFS,
 		RADIO_INTROS,
 		RADIO_LEAD_INS,
 		RADIO_OUTROS,
+		RADIO_REACTIONS,
 		SPECIAL_HOURS,
 		VOICE_ELENA,
 		VOICE_MARIA,
@@ -50,7 +52,10 @@ try:
 		VOICE_TOMAS,
 		VOICE_VALENTINA,
 		VOICES,
+		get_all_degree_segments,
 		get_cached_audio,
+		get_modular_hour_segments,
+		get_modular_minute_segments,
 		init_tts_cache_db,
 		synthesize_segment,
 	)
@@ -59,9 +64,11 @@ except ImportError:
 		CARPINCHO_FORTUNES,
 		DEFAULT_TTS_TIMEOUT,
 		HAS_EDGE_TTS,
+		RADIO_HANDOFFS,
 		RADIO_INTROS,
 		RADIO_LEAD_INS,
 		RADIO_OUTROS,
+		RADIO_REACTIONS,
 		SPECIAL_HOURS,
 		VOICE_ELENA,
 		VOICE_MARIA,
@@ -69,7 +76,10 @@ except ImportError:
 		VOICE_TOMAS,
 		VOICE_VALENTINA,
 		VOICES,
+		get_all_degree_segments,
 		get_cached_audio,
+		get_modular_hour_segments,
+		get_modular_minute_segments,
 		init_tts_cache_db,
 		synthesize_segment,
 	)
@@ -91,9 +101,10 @@ def collect_phrases() -> list[tuple[str, str]]:
 	- Fortunas y propagandas carpinchas
 	- Salidas radiales
 	- 24 Horas especiales (minuto 0 en punto con impronta carpincha)
-	- 24 Segmentos de hora ("0 horas," a "23 horas,")
+	- 24 Segmentos de hora ("Las doce de la noche,", "1 hora,", "2 horas," ... "23 horas,")
 	- 59 Segmentos de minuto ("un minuto." a "59 minutos.")
-	Total: ~192 frases que cubren el 100% de cualquier locución posible.
+	- Pases de cabina criollos
+	- Reacciones de cabina criollas
 	"""
 	items: list[tuple[str, str]] = []
 
@@ -117,20 +128,25 @@ def collect_phrases() -> list[tuple[str, str]]:
 	for special in SPECIAL_HOURS.values():
 		items.append(("hora", special))
 
-	# 6. Segmentos modulares de horas (0 a 23)
-	for h in range(24):
-		if h == 0:
-			hora_str = "Las doce de la noche,"
-		elif h == 1:
-			hora_str = "1 hora,"
-		else:
-			hora_str = f"{h} horas,"
+	# 6. Segmentos modulares de horas (0 a 23) importados desde radio_announcer
+	for hora_str in get_modular_hour_segments():
 		items.append(("hora", hora_str))
 
-	# 7. Segmentos modulares de minutos (1 a 59)
-	for m in range(1, 60):
-		minuto_str = "un minuto." if m == 1 else f"{m} minutos."
+	# 7. Segmentos modulares de minutos (1 a 59) importados desde radio_announcer
+	for minuto_str in get_modular_minute_segments():
 		items.append(("minuto", minuto_str))
+
+	# 8. Pases de cabina criollos
+	for handoff in RADIO_HANDOFFS:
+		items.append(("pase", handoff))
+
+	# 9. Reacciones de cabina criollas
+	for reaction in RADIO_REACTIONS:
+		items.append(("reaccion", reaction))
+
+	# 10. Segmentos de temperatura en grados
+	for deg in get_all_degree_segments():
+		items.append(("clima", deg))
 
 	return items
 
