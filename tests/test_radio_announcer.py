@@ -12,10 +12,11 @@ from scripts import radio_announcer
 
 
 def test_clean_fortune_text():
-	# 1. URLs, tags HTML y firmas con guiones
+	# 1. URLs, tags HTML y firmas con guiones (firmas de autor preservadas)
 	raw = '  "El éxito no es la clave."  \n\n  -- Albert Schweitzer  https://example.com  <nick>  '
 	cleaned = radio_announcer.clean_fortune_text(raw)
 	assert "El éxito no es la clave." in cleaned
+	assert "Albert Schweitzer" in cleaned
 	assert "https://" not in cleaned
 	assert "<nick>" not in cleaned
 
@@ -32,9 +33,11 @@ def test_clean_fortune_text():
 	assert "(1890, pág. 12)" not in cleaned_biblio
 	assert "La paciencia es amarga, pero sus frutos son dulces." == cleaned_biblio
 
-	# 4. Atribuciones al final entre paréntesis
+	# 4. Atribuciones de autor preservadas
 	raw_attrib = "No dejes para mañana lo que puedas hacer hoy (Refrán Popular)."
-	assert radio_announcer.clean_fortune_text(raw_attrib) == ("No dejes para mañana lo que puedas hacer hoy.")
+	assert radio_announcer.clean_fortune_text(raw_attrib) == (
+		"No dejes para mañana lo que puedas hacer hoy (Refrán Popular)."
+	)
 
 
 def test_is_valid_spoken_sentence_positive():
