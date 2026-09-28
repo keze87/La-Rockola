@@ -124,23 +124,23 @@ def test_get_modular_time_segments():
 	# Modular 15:23
 	dt_mod = datetime(2026, 9, 26, 15, 23, tzinfo=timezone.utc)
 	h_seg, m_seg, full = radio_announcer.get_modular_time_segments(dt_mod)
-	assert h_seg == "15 horas,"
-	assert m_seg == "23 minutos."
-	assert full == "15 horas, 23 minutos."
+	assert h_seg == "Las tres"
+	assert m_seg == "y veintitrés."
+	assert full == "Las tres y veintitrés."
 
 	# Modular 09:01
 	dt_one_min = datetime(2026, 9, 26, 9, 1, tzinfo=timezone.utc)
 	h_seg, m_seg, full = radio_announcer.get_modular_time_segments(dt_one_min)
-	assert h_seg == "9 horas,"
-	assert m_seg == "un minuto."
-	assert full == "9 horas, un minuto."
+	assert h_seg == "Las nueve"
+	assert m_seg == "y un minuto."
+	assert full == "Las nueve y un minuto."
 
 	# Modular 01:45
 	dt_one_forty_five = datetime(2026, 9, 26, 1, 45, tzinfo=timezone.utc)
 	h_seg, m_seg, full = radio_announcer.get_modular_time_segments(dt_one_forty_five)
-	assert h_seg == "1 hora,"
-	assert m_seg == "45 minutos."
-	assert full == "1 hora, 45 minutos."
+	assert h_seg == "Las una"
+	assert m_seg == "y cuarenta y cinco."
+	assert full == "Las una y cuarenta y cinco."
 
 	# Las 24 horas especiales deben existir y ser válidas en español
 	assert len(radio_announcer.SPECIAL_HOURS) == 24
@@ -366,7 +366,7 @@ async def test_system_fortune_read_by_elena_and_cached(tmp_path):
 		cached_elena = radio_announcer.get_cached_audio(
 			"fortuna",
 			radio_announcer.VOICE_ELENA,
-			f"«{sys_fortune_text}».",
+			radio_announcer.format_fortune_for_speech(sys_fortune_text),
 			db_path=db_path,
 		)
 		assert cached_elena is not None
@@ -376,7 +376,7 @@ async def test_system_fortune_read_by_elena_and_cached(tmp_path):
 		cached_tomas = radio_announcer.get_cached_audio(
 			"fortuna",
 			radio_announcer.VOICE_TOMAS,
-			f"«{sys_fortune_text}».",
+			radio_announcer.format_fortune_for_speech(sys_fortune_text),
 			db_path=db_path,
 		)
 		assert cached_tomas is None
@@ -521,14 +521,14 @@ def test_preload_collect_phrases():
 	# Verificamos que contenga horas especiales y modulares
 	horas = [text for cat, text in items if cat == "hora"]
 	assert "Las una en punto, es hora de mimir." in horas
-	assert "15 horas," in horas
-	assert "1 hora," in horas
-	assert len(horas) == 48  # 24 especiales + 24 modulares
+	assert "Las tres" in horas
+	assert "Las una" in horas
+	assert len(horas) == 36  # 24 especiales + 12 modulares únicas (al usar formato 12h coloquial)
 
 	# Verificamos que contenga los 59 minutos
 	minutos = [text for cat, text in items if cat == "minuto"]
-	assert "un minuto." in minutos
-	assert "59 minutos." in minutos
+	assert "y un minuto." in minutos
+	assert "y cincuenta y nueve." in minutos
 	assert len(minutos) == 59
 
 
@@ -565,7 +565,7 @@ async def test_create_radio_announcement_with_special_and_modular_dt(tmp_path):
 			dt=dt_modular,
 		)
 		assert ok2 is True
-		assert "15 horas, 23 minutos." in text2
+		assert "Las tres y veintitrés." in text2
 
 
 def test_get_carpincho_cover_path():
@@ -624,9 +624,9 @@ def test_embed_cover_art_in_mp3(tmp_path):
 def test_modular_time_hour_zero_with_minutes():
 	dt = datetime(2026, 9, 27, 0, 15, tzinfo=timezone.utc)
 	hora_seg, minuto_seg, full_time_str = radio_announcer.get_modular_time_segments(dt)
-	assert hora_seg == "Las doce de la noche,"
-	assert minuto_seg == "15 minutos."
-	assert full_time_str == "Las doce de la noche, 15 minutos."
+	assert hora_seg == "Las doce"
+	assert minuto_seg == "y cuarto."
+	assert full_time_str == "Las doce y cuarto."
 
 
 @pytest.mark.asyncio
@@ -870,13 +870,10 @@ def test_assemble_announcement_audio_acrossfade_and_pauses(tmp_path):
 			dest = Path(cmd[-1])
 			dest.write_bytes(b"NORM_AUDIO")
 			return MagicMock(returncode=0, stderr=b"")
-		# Si es mastering final con highpass y compresor
-		elif any("highpass" in arg for arg in cmd):
-			dest = Path(cmd[-1])
-			dest.write_bytes(b"FINAL_CONCATENATED_AUDIO")
-			return MagicMock(returncode=0, stderr=b"")
-		# Si es concatenación final
-		elif "-filter_complex" in cmd and any("concat=n=" in arg for arg in cmd):
+		# Si es mastering final con highpass o concatenación final
+		elif any("highpass" in arg for arg in cmd) or (
+			"-filter_complex" in cmd and any("concat=n=" in arg for arg in cmd)
+		):
 			dest = Path(cmd[-1])
 			dest.write_bytes(b"FINAL_CONCATENATED_AUDIO")
 			return MagicMock(returncode=0, stderr=b"")
@@ -977,7 +974,7 @@ def test_build_weather_phrase_valid():
 			},
 		],
 	}
-	phrase = radio_announcer.build_weather_phrase(sample, lead_in="Atenti:")
+	phrase = radio_announcer.build_weather_phrase(sample, lead_in="Atenti:", template_idx=0)
 	assert phrase is not None
 	assert "Atenti:" in phrase
 	assert "22 grados" in phrase
@@ -1241,14 +1238,14 @@ def test_modular_helpers_and_preload_integration():
 	"""Verifica los helpers modulares de horas, minutos, grados, pases y reacciones."""
 	hours = radio_announcer.get_modular_hour_segments()
 	assert len(hours) == 24
-	assert hours[0] == "Las doce de la noche,"
-	assert hours[1] == "1 hora,"
-	assert hours[2] == "2 horas,"
+	assert hours[0] == "Las doce"
+	assert hours[1] == "Las una"
+	assert hours[2] == "Las dos"
 
 	minutes = radio_announcer.get_modular_minute_segments()
 	assert len(minutes) == 59
-	assert minutes[0] == "un minuto."
-	assert minutes[58] == "59 minutos."
+	assert minutes[0] == "y un minuto."
+	assert minutes[58] == "y cincuenta y nueve."
 
 	degrees = radio_announcer.get_all_degree_segments(0, 10)
 	assert len(degrees) == 11
@@ -1267,8 +1264,8 @@ def test_modular_helpers_and_preload_integration():
 	assert "minuto" in categories
 	assert "pase" in categories
 	assert "reaccion" in categories
-	assert any(text == "Las doce de la noche," for cat, text in phrases if cat == "hora")
-	assert any(text == "un minuto." for cat, text in phrases if cat == "minuto")
+	assert any(text == "Las doce" for cat, text in phrases if cat == "hora")
+	assert any(text == "y un minuto." for cat, text in phrases if cat == "minuto")
 
 
 def test_select_radio_hosts():
@@ -1326,7 +1323,7 @@ def test_format_temperature_singular_and_negatives():
 			{"mintempC": "0", "maxtempC": "1", "hourly": []},
 		],
 	}
-	phrase_sing = radio_announcer.build_weather_phrase(data_singular)
+	phrase_sing = radio_announcer.build_weather_phrase(data_singular, template_idx=0)
 	assert phrase_sing is not None
 	assert "1 grado de temperatura actual" in phrase_sing
 	assert "máxima alcanzará los 1 grado" in phrase_sing
@@ -1338,7 +1335,7 @@ def test_format_temperature_singular_and_negatives():
 			{"mintempC": "-4", "maxtempC": "-2", "hourly": []},
 		],
 	}
-	phrase_neg = radio_announcer.build_weather_phrase(data_negative)
+	phrase_neg = radio_announcer.build_weather_phrase(data_negative, template_idx=0)
 	assert phrase_neg is not None
 	assert "2 grados bajo cero de temperatura actual" in phrase_neg
 
@@ -1359,8 +1356,8 @@ def test_booth_chat_segment_order():
 	"""Verifica el orden estricto de los segmentos de diálogo en la charla de cabina."""
 	plan_with_weather = radio_announcer.build_radio_dialogue_plan(
 		intro="Buenas gente",
-		hora_seg="15 horas,",
-		minuto_seg="30 minutos.",
+		hora_seg="Las tres",
+		minuto_seg="y media.",
 		lead_in="Momento oráculo:",
 		fortuna="Mate amargo y cumbia",
 		outro="¡Seguimos!",
@@ -1408,7 +1405,7 @@ def test_booth_chat_segment_order():
 	# Plan sin clima
 	plan_no_weather = radio_announcer.build_radio_dialogue_plan(
 		intro="Buenas gente",
-		hora_seg="15 horas,",
+		hora_seg="Las tres",
 		minuto_seg=None,
 		lead_in="Momento oráculo:",
 		fortuna="Mate amargo",

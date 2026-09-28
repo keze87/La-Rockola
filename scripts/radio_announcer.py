@@ -119,7 +119,7 @@ CARPINCHO_FORTUNES: list[str] = [
 	"No te preocupes por el qué dirán: el carpincho toma sol y le importa un comino.",
 	"El que busca encuentra... menos las llaves cuando estás apurado.",
 	"Mejor solo que mal acompañado, pero con buena música nunca estás solo.",
-	"Cuidado con el que te dice «yo no tomo fernet»: algo oculta.",
+	"Cuidado con el que te dice que no toma fernet... algo oculta.",
 	"La música limpia el alma del polvo de la rutina diaria.",
 	"El mate amargo y la música al palo, como manda la ley criolla.",
 	"Todo concluye al fin, todo termina... menos esta fiesta en La Rockola.",
@@ -134,19 +134,27 @@ CARPINCHO_FORTUNES: list[str] = [
 	"Si la tarde viene pesada, una buena cumbia te la acomoda.",
 	"No hay camino a la felicidad: la felicidad es escuchar música entre amigos.",
 	"Menos drama y más cumbia, esa es la receta del éxito.",
-	"Un sabio dijo una vez: «Subile el volumen que este tema me encanta».",
+	"Un sabio dijo una vez... ¡subile el volumen que este tema me encanta!",
 	"El oráculo predice: tu día va a mejorar en un cien por ciento con este tema.",
+	# Filosofía zen de pantano
+	"El carpincho no compite con la corriente: flota con dignidad y que el río haga el esfuerzo.",
+	"Conflicto territorial lo tienen los que construyen sobre el humedal; nosotros ya estábamos acá.",
+	"Dormir doce horas sobre el lodo no es pereza: es comunión con la madre tierra.",
+	"Si un problema no se resuelve tomando un mate al sol, entonces no tiene solución.",
+	"Hacete amigo del yacaré: no para abrazarlo, sino para saber bien por dónde nada.",
+	"La paz mental es ver pasar la lancha a motor y ni siquiera parpadear.",
+	"No le pidas peras al olmo ni velocidad a un roedor de setenta kilos.",
 ]
 
 # Propagandas y avisos comerciales ficticios de radio para carpinchos
 CARPINCHO_ADS: list[str] = [
-	"Espacio publicitario: Yerba Mate «El Carpincho Mimoso», estacionada dos años en laguna natural. Un mate que te acaricia el alma.",
+	"Espacio publicitario: Yerba Mate El Carpincho Mimoso, estacionada dos años en laguna natural. Un mate que te acaricia el alma.",
 	"Publicidad: Pastos y Juncos Don Pedro. Los mejores brotes tiernos del Delta para rumiar en la orilla mientras suena La Rockola.",
 	"Aviso inmobiliario: Inmobiliaria El Bañado. Venta de lotes con costa propia y vista panorámica a Nordelta. Cero expensas, pura paz.",
-	"Publicidad: Protector solar «Piel de Carpincho», factor ochenta. Tomate un solazo en la barranca sin quemarte el cuero.",
+	"Publicidad: Protector solar Piel de Carpincho, factor ochenta. Tomate un solazo en la barranca sin quemarte el cuero.",
 	"Espacio publicitario: Ponchos y Boinas El Yacaré. Elegancia criolla para las noches frescas en el pajonal.",
 	"Aviso comercial: Remises La Nutria. Te cruzamos el río a nado o en canoa. Más rápidos que doradillo en bajante.",
-	"Espacio publicitario: Fernet «Laguna Negra» con dos hielos y coca. El combustible oficial de los carpinchos trasnochadores.",
+	"Espacio publicitario: Fernet Laguna Negra con dos hielos y coca. El combustible oficial de los carpinchos trasnochadores.",
 	"Publicidad: Spa Termal Los Esteros. Baños de fango curativo y masajes con caña tacuara. Salís como nuevo, hecho una seda.",
 	"Aviso comercial: Seguros La Madriguera. Si la crecida te llega al cogote, nosotros te cubrimos la cueva. Dormí sin frazada.",
 	"Publicidad: Ferretería Don Roedor. Bombas de achique, alambrados olímpicos y machetes para desmalezar la isla.",
@@ -154,47 +162,70 @@ CARPINCHO_ADS: list[str] = [
 	"Aviso parroquial: Academia Los Carpincheros. Clases de natación sincronizada y flotación tipo tronco para principiantes.",
 	"Publicidad: Astilleros La Balsa. Botes a remo, kayaks de madera y balsas de totora con garantía de por vida.",
 	"Espacio publicitario: Café de Algarroba y Facturas Don Ceibo. El desayuno ideal antes de tirarse a la sombra a hacer la siesta.",
-	"Publicidad: Colchones Sommier «Paja Brava». Firmeza garantizada para dormir doce horas seguidas como un señor carpincho.",
+	"Publicidad: Colchones Sommier Paja Brava. Firmeza garantizada para dormir doce horas seguidas como un señor carpincho.",
 	"Aviso comercial: Cervecería Artesanal El Pantano. Con lúpulo silvestre y agua fresca de vertiente isleña. Pedite una pinta bien helada.",
 	"Espacio publicitario: Sombreros de Paja Don Bigote. Frescura, sombra y porte gaucho para caminar por el terraplén.",
-	"Aviso parroquial: Repelente «Chau Mosquito». Para que no te piquen las orejas mientras disfrutás de un buen chamamé.",
+	"Aviso parroquial: Repelente Chau Mosquito. Para que no te piquen las orejas mientras disfrutás de un buen chamamé.",
 	"Publicidad: Panadería La Espiga Verde. Medialunas de grasa calentitas a toda hora para acompañar los amargos.",
 	"Espacio publicitario: Neumáticos La Huella. Cámaras inflables para flotar panza arriba toda la tarde en el arroyo.",
+	"Publicidad: Remises La Corvina. Cruzamos el arroyo sin salpicarte la boina. Puntualidad isleña garantizada.",
+	"Aviso parroquial: Se extravió una calabaza de mate curada con yerba misionera por la zona de los sauces. Recompensa en tortas fritas.",
+	"Espacio publicitario: Colchones de Totora El Descanso. Si te despertás contracturado, te devolvemos dos atados de juncos.",
+	"Aviso comercial: Pizzería El Camalote. Muzzarella elástica y masa a la piedra cocinada con leña de espinillo. Envío en canoa a todo el brazo del río.",
+	"Publicidad: Alarma La Nutria. Avisamos cuando sube la marea a los gritos limpios. Sin cables ni internet.",
 ]
 
 CARPINCHO_FORTUNES.extend(CARPINCHO_ADS)
 
-# Bancos de frases modulares para el Carpincho Locutor
+# Bancos de frases modulares para el Carpincho Locutor (puntuación natural sin comas ni dos puntos terminales)
 RADIO_INTROS: list[str] = [
-	"En el aire de La Rockola del Carpincho,",
+	"Micrófono abierto, patas en el agua. Así arranca La Rockola.",
+	"¿Quién dejó la pava en el control central? Bueno, no importa... ¡al aire en La Rockola!",
+	"Directo desde el juncal para toda la cuenca: transmite La Rockola del Carpincho.",
+	"Sintonizando la única frecuencia que no se hunde ni con la sudestada.",
+	"Acomodate en el barro, fiera. Estás escuchando La Rockola del Carpincho.",
+	"Secándonos al solcito de la orilla y metiendo buena música.",
+	"En el aire de La Rockola del Carpincho.",
 	"¡Buenas gente linda de La Rockola!",
-	"La hora en La Rockola:",
-	"Sintonizando La Rockola del Carpincho,",
+	"La hora en La Rockola.",
+	"Sintonizando La Rockola del Carpincho.",
 	"¡Seguimos haciendo el aguante en La Rockola!",
-	"Un matecito en La Rockola y seguimos:",
-	"Transmite La Rockola del Carpincho:",
+	"Un matecito en La Rockola y seguimos.",
+	"Transmite La Rockola del Carpincho.",
 	"Che, buenas y santas gente linda; acá estamos en La Rockola del Carpincho.",
 	"Posta, qué lindo estar acá en La Rockola; sintonizando buena onda.",
 	"¡Al pelo la música en La Rockola del Carpincho!",
-	"Tranqui en el agua, mate en mano; transmite La Rockola del Carpincho.",
+	"Tranqui en el agua, mate en mano... transmite La Rockola del Carpincho.",
 ]
 
 RADIO_LEAD_INS: list[str] = [
-	"Momento de la galletita de la fortuna:",
-	"Ojo al piojo con lo que dice el oráculo de La Rockola:",
-	"Sabiduría carpinchera para el alma:",
-	"Tiramos una frase para reflexionar mientras te tomás unos mates:",
-	"Dice la fortuna del día:",
-	"Atenti a esta reflexión carpinchera:",
-	"Espacio publicitario en La Rockola:",
-	"Atenti a este aviso de la comunidad carpinchera:",
-	"Mensaje de nuestros queridos auspiciantes:",
-	"Che, atenti al oráculo; sabiduría pura de la laguna:",
-	"Posta, escuchate esta reflexión carpinchera:",
-	"Pará la oreja; mirá lo que nos deja el oráculo hoy:",
+	"Momento de rumiar una idea mientras chupás la bombilla...",
+	"Llegó un mensaje en botella al terraplén; escuchá...",
+	"Atendé lo que nos bajó la capitanía de la laguna.",
+	"Aviso importante de la vecindad de los bañados.",
+	"Pará la oreja que esto no te lo enseñan en la escuela de natación.",
+	"Un consejo milenario directo del barro profundo.",
+	"Momento de la galletita de la fortuna...",
+	"Ojo al piojo con lo que dice el oráculo de La Rockola.",
+	"Sabiduría carpinchera para el alma.",
+	"Tiramos una frase para reflexionar mientras te tomás unos mates.",
+	"Dice la fortuna del día...",
+	"Atenti a esta reflexión carpinchera.",
+	"Espacio publicitario en La Rockola.",
+	"Atenti a este aviso de la comunidad carpinchera.",
+	"Mensaje de nuestros queridos auspiciantes.",
+	"Che, atenti al oráculo; sabiduría pura de la laguna.",
+	"Posta, escuchate esta reflexión carpinchera.",
+	"Pará la oreja; mirá lo que nos deja el oráculo hoy.",
 ]
 
 RADIO_OUTROS: list[str] = [
+	"Dejamos de parlotear y que hable el bajo. ¡Metele play!",
+	"Acomodá el lomo en la orilla que este tema arranca al palo.",
+	"Menos charla y más cumbia. ¡Pegale!",
+	"¡Subile al parlante antes de que nos tape la marea!",
+	"Se viene un clásico de aquellos... ¡hacete un espacio y bailá!",
+	"Frenamos la charla pero la música no para. ¡Escuchate esto!",
 	"¡Seguimos con más música!",
 	"¡Que no decaiga!",
 	"¡Pegale play que esto sigue!",
@@ -239,11 +270,11 @@ DEFAULT_WEATHER_LOCATION: str = "San Miguel de Tucumán"
 WEATHER_RAIN_THRESHOLD: int = 50
 
 WEATHER_LEAD_INS: list[str] = [
-	"El informe del tiempo carpincho nos canta la posta:",
-	"Mirá por la ventana o pará la oreja, que así viene el clima:",
-	"Atenti con el servicio meteorológico de La Rockola:",
-	"Momento de chequear cómo viene la mano con el cielo:",
-	"Pará un segundo el mate que te paso el parte meteorológico:",
+	"El informe del tiempo carpincho nos canta la posta.",
+	"Mirá por la ventana o pará la oreja, que así viene el clima.",
+	"Atenti con el servicio meteorológico de La Rockola.",
+	"Momento de chequear cómo viene la mano con el cielo.",
+	"Pará un segundo el mate que te paso el parte meteorológico.",
 ]
 
 
@@ -378,13 +409,25 @@ def get_weather_condition(
 	return "agradable"
 
 
+WEATHER_TEMPLATES: list[str] = [
+	# Plantilla 1: Directa y clásica
+	"{lead} Tenemos {temp_str} de temperatura actual. Para hoy la mínima es de {min_today_str} y la máxima alcanzará los {max_today_str}. Para mañana esperamos {range_tomorrow_str}. {lluvia_desc}",
+	# Plantilla 2: Centrada en la sensación térmica y perspectiva
+	"{lead} La temperatura en este momento marca {temp_str}. Hoy el termómetro se moverá entre {min_today_str} de mínima y {max_today_str} de máxima. Mañana vamos a andar {range_tomorrow_str}. {lluvia_desc}",
+	# Plantilla 3: Coloquial carpinchera
+	"{lead} Clavamos {temp_str} en la laguna. Para lo que queda del día esperamos entre {min_today_str} y {max_today_str}. Y ojo a mañana que esperamos {range_tomorrow_str}. {lluvia_desc}",
+]
+
+
 def get_weather_info(
 	data: dict,
 	lead_in: str | None = None,
 	current_hour: int | None = None,
+	template_idx: int | None = None,
 ) -> tuple[str, str] | None:
 	"""
 	Extrae los datos del JSON format=j1 de wttr.in y retorna (weather_phrase, weather_condition).
+	Soporta múltiples plantillas sintácticas para evitar patrones repetitivos.
 	Retorna None si la estructura es inválida o incompleta.
 	"""
 	try:
@@ -436,11 +479,18 @@ def get_weather_info(
 
 		range_tomorrow_str = format_temperature_range(min_tomorrow, max_tomorrow)
 
-		phrase = (
-			f"{lead} tenemos {temp_str} de temperatura actual. "
-			f"Para hoy la mínima es de {min_today_str} y la máxima alcanzará los {max_today_str}. "
-			f"Para mañana esperamos {range_tomorrow_str}. "
-			f"{lluvia_desc}"
+		if template_idx is not None:
+			tpl = WEATHER_TEMPLATES[template_idx % len(WEATHER_TEMPLATES)]
+		else:
+			tpl = random.choice(WEATHER_TEMPLATES)
+
+		phrase = tpl.format(
+			lead=lead,
+			temp_str=temp_str,
+			min_today_str=min_today_str,
+			max_today_str=max_today_str,
+			range_tomorrow_str=range_tomorrow_str,
+			lluvia_desc=lluvia_desc,
 		)
 		return phrase, condition
 	except (KeyError, IndexError, ValueError, TypeError) as e:
@@ -452,16 +502,13 @@ def build_weather_phrase(
 	data: dict,
 	lead_in: str | None = None,
 	current_hour: int | None = None,
+	template_idx: int | None = None,
 ) -> str | None:
 	"""
 	Extrae y arma la frase del reporte del clima a partir del JSON format=j1 de wttr.in.
-	Incluye únicamente:
-	- Temperatura actual.
-	- Mínima, máxima y probabilidad de lluvia para HOY (considerando slots desde la hora actual).
-	- Mínima, máxima y probabilidad de lluvia para MAÑANA (día completo).
 	Retorna None si la estructura no contiene las claves esperadas.
 	"""
-	info = get_weather_info(data, lead_in=lead_in, current_hour=current_hour)
+	info = get_weather_info(data, lead_in=lead_in, current_hour=current_hour, template_idx=template_idx)
 	return info[0] if info else None
 
 
@@ -898,24 +945,29 @@ def get_radio_fortune() -> str:
 
 # Pases de cabina criollos entre carpinchos locutores ("charla de cabina")
 PASES_A_CLIMA: list[str] = [
+	"Che {cohost}, asomate al bañado y decime si viene el pampero.",
+	"{cohost}, ¿cómo está la temperatura para meter panzada al río?",
+	"Tirame la data del cielo, {cohost}, que se me están enfriando las patas.",
+	"Decime qué onda afuera, {cohost}, ¿sale mate caliente o tereré?",
+	"A ver compadre {cohost}, cantame cómo pinta la mano meteorológica.",
 	"Y para el tiempo, {cohost}, ¿cómo viene la mano?",
 	"A ver, {cohost}, ¿qué nos canta el cielo hoy?",
 	"{cohost}, tirate el parte meteorológico carpincho.",
 	"¿Cómo viene la mano afuera, {cohost}?",
 	"{cohost}, ¿salimos en cuero o aprontamos el paraguas?",
-	"Contame qué dice el servicio meteorológico, {cohost}:",
+	"Contame qué dice el servicio meteorológico, {cohost}.",
 	"¿Qué tenemos en el pronóstico para hoy, {cohost}?",
 	"Che, {cohost}, ¿cómo pinta el clima en el bañado?",
 ]
 
 RADIO_HANDOFFS: list[str] = [
 	"¿Cómo viene la mano afuera, che?",
-	"Contame qué dice el servicio meteorológico:",
+	"Contame qué dice el servicio meteorológico.",
 	"¿Qué tenemos en el pronóstico para hoy?",
-	"Tirate esa data de la laguna:",
-	"Pará que quiero saber qué dice el oráculo:",
+	"Tirate esa data de la laguna.",
+	"Pará que quiero saber qué dice el oráculo.",
 	"¿Qué nos espera en el cielo, compadre?",
-	"Tirame el parte meteorológico carpincho:",
+	"Tirame el parte meteorológico carpincho.",
 ]
 
 # Reacciones de cabina por condición climática ("charla de cabina")
@@ -952,6 +1004,13 @@ REACCIONES_CLIMA: dict[str, list[str]] = {
 
 # Reacciones de cabina tras la fortuna u oráculo
 REACCIONES_FORTUNA: list[str] = [
+	"¡Olvídate! Mejor explicado, imposible.",
+	"¡Uh, qué bárbaro! Me dejó recalculando.",
+	"Tal cual, compadre... no le saques ni una coma.",
+	"¡Mamita querida! Metiste el dedo en la llaga.",
+	"Naaa, qué momento. Piel de carpincho se me puso.",
+	"Tranqui, fiera... que no cunda el pánico en el pajonal.",
+	"¡Qué personaje! Firmo abajo.",
 	"¡Ja! Qué sabio el oráculo.",
 	"¡Tal cual, compadre! La pura verdad.",
 	"¡Qué lo tiró! Sabiduría pura de la laguna.",
@@ -1033,22 +1092,100 @@ def get_all_fortune_reaction_segments() -> list[str]:
 	return list(REACCIONES_FORTUNA)
 
 
+HOUR_NAMES: list[str] = [
+	"Las doce",
+	"Las una",
+	"Las dos",
+	"Las tres",
+	"Las cuatro",
+	"Las cinco",
+	"Las seis",
+	"Las siete",
+	"Las ocho",
+	"Las nueve",
+	"Las diez",
+	"Las once",
+]
+
+MINUTE_SEGMENTS: list[str] = [
+	"y un minuto.",
+	"y dos minutos.",
+	"y tres minutos.",
+	"y cuatro minutos.",
+	"y cinco.",
+	"y seis.",
+	"y siete.",
+	"y ocho.",
+	"y nueve.",
+	"y diez.",
+	"y once.",
+	"y doce.",
+	"y trece.",
+	"y catorce.",
+	"y cuarto.",
+	"y dieciséis.",
+	"y diecisiete.",
+	"y dieciocho.",
+	"y diecinueve.",
+	"y veinte.",
+	"y veintiuno.",
+	"y veintidós.",
+	"y veintitrés.",
+	"y veinticuatro.",
+	"y veinticinco.",
+	"y veintiséis.",
+	"y veintisiete.",
+	"y veintiocho.",
+	"y veintinueve.",
+	"y media.",
+	"y treinta y uno.",
+	"y treinta y dos.",
+	"y treinta y tres.",
+	"y treinta y cuatro.",
+	"y treinta y cinco.",
+	"y treinta y seis.",
+	"y treinta y siete.",
+	"y treinta y ocho.",
+	"y treinta y nueve.",
+	"y cuarenta.",
+	"y cuarenta y uno.",
+	"y cuarenta y dos.",
+	"y cuarenta y tres.",
+	"y cuarenta y cuatro.",
+	"y cuarenta y cinco.",
+	"y cuarenta y seis.",
+	"y cuarenta y siete.",
+	"y cuarenta y ocho.",
+	"y cuarenta y nueve.",
+	"y cincuenta.",
+	"y cincuenta y uno.",
+	"y cincuenta y dos.",
+	"y cincuenta y tres.",
+	"y cincuenta y cuatro.",
+	"y cincuenta y cinco.",
+	"y cincuenta y seis.",
+	"y cincuenta y siete.",
+	"y cincuenta y ocho.",
+	"y cincuenta y nueve.",
+]
+
+
+def format_fortune_for_speech(fortuna: str) -> str:
+	"""Prepara el texto de una fortuna para locución quitando comillas duras y asegurando puntuación terminal."""
+	cleaned = fortuna.strip().strip("\"'«»")
+	if not cleaned.endswith((".", "!", "?", "…")):
+		cleaned = f"{cleaned}."
+	return cleaned
+
+
 def get_modular_hour_segments() -> list[str]:
-	"""Genera la lista con los 24 segmentos modulares de hora ('Las doce de la noche,', '1 hora,', ... '23 horas,')."""
-	segments = []
-	for h in range(24):
-		if h == 0:
-			segments.append("Las doce de la noche,")
-		elif h == 1:
-			segments.append("1 hora,")
-		else:
-			segments.append(f"{h} horas,")
-	return segments
+	"""Genera la lista con los 24 segmentos modulares de hora ('Las doce', 'Las una', ... 'Las once')."""
+	return [HOUR_NAMES[h % 12] for h in range(24)]
 
 
 def get_modular_minute_segments() -> list[str]:
-	"""Genera la lista con los 59 segmentos modulares de minutos ('un minuto.' a '59 minutos.')."""
-	return ["un minuto." if m == 1 else f"{m} minutos." for m in range(1, 60)]
+	"""Genera la lista con los 59 segmentos modulares de minutos ('y un minuto.' a 'y cincuenta y nueve.')."""
+	return list(MINUTE_SEGMENTS)
 
 
 def get_all_degree_segments(min_deg: int = -5, max_deg: int = 42) -> list[str]:
@@ -1098,6 +1235,7 @@ def build_radio_dialogue_plan(
 	Si dialogue_mode es False, retorna la locución solo tradicional.
 	Garantiza que nunca haya dos reacciones consecutivas idénticas.
 	"""
+	fortune_text = format_fortune_for_speech(fortuna)
 	if not dialogue_mode:
 		fortune_voice = VOICE_ELENA if is_system_fortune else host_voice
 		solo_plan: list[tuple[str, str, str, bool]] = [
@@ -1111,7 +1249,7 @@ def build_radio_dialogue_plan(
 		solo_plan.extend(
 			[
 				(lead_in, host_voice, "lead_in", True),
-				(f"«{fortuna}».", fortune_voice, "fortuna", True),
+				(fortune_text, fortune_voice, "fortuna", True),
 				(outro, host_voice, "salida", True),
 			]
 		)
@@ -1151,7 +1289,7 @@ def build_radio_dialogue_plan(
 	else:
 		fortune_voice = cohost_voice
 
-	plan.append((f"«{fortuna}».", fortune_voice, "fortuna", True))
+	plan.append((format_fortune_for_speech(fortuna), fortune_voice, "fortuna", True))
 
 	valid_fortune_reactions = [r for r in REACCIONES_FORTUNA if r != prev_reaction]
 	reaccion_fortuna = random.choice(valid_fortune_reactions if valid_fortune_reactions else REACCIONES_FORTUNA)
@@ -1172,7 +1310,7 @@ def get_modular_time_segments(dt: datetime | None = None) -> tuple[str, str | No
 	- Si minute == 0: Retorna una de las 24 horas especiales del Carpincho (minuto_seg es None).
 	  Ej: ("Las una en punto, es hora de mimir.", None, "Las una en punto, es hora de mimir.")
 	- Si minute != 0: Retorna (hora_seg, minuto_seg, full_time_str) separados.
-	  Ej: ("15 horas,", "23 minutos.", "15 horas, 23 minutos.")
+	  Ej: ("Las tres", "y veintitrés.", "Las tres y veintitrés.")
 	"""
 	if dt is None:
 		dt = datetime.now(timezone.utc).astimezone()
@@ -1224,7 +1362,8 @@ def generate_modular_radio_script(
 	fortuna, is_system_fortune = select_fortune(force_system_fortune)
 	outro = random.choice(RADIO_OUTROS)
 	hora_full = f"{hora_seg} {minuto_seg}" if minuto_seg else hora_seg
-	full_script = f"{intro} {hora_full} {lead_in} «{fortuna}». {outro}"
+	fort_speech = format_fortune_for_speech(fortuna)
+	full_script = f"{intro} {hora_full} {lead_in} {fort_speech} {outro}"
 	return intro, hora_seg, minuto_seg, lead_in, fortuna, is_system_fortune, outro, voice, full_script
 
 

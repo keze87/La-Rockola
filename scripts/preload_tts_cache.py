@@ -52,6 +52,7 @@ try:
 		VOICE_TOMAS,
 		VOICE_VALENTINA,
 		VOICES,
+		format_fortune_for_speech,
 		get_all_degree_segments,
 		get_all_fortune_reaction_segments,
 		get_all_weather_handoff_segments,
@@ -79,6 +80,7 @@ except ImportError:
 		VOICE_TOMAS,
 		VOICE_VALENTINA,
 		VOICES,
+		format_fortune_for_speech,
 		get_all_degree_segments,
 		get_all_fortune_reaction_segments,
 		get_all_weather_handoff_segments,
@@ -104,11 +106,11 @@ def collect_phrases() -> list[tuple[str, str]]:
 	Incluye:
 	- Intros radiales
 	- Conectores / Lead-ins
-	- Fortunas y propagandas carpinchas
+	- Fortunas y propagandas carpinchas (en texto plano sin comillas duras)
 	- Salidas radiales
 	- 24 Horas especiales (minuto 0 en punto con impronta carpincha)
-	- 24 Segmentos de hora ("Las doce de la noche,", "1 hora,", "2 horas," ... "23 horas,")
-	- 59 Segmentos de minuto ("un minuto." a "59 minutos.")
+	- 24 Segmentos de hora ("Las doce", "Las una", ... "Las once")
+	- 59 Segmentos de minuto ("y un minuto." a "y cincuenta y nueve.")
 	- Pases de cabina criollos y pases a clima personalizados con nombre de cohost
 	- Reacciones de cabina criollas, reacciones climáticas por condición y de fortuna
 	- Segmentos de temperatura en grados
@@ -123,9 +125,9 @@ def collect_phrases() -> list[tuple[str, str]]:
 	for lead in RADIO_LEAD_INS:
 		items.append(("lead_in", lead))
 
-	# 3. Fortunas y propagandas carpinchas (con el formato de comillas que usa el locutor)
+	# 3. Fortunas y propagandas carpinchas (en texto plano sin comillas duras)
 	for fort in CARPINCHO_FORTUNES:
-		items.append(("fortuna", f"«{fort}»."))
+		items.append(("fortuna", format_fortune_for_speech(fort)))
 
 	# 4. Salidas / Despedidas
 	for outro in RADIO_OUTROS:
