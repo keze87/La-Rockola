@@ -331,18 +331,61 @@ def _is_slot_relevant_for_hour(h: dict, current_hour: int) -> bool:
 		return True
 
 
-def build_weather_phrase(
+def format_temperature(temp: int) -> str:
+	"""
+	Formatea un valor de temperatura en grados cuidando el singular ('1 grado')
+	y los valores bajo cero ('X grados bajo cero' o '1 grado bajo cero').
+	"""
+	abs_val = abs(temp)
+	noun = "grado" if abs_val == 1 else "grados"
+	if temp < 0:
+		return f"{abs_val} {noun} bajo cero"
+	return f"{temp} {noun}"
+
+
+def format_temperature_range(min_temp: int, max_temp: int) -> str:
+	"""Formatea un rango de temperaturas cuidando concordancia de singular y negativos."""
+	if min_temp < 0 and max_temp < 0:
+		noun = "grado" if abs(max_temp) == 1 else "grados"
+		return f"entre {abs(min_temp)} y {abs(max_temp)} {noun} bajo cero"
+	elif min_temp < 0 and max_temp >= 0:
+		min_noun = "grado" if abs(min_temp) == 1 else "grados"
+		max_noun = "grado" if max_temp == 1 else "grados"
+		return f"entre {abs(min_temp)} {min_noun} bajo cero y {max_temp} {max_noun}"
+	else:
+		noun = "grado" if max_temp == 1 else "grados"
+		return f"entre {min_temp} y {max_temp} {noun}"
+
+
+def get_weather_condition(
+	current_temp: int,
+	llueve_hoy: bool = False,
+	llueve_manana: bool = False,
+) -> str:
+	"""
+	Determina la condición climática para elegir la reacción adecuada de cabina:
+	- 'lluvia': si hay probabilidad de lluvias relevante hoy o mañana.
+	- 'calor': si la temperatura actual es >= 30 grados.
+	- 'frio': si la temperatura actual es <= 10 grados.
+	- 'agradable': temperatura templada intermedia.
+	"""
+	if llueve_hoy or llueve_manana:
+		return "lluvia"
+	if current_temp >= 30:
+		return "calor"
+	if current_temp <= 10:
+		return "frio"
+	return "agradable"
+
+
+def get_weather_info(
 	data: dict,
 	lead_in: str | None = None,
 	current_hour: int | None = None,
-) -> str | None:
+) -> tuple[str, str] | None:
 	"""
-	Extrae y arma la frase del reporte del clima a partir del JSON format=j1 de wttr.in.
-	Incluye únicamente:
-	- Temperatura actual.
-	- Mínima, máxima y probabilidad de lluvia para HOY (considerando slots desde la hora actual).
-	- Mínima, máxima y probabilidad de lluvia para MAÑANA (día completo).
-	Retorna None si la estructura no contiene las claves esperadas.
+	Extrae los datos del JSON format=j1 de wttr.in y retorna (weather_phrase, weather_condition).
+	Retorna None si la estructura es inválida o incompleta.
 	"""
 	try:
 		current_temp = round(float(data["current_condition"][0]["temp_C"]))
@@ -370,16 +413,56 @@ def build_weather_phrase(
 		llueve_manana = rain_tomorrow >= WEATHER_RAIN_THRESHOLD
 		lluvia_desc = describir_lluvias(llueve_hoy, llueve_manana)
 
+		condition = get_weather_condition(current_temp, llueve_hoy=llueve_hoy, llueve_manana=llueve_manana)
+
 		lead = lead_in if lead_in is not None else random.choice(WEATHER_LEAD_INS)
-		return (
-			f"{lead} tenemos {current_temp} grados de temperatura actual. "
-			f"Para hoy la mínima es de {min_today} y la máxima alcanzará los {max_today} grados. "
-			f"Para mañana esperamos entre {min_tomorrow} y {max_tomorrow} grados. "
+		temp_str = format_temperature(current_temp)
+
+		if min_today < 0:
+			min_noun = "grado" if abs(min_today) == 1 else "grados"
+			min_today_str = f"{abs(min_today)} {min_noun} bajo cero"
+		elif min_today == 1:
+			min_today_str = "1 grado"
+		else:
+			min_today_str = f"{min_today}"
+
+		if max_today < 0:
+			max_noun = "grado" if abs(max_today) == 1 else "grados"
+			max_today_str = f"{abs(max_today)} {max_noun} bajo cero"
+		elif max_today == 1:
+			max_today_str = "1 grado"
+		else:
+			max_today_str = f"{max_today} grados"
+
+		range_tomorrow_str = format_temperature_range(min_tomorrow, max_tomorrow)
+
+		phrase = (
+			f"{lead} tenemos {temp_str} de temperatura actual. "
+			f"Para hoy la mínima es de {min_today_str} y la máxima alcanzará los {max_today_str}. "
+			f"Para mañana esperamos {range_tomorrow_str}. "
 			f"{lluvia_desc}"
 		)
+		return phrase, condition
 	except (KeyError, IndexError, ValueError, TypeError) as e:
 		logger.debug(f"Estructura de datos de clima incompleta o inválida: {e}")
 		return None
+
+
+def build_weather_phrase(
+	data: dict,
+	lead_in: str | None = None,
+	current_hour: int | None = None,
+) -> str | None:
+	"""
+	Extrae y arma la frase del reporte del clima a partir del JSON format=j1 de wttr.in.
+	Incluye únicamente:
+	- Temperatura actual.
+	- Mínima, máxima y probabilidad de lluvia para HOY (considerando slots desde la hora actual).
+	- Mínima, máxima y probabilidad de lluvia para MAÑANA (día completo).
+	Retorna None si la estructura no contiene las claves esperadas.
+	"""
+	info = get_weather_info(data, lead_in=lead_in, current_hour=current_hour)
+	return info[0] if info else None
 
 
 def get_carpincho_data_dir() -> Path:
@@ -814,6 +897,17 @@ def get_radio_fortune() -> str:
 
 
 # Pases de cabina criollos entre carpinchos locutores ("charla de cabina")
+PASES_A_CLIMA: list[str] = [
+	"Y para el tiempo, {cohost}, ¿cómo viene la mano?",
+	"A ver, {cohost}, ¿qué nos canta el cielo hoy?",
+	"{cohost}, tirate el parte meteorológico carpincho.",
+	"¿Cómo viene la mano afuera, {cohost}?",
+	"{cohost}, ¿salimos en cuero o aprontamos el paraguas?",
+	"Contame qué dice el servicio meteorológico, {cohost}:",
+	"¿Qué tenemos en el pronóstico para hoy, {cohost}?",
+	"Che, {cohost}, ¿cómo pinta el clima en el bañado?",
+]
+
 RADIO_HANDOFFS: list[str] = [
 	"¿Cómo viene la mano afuera, che?",
 	"Contame qué dice el servicio meteorológico:",
@@ -824,7 +918,52 @@ RADIO_HANDOFFS: list[str] = [
 	"Tirame el parte meteorológico carpincho:",
 ]
 
-# Reacciones de cabina criollas ("charla de cabina")
+# Reacciones de cabina por condición climática ("charla de cabina")
+REACCIONES_CLIMA: dict[str, list[str]] = {
+	"calor": [
+		"¡Mamita querida, qué calorón para estar en el agua todo el día!",
+		"¡Hermoso para un chapuzón en la laguna con tereré!",
+		"¡Pesadito el calor! No te olvides el protector solar.",
+		"¡Está para quedarse a la sombra tomando mates fríos!",
+		"¡Qué solazo! A buscar la sombrita del ceibo urgente.",
+	],
+	"frio": [
+		"¡Fresquito para poncho! Metan más leña al fuego.",
+		"¡Qué frescor, compadre! Salen esos mates bien calientes.",
+		"¡Está para invernar abajo de la paja brava!",
+		"¡Se vino el frío de golpe! A cuidar las orejas.",
+		"¡Pucha que está fresco! Lindo para unas tortas fritas.",
+	],
+	"lluvia": [
+		"¡Clima soñado de lluvia para andar chapoteando en el agua!",
+		"¡Qué hermosura de agua! La laguna nos sonríe.",
+		"¡Se viene el agua nomás! A disfrutar del olorcito a tierra mojada.",
+		"¡Al pelo la lluvia para meter siesta carpincha!",
+		"¡Chaparrón a la vista! El río va a estar una pinturita.",
+	],
+	"agradable": [
+		"¡Una pinturita de día para andar al aire libre!",
+		"¡Joya total! El clima ideal para unos amargos en la orilla.",
+		"¡Ni frío ni calor, qué más querés para pasarla bomba!",
+		"¡Clima perfecto, compadre! A disfrutarlo a pleno.",
+		"¡Está de diez afuera! Ni una queja podemos meter.",
+	],
+}
+
+# Reacciones de cabina tras la fortuna u oráculo
+REACCIONES_FORTUNA: list[str] = [
+	"¡Ja! Qué sabio el oráculo.",
+	"¡Tal cual, compadre! La pura verdad.",
+	"¡Qué lo tiró! Sabiduría pura de la laguna.",
+	"¡Amén! Más claro, echale agua.",
+	"¡Posta! Tomá nota de esa.",
+	"¡Ojo al piojo! No tiene desperdicio.",
+	"¡Una joyita de reflexión!",
+	"¡Mirá vos! Justo lo que hacía falta escuchar.",
+	"¡Palabra santa! A guardarla en el corazón.",
+	"¡De una! Nada más que agregar.",
+]
+
 RADIO_REACTIONS: list[str] = [
 	"¡Qué lo tiró, che!",
 	"Mirá vos, qué momento.",
@@ -837,6 +976,61 @@ RADIO_REACTIONS: list[str] = [
 	"¡Ojo al piojo!",
 	"Así se habla en el pago.",
 ]
+
+
+def select_radio_hosts(
+	host_voice: str | None = None,
+	is_system_fortune: bool = False,
+) -> tuple[str, str]:
+	"""
+	Selecciona el locutor principal (host) y el co-conductor (cohost).
+	Garantiza en todos los casos que host != cohost.
+	- Si is_system_fortune es True:
+		* Si host == VOICE_ELENA: Elena conduce y lee la fortuna del sistema;
+		  el cohost es otra voz elegida al azar.
+		* Si host != VOICE_ELENA: el cohost es fijado en VOICE_ELENA para leer la fortuna del sistema.
+	- Si is_system_fortune es False:
+		* host es host_voice (o elegido al azar si no se indicó).
+		* cohost es elegido al azar entre las voces distintas a host.
+	"""
+	if not host_voice or host_voice not in VOICES:
+		host = random.choice(VOICES)
+	else:
+		host = host_voice
+
+	other_voices = [v for v in VOICES if v != host]
+
+	if is_system_fortune:
+		if host == VOICE_ELENA:
+			cohost = random.choice(other_voices)
+		else:
+			cohost = VOICE_ELENA
+	else:
+		cohost = random.choice(other_voices)
+
+	return host, cohost
+
+
+def get_all_weather_handoff_segments() -> list[str]:
+	"""Genera todas las combinaciones posibles de pases de clima para precarga en caché."""
+	res: list[str] = []
+	for name in VOICE_NAMES.values():
+		for tpl in PASES_A_CLIMA:
+			res.append(tpl.format(cohost=name))
+	return res
+
+
+def get_all_weather_reaction_segments() -> list[str]:
+	"""Devuelve todas las reacciones climáticas de cabina para precarga en caché."""
+	res: list[str] = []
+	for reactions in REACCIONES_CLIMA.values():
+		res.extend(reactions)
+	return res
+
+
+def get_all_fortune_reaction_segments() -> list[str]:
+	"""Devuelve todas las reacciones de fortuna para precarga en caché."""
+	return list(REACCIONES_FORTUNA)
 
 
 def get_modular_hour_segments() -> list[str]:
@@ -859,17 +1053,115 @@ def get_modular_minute_segments() -> list[str]:
 
 def get_all_degree_segments(min_deg: int = -5, max_deg: int = 42) -> list[str]:
 	"""Devuelve las frases de temperaturas en grados para locución modular del clima."""
-	return [f"{d} grados" for d in range(min_deg, max_deg + 1)]
+	return [format_temperature(d) for d in range(min_deg, max_deg + 1)]
 
 
 def get_all_reaction_segments() -> list[str]:
-	"""Devuelve la lista de reacciones de cabina."""
-	return list(RADIO_REACTIONS)
+	"""Devuelve la lista consolidada de reacciones de cabina."""
+	combined = list(RADIO_REACTIONS)
+	for r in get_all_weather_reaction_segments():
+		if r not in combined:
+			combined.append(r)
+	for r in get_all_fortune_reaction_segments():
+		if r not in combined:
+			combined.append(r)
+	return combined
 
 
 def get_all_handoff_segments() -> list[str]:
-	"""Devuelve la lista de pases de cabina."""
-	return list(RADIO_HANDOFFS)
+	"""Devuelve la lista consolidada de pases de cabina."""
+	combined = list(RADIO_HANDOFFS)
+	for h in get_all_weather_handoff_segments():
+		if h not in combined:
+			combined.append(h)
+	return combined
+
+
+def build_radio_dialogue_plan(
+	intro: str,
+	hora_seg: str,
+	minuto_seg: str | None,
+	lead_in: str,
+	fortuna: str,
+	outro: str,
+	host_voice: str,
+	cohost_voice: str,
+	is_system_fortune: bool = False,
+	weather_text: str | None = None,
+	weather_condition: str | None = None,
+	dialogue_mode: bool = True,
+	last_reaction: str | None = None,
+) -> list[tuple[str, str, str, bool]]:
+	"""
+	Construye el plan estructurado de segmentos para la locución radial (texto, voz, categoría, allow_cache).
+	Si dialogue_mode es True, organiza una charla viva de cabina entre host y cohost.
+	Si dialogue_mode es False, retorna la locución solo tradicional.
+	Garantiza que nunca haya dos reacciones consecutivas idénticas.
+	"""
+	if not dialogue_mode:
+		fortune_voice = VOICE_ELENA if is_system_fortune else host_voice
+		solo_plan: list[tuple[str, str, str, bool]] = [
+			(intro, host_voice, "intro", True),
+			(hora_seg, host_voice, "hora", True),
+		]
+		if minuto_seg:
+			solo_plan.append((minuto_seg, host_voice, "minuto", True))
+		if weather_text:
+			solo_plan.append((weather_text, host_voice, "clima", False))
+		solo_plan.extend(
+			[
+				(lead_in, host_voice, "lead_in", True),
+				(f"«{fortuna}».", fortune_voice, "fortuna", True),
+				(outro, host_voice, "salida", True),
+			]
+		)
+		return solo_plan
+
+	# Plan de charla de cabina
+	plan: list[tuple[str, str, str, bool]] = [
+		(intro, host_voice, "intro", True),
+		(hora_seg, host_voice, "hora", True),
+	]
+	if minuto_seg:
+		plan.append((minuto_seg, host_voice, "minuto", True))
+
+	prev_reaction = last_reaction
+
+	# 1. Clima
+	if weather_text:
+		cohost_name = VOICE_NAMES.get(cohost_voice, "compadre")
+		pase_template = random.choice(PASES_A_CLIMA)
+		pase_text = pase_template.format(cohost=cohost_name)
+		plan.append((pase_text, host_voice, "pase", True))
+
+		plan.append((weather_text, cohost_voice, "clima", False))
+
+		cond = weather_condition or "agradable"
+		candidates = REACCIONES_CLIMA.get(cond, REACCIONES_CLIMA["agradable"])
+		valid_reactions = [r for r in candidates if r != prev_reaction]
+		reaccion_clima = random.choice(valid_reactions if valid_reactions else candidates)
+		plan.append((reaccion_clima, host_voice, "reaccion", True))
+		prev_reaction = reaccion_clima
+
+	# 2. Fortuna
+	plan.append((lead_in, host_voice, "lead_in", True))
+
+	if is_system_fortune:
+		fortune_voice = VOICE_ELENA
+	else:
+		fortune_voice = cohost_voice
+
+	plan.append((f"«{fortuna}».", fortune_voice, "fortuna", True))
+
+	valid_fortune_reactions = [r for r in REACCIONES_FORTUNA if r != prev_reaction]
+	reaccion_fortuna = random.choice(valid_fortune_reactions if valid_fortune_reactions else REACCIONES_FORTUNA)
+	react_voice = host_voice if fortune_voice == cohost_voice else cohost_voice
+	plan.append((reaccion_fortuna, react_voice, "reaccion", True))
+
+	# Salida a la música
+	plan.append((outro, host_voice, "salida", True))
+
+	return plan
 
 
 def get_modular_time_segments(dt: datetime | None = None) -> tuple[str, str | None, str]:
@@ -1305,6 +1597,35 @@ def embed_cover_art_in_mp3(
 		return False
 
 
+def get_audio_duration(file_path: Path | str, timeout: float = 2.0) -> float:
+	"""Obtiene la duración en segundos de un archivo de audio con ffprobe."""
+	ffprobe_bin = shutil.which("ffprobe")
+	if not ffprobe_bin:
+		return 0.0
+	try:
+		res = subprocess.run(
+			[
+				ffprobe_bin,
+				"-v",
+				"error",
+				"-show_entries",
+				"format=duration",
+				"-of",
+				"default=noprint_wrappers=1:nokey=1",
+				str(file_path),
+			],
+			capture_output=True,
+			text=True,
+			timeout=timeout,
+			check=False,
+		)
+		if res.returncode == 0 and res.stdout.strip():
+			return float(res.stdout.strip())
+	except Exception:
+		pass
+	return 0.0
+
+
 def assemble_announcement_audio(
 	segments: list[tuple[bytes, str] | tuple[bytes, str, str]],
 	output_path: Path | str,
@@ -1317,11 +1638,12 @@ def assemble_announcement_audio(
 	timeout: float = 10.0,
 ) -> bool:
 	"""
-	Concatena los segmentos de audio MP3 intercalando pausas reales de silencio (~200-350ms),
+	Concatena los segmentos de audio MP3 intercalando ruido de sala sutil (~100-350ms),
 	aplicando crossfade suave (~50ms) entre la hora y los minutos de un mismo locutor,
-	opcionalmente superponiendo cortina musical de fondo utilizando ffmpeg e incrustando cover art.
-	Todas las operaciones intermedias se ejecutan en un directorio temporal en /tmp (RAM tmpfs),
-	evitando escrituras intermedias en disco duro físico antes de copiar el archivo final.
+	solapando reacciones cortas (~200ms) sobre la línea anterior,
+	igualando volumen entre voces con dynaudnorm y pasando el master final por filtro highpass + compresión.
+	Opcionalmente superpone cortina musical de fondo utilizando ffmpeg e incrusta cover art.
+	Todas las operaciones intermedias se ejecutan en RAM (tmpfs /tmp).
 	"""
 	out_p = Path(output_path)
 	out_p.parent.mkdir(parents=True, exist_ok=True)
@@ -1344,14 +1666,39 @@ def assemble_announcement_audio(
 				parsed_segments.append((s[0], "", ""))
 
 		if ffmpeg_bin:
-			# Generar archivos MP3 temporales para cada segmento
+			# Generar archivos MP3 temporales con normalización dynaudnorm para nivelar volumen entre voces
 			temp_seg_files: list[Path] = []
 			for i, (seg_bytes, _cat, _v) in enumerate(parsed_segments):
-				seg_file = work_dir / f"raw_seg_{i}.mp3"
-				seg_file.write_bytes(seg_bytes)
-				temp_seg_files.append(seg_file)
+				raw_file = work_dir / f"raw_seg_{i}.mp3"
+				raw_file.write_bytes(seg_bytes)
+				norm_file = work_dir / f"norm_seg_{i}.mp3"
+				norm_cmd = [
+					ffmpeg_bin,
+					"-y",
+					"-i",
+					str(raw_file),
+					"-af",
+					"dynaudnorm=p=0.9:s=5",
+					"-c:a",
+					"libmp3lame",
+					"-b:a",
+					"192k",
+					str(norm_file),
+				]
+				try:
+					proc_norm = subprocess.run(
+						norm_cmd,
+						capture_output=True,
+						timeout=min(ffmpeg_timeout, 3.0),
+						check=False,
+					)
+					if proc_norm.returncode == 0 and norm_file.is_file() and norm_file.stat().st_size > 0:
+						temp_seg_files.append(norm_file)
+					else:
+						temp_seg_files.append(raw_file)
+				except Exception:
+					temp_seg_files.append(raw_file)
 
-			# Crossfade corto (~50ms) entre 'hora' y 'minuto' consecutivos de la misma voz
 			blocks: list[tuple[Path, str, str]] = []
 			skip_next = False
 			for i in range(len(parsed_segments)):
@@ -1362,11 +1709,12 @@ def assemble_announcement_audio(
 				_bytes_i, cat_i, voice_i = parsed_segments[i]
 				file_i = temp_seg_files[i]
 
+				# Caso 1: crossfade corto (~50ms) entre 'hora' y 'minuto' consecutivos de la misma voz
 				if cat_i == "hora" and i + 1 < len(parsed_segments):
 					_bytes_next, cat_next, voice_next = parsed_segments[i + 1]
 					if cat_next == "minuto" and (voice_i == voice_next or not voice_i or not voice_next):
 						file_next = temp_seg_files[i + 1]
-						time_combined = work_dir / "time_combined.mp3"
+						time_combined = work_dir / f"time_combined_{i}.mp3"
 						fade_cmd = [
 							ffmpeg_bin,
 							"-y",
@@ -1402,11 +1750,84 @@ def assemble_announcement_audio(
 						except Exception as e:
 							logger.debug(f"Fallo en acrossfade hora/minuto: {e}")
 
+				# Caso 2: reacción corta que solapa 150-250 ms sobre el final de la línea anterior (adelay + amix)
+				if i + 1 < len(parsed_segments):
+					_bytes_next, cat_next, voice_next = parsed_segments[i + 1]
+					if cat_next == "reaccion" or cat_next.startswith("reaccion"):
+						file_next = temp_seg_files[i + 1]
+						dur_i = get_audio_duration(file_i)
+						if dur_i > 0.25:
+							overlap_sec = 0.20
+							delay_ms = int(max(0.0, (dur_i - overlap_sec)) * 1000)
+							react_combined = work_dir / f"react_combined_{i}.mp3"
+							filter_overlap = (
+								f"[0:a]volume=1.0[prev];"
+								f"[1:a]volume=0.85,adelay={delay_ms}|{delay_ms}[react];"
+								f"[prev][react]amix=inputs=2:duration=longest:dropout_transition=0[out]"
+							)
+							overlap_cmd = [
+								ffmpeg_bin,
+								"-y",
+								"-i",
+								str(file_i),
+								"-i",
+								str(file_next),
+								"-filter_complex",
+								filter_overlap,
+								"-map",
+								"[out]",
+								"-c:a",
+								"libmp3lame",
+								"-b:a",
+								"192k",
+								str(react_combined),
+							]
+							try:
+								proc_react = subprocess.run(
+									overlap_cmd,
+									capture_output=True,
+									timeout=ffmpeg_timeout,
+									check=False,
+								)
+								if (
+									proc_react.returncode == 0
+									and react_combined.is_file()
+									and react_combined.stat().st_size > 0
+								):
+									blocks.append((react_combined, f"{cat_i}_reaccion", voice_i))
+									skip_next = True
+									continue
+							except Exception as e:
+								logger.debug(f"Fallo solapando reacción con adelay+amix: {e}")
+
 				blocks.append((file_i, cat_i, voice_i))
 
-			def make_silence(duration_sec: float, filename: str) -> Path | None:
-				sil_path = work_dir / filename
+			def make_room_tone(duration_sec: float, filename: str) -> Path | None:
+				tone_path = work_dir / filename
 				cmd = [
+					ffmpeg_bin,
+					"-y",
+					"-f",
+					"lavfi",
+					"-i",
+					"anoisesrc=c=pink:a=0.002:r=44100",
+					"-t",
+					f"{duration_sec:.3f}",
+					"-c:a",
+					"libmp3lame",
+					"-b:a",
+					"192k",
+					str(tone_path),
+				]
+				try:
+					res = subprocess.run(cmd, capture_output=True, timeout=ffmpeg_timeout, check=False)
+					if res.returncode == 0 and tone_path.is_file() and tone_path.stat().st_size > 0:
+						return tone_path
+				except Exception as e:
+					logger.debug(f"Fallo generando anoisesrc: {e}")
+
+				# Fallback a anullsrc
+				fallback_cmd = [
 					ffmpeg_bin,
 					"-y",
 					"-f",
@@ -1414,67 +1835,57 @@ def assemble_announcement_audio(
 					"-i",
 					"anullsrc=r=44100:cl=mono",
 					"-t",
-					f"{duration_sec:.2f}",
+					f"{duration_sec:.3f}",
 					"-c:a",
 					"libmp3lame",
 					"-b:a",
 					"192k",
-					str(sil_path),
+					str(tone_path),
 				]
 				try:
-					res = subprocess.run(cmd, capture_output=True, timeout=ffmpeg_timeout, check=False)
-					if res.returncode == 0 and sil_path.is_file() and sil_path.stat().st_size > 0:
-						return sil_path
+					res = subprocess.run(fallback_cmd, capture_output=True, timeout=ffmpeg_timeout, check=False)
+					if res.returncode == 0 and tone_path.is_file() and tone_path.stat().st_size > 0:
+						return tone_path
 				except Exception as e:
-					logger.debug(f"No se pudo generar silencio ({duration_sec}s): {e}")
+					logger.debug(f"Fallo generando anullsrc fallback: {e}")
+
 				return None
 
-			# Construir cadena de archivos intercalando pausas reales de respiración y ritmo radial
+			# Construir cadena de archivos intercalando pausas de sala y ritmo de locución
 			chain_files: list[Path] = []
 
-			# Silencio muy corto (~200ms) inicial para arrancar natural al aire
-			sil_start = make_silence(0.20, "sil_start.mp3")
-			if sil_start:
-				chain_files.append(sil_start)
+			# Presencia de sala muy corta (~150ms) inicial para no cortar abruptamente
+			tone_start = make_room_tone(0.15, "tone_start.mp3")
+			if tone_start:
+				chain_files.append(tone_start)
 
-			for i, (block_file, block_cat, _block_voice) in enumerate(blocks):
+			for i, (block_file, block_cat, block_voice) in enumerate(blocks):
 				chain_files.append(block_file)
 				is_last = i == len(blocks) - 1
 				if is_last:
 					continue
 
-				if block_cat == "intro":
-					# Pausa tras el saludo de apertura antes de la hora (~300ms)
-					sil = make_silence(0.30, f"sil_intro_{i}.mp3")
-					if sil:
-						chain_files.append(sil)
+				next_voice = blocks[i + 1][2]
+				is_speaker_change = bool(block_voice and next_voice and block_voice != next_voice)
+				if is_speaker_change:
+					# Cambio de locutor: gap corto (60-150 ms)
+					gap_sec = 0.10
+				elif block_cat == "intro":
+					gap_sec = 0.30
 				elif block_cat in ("hora", "hora_minuto", "minuto"):
-					# Pausa tras la hora antes del clima o lead-in (~250ms)
-					next_cat = blocks[i + 1][1] if i + 1 < len(blocks) else ""
-					if next_cat != "minuto":
-						sil = make_silence(0.25, f"sil_time_{i}.mp3")
-						if sil:
-							chain_files.append(sil)
+					gap_sec = 0.25
 				elif block_cat == "clima":
-					# Pausa tras el reporte del clima antes del lead-in (~300ms)
-					sil = make_silence(0.30, f"sil_clima_{i}.mp3")
-					if sil:
-						chain_files.append(sil)
+					gap_sec = 0.30
 				elif block_cat == "lead_in":
-					# Pausa dramática/suspenso antes de la frase u oráculo (~350ms)
-					sil = make_silence(0.35, f"sil_leadin_{i}.mp3")
-					if sil:
-						chain_files.append(sil)
+					gap_sec = 0.35
 				elif block_cat == "fortuna":
-					# Pausa reflexiva tras la frase antes del remate/salida (~250ms)
-					sil = make_silence(0.25, f"sil_fortune_{i}.mp3")
-					if sil:
-						chain_files.append(sil)
+					gap_sec = 0.25
 				else:
-					# Pausa tras la frase de salida (~250ms)
-					sil = make_silence(0.25, f"sil_out_{i}.mp3")
-					if sil:
-						chain_files.append(sil)
+					gap_sec = 0.25
+
+				tone = make_room_tone(gap_sec, f"tone_gap_{i}.mp3")
+				if tone:
+					chain_files.append(tone)
 
 			# Concatena todos los archivos de la cadena
 			concat_inputs: list[str] = []
@@ -1503,7 +1914,7 @@ def assemble_announcement_audio(
 			proc = subprocess.run(concat_cmd, capture_output=True, timeout=ffmpeg_timeout, check=False)
 			concat_ok = proc.returncode == 0 and tmp_voice_combined.is_file() and tmp_voice_combined.stat().st_size > 0
 
-			# Si falla el filter_complex, intentar concat demuxer simple con chain_files
+			# Si falla el filter_complex, intentar concat demuxer simple
 			if not concat_ok:
 				logger.warning(
 					f"ffmpeg filter_complex falló ({proc.stderr.decode('utf-8', errors='ignore')[:150]}). Probando concat demuxer..."
@@ -1535,6 +1946,38 @@ def assemble_announcement_audio(
 					and tmp_voice_combined.is_file()
 					and tmp_voice_combined.stat().st_size > 0
 				)
+
+			# Mastering final de voz: filtro paso-alto ~80 Hz y compresión suave
+			if concat_ok:
+				tmp_voice_mastered = work_dir / "voice_mastered.mp3"
+				master_cmd = [
+					ffmpeg_bin,
+					"-y",
+					"-i",
+					str(tmp_voice_combined),
+					"-af",
+					"highpass=f=80,acompressor=threshold=-18dB:ratio=2.5:attack=20:release=250",
+					"-c:a",
+					"libmp3lame",
+					"-b:a",
+					"192k",
+					str(tmp_voice_mastered),
+				]
+				try:
+					proc_master = subprocess.run(
+						master_cmd,
+						capture_output=True,
+						timeout=ffmpeg_timeout,
+						check=False,
+					)
+					if (
+						proc_master.returncode == 0
+						and tmp_voice_mastered.is_file()
+						and tmp_voice_mastered.stat().st_size > 0
+					):
+						shutil.copyfile(tmp_voice_mastered, tmp_voice_combined)
+				except Exception as e:
+					logger.debug(f"Fallo aplicando filtro de estudio/compresión: {e}")
 
 			if not concat_ok:
 				logger.warning("ffmpeg concat demuxer también falló. Recurriendo a concatenación directa de bytes.")
@@ -1599,14 +2042,17 @@ async def create_radio_announcement(
 	force_system_fortune: bool | None = None,
 	cover_image_path: Path | str | None = None,
 	weather_location: str | None = None,
+	dialogue_mode: bool | None = None,
 ) -> tuple[bool, str, str]:
 	"""
-	Sintetiza la locución radial de forma modular (intro, hora, minuto [si aplica], clima [1ra vez por hora], lead_in, fortuna, salida),
-	aprovechando la base de datos de caché SQLite para evitar llamadas redundantes a edge-tts.
-	Las fortunas del sistema Unix son leídas exclusivamente por Elena (estilo podcast / co-conductora)
-	y almacenadas en caché bajo su voz.
-	Incrusta la imagen del carpincho como cover art ID3 en el MP3 generado.
-	Opcionalmente superpone de fondo la canción que sigue desde bg_offset con volumen bg_volume.
+	Sintetiza la locución radial con dinámica de charla de cabina entre locutores carpinchos.
+	- Selección automática de host y cohost (garantizando voces distintas).
+	- Reporte del clima con pase de cabina, reporte y reacción según condición térmica/lluvia,
+	  respetando una periodicidad máxima de una vez por hora y un intervalo mínimo de 30 minutos.
+	- Lead-in, oráculo/fortuna y remate o reacción carpincha.
+	- Síntesis asíncrona concurrente con TaskGroup y caché SQLite.
+	- Ensamblado acústico con ruido rosa de sala, gaps naturales, solapamiento de reacciones y masterizado final.
+	- Incrusta carátula ID3 en el MP3 resultante.
 	Retorna (éxito, display_title, full_script_text_o_error).
 	"""
 	if not HAS_EDGE_TTS or edge_tts is None:
@@ -1624,18 +2070,26 @@ async def create_radio_announcement(
 
 	effective_dt = dt if dt is not None else datetime.now(timezone.utc).astimezone()
 
-	intro, hora_seg, minuto_seg, lead_in, fortuna, is_sys, outro, selected_voice, _base_script = (
-		generate_modular_radio_script(dt=effective_dt, voice=voice, force_system_fortune=force_system_fortune)
-	)
-	locutor_nombre = VOICE_NAMES.get(selected_voice, "Carpincho Locutor")
+	# Selección de fortuna y asignación de roles de cabina (host y cohost distintos)
+	fortuna, is_sys = select_fortune(force_system_fortune)
+	host_voice, cohost_voice = select_radio_hosts(host_voice=voice, is_system_fortune=is_sys)
+	locutor_nombre = VOICE_NAMES.get(host_voice, "Carpincho Locutor")
+	cohost_nombre = VOICE_NAMES.get(cohost_voice, "Carpincho Co-conductor")
 
-	# Reporte del clima con wttr.in (anunciado únicamente la primera vez dentro de cada hora de programa)
+	# Reporte del clima con wttr.in (máximo una vez por hora y con al menos 30 min de diferencia)
 	weather_text: str | None = None
+	weather_condition: str | None = None
 	current_weather_slot = effective_dt.strftime("%Y-%m-%d %H")
 	last_weather_hour = get_radio_state("last_weather_hour", db_path=db_path)
-	pending_weather_slot: str | None = None
+	last_weather_ts = get_radio_state("last_weather_timestamp", db_path=db_path)
+	now_ts = effective_dt.timestamp()
 
-	if last_weather_hour != current_weather_slot:
+	enough_time_passed = last_weather_ts is None or (now_ts - float(last_weather_ts)) >= (30 * 60)
+
+	pending_weather_slot: str | None = None
+	pending_weather_ts: float | None = None
+
+	if last_weather_hour != current_weather_slot and enough_time_passed:
 		try:
 			weather_timeout = min(timeout, 5.0)
 			weather_data = await asyncio.to_thread(
@@ -1645,42 +2099,41 @@ async def create_radio_announcement(
 				weather_timeout,
 			)
 			if weather_data:
-				phrase = build_weather_phrase(weather_data, current_hour=effective_dt.hour)
-				if phrase:
-					weather_text = phrase
+				weather_info = get_weather_info(weather_data, current_hour=effective_dt.hour)
+				if weather_info:
+					weather_text, weather_condition = weather_info
 					pending_weather_slot = current_weather_slot
+					pending_weather_ts = now_ts
 					logger.debug(f"🌤️ Reporte del clima incorporado a la locución: '{weather_text}'")
 		except Exception as e:
 			logger.debug(f"Fallo no crítico obteniendo/procesando reporte del clima: {e}")
 
-	hora_full = f"{hora_seg} {minuto_seg}" if minuto_seg else hora_seg
-	if weather_text:
-		full_script = f"{intro} {hora_full} {weather_text} {lead_in} «{fortuna}». {outro}"
-	else:
-		full_script = f"{intro} {hora_full} {lead_in} «{fortuna}». {outro}"
+	intro = random.choice(RADIO_INTROS)
+	hora_seg, minuto_seg, _ = get_modular_time_segments(effective_dt)
+	lead_in = random.choice(RADIO_LEAD_INS)
+	outro = random.choice(RADIO_OUTROS)
 
-	display_title = f"Carpincho locutor: {full_script}"
+	is_dialogue = dialogue_mode if dialogue_mode is not None else (random.random() < 0.85)
+	last_reaction = get_radio_state("last_reaction", db_path=db_path)
 
-	# Si es una fortuna del sistema Unix, ÚNICAMENTE la lee Elena (formato co-conducción / podcast)
-	# y ahora sí se guarda en la base de datos de caché SQLite con la voz de Elena.
-	fortune_voice = get_fortune_voice(is_sys, selected_voice)
-
-	# Plan de síntesis de los segmentos modulares
-	plan: list[tuple[str, str, str, bool]] = [
-		(intro, selected_voice, "intro", True),
-		(hora_seg, selected_voice, "hora", True),
-	]
-	if minuto_seg:
-		plan.append((minuto_seg, selected_voice, "minuto", True))
-	if weather_text:
-		plan.append((weather_text, selected_voice, "clima", False))
-	plan.extend(
-		[
-			(lead_in, selected_voice, "lead_in", True),
-			(f"«{fortuna}».", fortune_voice, "fortuna", True),
-			(outro, selected_voice, "salida", True),
-		]
+	plan = build_radio_dialogue_plan(
+		intro=intro,
+		hora_seg=hora_seg,
+		minuto_seg=minuto_seg,
+		lead_in=lead_in,
+		fortuna=fortuna,
+		outro=outro,
+		host_voice=host_voice,
+		cohost_voice=cohost_voice,
+		is_system_fortune=is_sys,
+		weather_text=weather_text,
+		weather_condition=weather_condition,
+		dialogue_mode=is_dialogue,
+		last_reaction=last_reaction,
 	)
+
+	full_script = " ".join(t[0].strip() for t in plan if t[0].strip())
+	display_title = f"Carpincho locutor: {full_script}"
 
 	try:
 		# Síntesis concurrente con TaskGroup: si una falla, cancela a las hermanas de inmediato
@@ -1708,14 +2161,10 @@ async def create_radio_announcement(
 			(seg_bytes, plan[i][2], plan[i][1]) for i, seg_bytes in enumerate(raw_segments)
 		]
 
-		if is_sys and selected_voice != VOICE_ELENA:
-			logger.info(
-				f"🎙️ Locución radial generada exitosamente con {locutor_nombre} ({selected_voice}) y Elena ({VOICE_ELENA}) en el oráculo del sistema: '{full_script}'"
-			)
+		if is_dialogue:
+			logger.info(f"🎙️ Locución radial en cabina ({locutor_nombre} y {cohost_nombre}): '{full_script}'")
 		else:
-			logger.info(
-				f"🎙️ Locución radial generada exitosamente con {locutor_nombre} ({selected_voice}): '{full_script}'"
-			)
+			logger.info(f"🎙️ Locución radial generada exitosamente con {locutor_nombre} ({host_voice}): '{full_script}'")
 
 		loop = asyncio.get_running_loop()
 		ok = await loop.run_in_executor(
@@ -1736,9 +2185,16 @@ async def create_radio_announcement(
 			logger.warning(f"📻 El Carpincho: {err_msg}")
 			return False, "", err_msg
 
-		# Guardar el slot horario recién después de que la síntesis y el ensamblado terminaron bien
+		# Guardar el slot horario y timestamp del clima tras ensamblado exitoso
 		if pending_weather_slot:
 			set_radio_state("last_weather_hour", pending_weather_slot, db_path=db_path)
+		if pending_weather_ts is not None:
+			set_radio_state("last_weather_timestamp", pending_weather_ts, db_path=db_path)
+
+		# Registrar última reacción para no repetirla consecutivamente
+		reactions_in_plan = [text for text, _v, cat, _c in plan if cat == "reaccion"]
+		if reactions_in_plan:
+			set_radio_state("last_reaction", reactions_in_plan[-1], db_path=db_path)
 
 		return True, display_title, full_script
 

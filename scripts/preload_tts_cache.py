@@ -53,6 +53,9 @@ try:
 		VOICE_VALENTINA,
 		VOICES,
 		get_all_degree_segments,
+		get_all_fortune_reaction_segments,
+		get_all_weather_handoff_segments,
+		get_all_weather_reaction_segments,
 		get_cached_audio,
 		get_modular_hour_segments,
 		get_modular_minute_segments,
@@ -77,6 +80,9 @@ except ImportError:
 		VOICE_VALENTINA,
 		VOICES,
 		get_all_degree_segments,
+		get_all_fortune_reaction_segments,
+		get_all_weather_handoff_segments,
+		get_all_weather_reaction_segments,
 		get_cached_audio,
 		get_modular_hour_segments,
 		get_modular_minute_segments,
@@ -103,8 +109,9 @@ def collect_phrases() -> list[tuple[str, str]]:
 	- 24 Horas especiales (minuto 0 en punto con impronta carpincha)
 	- 24 Segmentos de hora ("Las doce de la noche,", "1 hora,", "2 horas," ... "23 horas,")
 	- 59 Segmentos de minuto ("un minuto." a "59 minutos.")
-	- Pases de cabina criollos
-	- Reacciones de cabina criollas
+	- Pases de cabina criollos y pases a clima personalizados con nombre de cohost
+	- Reacciones de cabina criollas, reacciones climáticas por condición y de fortuna
+	- Segmentos de temperatura en grados
 	"""
 	items: list[tuple[str, str]] = []
 
@@ -140,15 +147,36 @@ def collect_phrases() -> list[tuple[str, str]]:
 	for handoff in RADIO_HANDOFFS:
 		items.append(("pase", handoff))
 
-	# 9. Reacciones de cabina criollas
+	# 9. Pases a clima dirigidos al cohost
+	for handoff_weather in get_all_weather_handoff_segments():
+		items.append(("pase", handoff_weather))
+
+	# 10. Reacciones de cabina criollas
 	for reaction in RADIO_REACTIONS:
 		items.append(("reaccion", reaction))
 
-	# 10. Segmentos de temperatura en grados
+	# 11. Reacciones de cabina por condición de clima
+	for reaction_weather in get_all_weather_reaction_segments():
+		items.append(("reaccion", reaction_weather))
+
+	# 12. Reacciones de cabina a la fortuna
+	for reaction_fortune in get_all_fortune_reaction_segments():
+		items.append(("reaccion", reaction_fortune))
+
+	# 13. Segmentos de temperatura en grados
 	for deg in get_all_degree_segments():
 		items.append(("clima", deg))
 
-	return items
+	# Deduplicar manteniendo orden
+	seen: set[tuple[str, str]] = set()
+	unique_items: list[tuple[str, str]] = []
+	for cat, txt in items:
+		key = (cat, txt)
+		if key not in seen:
+			seen.add(key)
+			unique_items.append((cat, txt))
+
+	return unique_items
 
 
 async def process_item(

@@ -860,10 +860,20 @@ def test_assemble_announcement_audio_acrossfade_and_pauses(tmp_path):
 			dest = Path(cmd[-1])
 			dest.write_bytes(b"ACROSSFADED_TIME_AUDIO")
 			return MagicMock(returncode=0, stderr=b"")
-		# Si es generador de silencio
-		elif any("anullsrc" in arg for arg in cmd):
+		# Si es generador de ruido de sala o silencio
+		elif any("anoisesrc" in arg or "anullsrc" in arg for arg in cmd):
 			dest = Path(cmd[-1])
-			dest.write_bytes(b"SILENCE_AUDIO")
+			dest.write_bytes(b"ROOM_TONE_AUDIO")
+			return MagicMock(returncode=0, stderr=b"")
+		# Si es normalización dynaudnorm
+		elif any("dynaudnorm" in arg for arg in cmd):
+			dest = Path(cmd[-1])
+			dest.write_bytes(b"NORM_AUDIO")
+			return MagicMock(returncode=0, stderr=b"")
+		# Si es mastering final con highpass y compresor
+		elif any("highpass" in arg for arg in cmd):
+			dest = Path(cmd[-1])
+			dest.write_bytes(b"FINAL_CONCATENATED_AUDIO")
 			return MagicMock(returncode=0, stderr=b"")
 		# Si es concatenación final
 		elif "-filter_complex" in cmd and any("concat=n=" in arg for arg in cmd):
@@ -886,10 +896,11 @@ def test_assemble_announcement_audio_acrossfade_and_pauses(tmp_path):
 		assert len(fade_calls) == 1
 		assert "acrossfade=d=0.05:c1=tri:c2=tri" in str(fade_calls[0])
 
-		# Verificar llamadas a anullsrc para los silencios intercalados
-		silence_calls = [c for c in invoked_commands if any("anullsrc" in a for a in c)]
-		# Silencio inicial (0.20), tras intro (0.30), tras hora_minuto (0.25), tras lead-in (0.35), tras fortuna (0.25)
-		assert len(silence_calls) >= 4
+		# Verificar llamadas a anoisesrc / anullsrc para los tonos de sala intercalados
+		tone_calls = [c for c in invoked_commands if any("anoisesrc" in a or "anullsrc" in a for a in c)]
+		# Presencia inicial (0.15) y pausas entre bloques
+		assert len(tone_calls) >= 4
+		assert any("anoisesrc" in str(c) for c in tone_calls)
 
 
 # --- Tests para Reporte del Clima (wttr.in) ---
@@ -1258,3 +1269,218 @@ def test_modular_helpers_and_preload_integration():
 	assert "reaccion" in categories
 	assert any(text == "Las doce de la noche," for cat, text in phrases if cat == "hora")
 	assert any(text == "un minuto." for cat, text in phrases if cat == "minuto")
+
+
+def test_select_radio_hosts():
+	"""Verifica que host y cohost sean siempre diferentes y respeten las reglas de la fortuna del sistema."""
+	# 1. 100 llamadas aleatorias garantizan host != cohost
+	for _ in range(100):
+		host, cohost = radio_announcer.select_radio_hosts()
+		assert host in radio_announcer.VOICES
+		assert cohost in radio_announcer.VOICES
+		assert host != cohost
+
+	# 2. Con host específico
+	host_tomas, cohost_tomas = radio_announcer.select_radio_hosts(
+		host_voice=radio_announcer.VOICE_TOMAS,
+		is_system_fortune=False,
+	)
+	assert host_tomas == radio_announcer.VOICE_TOMAS
+	assert cohost_tomas != radio_announcer.VOICE_TOMAS
+
+	# 3. Fortuna del sistema: si el host no es Elena, el cohost DEBE ser Elena
+	host_m, cohost_m = radio_announcer.select_radio_hosts(
+		host_voice=radio_announcer.VOICE_MARIA,
+		is_system_fortune=True,
+	)
+	assert host_m == radio_announcer.VOICE_MARIA
+	assert cohost_m == radio_announcer.VOICE_ELENA
+
+	# 4. Fortuna del sistema: si el host es Elena, el cohost es otra voz distinta
+	host_e, cohost_e = radio_announcer.select_radio_hosts(
+		host_voice=radio_announcer.VOICE_ELENA,
+		is_system_fortune=True,
+	)
+	assert host_e == radio_announcer.VOICE_ELENA
+	assert cohost_e != radio_announcer.VOICE_ELENA
+
+
+def test_format_temperature_singular_and_negatives():
+	"""Verifica concordancia singular y temperaturas negativas / bajo cero."""
+	assert radio_announcer.format_temperature(1) == "1 grado"
+	assert radio_announcer.format_temperature(0) == "0 grados"
+	assert radio_announcer.format_temperature(25) == "25 grados"
+	assert radio_announcer.format_temperature(-1) == "1 grado bajo cero"
+	assert radio_announcer.format_temperature(-4) == "4 grados bajo cero"
+
+	assert radio_announcer.format_temperature_range(14, 26) == "entre 14 y 26 grados"
+	assert radio_announcer.format_temperature_range(0, 1) == "entre 0 y 1 grado"
+	assert radio_announcer.format_temperature_range(-5, -1) == "entre 5 y 1 grado bajo cero"
+	assert radio_announcer.format_temperature_range(-3, 4) == "entre 3 grados bajo cero y 4 grados"
+
+	# Prueba build_weather_phrase con 1 grado y grados bajo cero
+	data_singular = {
+		"current_condition": [{"temp_C": "1"}],
+		"weather": [
+			{"mintempC": "0", "maxtempC": "1", "hourly": []},
+			{"mintempC": "0", "maxtempC": "1", "hourly": []},
+		],
+	}
+	phrase_sing = radio_announcer.build_weather_phrase(data_singular)
+	assert phrase_sing is not None
+	assert "1 grado de temperatura actual" in phrase_sing
+	assert "máxima alcanzará los 1 grado" in phrase_sing
+
+	data_negative = {
+		"current_condition": [{"temp_C": "-2"}],
+		"weather": [
+			{"mintempC": "-5", "maxtempC": "-1", "hourly": []},
+			{"mintempC": "-4", "maxtempC": "-2", "hourly": []},
+		],
+	}
+	phrase_neg = radio_announcer.build_weather_phrase(data_negative)
+	assert phrase_neg is not None
+	assert "2 grados bajo cero de temperatura actual" in phrase_neg
+
+
+def test_weather_condition_mapping():
+	"""Verifica la clasificación de condiciones climáticas para reacciones de cabina."""
+	assert radio_announcer.get_weather_condition(32, False, False) == "calor"
+	assert radio_announcer.get_weather_condition(30, False, False) == "calor"
+	assert radio_announcer.get_weather_condition(8, False, False) == "frio"
+	assert radio_announcer.get_weather_condition(10, False, False) == "frio"
+	assert radio_announcer.get_weather_condition(22, False, False) == "agradable"
+	# Lluvia tiene prioridad
+	assert radio_announcer.get_weather_condition(35, True, False) == "lluvia"
+	assert radio_announcer.get_weather_condition(5, False, True) == "lluvia"
+
+
+def test_booth_chat_segment_order():
+	"""Verifica el orden estricto de los segmentos de diálogo en la charla de cabina."""
+	plan_with_weather = radio_announcer.build_radio_dialogue_plan(
+		intro="Buenas gente",
+		hora_seg="15 horas,",
+		minuto_seg="30 minutos.",
+		lead_in="Momento oráculo:",
+		fortuna="Mate amargo y cumbia",
+		outro="¡Seguimos!",
+		host_voice=radio_announcer.VOICE_TOMAS,
+		cohost_voice=radio_announcer.VOICE_ELENA,
+		weather_text="tenemos 20 grados",
+		weather_condition="agradable",
+		dialogue_mode=True,
+	)
+
+	categories = [cat for _text, _v, cat, _c in plan_with_weather]
+	expected_categories = [
+		"intro",
+		"hora",
+		"minuto",
+		"pase",
+		"clima",
+		"reaccion",
+		"lead_in",
+		"fortuna",
+		"reaccion",
+		"salida",
+	]
+	assert categories == expected_categories
+
+	# Verificamos asignación de voces
+	voices = [v for _text, v, _cat, _c in plan_with_weather]
+	# pase hablado por host (Tomás), clima hablado por cohost (Elena), reacción hablada por host (Tomás)
+	assert voices[3] == radio_announcer.VOICE_TOMAS
+	assert voices[4] == radio_announcer.VOICE_ELENA
+	assert voices[5] == radio_announcer.VOICE_TOMAS
+
+	# Pase debe incluir el nombre del cohost (Elena)
+	pase_text = plan_with_weather[3][0]
+	assert "Elena" in pase_text
+
+	# Fortuna hablada por cohost (Elena)
+	assert voices[7] == radio_announcer.VOICE_ELENA
+
+	# Las dos reacciones del plan deben ser distintas
+	reaccion_clima_text = plan_with_weather[5][0]
+	reaccion_fortuna_text = plan_with_weather[8][0]
+	assert reaccion_clima_text != reaccion_fortuna_text
+
+	# Plan sin clima
+	plan_no_weather = radio_announcer.build_radio_dialogue_plan(
+		intro="Buenas gente",
+		hora_seg="15 horas,",
+		minuto_seg=None,
+		lead_in="Momento oráculo:",
+		fortuna="Mate amargo",
+		outro="¡Seguimos!",
+		host_voice=radio_announcer.VOICE_TOMAS,
+		cohost_voice=radio_announcer.VOICE_ELENA,
+		weather_text=None,
+		dialogue_mode=True,
+	)
+	categories_no_w = [cat for _text, _v, cat, _c in plan_no_weather]
+	assert categories_no_w == ["intro", "hora", "lead_in", "fortuna", "reaccion", "salida"]
+
+
+@pytest.mark.asyncio
+async def test_weather_30_min_cooldown(tmp_path):
+	"""Verifica que no se anuncie el clima con menos de 30 minutos de diferencia (ej: 13:58 y 14:02)."""
+	out1 = tmp_path / "out1.mp3"
+	out2 = tmp_path / "out2.mp3"
+	out3 = tmp_path / "out3.mp3"
+	db_p = tmp_path / "tts_cache.db"
+
+	mock_weather = {
+		"current_condition": [{"temp_C": "20"}],
+		"weather": [
+			{"mintempC": "12", "maxtempC": "24", "hourly": [{"chanceofrain": "5"}]},
+			{"mintempC": "13", "maxtempC": "25", "hourly": [{"chanceofrain": "5"}]},
+		],
+	}
+
+	mock_comm = MagicMock()
+	mock_comm.save = AsyncMock(return_value=None)
+
+	dt_13_58 = datetime(2026, 9, 28, 13, 58, tzinfo=timezone.utc)
+	dt_14_02 = datetime(2026, 9, 28, 14, 2, tzinfo=timezone.utc)  # Solo 4 min después
+	dt_14_35 = datetime(2026, 9, 28, 14, 35, tzinfo=timezone.utc)  # 37 min después
+
+	with (
+		patch("scripts.radio_announcer.HAS_EDGE_TTS", True),
+		patch("scripts.radio_announcer.edge_tts.Communicate", return_value=mock_comm),
+		patch("scripts.radio_announcer.fetch_weather_json", return_value=mock_weather) as mock_fetch,
+	):
+		# 1. 13:58 -> Clima anunciado
+		ok1, _title1, text1 = await radio_announcer.create_radio_announcement(
+			out1,
+			db_path=db_p,
+			dt=dt_13_58,
+			dialogue_mode=True,
+		)
+		assert ok1 is True
+		assert "20 grados" in text1
+		assert mock_fetch.call_count == 1
+		assert radio_announcer.get_radio_state("last_weather_hour", db_path=db_p) == "2026-09-28 13"
+
+		# 2. 14:02 -> Nueva hora ("2026-09-28 14"), pero solo pasaron 4 min (< 30 min) -> SKIPPED
+		ok2, _title2, text2 = await radio_announcer.create_radio_announcement(
+			out2,
+			db_path=db_p,
+			dt=dt_14_02,
+			dialogue_mode=True,
+		)
+		assert ok2 is True
+		assert "20 grados" not in text2
+		assert mock_fetch.call_count == 1  # No se volvió a llamar
+
+		# 3. 14:35 -> Pasaron 37 min desde 13:58 (>= 30 min) -> Clima anunciado
+		ok3, _title3, text3 = await radio_announcer.create_radio_announcement(
+			out3,
+			db_path=db_p,
+			dt=dt_14_35,
+			dialogue_mode=True,
+		)
+		assert ok3 is True
+		assert "20 grados" in text3
+		assert mock_fetch.call_count == 2
+		assert radio_announcer.get_radio_state("last_weather_hour", db_path=db_p) == "2026-09-28 14"
