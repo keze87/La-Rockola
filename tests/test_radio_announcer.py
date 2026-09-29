@@ -1178,23 +1178,40 @@ def test_fetch_weather_json_failure():
 
 
 def test_describir_lluvias():
-	# Ninguno
-	desc_none = radio_announcer.describir_lluvias(False, False)
+	# Variante clásica (variant_idx=0)
+	desc_none = radio_announcer.describir_lluvias(False, False, variant_idx=0)
 	assert "De lluvias ni hablemos" in desc_none
 
-	# Sólo hoy
-	desc_today = radio_announcer.describir_lluvias(True, False)
+	desc_today = radio_announcer.describir_lluvias(True, False, variant_idx=0)
 	assert "hoy se esperan lluvias" in desc_today
 	assert "mañana ya zafamos" in desc_today
 
-	# Sólo mañana
-	desc_tomorrow = radio_announcer.describir_lluvias(False, True)
+	desc_tomorrow = radio_announcer.describir_lluvias(False, True, variant_idx=0)
 	assert "Hoy zafamos del agua" in desc_tomorrow
 	assert "mañana se vienen las lluvias" in desc_tomorrow
 
-	# Ambos
-	desc_both = radio_announcer.describir_lluvias(True, True)
+	desc_both = radio_announcer.describir_lluvias(True, True, variant_idx=0)
 	assert "tanto para hoy como para mañana" in desc_both
+
+	# Todas las variantes para cada condición deben existir y ser texto válido en español
+	for cond, descs in radio_announcer.RAIN_DESCRIPTIONS.items():
+		assert len(descs) >= 5
+		for i, text in enumerate(descs):
+			retrieved = radio_announcer.describir_lluvias(*cond, variant_idx=i)
+			assert retrieved == text
+			assert radio_announcer.is_spanish_text(retrieved) is True
+			assert len(retrieved) > 10
+
+	# Verificación con selección aleatoria (variant_idx=None)
+	for cond in radio_announcer.RAIN_DESCRIPTIONS:
+		random_desc = radio_announcer.describir_lluvias(*cond)
+		assert random_desc in radio_announcer.RAIN_DESCRIPTIONS[cond]
+
+	# Helper de precarga consolidada
+	all_rains = radio_announcer.get_all_rain_descriptions()
+	assert len(all_rains) >= 20
+	for d in all_rains:
+		assert radio_announcer.is_spanish_text(d) is True
 
 
 def test_build_weather_phrase_valid():
@@ -1492,13 +1509,15 @@ def test_build_weather_phrase_with_current_hour_filtering():
 	}
 
 	# Si son las 14:00 (current_hour=14), el slot de las 9:00 ya pasó (9 + 2 = 11 < 14) -> NO llueve hoy
-	phrase_afternoon = radio_announcer.build_weather_phrase(weather_data, current_hour=14)
+	phrase_afternoon = radio_announcer.build_weather_phrase(weather_data, current_hour=14, template_idx=0)
 	assert phrase_afternoon is not None
+	assert any(opt in phrase_afternoon for opt in radio_announcer.RAIN_NO_RAIN)
 	assert "De lluvias ni hablemos" in phrase_afternoon
 
 	# Si son las 8:00 (current_hour=8), el slot de las 9:00 está vigente (9 + 2 = 11 >= 8) -> SÍ llueve hoy
-	phrase_morning = radio_announcer.build_weather_phrase(weather_data, current_hour=8)
+	phrase_morning = radio_announcer.build_weather_phrase(weather_data, current_hour=8, template_idx=0)
 	assert phrase_morning is not None
+	assert any(opt in phrase_morning for opt in radio_announcer.RAIN_TODAY_ONLY)
 	assert "Atenti que hoy se esperan lluvias" in phrase_morning
 
 

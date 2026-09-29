@@ -54,6 +54,13 @@ DEFAULT_TTS_TIMEOUT: float = 12.0
 DEFAULT_TTS_RETRIES: int = 3
 DEFAULT_BG_VOLUME: float = 0.1
 
+DEFAULT_RADIO_ARTIST: str = "Carpincho Locutor 🎙️"
+DEFAULT_RADIO_ALBUM: str = "La Rockola del Carpincho"
+DEFAULT_RADIO_TITLE: str = "Locución radial"
+DEFAULT_COHOST_NAME: str = "compadre"
+DEFAULT_HOST_NAME: str = "Carpincho Locutor"
+DEFAULT_COHOST_DISPLAY_NAME: str = "Carpincho Co-conductor"
+
 # ---------------------------------------------------------------------------
 # Fortunas del Carpincho y Avisos Publicitarios
 # ---------------------------------------------------------------------------
@@ -363,6 +370,11 @@ WEATHER_LEAD_INS: list[str] = [
 	"Atenti con el servicio meteorológico de La Rockola.",
 	"Momento de chequear cómo viene la mano con el cielo.",
 	"Pará un segundo el mate que te paso el parte meteorológico.",
+	"Asomate a la orilla que te tiro los datos del cielo.",
+	"Pará la oreja que acá está el pronóstico oficial de los bañados.",
+	"Dejá la pava en el fuego un toque que te canto el tiempo en la zona.",
+	"Antes de meter panzada al agua, chequeá cómo viene el clima.",
+	"Atenti la muchachada con el reporte del tiempo recién salido del horno.",
 ]
 
 WEATHER_TEMPLATES: list[str] = [
@@ -372,7 +384,57 @@ WEATHER_TEMPLATES: list[str] = [
 	"{lead} Para {location}, la temperatura en este momento marca {temp_str}. Hoy el termómetro se moverá entre {min_today_str} de mínima y {max_today_str} de máxima. Mañana vamos a andar {range_tomorrow_str}. {lluvia_desc}",
 	# Plantilla 3: Coloquial carpinchera
 	"{lead} Clavamos {temp_str} en {location}. Para lo que queda del día esperamos entre {min_today_str} y {max_today_str}. Y ojo a mañana que esperamos {range_tomorrow_str}. {lluvia_desc}",
+	# Plantilla 4: Costera / orilla
+	"{lead} Reporte fresco desde {location}: el termómetro acusa {temp_str}. Para hoy calculamos entre {min_today_str} y {max_today_str}. Mañana nos espera {range_tomorrow_str}. {lluvia_desc}",
+	# Plantilla 5: Enfocada en la jornada
+	"{lead} Así pinta la cosa por {location}: tenemos {temp_str} de térmica. La mínima prevista para hoy ronda los {min_today_str} y la máxima trepará a {max_today_str}. Mañana andaremos {range_tomorrow_str}. {lluvia_desc}",
+	# Plantilla 6: Radiofónica dinámica
+	"{lead} Actualizamos los números del tiempo en {location}: clava {temp_str}. Hoy la marca irá de {min_today_str} a {max_today_str}. Y mirando a mañana, pronostican {range_tomorrow_str}. {lluvia_desc}",
 ]
+
+# ---------------------------------------------------------------------------
+# Previsiones de precipitaciones por condición (llueve_hoy, llueve_manana)
+# ---------------------------------------------------------------------------
+
+RAIN_DESCRIPTIONS: dict[tuple[bool, bool], list[str]] = {
+	(False, False): [
+		"De lluvias ni hablemos: cielo despejado, ideal para unos buenos mates al sol.",
+		"Ni una sola nube que amenace agua: cielo limpito para secarse al sol en la orilla.",
+		"Cero agua en el horizonte: el cielo nos regala una jornada impecable para disfrutar.",
+		"Olvidate del paraguas: sol pleno en el bañado y ni miras de que caiga una gota.",
+		"El tiempo nos sonríe sin lluvias a la vista: tarde hermosa para relajarse y meter buena música.",
+		"Sin una gota a la vista: cielo abierto y despejado para andar panza arriba en la barranca.",
+	],
+	(True, False): [
+		"Atenti que hoy se esperan lluvias y chaparrones, pero mañana ya zafamos y mejora la cosa.",
+		"Hoy toca mojarse con algunas lluvias en la zona, pero tranqui que mañana ya abre el cielo.",
+		"Paraguas a mano para lo que queda de hoy porque el agua dice presente, aunque mañana ya mejora el panorama.",
+		"Hoy nos toca chaparrón para regar los pastizales, pero mañana ya volvemos a secarnos al solcito.",
+		"Atenti con los charcos hoy que viene con agua, pero mañana ya zafamos y sale el sol.",
+		"Lluvias intermitentes para la jornada de hoy, pero mañana ya afloja y se compone el tiempo.",
+	],
+	(False, True): [
+		"Hoy zafamos del agua, pero andá aprontando el paraguas porque mañana se vienen las lluvias.",
+		"Por hoy zafamos tranquilos, pero ojo que mañana el cielo se viene con agua y chaparrones.",
+		"Aprovechá la jornada seca de hoy, porque mañana el pronóstico nos promete agua a full.",
+		"Hoy disfrutamos sin lluvia, pero andá teniendo a mano las botas que mañana se larga con ganas.",
+		"Hoy zafamos de diez, pero guardá la ropa seca que mañana la lluvia no perdona.",
+		"El cielo aguanta por hoy, pero mañana preparate para los chaparrones en la laguna.",
+	],
+	(True, True): [
+		"Se vienen lluvias tanto para hoy como para mañana, ¡clima soñado para andar chapoteando en el agua!",
+		"Agua para hoy y agua para mañana: los carpinchos chochos nadando en el arroyo crecido.",
+		"El cielo no afloja: lluvias hoy y precipitaciones también mañana, ideal para tortas fritas y radio.",
+		"Jornadas pasadas por agua hoy y mañana, ¡el bañado está de fiesta con tanta lluvia!",
+		"Paraguas fijo para hoy y mañana: el agua no nos da tregua pero le ponemos onda con buena cumbia.",
+		"Mucha agua en el radar para hoy y para mañana: ¡lindo temporal para quedarse al reparo escuchando música!",
+	],
+}
+
+RAIN_NO_RAIN: list[str] = RAIN_DESCRIPTIONS[(False, False)]
+RAIN_TODAY_ONLY: list[str] = RAIN_DESCRIPTIONS[(True, False)]
+RAIN_TOMORROW_ONLY: list[str] = RAIN_DESCRIPTIONS[(False, True)]
+RAIN_BOTH_DAYS: list[str] = RAIN_DESCRIPTIONS[(True, True)]
 
 # ---------------------------------------------------------------------------
 # Charla de cabina: Pases y Reacciones

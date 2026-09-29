@@ -46,6 +46,12 @@ try:
 		COMMON_SPANISH_VERBS,
 		COMMON_SPANISH_WORDS,
 		DEFAULT_BG_VOLUME,
+		DEFAULT_COHOST_DISPLAY_NAME,
+		DEFAULT_COHOST_NAME,
+		DEFAULT_HOST_NAME,
+		DEFAULT_RADIO_ALBUM,
+		DEFAULT_RADIO_ARTIST,
+		DEFAULT_RADIO_TITLE,
 		DEFAULT_TTS_RETRIES,
 		DEFAULT_TTS_TIMEOUT,
 		DEFAULT_WEATHER_LOCATION,
@@ -61,6 +67,11 @@ try:
 		RADIO_LEAD_INS,
 		RADIO_OUTROS,
 		RADIO_REACTIONS,
+		RAIN_BOTH_DAYS,
+		RAIN_DESCRIPTIONS,
+		RAIN_NO_RAIN,
+		RAIN_TODAY_ONLY,
+		RAIN_TOMORROW_ONLY,
 		REACCIONES_CLIMA,
 		REACCIONES_FORTUNA,
 		SPANISH_CHARS,
@@ -86,6 +97,12 @@ except ImportError:
 		COMMON_SPANISH_VERBS,
 		COMMON_SPANISH_WORDS,
 		DEFAULT_BG_VOLUME,
+		DEFAULT_COHOST_DISPLAY_NAME,
+		DEFAULT_COHOST_NAME,
+		DEFAULT_HOST_NAME,
+		DEFAULT_RADIO_ALBUM,
+		DEFAULT_RADIO_ARTIST,
+		DEFAULT_RADIO_TITLE,
 		DEFAULT_TTS_RETRIES,
 		DEFAULT_TTS_TIMEOUT,
 		DEFAULT_WEATHER_LOCATION,
@@ -101,6 +118,11 @@ except ImportError:
 		RADIO_LEAD_INS,
 		RADIO_OUTROS,
 		RADIO_REACTIONS,
+		RAIN_BOTH_DAYS,
+		RAIN_DESCRIPTIONS,
+		RAIN_NO_RAIN,
+		RAIN_TODAY_ONLY,
+		RAIN_TOMORROW_ONLY,
 		REACCIONES_CLIMA,
 		REACCIONES_FORTUNA,
 		SPANISH_CHARS,
@@ -126,6 +148,12 @@ __all__ = [
 	"COMMON_SPANISH_VERBS",
 	"COMMON_SPANISH_WORDS",
 	"DEFAULT_BG_VOLUME",
+	"DEFAULT_COHOST_DISPLAY_NAME",
+	"DEFAULT_COHOST_NAME",
+	"DEFAULT_HOST_NAME",
+	"DEFAULT_RADIO_ALBUM",
+	"DEFAULT_RADIO_ARTIST",
+	"DEFAULT_RADIO_TITLE",
 	"DEFAULT_TTS_RETRIES",
 	"DEFAULT_TTS_TIMEOUT",
 	"DEFAULT_WEATHER_LOCATION",
@@ -141,6 +169,11 @@ __all__ = [
 	"RADIO_LEAD_INS",
 	"RADIO_OUTROS",
 	"RADIO_REACTIONS",
+	"RAIN_BOTH_DAYS",
+	"RAIN_DESCRIPTIONS",
+	"RAIN_NO_RAIN",
+	"RAIN_TODAY_ONLY",
+	"RAIN_TOMORROW_ONLY",
 	"REACCIONES_CLIMA",
 	"REACCIONES_FORTUNA",
 	"SPANISH_CHARS",
@@ -171,6 +204,7 @@ __all__ = [
 	"get_all_degree_segments",
 	"get_all_fortune_reaction_segments",
 	"get_all_handoff_segments",
+	"get_all_rain_descriptions",
 	"get_all_reaction_segments",
 	"get_all_time_segments",
 	"get_all_weather_handoff_segments",
@@ -255,18 +289,29 @@ def fetch_weather_json(
 	return None
 
 
-def describir_lluvias(llueve_hoy: bool, llueve_manana: bool) -> str:
+def describir_lluvias(llueve_hoy: bool, llueve_manana: bool, variant_idx: int | None = None) -> str:
 	"""
 	Describe la previsión de precipitaciones para hoy y mañana con impronta carpinchera.
-	Cubre las 4 variantes posibles.
+	Cubre las 4 condiciones posibles con múltiples opciones léxicas criollas.
+	Si variant_idx se especifica, retorna esa variante fija (variant_idx=0 mantiene la clásica).
+	Si variant_idx es None, elige una variante aleatoria.
 	"""
-	if not llueve_hoy and not llueve_manana:
+	options = RAIN_DESCRIPTIONS.get((llueve_hoy, llueve_manana))
+	if not options:
 		return "De lluvias ni hablemos: cielo despejado, ideal para unos buenos mates al sol."
-	if llueve_hoy and not llueve_manana:
-		return "Atenti que hoy se esperan lluvias y chaparrones, pero mañana ya zafamos y mejora la cosa."
-	if not llueve_hoy and llueve_manana:
-		return "Hoy zafamos del agua, pero andá aprontando el paraguas porque mañana se vienen las lluvias."
-	return "Se vienen lluvias tanto para hoy como para mañana, ¡clima soñado para andar chapoteando en el agua!"
+	if variant_idx is not None:
+		return options[variant_idx % len(options)]
+	return random.choice(options)
+
+
+def get_all_rain_descriptions() -> list[str]:
+	"""Devuelve la lista consolidada de todas las previsiones de lluvia posibles para precarga en caché."""
+	res: list[str] = []
+	for descs in RAIN_DESCRIPTIONS.values():
+		for d in descs:
+			if d not in res:
+				res.append(d)
+	return res
 
 
 def _is_slot_relevant_for_hour(h: dict, current_hour: int) -> bool:
@@ -387,7 +432,7 @@ def get_weather_info(
 
 		llueve_hoy = rain_today >= WEATHER_RAIN_THRESHOLD
 		llueve_manana = rain_tomorrow >= WEATHER_RAIN_THRESHOLD
-		lluvia_desc = describir_lluvias(llueve_hoy, llueve_manana)
+		lluvia_desc = describir_lluvias(llueve_hoy, llueve_manana, variant_idx=template_idx)
 
 		condition = get_weather_condition(current_temp, llueve_hoy=llueve_hoy, llueve_manana=llueve_manana)
 
@@ -1050,7 +1095,7 @@ def build_radio_dialogue_plan(
 
 	# 1. Clima
 	if weather_text:
-		cohost_name = VOICE_NAMES.get(cohost_voice, "compadre")
+		cohost_name = VOICE_NAMES.get(cohost_voice, DEFAULT_COHOST_NAME)
 		pase_template = random.choice(PASES_A_CLIMA)
 		pase_text = pase_template.format(cohost=cohost_name)
 		plan.append((pase_text, host_voice, "pase", True))
@@ -1163,41 +1208,41 @@ def get_modular_time_segments(dt: datetime | None = None) -> tuple[str, str | No
 
 	if minute in range(3, 8):
 		hora_seg = HOUR_NAMES[hour % 12]
-		minuto_seg = "y cinco."
+		minuto_seg = MINUTE_SEGMENTS[1]
 	elif minute in range(8, 13):
 		hora_seg = HOUR_NAMES[hour % 12]
-		minuto_seg = "y diez."
+		minuto_seg = MINUTE_SEGMENTS[2]
 	elif minute in range(13, 18):
 		hora_seg = HOUR_NAMES[hour % 12]
-		minuto_seg = "y cuarto."
+		minuto_seg = MINUTE_SEGMENTS[3]
 	elif minute in range(18, 23):
 		hora_seg = HOUR_NAMES[hour % 12]
-		minuto_seg = "y veinte."
+		minuto_seg = MINUTE_SEGMENTS[4]
 	elif minute in range(23, 28):
 		hora_seg = HOUR_NAMES[hour % 12]
-		minuto_seg = "y veinticinco."
+		minuto_seg = MINUTE_SEGMENTS[5]
 	elif minute in range(28, 33):
 		hora_seg = HOUR_NAMES[hour % 12]
-		minuto_seg = "y media."
+		minuto_seg = MINUTE_SEGMENTS[6]
 	elif minute in range(33, 38):
 		hora_seg = HOUR_NAMES[hour % 12]
-		minuto_seg = "y treinta y cinco."
+		minuto_seg = MINUTE_SEGMENTS[7]
 	elif minute in range(38, 43):
 		next_hour = (hour + 1) % 24
 		hora_seg = HOUR_NAMES[next_hour % 12]
-		minuto_seg = "menos veinte."
+		minuto_seg = MINUTE_SEGMENTS[8]
 	elif minute in range(43, 48):
 		next_hour = (hour + 1) % 24
 		hora_seg = HOUR_NAMES[next_hour % 12]
-		minuto_seg = "menos cuarto."
+		minuto_seg = MINUTE_SEGMENTS[9]
 	elif minute in range(48, 53):
 		next_hour = (hour + 1) % 24
 		hora_seg = HOUR_NAMES[next_hour % 12]
-		minuto_seg = "menos diez."
+		minuto_seg = MINUTE_SEGMENTS[10]
 	elif minute in range(53, 58):
 		next_hour = (hour + 1) % 24
 		hora_seg = HOUR_NAMES[next_hour % 12]
-		minuto_seg = "menos cinco."
+		minuto_seg = MINUTE_SEGMENTS[11]
 	else:
 		# En punto: 58..59 o 0..2
 		target_hour = (hour + 1) % 24 if minute >= 58 else hour
@@ -1205,7 +1250,7 @@ def get_modular_time_segments(dt: datetime | None = None) -> tuple[str, str | No
 			special = SPECIAL_HOURS[target_hour]
 			return special, None, special
 		hora_seg = HOUR_NAMES[target_hour % 12]
-		minuto_seg = "en punto."
+		minuto_seg = MINUTE_SEGMENTS[0]
 
 	full_time_str = f"{hora_seg} {minuto_seg}"
 	return hora_seg, minuto_seg, full_time_str
@@ -1513,9 +1558,9 @@ def is_valid_mp3_stream(data: bytes) -> bool:
 def embed_cover_art_in_mp3(
 	mp3_path: Path | str,
 	cover_image_path: Path | str | None = None,
-	title: str | None = "Locución radial",
-	artist: str | None = "Carpincho Locutor 🎙️",
-	album: str = "La Rockola del Carpincho",
+	title: str | None = DEFAULT_RADIO_TITLE,
+	artist: str | None = DEFAULT_RADIO_ARTIST,
+	album: str = DEFAULT_RADIO_ALBUM,
 	timeout: float = 10.0,
 ) -> bool:
 	"""
@@ -1660,8 +1705,8 @@ def assemble_announcement_audio(
 	bg_offset: float = 0.0,
 	bg_volume: float = DEFAULT_BG_VOLUME,
 	cover_image_path: Path | str | None = None,
-	title: str | None = "Locución radial",
-	artist: str | None = "Carpincho Locutor 🎙️",
+	title: str | None = DEFAULT_RADIO_TITLE,
+	artist: str | None = DEFAULT_RADIO_ARTIST,
 	timeout: float = 10.0,
 ) -> bool:
 	"""
@@ -2117,8 +2162,8 @@ async def create_radio_announcement(
 	# Selección de fortuna y asignación de roles de cabina (host y cohost distintos)
 	fortuna, is_sys = select_fortune(force_system_fortune)
 	host_voice, cohost_voice = select_radio_hosts(host_voice=voice, is_system_fortune=is_sys)
-	locutor_nombre = VOICE_NAMES.get(host_voice, "Carpincho Locutor")
-	cohost_nombre = VOICE_NAMES.get(cohost_voice, "Carpincho Co-conductor")
+	locutor_nombre = VOICE_NAMES.get(host_voice, DEFAULT_HOST_NAME)
+	cohost_nombre = VOICE_NAMES.get(cohost_voice, DEFAULT_COHOST_DISPLAY_NAME)
 
 	# Reporte del clima con wttr.in (máximo una vez por hora y con al menos 30 min de diferencia)
 	weather_text: str | None = None
