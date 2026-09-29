@@ -1248,6 +1248,47 @@ def test_build_weather_phrase_invalid():
 	assert radio_announcer.build_weather_phrase({"current_condition": [{"temp_C": "abc"}]}) is None
 
 
+def test_extract_location_from_weather_data():
+	"""Verifica la extracción de localidad resuelta por wttr.in desde nearest_area."""
+	# 1. Por areaName
+	data_area = {"nearest_area": [{"areaName": [{"value": "Tucumán"}]}]}
+	assert radio_announcer.extract_location_from_weather_data(data_area) == "Tucumán"
+
+	# 2. Por region
+	data_region = {"nearest_area": [{"region": [{"value": "Santa Fe"}]}]}
+	assert radio_announcer.extract_location_from_weather_data(data_region) == "Santa Fe"
+
+	# 3. Por country
+	data_country = {"nearest_area": [{"country": [{"value": "Argentina"}]}]}
+	assert radio_announcer.extract_location_from_weather_data(data_country) == "Argentina"
+
+	# 4. Datos vacíos o inválidos
+	assert radio_announcer.extract_location_from_weather_data({}) is None
+	assert radio_announcer.extract_location_from_weather_data({"nearest_area": []}) is None
+	assert radio_announcer.extract_location_from_weather_data({"nearest_area": [{}]}) is None
+
+
+def test_build_weather_phrase_prioritizes_json_location():
+	"""Verifica que la ubicación provista por el JSON de wttr.in tenga prioridad sobre el fallback."""
+	sample_with_area = {
+		"nearest_area": [{"areaName": [{"value": "Villa Crespo"}]}],
+		"current_condition": [{"temp_C": "20.0"}],
+		"weather": [
+			{"mintempC": "12", "maxtempC": "22", "hourly": []},
+			{"mintempC": "11", "maxtempC": "21", "hourly": []},
+		],
+	}
+	# Aunque se pase location="Buenos Aires", debe decir "Villa Crespo" que es lo que devolvió wttr.in
+	phrase = radio_announcer.build_weather_phrase(
+		sample_with_area,
+		lead_in="Buenas:",
+		template_idx=0,
+		location="Buenos Aires",
+	)
+	assert phrase is not None
+	assert "Villa Crespo" in phrase
+
+
 @pytest.fixture(autouse=True)
 def reset_radio_memory_state_fixture():
 	radio_announcer.reset_radio_memory_state()

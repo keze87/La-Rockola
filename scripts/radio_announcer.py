@@ -163,6 +163,7 @@ __all__ = [
 	"contains_blacklisted_content",
 	"create_radio_announcement",
 	"describir_lluvias",
+	"extract_location_from_weather_data",
 	"format_fortune_for_speech",
 	"format_temperature",
 	"format_temperature_range",
@@ -329,6 +330,27 @@ def get_weather_condition(
 	return "agradable"
 
 
+def extract_location_from_weather_data(data: dict) -> str | None:
+	"""
+	Extrae el nombre de la localidad/área resuelta por wttr.in a partir del JSON format=j1.
+	Inspecciona 'nearest_area' priorizando 'areaName', luego 'region' y finalmente 'country'.
+	"""
+	try:
+		areas = data.get("nearest_area")
+		if isinstance(areas, list) and areas:
+			first_area = areas[0]
+			if isinstance(first_area, dict):
+				for key in ("areaName", "region", "country"):
+					items = first_area.get(key)
+					if isinstance(items, list) and items:
+						val = items[0].get("value")
+						if val and isinstance(val, str) and val.strip():
+							return val.replace("+", " ").replace("_", " ").strip()
+	except Exception:
+		pass
+	return None
+
+
 def get_weather_info(
 	data: dict,
 	lead_in: str | None = None,
@@ -390,17 +412,14 @@ def get_weather_info(
 
 		range_tomorrow_str = format_temperature_range(min_tomorrow, max_tomorrow)
 
-		loc_clean = DEFAULT_WEATHER_LOCATION
-		if location and location.strip():
+		# Priorizar la ubicación resuelta que devuelve wttr.in en el JSON
+		loc_from_json = extract_location_from_weather_data(data)
+		if loc_from_json:
+			loc_clean = loc_from_json
+		elif location and location.strip():
 			loc_clean = location.replace("+", " ").replace("_", " ").strip()
 		else:
-			try:
-				nearest = data.get("nearest_area", [{}])[0]
-				area = nearest.get("areaName", [{}])[0].get("value")
-				if area and area.strip():
-					loc_clean = area.replace("+", " ").replace("_", " ").strip()
-			except Exception:
-				pass
+			loc_clean = DEFAULT_WEATHER_LOCATION
 
 		if template_idx is not None:
 			tpl = WEATHER_TEMPLATES[template_idx % len(WEATHER_TEMPLATES)]
