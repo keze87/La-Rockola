@@ -334,10 +334,11 @@ def get_weather_info(
 	lead_in: str | None = None,
 	current_hour: int | None = None,
 	template_idx: int | None = None,
+	location: str | None = None,
 ) -> tuple[str, str] | None:
 	"""
 	Extrae los datos del JSON format=j1 de wttr.in y retorna (weather_phrase, weather_condition).
-	Soporta múltiples plantillas sintácticas para evitar patrones repetitivos.
+	Soporta múltiples plantillas sintácticas para evitar patrones repetitivos e incluye la ubicación consultada.
 	Retorna None si la estructura es inválida o incompleta.
 	"""
 	try:
@@ -389,6 +390,18 @@ def get_weather_info(
 
 		range_tomorrow_str = format_temperature_range(min_tomorrow, max_tomorrow)
 
+		loc_clean = DEFAULT_WEATHER_LOCATION
+		if location and location.strip():
+			loc_clean = location.replace("+", " ").replace("_", " ").strip()
+		else:
+			try:
+				nearest = data.get("nearest_area", [{}])[0]
+				area = nearest.get("areaName", [{}])[0].get("value")
+				if area and area.strip():
+					loc_clean = area.replace("+", " ").replace("_", " ").strip()
+			except Exception:
+				pass
+
 		if template_idx is not None:
 			tpl = WEATHER_TEMPLATES[template_idx % len(WEATHER_TEMPLATES)]
 		else:
@@ -396,6 +409,7 @@ def get_weather_info(
 
 		phrase = tpl.format(
 			lead=lead,
+			location=loc_clean,
 			temp_str=temp_str,
 			min_today_str=min_today_str,
 			max_today_str=max_today_str,
@@ -413,12 +427,19 @@ def build_weather_phrase(
 	lead_in: str | None = None,
 	current_hour: int | None = None,
 	template_idx: int | None = None,
+	location: str | None = None,
 ) -> str | None:
 	"""
 	Extrae y arma la frase del reporte del clima a partir del JSON format=j1 de wttr.in.
 	Retorna None si la estructura no contiene las claves esperadas.
 	"""
-	info = get_weather_info(data, lead_in=lead_in, current_hour=current_hour, template_idx=template_idx)
+	info = get_weather_info(
+		data,
+		lead_in=lead_in,
+		current_hour=current_hour,
+		template_idx=template_idx,
+		location=location,
+	)
 	return info[0] if info else None
 
 
@@ -2096,14 +2117,19 @@ async def create_radio_announcement(
 	if last_weather_hour != current_weather_slot and enough_time_passed:
 		try:
 			weather_timeout = min(timeout, 5.0)
+			loc_to_query = weather_location or DEFAULT_WEATHER_LOCATION
 			weather_data = await asyncio.to_thread(
 				fetch_weather_json,
-				weather_location or DEFAULT_WEATHER_LOCATION,
+				loc_to_query,
 				"es",
 				weather_timeout,
 			)
 			if weather_data:
-				weather_info = get_weather_info(weather_data, current_hour=effective_dt.hour)
+				weather_info = get_weather_info(
+					weather_data,
+					current_hour=effective_dt.hour,
+					location=loc_to_query,
+				)
 				if weather_info:
 					weather_text, weather_condition = weather_info
 					pending_weather_slot = current_weather_slot

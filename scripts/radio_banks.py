@@ -367,11 +367,11 @@ WEATHER_LEAD_INS: list[str] = [
 
 WEATHER_TEMPLATES: list[str] = [
 	# Plantilla 1: Directa y clásica
-	"{lead} Tenemos {temp_str} de temperatura actual. Para hoy la mínima es de {min_today_str} y la máxima alcanzará los {max_today_str}. Para mañana esperamos {range_tomorrow_str}. {lluvia_desc}",
+	"{lead} En {location}, tenemos {temp_str} de temperatura actual. Para hoy la mínima es de {min_today_str} y la máxima alcanzará los {max_today_str}. Para mañana esperamos {range_tomorrow_str}. {lluvia_desc}",
 	# Plantilla 2: Centrada en la sensación térmica y perspectiva
-	"{lead} La temperatura en este momento marca {temp_str}. Hoy el termómetro se moverá entre {min_today_str} de mínima y {max_today_str} de máxima. Mañana vamos a andar {range_tomorrow_str}. {lluvia_desc}",
+	"{lead} Para {location}, la temperatura en este momento marca {temp_str}. Hoy el termómetro se moverá entre {min_today_str} de mínima y {max_today_str} de máxima. Mañana vamos a andar {range_tomorrow_str}. {lluvia_desc}",
 	# Plantilla 3: Coloquial carpinchera
-	"{lead} Clavamos {temp_str} en la laguna. Para lo que queda del día esperamos entre {min_today_str} y {max_today_str}. Y ojo a mañana que esperamos {range_tomorrow_str}. {lluvia_desc}",
+	"{lead} Clavamos {temp_str} en {location}. Para lo que queda del día esperamos entre {min_today_str} y {max_today_str}. Y ojo a mañana que esperamos {range_tomorrow_str}. {lluvia_desc}",
 ]
 
 # ---------------------------------------------------------------------------

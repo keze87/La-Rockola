@@ -1216,11 +1216,30 @@ def test_build_weather_phrase_valid():
 	phrase = radio_announcer.build_weather_phrase(sample, lead_in="Atenti:", template_idx=0)
 	assert phrase is not None
 	assert "Atenti:" in phrase
+	assert "San Miguel de Tucumán" in phrase
 	assert "22 grados" in phrase
 	assert "mínima es de 15" in phrase
 	assert "máxima alcanzará los 28" in phrase
 	assert "entre 14 y 26 grados" in phrase
 	assert "mañana se vienen las lluvias" in phrase
+
+	# Prueba con ubicaciones personalizadas y diferentes plantillas
+	phrase_rosario = radio_announcer.build_weather_phrase(sample, lead_in="Atenti:", template_idx=0, location="Rosario")
+	assert phrase_rosario is not None
+	assert "En Rosario" in phrase_rosario
+
+	phrase_ba = radio_announcer.build_weather_phrase(sample, lead_in="Atenti:", template_idx=1, location="Buenos Aires")
+	assert phrase_ba is not None
+	assert "Para Buenos Aires" in phrase_ba
+
+	phrase_cba = radio_announcer.build_weather_phrase(sample, lead_in="Atenti:", template_idx=2, location="Córdoba")
+	assert phrase_cba is not None
+	assert "en Córdoba" in phrase_cba
+
+	# Limpieza de caracteres de URL (+ y _)
+	phrase_url = radio_announcer.build_weather_phrase(sample, template_idx=0, location="San+Fernando_del_Valle")
+	assert phrase_url is not None
+	assert "En San Fernando del Valle" in phrase_url
 
 
 def test_build_weather_phrase_invalid():
