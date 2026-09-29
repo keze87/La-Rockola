@@ -100,6 +100,8 @@ except ImportError:
 		embed_cover_art_in_mp3 = None
 		DEFAULT_WEATHER_LOCATION = "San Miguel de Tucumán"
 
+RADIO_PREGENERATION_MAX_AGE_SECONDS: float = 15.0 * 60.0  # 15 minutos de caducidad tras pausa prolongada
+
 
 _system_librosa_python: str | None = None
 _system_librosa_checked: bool = False
@@ -3140,6 +3142,7 @@ class APIState:
 						"path": self.radio_pregenerated_path,
 						"display_title": display_title,
 						"script": script_or_err,
+						"created_at": time.time(),
 					}
 					logger.info(
 						"📻 Carpincho Locutor: Pregeneración de voz lista con anticipación para el final del tema."
@@ -3301,17 +3304,24 @@ class APIState:
 					# 1. Comprobar si ya está lista la pregeneración de fondo (0 ms de latencia)
 					if self.pregenerated_radio_announcement:
 						pre = self.pregenerated_radio_announcement
-						pre_p = Path(pre["path"])
-						if pre_p.is_file() and pre_p.stat().st_size > 0:
-							await _apply_hot_mix_to_announcement(
-								pre_p, Path(self.radio_announcement_path), pre["display_title"]
-							)
-							ok = True
-							display_title = pre["display_title"]
-							script_or_err = pre["script"]
+						pre_created_at = pre.get("created_at")
+						pre_age = (time.time() - pre_created_at) if pre_created_at is not None else 0.0
+						if pre_age > RADIO_PREGENERATION_MAX_AGE_SECONDS:
 							logger.info(
-								"⚡ Carpincho Locutor: Transición con locución pregenerada y mezcla de cortina en caliente."
+								f"📻 Carpincho Locutor: La locución pregenerada expiró ({pre_age / 60:.1f} min > 15 min tras pausa). Descartando para sintetizar locución fresca..."
 							)
+						else:
+							pre_p = Path(pre["path"])
+							if pre_p.is_file() and pre_p.stat().st_size > 0:
+								await _apply_hot_mix_to_announcement(
+									pre_p, Path(self.radio_announcement_path), pre["display_title"]
+								)
+								ok = True
+								display_title = pre["display_title"]
+								script_or_err = pre["script"]
+								logger.info(
+									"⚡ Carpincho Locutor: Transición con locución pregenerada y mezcla de cortina en caliente."
+								)
 						self.pregenerated_radio_announcement = None
 
 					# 2. Si la tarea de pregeneración sigue corriendo, esperarla brevemente
@@ -3323,14 +3333,21 @@ class APIState:
 							await asyncio.wait_for(asyncio.shield(self.radio_pregeneration_task), timeout=3.0)
 							if self.pregenerated_radio_announcement:
 								pre = self.pregenerated_radio_announcement
-								pre_p = Path(pre["path"])
-								if pre_p.is_file() and pre_p.stat().st_size > 0:
-									await _apply_hot_mix_to_announcement(
-										pre_p, Path(self.radio_announcement_path), pre["display_title"]
+								pre_created_at = pre.get("created_at")
+								pre_age = (time.time() - pre_created_at) if pre_created_at is not None else 0.0
+								if pre_age > RADIO_PREGENERATION_MAX_AGE_SECONDS:
+									logger.info(
+										f"📻 Carpincho Locutor: La locución pregenerada expiró ({pre_age / 60:.1f} min > 15 min tras pausa). Descartando..."
 									)
-									ok = True
-									display_title = pre["display_title"]
-									script_or_err = pre["script"]
+								else:
+									pre_p = Path(pre["path"])
+									if pre_p.is_file() and pre_p.stat().st_size > 0:
+										await _apply_hot_mix_to_announcement(
+											pre_p, Path(self.radio_announcement_path), pre["display_title"]
+										)
+										ok = True
+										display_title = pre["display_title"]
+										script_or_err = pre["script"]
 								self.pregenerated_radio_announcement = None
 						except Exception as wait_e:
 							logger.debug(f"Espera de pregeneración agotada o falló: {wait_e}")

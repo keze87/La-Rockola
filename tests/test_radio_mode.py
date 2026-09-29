@@ -433,3 +433,44 @@ async def test_hot_bg_track_mixing_on_queue_change(tmp_path):
 		mock_embed.assert_called_once()
 		assert state.is_playing_radio_announcement is True
 		assert state.current_track == state.radio_announcement_path
+
+
+@pytest.mark.asyncio
+async def test_pregenerated_announcement_expires_after_15_minutes(tmp_path):
+	"""Verifica que una locución pregenerada con más de 15 minutos (ej. pausa prolongada) sea descartada y se re-sintetice fresca."""
+	import time
+
+	state.radio_mode_enabled = True
+	state.radio_track_counter = 1
+	state.radio_tracks_until_next = 2
+	state.queue = ["/music/next_song.mp3"]
+	state.current_track = "/music/song1.mp3"
+
+	# Locución vieja generada hace 16 minutos (960 segundos)
+	old_pre = Path(state.radio_pregenerated_path)
+	old_pre.write_bytes(b"OLD_STALE_AUDIO")
+	state.pregenerated_radio_announcement = {
+		"path": state.radio_pregenerated_path,
+		"display_title": "Carpincho Viejo",
+		"script": "Texto viejo",
+		"created_at": time.time() - 960.0,
+	}
+
+	mock_create_live = AsyncMock(return_value=(True, "Carpincho Fresco", "Texto fresco"))
+
+	async def fake_play_track(path):
+		state.current_track = path
+
+	with (
+		patch("server.HAS_EDGE_TTS", True),
+		patch("server.create_radio_announcement", mock_create_live),
+		patch.object(state, "play_track", side_effect=fake_play_track),
+		patch("server.broadcast_state", AsyncMock()),
+	):
+		await state.play_next(skipped_by_user=False)
+
+		# Debe descartar la locución vieja y disparar create_radio_announcement en vivo para audio fresco
+		mock_create_live.assert_awaited_once()
+		assert state.is_playing_radio_announcement is True
+		assert state.current_track == state.radio_announcement_path
+		assert state.pregenerated_radio_announcement is None
