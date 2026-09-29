@@ -385,7 +385,7 @@ export function useLocalPlayback() {
 			if (currentTrackPath.value) {
 				const info = getTrackInfo(currentTrackPath.value);
 				const artworkSrc = !currentTrackPath.value.startsWith('http')
-					? `${window.location.origin}${apiUrl(`/cover?path=${encodeURIComponent(currentTrackPath.value)}`)}`
+					? `${window.location.origin}${apiUrl(`/cover?path=${encodeURIComponent(currentTrackPath.value)}&size=512`)}`
 					: null;
 
 				navigator.mediaSession.metadata = new MediaMetadata({

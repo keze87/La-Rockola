@@ -440,6 +440,7 @@ import argparse
 import asyncio
 import gc
 import hashlib
+import io
 import logging
 import random
 import re
@@ -450,6 +451,13 @@ import time
 import warnings
 import webbrowser
 from contextlib import asynccontextmanager
+
+try:
+	from PIL import Image
+
+	HAS_PIL = True
+except ImportError:
+	HAS_PIL = False
 
 import uvicorn
 from fastapi import FastAPI, Query, Request, WebSocket, WebSocketDisconnect
@@ -3693,22 +3701,59 @@ async def scan_library(dir: str | None = None, dir2: str | None = None):
 
 
 # Cache en memoria para carátulas de audio extraídas (evita re-procesar con Mutagen)
-# Estructura: path -> (mtime, size, cover_data, mime_type, etag)
+# Estructura: cache_key -> (mtime, size, cover_data, mime_type, etag)
 _COVER_MEM_CACHE: dict[str, tuple[int, int, bytes | None, str, str]] = {}
-_MAX_COVER_MEM_CACHE = 500
+_MAX_COVER_MEM_CACHE = 1000
+
+
+def _resize_cover(cover_bytes: bytes, max_size: int) -> tuple[bytes, str]:
+	"""Redimensiona la carátula manteniendo el aspect ratio a un máximo de max_size píxeles."""
+	if not HAS_PIL or not cover_bytes or max_size <= 0:
+		return cover_bytes, "image/jpeg"
+	try:
+		with Image.open(io.BytesIO(cover_bytes)) as img:
+			if img.width <= max_size and img.height <= max_size:
+				format_mime = Image.MIME.get(img.format, "image/jpeg") if img.format else "image/jpeg"
+				return cover_bytes, format_mime
+
+			img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+
+			if img.mode in ("RGBA", "LA", "P"):
+				bg = Image.new("RGB", img.size, (30, 26, 23))
+				if img.mode == "P":
+					img = img.convert("RGBA")
+				bg.paste(img, mask=img.split()[-1] if "A" in img.mode else None)
+				img = bg
+			elif img.mode != "RGB":
+				img = img.convert("RGB")
+
+			out = io.BytesIO()
+			img.save(out, format="JPEG", quality=85, optimize=True)
+			return out.getvalue(), "image/jpeg"
+	except Exception as e:
+		logger.debug(f"Pifió redimensionando carátula ({max_size}px): {e}")
+		return cover_bytes, "image/jpeg"
 
 
 @app.get("/cover")
-async def serve_cover(path: str = Query(...), request: Request = None):
+async def serve_cover(path: str = Query(...), size: int | None = None, request: Request = None):
+	if not isinstance(size, int) or size <= 0:
+		size = None
 	try:
 		if path == getattr(state, "radio_announcement_path", None) or Path(path).name == "radio_announcement.mp3":
 			if get_carpincho_cover_path:
 				carpincho_img = get_carpincho_cover_path()
 				if carpincho_img and carpincho_img.is_file():
+					if size and size > 0 and HAS_PIL:
+						c_data, c_mime = _resize_cover(carpincho_img.read_bytes(), size)
+						return Response(content=c_data, media_type=c_mime)
 					mime = "image/png" if carpincho_img.suffix.lower() == ".png" else "image/jpeg"
 					return FileResponse(carpincho_img, media_type=mime)
 			favicon_p = Path(__file__).resolve().parent / "public" / "favicon.png"
 			if favicon_p.exists():
+				if size and size > 0 and HAS_PIL:
+					c_data, c_mime = _resize_cover(favicon_p.read_bytes(), size)
+					return Response(content=c_data, media_type=c_mime)
 				return FileResponse(favicon_p, media_type="image/png")
 
 		if not os.path.exists(path):
@@ -3717,8 +3762,9 @@ async def serve_cover(path: str = Query(...), request: Request = None):
 		# Obtenemos metadata rápida del archivo para armar el ETag sin leer todo el audio
 		st = os.stat(path)
 		mtime = int(st.st_mtime)
-		size = st.st_size
-		etag = f'"{hashlib.md5(f"{path}:{mtime}:{size}".encode()).hexdigest()}"'
+		file_size = st.st_size
+		etag_raw = f"{path}:{mtime}:{file_size}:s={size}" if (size and size > 0) else f"{path}:{mtime}:{file_size}"
+		etag = f'"{hashlib.md5(etag_raw.encode()).hexdigest()}"'
 		cache_headers = {
 			"ETag": etag,
 			"Cache-Control": "public, max-age=2592000, stale-while-revalidate=86400",
@@ -3729,20 +3775,34 @@ async def serve_cover(path: str = Query(...), request: Request = None):
 			if if_none_match and etag in if_none_match:
 				return Response(status_code=304, headers=cache_headers)
 
-		# Verificamos si ya tenemos la portada en caché de memoria con el mismo mtime y size
-		if path in _COVER_MEM_CACHE:
-			c_mtime, c_size, c_data, c_mime, _ = _COVER_MEM_CACHE[path]
-			if c_mtime == mtime and c_size == size:
+		cache_key = f"{path}:s={size}" if (size and size > 0) else path
+
+		# Verificamos si ya tenemos esta versión en caché de memoria con el mismo mtime y file_size
+		if cache_key in _COVER_MEM_CACHE:
+			c_mtime, c_size, c_data, c_mime, _ = _COVER_MEM_CACHE[cache_key]
+			if c_mtime == mtime and c_size == file_size:
 				if c_data is None:
 					return Response(status_code=404, headers=cache_headers)
 				return Response(content=c_data, media_type=c_mime, headers=cache_headers)
+
+		# Si se pidió una versión redimensionada y tenemos la original en caché:
+		if size and size > 0 and path in _COVER_MEM_CACHE:
+			orig_mtime, orig_size, orig_data, _orig_mime, _ = _COVER_MEM_CACHE[path]
+			if orig_mtime == mtime and orig_size == file_size:
+				if orig_data is None:
+					return Response(status_code=404, headers=cache_headers)
+				resized_data, mime_type = _resize_cover(orig_data, size)
+				if len(_COVER_MEM_CACHE) >= _MAX_COVER_MEM_CACHE:
+					_COVER_MEM_CACHE.pop(next(iter(_COVER_MEM_CACHE)))
+				_COVER_MEM_CACHE[cache_key] = (mtime, file_size, resized_data, mime_type, etag)
+				return Response(content=resized_data, media_type=mime_type, headers=cache_headers)
 
 		# Extraemos los metadatos completos con Mutagen
 		audio = MutagenFile(path)
 		if not audio:
 			if len(_COVER_MEM_CACHE) >= _MAX_COVER_MEM_CACHE:
 				_COVER_MEM_CACHE.pop(next(iter(_COVER_MEM_CACHE)))
-			_COVER_MEM_CACHE[path] = (mtime, size, None, "image/jpeg", etag)
+			_COVER_MEM_CACHE[cache_key] = (mtime, file_size, None, "image/jpeg", etag)
 			return Response(status_code=404, headers=cache_headers)
 
 		cover_data = None
@@ -3762,16 +3822,30 @@ async def serve_cover(path: str = Query(...), request: Request = None):
 				cover_data = audio.tags["covr"][0]
 				mime_type = "image/jpeg" if cover_data.startswith(b"\xff\xd8") else "image/png"
 
+		# Siempre guardamos la versión original en memoria
+		orig_etag = f'"{hashlib.md5(f"{path}:{mtime}:{file_size}".encode()).hexdigest()}"'
 		if len(_COVER_MEM_CACHE) >= _MAX_COVER_MEM_CACHE:
 			_COVER_MEM_CACHE.pop(next(iter(_COVER_MEM_CACHE)))
-		_COVER_MEM_CACHE[path] = (mtime, size, cover_data, mime_type, etag)
+		_COVER_MEM_CACHE[path] = (mtime, file_size, cover_data, mime_type, orig_etag)
 
-		if cover_data:
-			return Response(
-				content=cover_data,
-				media_type=mime_type,
-				headers=cache_headers,
-			)
+		if not cover_data:
+			if cache_key != path:
+				_COVER_MEM_CACHE[cache_key] = (mtime, file_size, None, "image/jpeg", etag)
+			return Response(status_code=404, headers=cache_headers)
+
+		if size and size > 0:
+			resized_data, mime_type = _resize_cover(cover_data, size)
+			if cache_key != path:
+				if len(_COVER_MEM_CACHE) >= _MAX_COVER_MEM_CACHE:
+					_COVER_MEM_CACHE.pop(next(iter(_COVER_MEM_CACHE)))
+				_COVER_MEM_CACHE[cache_key] = (mtime, file_size, resized_data, mime_type, etag)
+			return Response(content=resized_data, media_type=mime_type, headers=cache_headers)
+
+		return Response(
+			content=cover_data,
+			media_type=mime_type,
+			headers=cache_headers,
+		)
 	except Exception as e:
 		logger.debug(f"Pifió sacando la tapa de {path}: {e}")
 

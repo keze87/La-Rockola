@@ -166,7 +166,7 @@
 
 			<img
 				v-if="currentTrackPath && !currentTrackPath.startsWith('http') && !isScanning"
-				:src="apiUrl('/cover?path=' + encodeURIComponent(currentTrackPath))"
+				:src="apiUrl('/cover?path=' + encodeURIComponent(currentTrackPath) + '&size=256')"
 				class="h-10 w-10 shrink-0 rounded object-cover shadow-sm"
 				@error="hideBrokenCover"
 			/>

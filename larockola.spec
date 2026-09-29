@@ -47,6 +47,8 @@ hiddenimports = [
     "ytdlp_installer",
     "radio_announcer",
     "edge_tts",
+    "PIL",
+    "PIL.Image",
 ]
 
 import sys

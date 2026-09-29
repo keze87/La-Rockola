@@ -109,7 +109,7 @@
 		return null;
 	});
 
-	const { coverUrl: currentCoverUrl } = useCover(coverSource);
+	const { coverUrl: currentCoverUrl } = useCover(coverSource, { size: null });
 
 	const fogonBgStyle = computed(() =>
 		currentCoverUrl.value ? { backgroundImage: `url('${currentCoverUrl.value}')` } : { backgroundColor: '#1f1a17' }
@@ -239,6 +239,8 @@
 						:track="coverSource"
 						size="h-full w-full"
 						rounded="rounded-2xl"
+						:size-px="null"
+						:unload-when-hidden="false"
 						button-size="h-10 w-10 md:h-12 md:w-12"
 						button-icon-size="!text-xl md:!text-2xl"
 					/>

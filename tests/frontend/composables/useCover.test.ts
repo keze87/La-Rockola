@@ -34,4 +34,16 @@ describe('useCover', () => {
 
 		expect(coverUrl.value).toBeNull();
 	});
+
+	it('appends size query parameter when size option is provided', () => {
+		const path = '/music/song.mp3';
+		const { coverUrl: url256 } = useCover(path, { size: 256 });
+		expect(url256.value).toBe('/cover?path=%2Fmusic%2Fsong.mp3&size=256');
+
+		const { coverUrl: url512 } = useCover(path, { size: 512 });
+		expect(url512.value).toBe('/cover?path=%2Fmusic%2Fsong.mp3&size=512');
+
+		const { coverUrl: urlOriginal } = useCover(path, { size: null });
+		expect(urlOriginal.value).toBe('/cover?path=%2Fmusic%2Fsong.mp3');
+	});
 });

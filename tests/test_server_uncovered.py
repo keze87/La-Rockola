@@ -576,6 +576,52 @@ async def test_serve_cover_variations(tmp_path):
 		assert res_covr.headers["content-type"] == "image/png"
 
 
+async def test_serve_cover_resizing(tmp_path):
+	"""Verify serve_cover resizes images when size is specified and caches them."""
+	import io
+
+	from PIL import Image
+
+	song_file = tmp_path / "song_resized.mp3"
+	song_file.write_bytes(b"DUMMY_AUDIO")
+
+	# Create a 1000x1000 test image
+	test_img = Image.new("RGB", (1000, 1000), color=(255, 0, 0))
+	buf = io.BytesIO()
+	test_img.save(buf, format="JPEG")
+	orig_bytes = buf.getvalue()
+
+	mock_audio = MagicMock()
+	mock_tag = MagicMock()
+	mock_tag.data = orig_bytes
+	mock_tag.mime = "image/jpeg"
+	mock_audio.tags = {"APIC:Front": mock_tag}
+	mock_audio.pictures = []
+
+	server._COVER_MEM_CACHE.clear()
+	with patch("server.MutagenFile", return_value=mock_audio):
+		# 1. Request resized cover (256px)
+		res_256 = await server.serve_cover(path=str(song_file), size=256, request=None)
+		assert res_256.status_code == 200
+		with Image.open(io.BytesIO(res_256.body)) as im:
+			assert im.size == (256, 256)
+
+		# 2. Resized version is cached under path:s=256 and original under path
+		assert f"{song_file!s}:s=256" in server._COVER_MEM_CACHE
+		assert str(song_file) in server._COVER_MEM_CACHE
+
+		# 3. Request original cover (highest quality, no size)
+		res_orig = await server.serve_cover(path=str(song_file), size=None, request=None)
+		assert res_orig.status_code == 200
+		assert res_orig.body == orig_bytes
+
+		# 4. Request 512px cover - uses the in-memory original
+		res_512 = await server.serve_cover(path=str(song_file), size=512, request=None)
+		assert res_512.status_code == 200
+		with Image.open(io.BytesIO(res_512.body)) as im:
+			assert im.size == (512, 512)
+
+
 async def test_fetch_yt_dlp_metadata(temp_db):
 	"""Verify fetch_yt_dlp_metadata runs yt-dlp, parses metadata and saves to DB."""
 	state = server.state

@@ -5,3 +5,4 @@ pydantic
 websockets
 dbus-next; sys_platform == 'linux'
 edge-tts
+pillow

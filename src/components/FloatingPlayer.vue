@@ -46,7 +46,7 @@
 		return null;
 	});
 
-	const { coverUrl, onCoverError } = useCover(upNextPath);
+	const { coverUrl, onCoverError } = useCover(upNextPath, { size: 256 });
 
 	function goToQueue() {
 		switchTab('queue');
