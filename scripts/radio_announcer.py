@@ -1029,14 +1029,22 @@ def build_radio_dialogue_plan(
 	return plan
 
 
+NO_MERGE_CATEGORIES: set[str] = {"intro", "hora", "minuto", "clima", "salida"}
+
+
 def group_plan_into_speech_turns(
 	plan: list[tuple[str, str, str, bool]],
 ) -> list[tuple[str, str, str, bool]]:
 	"""
 	Agrupa turnos consecutivos de habla que pertenecen al MISMO locutor
-	en bloques o parlamentos completos de texto continuo.
+	en bloques o parlamentos completos de texto continuo, EXCEPTO para categorías
+	fijas/modulares (intro, hora, minuto, salida) que cuentan con clips pregrabados
+	o cacheados, y para el clima dinámico que ya constituye un bloque completo.
+
 	Esto le entrega a edge-tts oraciones y párrafos completos con entonación natural,
-	ritmo fluido y pausas prosódicas humanas, evitando el efecto de frases pegadas.
+	ritmo fluido y pausas prosódicas humanas, preservando al mismo tiempo la alta tasa
+	de aciertos de caché del catálogo inicial y evitando textos desmesurados que agoten
+	el tiempo de espera de la red.
 	"""
 	if not plan:
 		return []
@@ -1051,14 +1059,16 @@ def group_plan_into_speech_turns(
 		clean_txt = text.strip()
 		if not clean_txt:
 			continue
-		if v == current_voice:
+
+		can_merge = (
+			v == current_voice and current_category not in NO_MERGE_CATEGORIES and category not in NO_MERGE_CATEGORIES
+		)
+
+		if can_merge:
 			current_texts.append(clean_txt)
 			# Si algún segmento individual no permite caché, el turno completo no se cachea
 			if not allow_cache:
 				current_allow_cache = False
-			# Si se agrupa la hora o clima, reflejar categoría compuesta para propósitos de logging
-			if category not in current_category:
-				current_category = f"{current_category}_{category}"
 		else:
 			turns.append((" ".join(current_texts), current_voice, current_category, current_allow_cache))
 			current_texts = [clean_txt]
@@ -1255,7 +1265,7 @@ async def synthesize_segment(
 		pitch = prosody.get("pitch", "+0Hz")
 		volume = prosody.get("volume", "+0%")
 
-		attempt_timeout = min(timeout, max(4.0, timeout * 0.7)) if max_retries > 0 else timeout
+		attempt_timeout = max(4.0, timeout)
 		audio_bytes = b""
 		last_err: Exception | None = None
 
@@ -1274,8 +1284,9 @@ async def synthesize_segment(
 				last_err = e
 				if attempt < max_retries:
 					backoff = min(0.3 * (attempt + 1), max(0.01, timeout * 0.2))
+					err_msg = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
 					logger.debug(
-						f"Reintento {attempt + 1}/{max_retries} en síntesis '{category}' ({voice}) tras error: {e}. Esperando {backoff:.2f}s..."
+						f"Reintento {attempt + 1}/{max_retries} en síntesis '{category}' ({voice}) tras error: {err_msg}. Esperando {backoff:.2f}s..."
 					)
 					await asyncio.sleep(backoff)
 
@@ -1287,8 +1298,9 @@ async def synthesize_segment(
 					logger.debug(f"No se pudo guardar en caché SQLite: {cache_err}")
 			return audio_bytes
 		else:
+			err_msg = f"{type(last_err).__name__}: {last_err}" if str(last_err) else type(last_err).__name__
 			logger.warning(
-				f"🌐 edge-tts no pudo sintetizar '{category}' ({voice}): {last_err}. Probando fallback en caché SQLite..."
+				f"🌐 edge-tts no pudo sintetizar '{category}' ({voice}): {err_msg}. Probando fallback en caché SQLite..."
 			)
 	else:
 		logger.debug("edge-tts no está disponible. Recurriendo a caché SQLite como fallback...")
@@ -2171,7 +2183,7 @@ async def create_radio_announcement(
 			set_radio_state("last_weather_timestamp", pending_weather_ts, db_path=db_path)
 
 		# Registrar última reacción para no repetirla consecutivamente
-		reactions_in_plan = [text for text, _v, cat, _c in plan if cat == "reaccion"]
+		reactions_in_plan = [text for text, _v, cat, _c in plan if cat == "reaccion" or "reaccion" in cat]
 		if reactions_in_plan:
 			set_radio_state("last_reaction", reactions_in_plan[-1], db_path=db_path)
 
@@ -2187,6 +2199,13 @@ async def create_radio_announcement(
 			logger.warning(f"📻 El Carpincho: {err_msg}")
 			return False, "", err_msg
 
-		err_msg = f"Error de síntesis ({type(e).__name__}: {e})"
+		if hasattr(e, "exceptions"):
+			nested_msgs = "; ".join(
+				f"{type(sub).__name__}: {sub}" if str(sub) else type(sub).__name__
+				for sub in getattr(e, "exceptions", [])
+			)
+			err_msg = f"Error de síntesis ({nested_msgs})"
+		else:
+			err_msg = f"Error de síntesis ({type(e).__name__}: {e})"
 		logger.warning(f"📻 El Carpincho: {err_msg}")
 		return False, "", err_msg

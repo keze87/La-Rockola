@@ -1728,3 +1728,69 @@ async def test_weather_30_min_cooldown(tmp_path):
 		assert "20 grados" in text3
 		assert mock_fetch.call_count == 2
 		assert radio_announcer.get_radio_state("last_weather_hour", db_path=db_p) == "2026-09-28 14"
+
+
+def test_group_plan_into_speech_turns_preserves_no_merge_categories():
+	"""Verifica que 'intro', 'hora', 'minuto', 'clima' y 'salida' nunca se fundan entre sí ni con segmentos contiguos."""
+	v = radio_announcer.VOICE_TOMAS
+	plan = [
+		("Buenas tardes carpinchos...", v, "intro", True),
+		("Las tres", v, "hora", True),
+		("y veinticinco.", v, "minuto", True),
+		("Clima agradable en la laguna.", v, "clima", False),
+		("Che, escuchá esto:", v, "lead_in", True),
+		("Seguimos con buena música.", v, "salida", True),
+	]
+
+	turns = radio_announcer.group_plan_into_speech_turns(plan)
+	assert len(turns) == 6
+	assert turns[0] == ("Buenas tardes carpinchos...", v, "intro", True)
+	assert turns[1] == ("Las tres", v, "hora", True)
+	assert turns[2] == ("y veinticinco.", v, "minuto", True)
+	assert turns[3] == ("Clima agradable en la laguna.", v, "clima", False)
+	assert turns[4] == ("Che, escuchá esto:", v, "lead_in", True)
+	assert turns[5] == ("Seguimos con buena música.", v, "salida", True)
+
+
+def test_group_plan_into_speech_turns_merges_allowed_categories():
+	"""Verifica que segmentos consecutivos de la misma voz fuera de NO_MERGE se agrupen con la categoría del primer segmento."""
+	v_elena = radio_announcer.VOICE_ELENA
+	plan = [
+		("Che, mirá lo que encontré:", v_elena, "lead_in", True),
+		("En muerte y en boda, verás quien te honra.", v_elena, "fortuna", True),
+	]
+
+	turns = radio_announcer.group_plan_into_speech_turns(plan)
+	assert len(turns) == 1
+	merged_text, merged_v, merged_cat, merged_cache = turns[0]
+	assert merged_text == "Che, mirá lo que encontré: En muerte y en boda, verás quien te honra."
+	assert merged_v == v_elena
+	assert merged_cat == "lead_in"
+	assert merged_cache is True
+
+	# Si un segmento tiene allow_cache=False, el turno agrupado resultante no se cachea
+	plan_no_cache = [
+		("Reacción inicial.", v_elena, "reaccion", True),
+		("Comentario dinámico.", v_elena, "comentario", False),
+	]
+	turns_no_cache = radio_announcer.group_plan_into_speech_turns(plan_no_cache)
+	assert len(turns_no_cache) == 1
+	assert turns_no_cache[0][2] == "reaccion"
+	assert turns_no_cache[0][3] is False
+
+
+def test_group_plan_into_speech_turns_cuts_on_speaker_change():
+	"""Verifica que el cambio de locutor siempre fuerce un corte de turno."""
+	v1 = radio_announcer.VOICE_TOMAS
+	v2 = radio_announcer.VOICE_VALENTINA
+	plan = [
+		("Pase a cabina.", v1, "pase", True),
+		("El clima está lindo.", v2, "clima", False),
+		("Qué alegría.", v1, "reaccion", True),
+	]
+
+	turns = radio_announcer.group_plan_into_speech_turns(plan)
+	assert len(turns) == 3
+	assert turns[0][1] == v1
+	assert turns[1][1] == v2
+	assert turns[2][1] == v1
