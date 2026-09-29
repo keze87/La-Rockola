@@ -141,7 +141,7 @@ def test_is_valid_spoken_sentence_rejects_blacklists():
 	# 1. Mal gusto / profanidad
 	assert radio_announcer.is_valid_spoken_sentence("Ese tipo es un pelotudo que no entiende nada de radio.") is False
 	assert radio_announcer.is_valid_spoken_sentence("Me importa una mierda lo que digan en el pueblo cercano.") is False
-	assert radio_announcer.is_valid_spoken_sentence("Qué carajo pasa con la música en esta estación isleña.") is False
+	assert radio_announcer.is_valid_spoken_sentence("Qué concha pasa con la música en esta estación isleña.") is False
 	assert (
 		radio_announcer.is_valid_spoken_sentence("No seas hijo de puta y compartí los mates con los amigos.") is False
 	)
@@ -745,12 +745,14 @@ def test_preload_collect_phrases():
 	assert "hora" in categories
 	assert "minuto" in categories
 
-	# Verificamos que contenga horas especiales y modulares
+	# Verificamos que contenga horas especiales y combinaciones unificadas
 	horas = [text for cat, text in items if cat == "hora"]
 	assert "Las una en punto, es hora de mimir." in horas
+	assert "Las nueve y media." in horas
+	assert "Las tres y veinticinco." in horas
 	assert "Las tres" in horas
 	assert "Las una" in horas
-	assert len(horas) == 36  # 24 especiales + 12 modulares únicas (al usar formato 12h coloquial)
+	assert len(horas) >= 168  # 24 especiales + 144 combinaciones cada 5 minutos (+ retrocompatibilidad)
 
 	# Verificamos que contenga los 12 intervalos cada 5 minutos
 	minutos = [text for cat, text in items if cat == "minuto"]
@@ -1505,12 +1507,20 @@ def test_modular_helpers_and_preload_integration():
 	# Preload collect_phrases
 	from scripts import preload_tts_cache
 
+	all_times = radio_announcer.get_all_time_segments()
+	assert len(all_times) == 168  # 24 especiales en punto + 144 combinaciones (12 horas x 12 intervalos)
+	assert "Las una en punto, es hora de mimir." in all_times
+	assert "Las nueve y media." in all_times
+	assert "Las tres y veinticinco." in all_times
+	assert "Las diez menos cuarto." in all_times
+
 	phrases = preload_tts_cache.collect_phrases()
 	categories = {cat for cat, _ in phrases}
 	assert "hora" in categories
 	assert "minuto" in categories
 	assert "pase" in categories
 	assert "reaccion" in categories
+	assert any(text == "Las nueve y media." for cat, text in phrases if cat == "hora")
 	assert any(text == "Las doce" for cat, text in phrases if cat == "hora")
 	assert any(text == "y media." for cat, text in phrases if cat == "minuto")
 
@@ -1619,7 +1629,6 @@ def test_booth_chat_segment_order():
 	expected_categories = [
 		"intro",
 		"hora",
-		"minuto",
 		"pase",
 		"clima",
 		"reaccion",
@@ -1629,24 +1638,25 @@ def test_booth_chat_segment_order():
 		"salida",
 	]
 	assert categories == expected_categories
+	assert plan_with_weather[1][0] == "Las tres y media."
 
 	# Verificamos asignación de voces
 	voices = [v for _text, v, _cat, _c in plan_with_weather]
 	# pase hablado por host (Tomás), clima hablado por cohost (Elena), reacción hablada por host (Tomás)
-	assert voices[3] == radio_announcer.VOICE_TOMAS
-	assert voices[4] == radio_announcer.VOICE_ELENA
-	assert voices[5] == radio_announcer.VOICE_TOMAS
+	assert voices[2] == radio_announcer.VOICE_TOMAS
+	assert voices[3] == radio_announcer.VOICE_ELENA
+	assert voices[4] == radio_announcer.VOICE_TOMAS
 
 	# Pase debe incluir el nombre del cohost (Elena)
-	pase_text = plan_with_weather[3][0]
+	pase_text = plan_with_weather[2][0]
 	assert "Elena" in pase_text
 
 	# Fortuna hablada por cohost (Elena)
-	assert voices[7] == radio_announcer.VOICE_ELENA
+	assert voices[6] == radio_announcer.VOICE_ELENA
 
 	# Las dos reacciones del plan deben ser distintas
-	reaccion_clima_text = plan_with_weather[5][0]
-	reaccion_fortuna_text = plan_with_weather[8][0]
+	reaccion_clima_text = plan_with_weather[4][0]
+	reaccion_fortuna_text = plan_with_weather[7][0]
 	assert reaccion_clima_text != reaccion_fortuna_text
 
 	# Plan sin clima

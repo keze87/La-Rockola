@@ -171,6 +171,7 @@ __all__ = [
 	"get_all_fortune_reaction_segments",
 	"get_all_handoff_segments",
 	"get_all_reaction_segments",
+	"get_all_time_segments",
 	"get_all_weather_handoff_segments",
 	"get_all_weather_reaction_segments",
 	"get_available_spanish_dbs",
@@ -911,8 +912,26 @@ def get_modular_hour_segments() -> list[str]:
 
 
 def get_modular_minute_segments() -> list[str]:
-	"""Genera la lista con los 4 segmentos modulares de minutos ('en punto.', 'y cuarto.', 'y media.', 'y menos cuarto.')."""
+	"""Genera la lista con los 12 segmentos modulares de minutos cada 5 minutos."""
 	return list(MINUTE_SEGMENTS)
+
+
+def get_all_time_segments() -> list[str]:
+	"""
+	Genera todas las combinaciones posibles de locución horaria:
+	1. Las 24 frases especiales en punto (SPECIAL_HOURS).
+	2. Todas las combinaciones de las 12 horas con los intervalos de minutos (e.g. 'Las nueve y media.').
+	"""
+	segments: list[str] = []
+	for special in SPECIAL_HOURS.values():
+		if special not in segments:
+			segments.append(special)
+	for hora in HOUR_NAMES:
+		for minuto in MINUTE_SEGMENTS:
+			combo = f"{hora} {minuto}"
+			if combo not in segments:
+				segments.append(combo)
+	return segments
 
 
 def get_all_degree_segments(min_deg: int = -5, max_deg: int = 42) -> list[str]:
@@ -962,15 +981,14 @@ def build_radio_dialogue_plan(
 	Si dialogue_mode es False, retorna la locución solo tradicional.
 	Garantiza que nunca haya dos reacciones consecutivas idénticas.
 	"""
+	time_phrase = f"{hora_seg} {minuto_seg}".strip() if minuto_seg else hora_seg.strip()
 	fortune_text = format_fortune_for_speech(fortuna)
 	if not dialogue_mode:
 		fortune_voice = VOICE_ELENA if is_system_fortune else host_voice
 		solo_plan: list[tuple[str, str, str, bool]] = [
 			(intro, host_voice, "intro", True),
-			(hora_seg, host_voice, "hora", True),
+			(time_phrase, host_voice, "hora", True),
 		]
-		if minuto_seg:
-			solo_plan.append((minuto_seg, host_voice, "minuto", True))
 		if weather_text:
 			solo_plan.append((weather_text, host_voice, "clima", False))
 		solo_plan.extend(
@@ -985,10 +1003,8 @@ def build_radio_dialogue_plan(
 	# Plan de charla de cabina
 	plan: list[tuple[str, str, str, bool]] = [
 		(intro, host_voice, "intro", True),
-		(hora_seg, host_voice, "hora", True),
+		(time_phrase, host_voice, "hora", True),
 	]
-	if minuto_seg:
-		plan.append((minuto_seg, host_voice, "minuto", True))
 
 	prev_reaction = last_reaction
 

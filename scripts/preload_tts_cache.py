@@ -45,7 +45,6 @@ try:
 		RADIO_LEAD_INS,
 		RADIO_OUTROS,
 		RADIO_REACTIONS,
-		SPECIAL_HOURS,
 		VOICE_ELENA,
 		VOICE_MARIA,
 		VOICE_NAMES,
@@ -55,6 +54,7 @@ try:
 		format_fortune_for_speech,
 		get_all_degree_segments,
 		get_all_fortune_reaction_segments,
+		get_all_time_segments,
 		get_all_weather_handoff_segments,
 		get_all_weather_reaction_segments,
 		get_cached_audio,
@@ -73,7 +73,6 @@ except ImportError:
 		RADIO_LEAD_INS,
 		RADIO_OUTROS,
 		RADIO_REACTIONS,
-		SPECIAL_HOURS,
 		VOICE_ELENA,
 		VOICE_MARIA,
 		VOICE_NAMES,
@@ -83,6 +82,7 @@ except ImportError:
 		format_fortune_for_speech,
 		get_all_degree_segments,
 		get_all_fortune_reaction_segments,
+		get_all_time_segments,
 		get_all_weather_handoff_segments,
 		get_all_weather_reaction_segments,
 		get_cached_audio,
@@ -133,15 +133,15 @@ def collect_phrases() -> list[tuple[str, str]]:
 	for outro in RADIO_OUTROS:
 		items.append(("salida", outro))
 
-	# 5. Horas especiales (las 24 horas cuando el minuto es 0 en punto)
-	for special in SPECIAL_HOURS.values():
-		items.append(("hora", special))
+	# 5. Locuciones horarias completas (24 especiales en punto + todas las combinaciones hora/minuto)
+	for time_str in get_all_time_segments():
+		items.append(("hora", time_str))
 
-	# 6. Segmentos modulares de horas (0 a 23) importados desde radio_announcer
+	# 6. Segmentos modulares de horas (0 a 23) importados desde radio_announcer (retrocompatibilidad)
 	for hora_str in get_modular_hour_segments():
 		items.append(("hora", hora_str))
 
-	# 7. Segmentos modulares de minutos (1 a 59) importados desde radio_announcer
+	# 7. Segmentos modulares de minutos (1 a 59) importados desde radio_announcer (retrocompatibilidad)
 	for minuto_str in get_modular_minute_segments():
 		items.append(("minuto", minuto_str))
 
