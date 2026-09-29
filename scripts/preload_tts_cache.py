@@ -110,7 +110,7 @@ def collect_phrases() -> list[tuple[str, str]]:
 	- Salidas radiales
 	- 24 Horas especiales (minuto 0 en punto con impronta carpincha)
 	- 24 Segmentos de hora ("Las doce", "Las una", ... "Las once")
-	- 4 Segmentos de cuartos de hora ("en punto.", "y cuarto.", "y media.", "y menos cuarto.")
+	- 12 Segmentos de minutos cada 5 min ("en punto.", "y cinco.", ... "menos cinco.")
 	- Pases de cabina criollos y pases a clima personalizados con nombre de cohost
 	- Reacciones de cabina criollas, reacciones climáticas por condición y de fortuna
 	- Segmentos de temperatura en grados

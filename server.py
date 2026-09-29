@@ -78,7 +78,9 @@ try:
 		DEFAULT_WEATHER_LOCATION,
 		HAS_EDGE_TTS,
 		create_radio_announcement,
+		embed_cover_art_in_mp3,
 		get_carpincho_cover_path,
+		mix_announcement_with_bg_track,
 	)
 except ImportError:
 	try:
@@ -86,12 +88,16 @@ except ImportError:
 			DEFAULT_WEATHER_LOCATION,
 			HAS_EDGE_TTS,
 			create_radio_announcement,
+			embed_cover_art_in_mp3,
 			get_carpincho_cover_path,
+			mix_announcement_with_bg_track,
 		)
 	except ImportError:
 		HAS_EDGE_TTS = False
 		create_radio_announcement = None
 		get_carpincho_cover_path = None
+		mix_announcement_with_bg_track = None
+		embed_cover_art_in_mp3 = None
 		DEFAULT_WEATHER_LOCATION = "San Miguel de Tucumán"
 
 
@@ -3103,6 +3109,8 @@ class APIState:
 		"""
 		Dispara la síntesis y procesamiento de la locución radial en segundo plano
 		al comienzo de la canción, calculando el cuarto horario estimado en el que terminará el tema.
+		Genera la pista de voz limpia y masterizada para poder superponer la cortina musical
+		en caliente sobre la canción que efectivamente toque al finalizar.
 		"""
 		if not self.radio_mode_enabled or not HAS_EDGE_TTS or create_radio_announcement is None:
 			return
@@ -3119,33 +3127,12 @@ class APIState:
 			now = datetime.now(timezone.utc).astimezone()
 			finish_dt = now + timedelta(seconds=max(0.0, track_duration)) if track_duration > 0 else now
 
-			# Determinar la próxima pista para cortina de fondo si se conoce
-			next_track_path = None
-			if self.queue:
-				next_track_path = self.queue[0]
-			elif self.dj_next_track:
-				next_track_path = self.dj_next_track.get("path")
-			elif self.dj_carpincho_enabled and self.tracks_cache:
-				self._pick_dj_next()
-				if self.dj_next_track:
-					next_track_path = self.dj_next_track.get("path")
-
-			bg_offset = 0.0
-			if next_track_path:
-				total_dur = get_track_duration_seconds(next_track_path, self.tracks_cache)
-				if total_dur > 10.0:
-					bg_offset = total_dur / 2.0
-				elif total_dur > 0:
-					bg_offset = total_dur * 0.4
-
 			try:
 				logger.info("📻 Carpincho Locutor: Iniciando pregeneración anticipada al comienzo de la canción...")
 				ok, display_title, script_or_err = await create_radio_announcement(
 					self.radio_pregenerated_path,
 					dt=finish_dt,
-					bg_track_path=next_track_path,
-					bg_offset=bg_offset,
-					bg_volume=0.1,
+					bg_track_path=None,
 					weather_location=self.weather_location,
 				)
 				if ok:
@@ -3155,7 +3142,7 @@ class APIState:
 						"script": script_or_err,
 					}
 					logger.info(
-						"📻 Carpincho Locutor: Pregeneración lista con 0 ms de latencia para el final del tema."
+						"📻 Carpincho Locutor: Pregeneración de voz lista con anticipación para el final del tema."
 					)
 				else:
 					logger.debug(f"Pregeneración radial no completada: {script_or_err}")
@@ -3253,16 +3240,78 @@ class APIState:
 					display_title = ""
 					script_or_err = ""
 
+					# Averiguamos qué tema viene realmente en este momento para superponerlo como cortina en caliente
+					next_track_path = None
+					if self.queue:
+						next_track_path = self.queue[0]
+					elif self.dj_next_track:
+						next_track_path = self.dj_next_track.get("path")
+					elif self.dj_carpincho_enabled and self.tracks_cache:
+						self._pick_dj_next()
+						if self.dj_next_track:
+							next_track_path = self.dj_next_track.get("path")
+
+					bg_offset = 0.0
+					if next_track_path:
+						total_dur = get_track_duration_seconds(next_track_path, self.tracks_cache)
+						if total_dur > 10.0:
+							bg_offset = total_dur / 2.0  # Desde la mitad de la canción
+						elif total_dur > 0:
+							bg_offset = total_dur * 0.4
+
+					async def _apply_hot_mix_to_announcement(voice_file: Path, out_file: Path, title: str) -> bool:
+						"""Superpone la cortina musical en caliente sobre la voz usando la pista que efectivamente suena después."""
+						if (
+							next_track_path
+							and Path(next_track_path).is_file()
+							and mix_announcement_with_bg_track is not None
+						):
+							try:
+								loop = asyncio.get_running_loop()
+								mixed = await loop.run_in_executor(
+									None,
+									mix_announcement_with_bg_track,
+									voice_file,
+									out_file,
+									next_track_path,
+									bg_offset,
+									0.1,
+									10.0,
+								)
+								if mixed:
+									if embed_cover_art_in_mp3 is not None:
+										cover_p = get_carpincho_cover_path() if get_carpincho_cover_path else None
+										await loop.run_in_executor(
+											None,
+											embed_cover_art_in_mp3,
+											out_file,
+											cover_p,
+											title,
+											"Carpincho Locutor 🎙️",
+											"La Rockola del Carpincho",
+										)
+									return True
+							except Exception as mix_err:
+								logger.debug(f"Fallo en mezcla en caliente con '{next_track_path}': {mix_err}")
+
+						# Fallback seguro si no hay pista de fondo o falló la mezcla en caliente
+						shutil.copyfile(voice_file, out_file)
+						return True
+
 					# 1. Comprobar si ya está lista la pregeneración de fondo (0 ms de latencia)
 					if self.pregenerated_radio_announcement:
 						pre = self.pregenerated_radio_announcement
 						pre_p = Path(pre["path"])
 						if pre_p.is_file() and pre_p.stat().st_size > 0:
-							shutil.copyfile(pre_p, self.radio_announcement_path)
+							await _apply_hot_mix_to_announcement(
+								pre_p, Path(self.radio_announcement_path), pre["display_title"]
+							)
 							ok = True
 							display_title = pre["display_title"]
 							script_or_err = pre["script"]
-							logger.info("⚡ Carpincho Locutor: Transición instantánea (0 ms) con locución pregenerada.")
+							logger.info(
+								"⚡ Carpincho Locutor: Transición con locución pregenerada y mezcla de cortina en caliente."
+							)
 						self.pregenerated_radio_announcement = None
 
 					# 2. Si la tarea de pregeneración sigue corriendo, esperarla brevemente
@@ -3276,7 +3325,9 @@ class APIState:
 								pre = self.pregenerated_radio_announcement
 								pre_p = Path(pre["path"])
 								if pre_p.is_file() and pre_p.stat().st_size > 0:
-									shutil.copyfile(pre_p, self.radio_announcement_path)
+									await _apply_hot_mix_to_announcement(
+										pre_p, Path(self.radio_announcement_path), pre["display_title"]
+									)
 									ok = True
 									display_title = pre["display_title"]
 									script_or_err = pre["script"]
@@ -3293,25 +3344,6 @@ class APIState:
 						)
 						self.is_synthesizing_radio = True
 						await broadcast_state()
-
-						# Averiguamos qué tema viene para superponerlo como cortina bajo la voz del locutor
-						next_track_path = None
-						if self.queue:
-							next_track_path = self.queue[0]
-						elif self.dj_next_track:
-							next_track_path = self.dj_next_track.get("path")
-						elif self.dj_carpincho_enabled and self.tracks_cache:
-							self._pick_dj_next()
-							if self.dj_next_track:
-								next_track_path = self.dj_next_track.get("path")
-
-						bg_offset = 0.0
-						if next_track_path:
-							total_dur = get_track_duration_seconds(next_track_path, self.tracks_cache)
-							if total_dur > 10.0:
-								bg_offset = total_dur / 2.0  # Desde la mitad de la canción
-							elif total_dur > 0:
-								bg_offset = total_dur * 0.4
 
 						try:
 							ok, display_title, script_or_err = await create_radio_announcement(

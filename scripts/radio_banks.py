@@ -336,9 +336,17 @@ HOUR_NAMES: list[str] = [
 
 MINUTE_SEGMENTS: list[str] = [
 	"en punto.",
+	"y cinco.",
+	"y diez.",
 	"y cuarto.",
+	"y veinte.",
+	"y veinticinco.",
 	"y media.",
-	"y menos cuarto.",
+	"y treinta y cinco.",
+	"menos veinte.",
+	"menos cuarto.",
+	"menos diez.",
+	"menos cinco.",
 ]
 
 # ---------------------------------------------------------------------------

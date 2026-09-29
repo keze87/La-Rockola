@@ -315,32 +315,50 @@ def test_get_modular_time_segments():
 	assert "Las doce de la noche en punto" in h_seg
 	assert m_seg is None
 
-	# Cuarto: y media (15:23 -> min 23 cae en rango 23..37)
+	# Intervalo: y veinticinco (15:23 -> min 23 cae en rango 23..27)
 	dt_mod = datetime(2026, 9, 26, 15, 23, tzinfo=timezone.utc)
 	h_seg, m_seg, full = radio_announcer.get_modular_time_segments(dt_mod)
 	assert h_seg == "Las tres"
-	assert m_seg == "y media."
-	assert full == "Las tres y media."
+	assert m_seg == "y veinticinco."
+	assert full == "Las tres y veinticinco."
 
-	# Cuarto: en punto (09:01 -> min 1 cae en rango 0..7)
+	# Intervalo: en punto (09:01 -> min 1 cae en rango 0..2 / especial)
 	dt_one_min = datetime(2026, 9, 26, 9, 1, tzinfo=timezone.utc)
 	h_seg, m_seg, full = radio_announcer.get_modular_time_segments(dt_one_min)
 	assert h_seg == "Las nueve de la mañana en punto, el sol calienta la barranca."
 	assert m_seg is None
 
-	# Cuarto: y menos cuarto (01:45 -> min 45 cae en rango 38..52, apunta a hora 2)
+	# Intervalo: menos cuarto (01:45 -> min 45 cae en rango 43..47, apunta a hora 2)
 	dt_one_forty_five = datetime(2026, 9, 26, 1, 45, tzinfo=timezone.utc)
 	h_seg, m_seg, full = radio_announcer.get_modular_time_segments(dt_one_forty_five)
 	assert h_seg == "Las dos"
-	assert m_seg == "y menos cuarto."
-	assert full == "Las dos y menos cuarto."
+	assert m_seg == "menos cuarto."
+	assert full == "Las dos menos cuarto."
 
-	# Cuarto: y cuarto (10:15 -> min 15 cae en rango 8..22)
+	# Intervalo: y cuarto (10:15 -> min 15 cae en rango 13..17)
 	dt_quarter = datetime(2026, 9, 26, 10, 15, tzinfo=timezone.utc)
 	h_seg, m_seg, full = radio_announcer.get_modular_time_segments(dt_quarter)
 	assert h_seg == "Las diez"
 	assert m_seg == "y cuarto."
 	assert full == "Las diez y cuarto."
+
+	# Intervalos adicionales cada 5 minutos
+	intervals = [
+		(5, "Las diez", "y cinco.", "Las diez y cinco."),
+		(10, "Las diez", "y diez.", "Las diez y diez."),
+		(20, "Las diez", "y veinte.", "Las diez y veinte."),
+		(30, "Las diez", "y media.", "Las diez y media."),
+		(35, "Las diez", "y treinta y cinco.", "Las diez y treinta y cinco."),
+		(40, "Las once", "menos veinte.", "Las once menos veinte."),
+		(50, "Las once", "menos diez.", "Las once menos diez."),
+		(55, "Las once", "menos cinco.", "Las once menos cinco."),
+	]
+	for m, exp_h, exp_m, exp_f in intervals:
+		dt_test = datetime(2026, 9, 26, 10, m, tzinfo=timezone.utc)
+		h, m_res, f = radio_announcer.get_modular_time_segments(dt_test)
+		assert h == exp_h
+		assert m_res == exp_m
+		assert f == exp_f
 
 	# Las 24 horas especiales deben existir y ser válidas en español
 	assert len(radio_announcer.SPECIAL_HOURS) == 24
@@ -734,13 +752,21 @@ def test_preload_collect_phrases():
 	assert "Las una" in horas
 	assert len(horas) == 36  # 24 especiales + 12 modulares únicas (al usar formato 12h coloquial)
 
-	# Verificamos que contenga los 4 cuartos naturales de hora
+	# Verificamos que contenga los 12 intervalos cada 5 minutos
 	minutos = [text for cat, text in items if cat == "minuto"]
 	assert "en punto." in minutos
+	assert "y cinco." in minutos
+	assert "y diez." in minutos
 	assert "y cuarto." in minutos
+	assert "y veinte." in minutos
+	assert "y veinticinco." in minutos
 	assert "y media." in minutos
-	assert "y menos cuarto." in minutos
-	assert len(minutos) == 4
+	assert "y treinta y cinco." in minutos
+	assert "menos veinte." in minutos
+	assert "menos cuarto." in minutos
+	assert "menos diez." in minutos
+	assert "menos cinco." in minutos
+	assert len(minutos) == 12
 
 
 @pytest.mark.asyncio
@@ -767,7 +793,7 @@ async def test_create_radio_announcement_with_special_and_modular_dt(tmp_path):
 		assert ok1 is True
 		assert "Las una en punto, es hora de mimir." in text1
 
-		# 2. Hora modular 15:23 -> redonda a 'y media.'
+		# 2. Hora modular 15:23 -> redonda a 'y veinticinco.'
 		dt_modular = datetime(2026, 9, 26, 15, 23, tzinfo=timezone.utc)
 		ok2, _title2, text2 = await radio_announcer.create_radio_announcement(
 			out_p2,
@@ -776,7 +802,7 @@ async def test_create_radio_announcement_with_special_and_modular_dt(tmp_path):
 			dt=dt_modular,
 		)
 		assert ok2 is True
-		assert "Las tres y media." in text2
+		assert "Las tres y veinticinco." in text2
 
 
 def test_get_carpincho_cover_path():
@@ -1454,11 +1480,19 @@ def test_modular_helpers_and_preload_integration():
 	assert hours[2] == "Las dos"
 
 	minutes = radio_announcer.get_modular_minute_segments()
-	assert len(minutes) == 4
+	assert len(minutes) == 12
 	assert minutes[0] == "en punto."
-	assert minutes[1] == "y cuarto."
-	assert minutes[2] == "y media."
-	assert minutes[3] == "y menos cuarto."
+	assert minutes[1] == "y cinco."
+	assert minutes[2] == "y diez."
+	assert minutes[3] == "y cuarto."
+	assert minutes[4] == "y veinte."
+	assert minutes[5] == "y veinticinco."
+	assert minutes[6] == "y media."
+	assert minutes[7] == "y treinta y cinco."
+	assert minutes[8] == "menos veinte."
+	assert minutes[9] == "menos cuarto."
+	assert minutes[10] == "menos diez."
+	assert minutes[11] == "menos cinco."
 
 	degrees = radio_announcer.get_all_degree_segments(0, 10)
 	assert len(degrees) == 11

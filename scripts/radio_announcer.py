@@ -1074,12 +1074,20 @@ def group_plan_into_speech_turns(
 
 def get_modular_time_segments(dt: datetime | None = None) -> tuple[str, str | None, str]:
 	"""
-	Divide el anuncio de la hora en segmentos modulares utilizando exclusivamente
-	los 4 cuartos naturales de la radio para evitar errores de desfase horario:
-	- En punto (minutos 53..59 y 0..7)
-	- Y cuarto (minutos 8..22)
-	- Y media (minutos 23..37)
-	- Y menos cuarto (minutos 38..52)
+	Divide el anuncio de la hora en segmentos modulares redondeados cada 5 minutos
+	(aproximadamente la duración de una canción):
+	- en punto (58..59, 0..2)
+	- y cinco (3..7)
+	- y diez (8..12)
+	- y cuarto (13..17)
+	- y veinte (18..22)
+	- y veinticinco (23..27)
+	- y media (28..32)
+	- y treinta y cinco (33..37)
+	- menos veinte (38..42, hora siguiente)
+	- menos cuarto (43..47, hora siguiente)
+	- menos diez (48..52, hora siguiente)
+	- menos cinco (53..57, hora siguiente)
 	"""
 	if dt is None:
 		dt = datetime.now(timezone.utc).astimezone()
@@ -1087,32 +1095,54 @@ def get_modular_time_segments(dt: datetime | None = None) -> tuple[str, str | No
 	hour = dt.hour
 	minute = dt.minute
 
-	if minute in range(8, 23):
+	if minute in range(3, 8):
+		hora_seg = HOUR_NAMES[hour % 12]
+		minuto_seg = "y cinco."
+	elif minute in range(8, 13):
+		hora_seg = HOUR_NAMES[hour % 12]
+		minuto_seg = "y diez."
+	elif minute in range(13, 18):
 		hora_seg = HOUR_NAMES[hour % 12]
 		minuto_seg = "y cuarto."
-		full_time_str = f"{hora_seg} {minuto_seg}"
-		return hora_seg, minuto_seg, full_time_str
-	elif minute in range(23, 38):
+	elif minute in range(18, 23):
+		hora_seg = HOUR_NAMES[hour % 12]
+		minuto_seg = "y veinte."
+	elif minute in range(23, 28):
+		hora_seg = HOUR_NAMES[hour % 12]
+		minuto_seg = "y veinticinco."
+	elif minute in range(28, 33):
 		hora_seg = HOUR_NAMES[hour % 12]
 		minuto_seg = "y media."
-		full_time_str = f"{hora_seg} {minuto_seg}"
-		return hora_seg, minuto_seg, full_time_str
-	elif minute in range(38, 53):
+	elif minute in range(33, 38):
+		hora_seg = HOUR_NAMES[hour % 12]
+		minuto_seg = "y treinta y cinco."
+	elif minute in range(38, 43):
 		next_hour = (hour + 1) % 24
 		hora_seg = HOUR_NAMES[next_hour % 12]
-		minuto_seg = "y menos cuarto."
-		full_time_str = f"{hora_seg} {minuto_seg}"
-		return hora_seg, minuto_seg, full_time_str
+		minuto_seg = "menos veinte."
+	elif minute in range(43, 48):
+		next_hour = (hour + 1) % 24
+		hora_seg = HOUR_NAMES[next_hour % 12]
+		minuto_seg = "menos cuarto."
+	elif minute in range(48, 53):
+		next_hour = (hour + 1) % 24
+		hora_seg = HOUR_NAMES[next_hour % 12]
+		minuto_seg = "menos diez."
+	elif minute in range(53, 58):
+		next_hour = (hour + 1) % 24
+		hora_seg = HOUR_NAMES[next_hour % 12]
+		minuto_seg = "menos cinco."
 	else:
-		# En punto: minutos 53..59 o 0..7
-		target_hour = (hour + 1) % 24 if minute >= 53 else hour
+		# En punto: 58..59 o 0..2
+		target_hour = (hour + 1) % 24 if minute >= 58 else hour
 		if target_hour in SPECIAL_HOURS:
 			special = SPECIAL_HOURS[target_hour]
 			return special, None, special
 		hora_seg = HOUR_NAMES[target_hour % 12]
 		minuto_seg = "en punto."
-		full_time_str = f"{hora_seg} {minuto_seg}"
-		return hora_seg, minuto_seg, full_time_str
+
+	full_time_str = f"{hora_seg} {minuto_seg}"
+	return hora_seg, minuto_seg, full_time_str
 
 
 def get_fortune_voice(is_system_fortune: bool, host_voice: str) -> str:

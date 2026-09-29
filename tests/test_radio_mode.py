@@ -382,3 +382,54 @@ async def test_play_next_uses_pregenerated_announcement(tmp_path):
 		assert state.is_playing_radio_announcement is True
 		assert state.current_track == state.radio_announcement_path
 		assert Path(state.radio_announcement_path).read_bytes() == b"PREGENERATED_AUDIO_BYTES"
+
+
+@pytest.mark.asyncio
+async def test_hot_bg_track_mixing_on_queue_change(tmp_path):
+	"""Verifica que la mezcla de cortina musical se realice en caliente con la canción real si cambió la cola."""
+	state.radio_mode_enabled = True
+	state.radio_track_counter = 1
+	state.radio_tracks_until_next = 2
+	state.current_track = "/music/song1.mp3"
+
+	# Canción que se agrega en caliente a la cola antes de terminar la canción actual
+	new_song = tmp_path / "new_chosen_song.mp3"
+	new_song.write_bytes(b"NEW_SONG_AUDIO")
+	state.queue = [str(new_song)]
+
+	# Audio limpio pregenerado
+	pre_file = Path(state.radio_pregenerated_path)
+	pre_file.write_bytes(b"CLEAN_SPEECH_AUDIO")
+	state.pregenerated_radio_announcement = {
+		"path": state.radio_pregenerated_path,
+		"display_title": "Carpincho en Vivo",
+		"script": "Texto limpio",
+	}
+
+	mock_mix = MagicMock(return_value=True)
+	mock_embed = MagicMock(return_value=True)
+
+	async def fake_play_track(path):
+		state.current_track = path
+
+	with (
+		patch("server.HAS_EDGE_TTS", True),
+		patch("server.mix_announcement_with_bg_track", mock_mix),
+		patch("server.embed_cover_art_in_mp3", mock_embed),
+		patch.object(state, "play_track", side_effect=fake_play_track),
+		patch("server.broadcast_state", AsyncMock()),
+	):
+		await state.play_next(skipped_by_user=False)
+
+		# Debe haberse ejecutado la mezcla en caliente con la nueva canción elegida
+		mock_mix.assert_called_once()
+		call_args = mock_mix.call_args
+		# args: voice_file, out_file, next_track_path, bg_offset, bg_volume, timeout
+		assert str(call_args[0][0]) == state.radio_pregenerated_path
+		assert str(call_args[0][1]) == state.radio_announcement_path
+		assert str(call_args[0][2]) == str(new_song)
+
+		# Debe haberse embebido la portada del carpincho
+		mock_embed.assert_called_once()
+		assert state.is_playing_radio_announcement is True
+		assert state.current_track == state.radio_announcement_path
