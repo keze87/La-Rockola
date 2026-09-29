@@ -302,39 +302,45 @@ def test_select_fortune():
 
 
 def test_get_modular_time_segments():
-	# Especial 01:00
+	# Especial 01:00 (en punto, min 0)
 	dt_one = datetime(2026, 9, 26, 1, 0, tzinfo=timezone.utc)
 	h_seg, m_seg, full = radio_announcer.get_modular_time_segments(dt_one)
 	assert h_seg == "Las una en punto, es hora de mimir."
 	assert m_seg is None
 	assert full == "Las una en punto, es hora de mimir."
 
-	# Especial 00:00 (medianoche)
+	# Especial 00:00 (medianoche en punto, min 0)
 	dt_mid = datetime(2026, 9, 26, 0, 0, tzinfo=timezone.utc)
 	h_seg, m_seg, full = radio_announcer.get_modular_time_segments(dt_mid)
 	assert "Las doce de la noche en punto" in h_seg
 	assert m_seg is None
 
-	# Modular 15:23
+	# Cuarto: y media (15:23 -> min 23 cae en rango 23..37)
 	dt_mod = datetime(2026, 9, 26, 15, 23, tzinfo=timezone.utc)
 	h_seg, m_seg, full = radio_announcer.get_modular_time_segments(dt_mod)
 	assert h_seg == "Las tres"
-	assert m_seg == "y veintitrés."
-	assert full == "Las tres y veintitrés."
+	assert m_seg == "y media."
+	assert full == "Las tres y media."
 
-	# Modular 09:01
+	# Cuarto: en punto (09:01 -> min 1 cae en rango 0..7)
 	dt_one_min = datetime(2026, 9, 26, 9, 1, tzinfo=timezone.utc)
 	h_seg, m_seg, full = radio_announcer.get_modular_time_segments(dt_one_min)
-	assert h_seg == "Las nueve"
-	assert m_seg == "y un minuto."
-	assert full == "Las nueve y un minuto."
+	assert h_seg == "Las nueve de la mañana en punto, el sol calienta la barranca."
+	assert m_seg is None
 
-	# Modular 01:45
+	# Cuarto: y menos cuarto (01:45 -> min 45 cae en rango 38..52, apunta a hora 2)
 	dt_one_forty_five = datetime(2026, 9, 26, 1, 45, tzinfo=timezone.utc)
 	h_seg, m_seg, full = radio_announcer.get_modular_time_segments(dt_one_forty_five)
-	assert h_seg == "Las una"
-	assert m_seg == "y cuarenta y cinco."
-	assert full == "Las una y cuarenta y cinco."
+	assert h_seg == "Las dos"
+	assert m_seg == "y menos cuarto."
+	assert full == "Las dos y menos cuarto."
+
+	# Cuarto: y cuarto (10:15 -> min 15 cae en rango 8..22)
+	dt_quarter = datetime(2026, 9, 26, 10, 15, tzinfo=timezone.utc)
+	h_seg, m_seg, full = radio_announcer.get_modular_time_segments(dt_quarter)
+	assert h_seg == "Las diez"
+	assert m_seg == "y cuarto."
+	assert full == "Las diez y cuarto."
 
 	# Las 24 horas especiales deben existir y ser válidas en español
 	assert len(radio_announcer.SPECIAL_HOURS) == 24
@@ -490,15 +496,20 @@ async def test_synthesize_segment_caching(tmp_path):
 		patch("scripts.radio_announcer.HAS_EDGE_TTS", True),
 		patch("scripts.radio_announcer.edge_tts.Communicate", return_value=mock_comm) as mock_comm_cls,
 	):
-		# Primera llamada: MISS, se sintetiza y se guarda en la base
+		# Primera llamada: edge-tts en vivo sintetiza y persiste en caché
 		audio1 = await radio_announcer.synthesize_segment(text, voice, "intro", allow_cache=True, db_path=db_path)
 		assert audio1 == b"CACHED_AUDIO_TEST"
 		assert mock_comm_cls.call_count == 1
 
-		# Segunda llamada: HIT, debe venir directo de SQLite sin llamar a edge_tts.Communicate
-		audio2 = await radio_announcer.synthesize_segment(text, voice, "intro", allow_cache=True, db_path=db_path)
+	# Segunda llamada: edge-tts falla o no tiene internet -> Fallback a la caché SQLite
+	with (
+		patch("scripts.radio_announcer.HAS_EDGE_TTS", True),
+		patch("scripts.radio_announcer.edge_tts.Communicate", side_effect=RuntimeError("Sin conexión a internet")),
+	):
+		audio2 = await radio_announcer.synthesize_segment(
+			text, voice, "intro", allow_cache=True, max_retries=0, db_path=db_path
+		)
 		assert audio2 == b"CACHED_AUDIO_TEST"
-		assert mock_comm_cls.call_count == 1  # No se volvió a llamar
 
 
 def test_get_fortune_voice():
@@ -552,8 +563,8 @@ async def test_system_fortune_read_by_elena_and_cached(tmp_path):
 		assert fortuna_calls[0][1] == radio_announcer.VOICE_ELENA
 
 		# Verificamos que la intro fue hablada por Tomás
-		intro_calls = [(t, v) for t, v in recorded_calls if t in radio_announcer.RADIO_INTROS]
-		assert len(intro_calls) == 1
+		intro_calls = [(t, v) for t, v in recorded_calls if any(intro in t for intro in radio_announcer.RADIO_INTROS)]
+		assert len(intro_calls) >= 1
 		assert intro_calls[0][1] == radio_announcer.VOICE_TOMAS
 
 		# Verificamos que la fortuna de sistema QUEDÓ GUARDADA en la base con la voz de Elena
@@ -575,20 +586,24 @@ async def test_system_fortune_read_by_elena_and_cached(tmp_path):
 		)
 		assert cached_tomas is None
 
-		# Segunda llamada con conductora María: la fortuna de Elena debe ser un CACHE HIT
+		# Segunda llamada con conductora María: si edge-tts falla, la fortuna de Elena debe ser un CACHE HIT de fallback
 		out_p2 = tmp_path / "radio2.mp3"
 		recorded_calls.clear()
 
-		ok2, _title2, _text2 = await radio_announcer.create_radio_announcement(
-			out_p2,
-			voice=radio_announcer.VOICE_MARIA,
-			db_path=db_path,
-			force_system_fortune=True,
-		)
-		assert ok2 is True
-		# En recorded_calls NUNCA debe haberse llamado a Communicate para la fortuna de Elena porque vino de caché
-		fortuna_remote_calls = [(t, v) for t, v in recorded_calls if sys_fortune_text in t]
-		assert len(fortuna_remote_calls) == 0
+		def failing_communicate(text, voice):
+			if sys_fortune_text in text and voice == radio_announcer.VOICE_ELENA:
+				raise RuntimeError("Simulated edge-tts offline error for Elena")
+			return fake_communicate(text, voice)
+
+		with patch("scripts.radio_announcer.edge_tts.Communicate", side_effect=failing_communicate):
+			ok2, _title2, text2 = await radio_announcer.create_radio_announcement(
+				out_p2,
+				voice=radio_announcer.VOICE_MARIA,
+				db_path=db_path,
+				force_system_fortune=True,
+			)
+			assert ok2 is True
+			assert sys_fortune_text in text2
 
 
 def test_generate_modular_radio_script():
@@ -719,11 +734,13 @@ def test_preload_collect_phrases():
 	assert "Las una" in horas
 	assert len(horas) == 36  # 24 especiales + 12 modulares únicas (al usar formato 12h coloquial)
 
-	# Verificamos que contenga los 59 minutos
+	# Verificamos que contenga los 4 cuartos naturales de hora
 	minutos = [text for cat, text in items if cat == "minuto"]
-	assert "y un minuto." in minutos
-	assert "y cincuenta y nueve." in minutos
-	assert len(minutos) == 59
+	assert "en punto." in minutos
+	assert "y cuarto." in minutos
+	assert "y media." in minutos
+	assert "y menos cuarto." in minutos
+	assert len(minutos) == 4
 
 
 @pytest.mark.asyncio
@@ -750,7 +767,7 @@ async def test_create_radio_announcement_with_special_and_modular_dt(tmp_path):
 		assert ok1 is True
 		assert "Las una en punto, es hora de mimir." in text1
 
-		# 2. Hora modular 15:23
+		# 2. Hora modular 15:23 -> redonda a 'y media.'
 		dt_modular = datetime(2026, 9, 26, 15, 23, tzinfo=timezone.utc)
 		ok2, _title2, text2 = await radio_announcer.create_radio_announcement(
 			out_p2,
@@ -759,7 +776,7 @@ async def test_create_radio_announcement_with_special_and_modular_dt(tmp_path):
 			dt=dt_modular,
 		)
 		assert ok2 is True
-		assert "Las tres y veintitrés." in text2
+		assert "Las tres y media." in text2
 
 
 def test_get_carpincho_cover_path():
@@ -1437,9 +1454,11 @@ def test_modular_helpers_and_preload_integration():
 	assert hours[2] == "Las dos"
 
 	minutes = radio_announcer.get_modular_minute_segments()
-	assert len(minutes) == 59
-	assert minutes[0] == "y un minuto."
-	assert minutes[58] == "y cincuenta y nueve."
+	assert len(minutes) == 4
+	assert minutes[0] == "en punto."
+	assert minutes[1] == "y cuarto."
+	assert minutes[2] == "y media."
+	assert minutes[3] == "y menos cuarto."
 
 	degrees = radio_announcer.get_all_degree_segments(0, 10)
 	assert len(degrees) == 11
@@ -1459,7 +1478,7 @@ def test_modular_helpers_and_preload_integration():
 	assert "pase" in categories
 	assert "reaccion" in categories
 	assert any(text == "Las doce" for cat, text in phrases if cat == "hora")
-	assert any(text == "y un minuto." for cat, text in phrases if cat == "minuto")
+	assert any(text == "y media." for cat, text in phrases if cat == "minuto")
 
 
 def test_select_radio_hosts():

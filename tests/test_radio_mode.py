@@ -18,6 +18,8 @@ def reset_radio_state(tmp_path):
 	state.radio_tracks_until_next = 2
 	state.is_playing_radio_announcement = False
 	state.radio_announcement_path = str(tmp_path / "radio.mp3")
+	state.radio_pregenerated_path = str(tmp_path / "radio_pregenerated.mp3")
+	state._cancel_radio_pregeneration()
 	state.queue = []
 	state.history = []
 	state.current_track = None
@@ -27,6 +29,7 @@ def reset_radio_state(tmp_path):
 	try:
 		yield
 	finally:
+		state._cancel_radio_pregeneration()
 		state.radio_mode_enabled = orig_radio
 		state.radio_track_counter = orig_counter
 		state.radio_tracks_until_next = orig_until
@@ -316,3 +319,66 @@ async def test_play_next_passes_configured_weather_location():
 			bg_volume=0.1,
 			weather_location="Rosario, Santa Fe",
 		)
+
+
+@pytest.mark.asyncio
+async def test_radio_pregeneration_starts_at_song_start(tmp_path):
+	"""Verifica que si la próxima canción requerirá locutor, se dispare la pregeneración de fondo."""
+	state.radio_mode_enabled = True
+	state.radio_track_counter = 1
+	state.radio_tracks_until_next = 2  # (1 + 1) >= 2 -> Dispara pregeneración anticipada
+	state.queue = ["/music/next_song.mp3"]
+
+	mock_create = AsyncMock(return_value=(True, "Carpincho Pregenerado", "Discurso anticipado"))
+
+	with (
+		patch("server.HAS_EDGE_TTS", True),
+		patch("server.create_radio_announcement", mock_create),
+		patch("server.broadcast_state", AsyncMock()),
+	):
+		await state.play_track("/music/current_song.mp3")
+
+		assert state.radio_pregeneration_task is not None
+		await state.radio_pregeneration_task
+
+		assert state.pregenerated_radio_announcement is not None
+		assert state.pregenerated_radio_announcement["display_title"] == "Carpincho Pregenerado"
+		mock_create.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_play_next_uses_pregenerated_announcement(tmp_path):
+	"""Verifica que play_next use la locución pregenerada con 0 ms de latencia."""
+	state.radio_mode_enabled = True
+	state.radio_track_counter = 1
+	state.radio_tracks_until_next = 2
+	state.queue = ["/music/next_song.mp3"]
+	state.current_track = "/music/song1.mp3"
+
+	# Simular locución pregenerada lista en disco
+	pre_file = Path(state.radio_pregenerated_path)
+	pre_file.write_bytes(b"PREGENERATED_AUDIO_BYTES")
+	state.pregenerated_radio_announcement = {
+		"path": state.radio_pregenerated_path,
+		"display_title": "Carpincho Instantáneo",
+		"script": "Texto pregenerado",
+	}
+
+	mock_create_live = AsyncMock()
+
+	async def fake_play_track(path):
+		state.current_track = path
+
+	with (
+		patch("server.HAS_EDGE_TTS", True),
+		patch("server.create_radio_announcement", mock_create_live),
+		patch.object(state, "play_track", side_effect=fake_play_track),
+		patch("server.broadcast_state", AsyncMock()),
+	):
+		await state.play_next(skipped_by_user=False)
+
+		# create_radio_announcement en vivo NO debe ser llamado porque ya estaba pregenerado
+		mock_create_live.assert_not_called()
+		assert state.is_playing_radio_announcement is True
+		assert state.current_track == state.radio_announcement_path
+		assert Path(state.radio_announcement_path).read_bytes() == b"PREGENERATED_AUDIO_BYTES"

@@ -2405,6 +2405,9 @@ class APIState:
 		self.is_playing_radio_announcement = False
 		self.is_synthesizing_radio = False
 		self.radio_announcement_path = str(Path(tempfile.gettempdir()) / "radio_announcement.mp3")
+		self.radio_pregenerated_path = str(Path(tempfile.gettempdir()) / "radio_pregenerated.mp3")
+		self.radio_pregeneration_task: asyncio.Task | None = None
+		self.pregenerated_radio_announcement: dict | None = None
 		self.weather_location = DEFAULT_WEATHER_LOCATION
 
 		# Server network & browser state
@@ -3083,6 +3086,86 @@ class APIState:
 		else:
 			await self.mpv._send(json.dumps({"command": ["set_property", "mute", self.server_muted]}))
 
+		# Modo Radio: Si este no es el anuncio radial y la próxima transición toca locución,
+		# iniciamos el procesamiento y síntesis al comienzo de la canción para tener latencia cero.
+		if str_path != self.radio_announcement_path and self.radio_mode_enabled:
+			track_duration = get_track_duration_seconds(str_path, self.tracks_cache)
+			self._start_radio_pregeneration(current_track_path=str_path, track_duration=track_duration)
+
+	def _cancel_radio_pregeneration(self):
+		"""Cancela cualquier pregeneración en curso de la locución radial."""
+		if self.radio_pregeneration_task and not self.radio_pregeneration_task.done():
+			self.radio_pregeneration_task.cancel()
+		self.radio_pregeneration_task = None
+		self.pregenerated_radio_announcement = None
+
+	def _start_radio_pregeneration(self, current_track_path: str, track_duration: float = 0.0):
+		"""
+		Dispara la síntesis y procesamiento de la locución radial en segundo plano
+		al comienzo de la canción, calculando el cuarto horario estimado en el que terminará el tema.
+		"""
+		if not self.radio_mode_enabled or not HAS_EDGE_TTS or create_radio_announcement is None:
+			return
+
+		# Solo pregenerar si el contador alcanzará el umbral al terminar este tema
+		if (self.radio_track_counter + 1) < self.radio_tracks_until_next:
+			return
+
+		self._cancel_radio_pregeneration()
+
+		async def _do_pregeneration():
+			from datetime import datetime, timedelta, timezone
+
+			now = datetime.now(timezone.utc).astimezone()
+			finish_dt = now + timedelta(seconds=max(0.0, track_duration)) if track_duration > 0 else now
+
+			# Determinar la próxima pista para cortina de fondo si se conoce
+			next_track_path = None
+			if self.queue:
+				next_track_path = self.queue[0]
+			elif self.dj_next_track:
+				next_track_path = self.dj_next_track.get("path")
+			elif self.dj_carpincho_enabled and self.tracks_cache:
+				self._pick_dj_next()
+				if self.dj_next_track:
+					next_track_path = self.dj_next_track.get("path")
+
+			bg_offset = 0.0
+			if next_track_path:
+				total_dur = get_track_duration_seconds(next_track_path, self.tracks_cache)
+				if total_dur > 10.0:
+					bg_offset = total_dur / 2.0
+				elif total_dur > 0:
+					bg_offset = total_dur * 0.4
+
+			try:
+				logger.info("📻 Carpincho Locutor: Iniciando pregeneración anticipada al comienzo de la canción...")
+				ok, display_title, script_or_err = await create_radio_announcement(
+					self.radio_pregenerated_path,
+					dt=finish_dt,
+					bg_track_path=next_track_path,
+					bg_offset=bg_offset,
+					bg_volume=0.1,
+					weather_location=self.weather_location,
+				)
+				if ok:
+					self.pregenerated_radio_announcement = {
+						"path": self.radio_pregenerated_path,
+						"display_title": display_title,
+						"script": script_or_err,
+					}
+					logger.info(
+						"📻 Carpincho Locutor: Pregeneración lista con 0 ms de latencia para el final del tema."
+					)
+				else:
+					logger.debug(f"Pregeneración radial no completada: {script_or_err}")
+			except asyncio.CancelledError:
+				logger.debug("Pregeneración radial cancelada.")
+			except Exception as e:
+				logger.debug(f"Excepción en pregeneración radial: {e}")
+
+		self.radio_pregeneration_task = asyncio.create_task(_do_pregeneration())
+
 	def _select_candidate_dj_track(self, unplayed: list[dict]) -> dict | None:
 		"""Elige una pista de la lista de pendientes según el modo del DJ Carpincho."""
 		if not unplayed:
@@ -3109,6 +3192,7 @@ class APIState:
 		await self.mpv._send(json.dumps({"command": ["set_property", "volume", self.volume]}))
 
 	async def stop_playback(self, reset_ui_state: bool = False):
+		self._cancel_radio_pregeneration()
 		self.dj_next_track = None
 		self.current_track = None
 		if reset_ui_state:
@@ -3165,43 +3249,82 @@ class APIState:
 						"📻 Carpincho Locutor: no hay conexión a internet disponible. Omitiendo locución radial para no demorar la reproducción."
 					)
 				else:
-					logger.info(
-						f"🎙️ Carpincho Locutor: turno de locución radial (canción #{self.radio_track_counter}). Sintetizando..."
-					)
-					self.is_synthesizing_radio = True
-					await broadcast_state()
+					ok = False
+					display_title = ""
+					script_or_err = ""
 
-					# Averiguamos qué tema viene para superponerlo como cortina bajo la voz del locutor
-					next_track_path = None
-					if self.queue:
-						next_track_path = self.queue[0]
-					elif self.dj_next_track:
-						next_track_path = self.dj_next_track.get("path")
-					elif self.dj_carpincho_enabled and self.tracks_cache:
-						self._pick_dj_next()
-						if self.dj_next_track:
-							next_track_path = self.dj_next_track.get("path")
+					# 1. Comprobar si ya está lista la pregeneración de fondo (0 ms de latencia)
+					if self.pregenerated_radio_announcement:
+						pre = self.pregenerated_radio_announcement
+						pre_p = Path(pre["path"])
+						if pre_p.is_file() and pre_p.stat().st_size > 0:
+							shutil.copyfile(pre_p, self.radio_announcement_path)
+							ok = True
+							display_title = pre["display_title"]
+							script_or_err = pre["script"]
+							logger.info("⚡ Carpincho Locutor: Transición instantánea (0 ms) con locución pregenerada.")
+						self.pregenerated_radio_announcement = None
 
-					bg_offset = 0.0
-					if next_track_path:
-						total_dur = get_track_duration_seconds(next_track_path, self.tracks_cache)
-						if total_dur > 10.0:
-							bg_offset = total_dur / 2.0  # Desde la mitad de la canción
-						elif total_dur > 0:
-							bg_offset = total_dur * 0.4
+					# 2. Si la tarea de pregeneración sigue corriendo, esperarla brevemente
+					if not ok and self.radio_pregeneration_task and not self.radio_pregeneration_task.done():
+						try:
+							logger.info("📻 Carpincho Locutor: Esperando finalización de pregeneración en curso...")
+							self.is_synthesizing_radio = True
+							await broadcast_state()
+							await asyncio.wait_for(asyncio.shield(self.radio_pregeneration_task), timeout=3.0)
+							if self.pregenerated_radio_announcement:
+								pre = self.pregenerated_radio_announcement
+								pre_p = Path(pre["path"])
+								if pre_p.is_file() and pre_p.stat().st_size > 0:
+									shutil.copyfile(pre_p, self.radio_announcement_path)
+									ok = True
+									display_title = pre["display_title"]
+									script_or_err = pre["script"]
+								self.pregenerated_radio_announcement = None
+						except Exception as wait_e:
+							logger.debug(f"Espera de pregeneración agotada o falló: {wait_e}")
+						finally:
+							self.is_synthesizing_radio = False
 
-					try:
-						ok, display_title, script_or_err = await create_radio_announcement(
-							self.radio_announcement_path,
-							bg_track_path=next_track_path,
-							bg_offset=bg_offset,
-							bg_volume=0.1,
-							weather_location=self.weather_location,
+					# 3. Fallback: síntesis en caliente si no hubo pregeneración
+					if not ok:
+						logger.info(
+							f"🎙️ Carpincho Locutor: turno de locución radial (canción #{self.radio_track_counter}). Sintetizando..."
 						)
-					except Exception as e:
-						ok, display_title, script_or_err = False, "", f"{type(e).__name__}: {e}"
-					finally:
-						self.is_synthesizing_radio = False
+						self.is_synthesizing_radio = True
+						await broadcast_state()
+
+						# Averiguamos qué tema viene para superponerlo como cortina bajo la voz del locutor
+						next_track_path = None
+						if self.queue:
+							next_track_path = self.queue[0]
+						elif self.dj_next_track:
+							next_track_path = self.dj_next_track.get("path")
+						elif self.dj_carpincho_enabled and self.tracks_cache:
+							self._pick_dj_next()
+							if self.dj_next_track:
+								next_track_path = self.dj_next_track.get("path")
+
+						bg_offset = 0.0
+						if next_track_path:
+							total_dur = get_track_duration_seconds(next_track_path, self.tracks_cache)
+							if total_dur > 10.0:
+								bg_offset = total_dur / 2.0  # Desde la mitad de la canción
+							elif total_dur > 0:
+								bg_offset = total_dur * 0.4
+
+						try:
+							ok, display_title, script_or_err = await create_radio_announcement(
+								self.radio_announcement_path,
+								bg_track_path=next_track_path,
+								bg_offset=bg_offset,
+								bg_volume=0.1,
+								weather_location=self.weather_location,
+							)
+						except Exception as e:
+							ok, display_title, script_or_err = False, "", f"{type(e).__name__}: {e}"
+						finally:
+							self.is_synthesizing_radio = False
 
 					if ok:
 						self.radio_track_counter = 0

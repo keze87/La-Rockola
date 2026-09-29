@@ -911,7 +911,7 @@ def get_modular_hour_segments() -> list[str]:
 
 
 def get_modular_minute_segments() -> list[str]:
-	"""Genera la lista con los 59 segmentos modulares de minutos ('y un minuto.' a 'y cincuenta y nueve.')."""
+	"""Genera la lista con los 4 segmentos modulares de minutos ('en punto.', 'y cuarto.', 'y media.', 'y menos cuarto.')."""
 	return list(MINUTE_SEGMENTS)
 
 
@@ -1029,15 +1029,57 @@ def build_radio_dialogue_plan(
 	return plan
 
 
+def group_plan_into_speech_turns(
+	plan: list[tuple[str, str, str, bool]],
+) -> list[tuple[str, str, str, bool]]:
+	"""
+	Agrupa turnos consecutivos de habla que pertenecen al MISMO locutor
+	en bloques o parlamentos completos de texto continuo.
+	Esto le entrega a edge-tts oraciones y párrafos completos con entonación natural,
+	ritmo fluido y pausas prosódicas humanas, evitando el efecto de frases pegadas.
+	"""
+	if not plan:
+		return []
+
+	turns: list[tuple[str, str, str, bool]] = []
+	current_texts: list[str] = [plan[0][0].strip()]
+	current_voice = plan[0][1]
+	current_category = plan[0][2]
+	current_allow_cache = plan[0][3]
+
+	for text, v, category, allow_cache in plan[1:]:
+		clean_txt = text.strip()
+		if not clean_txt:
+			continue
+		if v == current_voice:
+			current_texts.append(clean_txt)
+			# Si algún segmento individual no permite caché, el turno completo no se cachea
+			if not allow_cache:
+				current_allow_cache = False
+			# Si se agrupa la hora o clima, reflejar categoría compuesta para propósitos de logging
+			if category not in current_category:
+				current_category = f"{current_category}_{category}"
+		else:
+			turns.append((" ".join(current_texts), current_voice, current_category, current_allow_cache))
+			current_texts = [clean_txt]
+			current_voice = v
+			current_category = category
+			current_allow_cache = allow_cache
+
+	if current_texts:
+		turns.append((" ".join(current_texts), current_voice, current_category, current_allow_cache))
+
+	return turns
+
+
 def get_modular_time_segments(dt: datetime | None = None) -> tuple[str, str | None, str]:
 	"""
-	Divide el anuncio de la hora en segmentos modulares (hora y minutos)
-	para minimizar drásticamente las combinaciones que se deben cachear en SQLite.
-
-	- Si minute == 0: Retorna una de las 24 horas especiales del Carpincho (minuto_seg es None).
-	  Ej: ("Las una en punto, es hora de mimir.", None, "Las una en punto, es hora de mimir.")
-	- Si minute != 0: Retorna (hora_seg, minuto_seg, full_time_str) separados.
-	  Ej: ("Las tres", "y veintitrés.", "Las tres y veintitrés.")
+	Divide el anuncio de la hora en segmentos modulares utilizando exclusivamente
+	los 4 cuartos naturales de la radio para evitar errores de desfase horario:
+	- En punto (minutos 53..59 y 0..7)
+	- Y cuarto (minutos 8..22)
+	- Y media (minutos 23..37)
+	- Y menos cuarto (minutos 38..52)
 	"""
 	if dt is None:
 		dt = datetime.now(timezone.utc).astimezone()
@@ -1045,17 +1087,32 @@ def get_modular_time_segments(dt: datetime | None = None) -> tuple[str, str | No
 	hour = dt.hour
 	minute = dt.minute
 
-	if minute == 0:
-		special = SPECIAL_HOURS.get(hour, f"{hour} horas en punto.")
-		return special, None, special
-
-	hour_segments = get_modular_hour_segments()
-	hora_seg = hour_segments[hour]
-
-	minute_segments = get_modular_minute_segments()
-	minuto_seg = minute_segments[minute - 1]
-	full_time_str = f"{hora_seg} {minuto_seg}"
-	return hora_seg, minuto_seg, full_time_str
+	if minute in range(8, 23):
+		hora_seg = HOUR_NAMES[hour % 12]
+		minuto_seg = "y cuarto."
+		full_time_str = f"{hora_seg} {minuto_seg}"
+		return hora_seg, minuto_seg, full_time_str
+	elif minute in range(23, 38):
+		hora_seg = HOUR_NAMES[hour % 12]
+		minuto_seg = "y media."
+		full_time_str = f"{hora_seg} {minuto_seg}"
+		return hora_seg, minuto_seg, full_time_str
+	elif minute in range(38, 53):
+		next_hour = (hour + 1) % 24
+		hora_seg = HOUR_NAMES[next_hour % 12]
+		minuto_seg = "y menos cuarto."
+		full_time_str = f"{hora_seg} {minuto_seg}"
+		return hora_seg, minuto_seg, full_time_str
+	else:
+		# En punto: minutos 53..59 o 0..7
+		target_hour = (hour + 1) % 24 if minute >= 53 else hour
+		if target_hour in SPECIAL_HOURS:
+			special = SPECIAL_HOURS[target_hour]
+			return special, None, special
+		hora_seg = HOUR_NAMES[target_hour % 12]
+		minuto_seg = "en punto."
+		full_time_str = f"{hora_seg} {minuto_seg}"
+		return hora_seg, minuto_seg, full_time_str
 
 
 def get_fortune_voice(is_system_fortune: bool, host_voice: str) -> str:
@@ -1120,22 +1177,12 @@ async def synthesize_segment(
 	db_path: Path | str | None = None,
 ) -> bytes:
 	"""
-	Sintetiza un segmento individual de locución radial.
-	Si allow_cache es True (predeterminado para intros, horas, minutos, lead-ins,
-	fortunas carpinchas, propagandas y fortunas del sistema bajo la voz de Elena),
-	primero consulta la caché SQLite y, si no está, la sintetiza con edge-tts y la persiste.
-	Si allow_cache es False, se omite el guardado en la base de datos de caché.
+	Sintetiza un segmento individual o parlamento radial.
+	Intenta PRIMERO sintetizar con 'edge-tts' en vivo para máxima naturalidad e inflexión.
+	Si tiene éxito y allow_cache es True, persiste el audio generado en la base de datos SQLite.
+	Si edge-tts falla (sin conexión a internet, error de timeout o paquete no instalado),
+	utiliza la caché SQLite como fallback confiable.
 	"""
-	if allow_cache:
-		cached_blob = get_cached_audio(category, voice, text, db_path=db_path)
-		if cached_blob:
-			logger.debug(f"⚡ [TTS Cache HIT] '{category}' ({voice}): '{text}'")
-			return cached_blob
-
-	if not HAS_EDGE_TTS or edge_tts is None:
-		raise RuntimeError("El paquete 'edge-tts' no está instalado en el entorno de Python.")
-
-	logger.debug(f"🌐 [TTS Cache MISS / Remoto] Sintetizando '{category}' ({voice}): '{text}'")
 
 	async def _stream_or_save(comm: edge_tts.Communicate) -> bytes:
 		data = bytearray()
@@ -1170,45 +1217,63 @@ async def synthesize_segment(
 			data = bytearray(base64.b64decode(_DUMMY_MP3_DATA))
 		return bytes(data)
 
-	last_err: Exception | None = None
-	audio_bytes = b""
+	# 1. Intentar PRIMERO con edge-tts si está disponible en el entorno
+	if HAS_EDGE_TTS and edge_tts is not None:
+		logger.debug(f"🌐 [TTS Remoto / Primario] Sintetizando '{category}' ({voice}): '{text}'")
+		prosody = VOICE_PROSODY.get(voice, {})
+		rate = prosody.get("rate", "+0%")
+		pitch = prosody.get("pitch", "+0Hz")
+		volume = prosody.get("volume", "+0%")
 
-	prosody = VOICE_PROSODY.get(voice, {})
-	rate = prosody.get("rate", "+0%")
-	pitch = prosody.get("pitch", "+0Hz")
-	volume = prosody.get("volume", "+0%")
+		attempt_timeout = min(timeout, max(4.0, timeout * 0.7)) if max_retries > 0 else timeout
+		audio_bytes = b""
+		last_err: Exception | None = None
 
-	# Si hay reintentos configurados, el timeout de cada intento individual se ajusta
-	# para no quemar todo el tiempo si la conexión se cuelga sin responder.
-	attempt_timeout = min(timeout, max(4.0, timeout * 0.7)) if max_retries > 0 else timeout
-
-	for attempt in range(max_retries + 1):
-		try:
+		for attempt in range(max_retries + 1):
 			try:
-				communicate = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch, volume=volume)
-			except TypeError:
-				communicate = edge_tts.Communicate(text, voice)
-			audio_bytes = await asyncio.wait_for(_stream_or_save(communicate), timeout=attempt_timeout)
-			if not audio_bytes:
-				raise RuntimeError(f"edge-tts no produjo bytes de audio para '{text}'")
-			last_err = None
-			break
-		except Exception as e:
-			last_err = e
-			if attempt < max_retries:
-				backoff = min(0.3 * (attempt + 1), max(0.01, timeout * 0.2))
-				logger.debug(
-					f"Reintento {attempt + 1}/{max_retries} en síntesis '{category}' ({voice}) tras error: {e}. Esperando {backoff:.2f}s..."
-				)
-				await asyncio.sleep(backoff)
+				try:
+					communicate = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch, volume=volume)
+				except TypeError:
+					communicate = edge_tts.Communicate(text, voice)
+				audio_bytes = await asyncio.wait_for(_stream_or_save(communicate), timeout=attempt_timeout)
+				if not audio_bytes:
+					raise RuntimeError(f"edge-tts no produjo bytes de audio para '{text}'")
+				last_err = None
+				break
+			except Exception as e:
+				last_err = e
+				if attempt < max_retries:
+					backoff = min(0.3 * (attempt + 1), max(0.01, timeout * 0.2))
+					logger.debug(
+						f"Reintento {attempt + 1}/{max_retries} en síntesis '{category}' ({voice}) tras error: {e}. Esperando {backoff:.2f}s..."
+					)
+					await asyncio.sleep(backoff)
 
-	if last_err is not None or not audio_bytes:
-		raise last_err or RuntimeError(f"edge-tts no produjo bytes de audio para '{text}'")
+		if audio_bytes:
+			if allow_cache:
+				try:
+					save_cached_audio(category, voice, text, audio_bytes, db_path=db_path)
+				except Exception as cache_err:
+					logger.debug(f"No se pudo guardar en caché SQLite: {cache_err}")
+			return audio_bytes
+		else:
+			logger.warning(
+				f"🌐 edge-tts no pudo sintetizar '{category}' ({voice}): {last_err}. Probando fallback en caché SQLite..."
+			)
+	else:
+		logger.debug("edge-tts no está disponible. Recurriendo a caché SQLite como fallback...")
 
+	# 2. FALLBACK A CACHÉ SQLITE
 	if allow_cache:
-		save_cached_audio(category, voice, text, audio_bytes, db_path=db_path)
+		cached_blob = get_cached_audio(category, voice, text, db_path=db_path)
+		if cached_blob:
+			logger.info(f"⚡ [TTS Cache Fallback HIT] '{category}' ({voice}): '{text}'")
+			return cached_blob
 
-	return audio_bytes
+	err_suffix = f": {last_err}" if last_err else ""
+	raise RuntimeError(
+		f"No se pudo sintetizar ni recuperar de caché el segmento '{category}' ({voice}): '{text}'{err_suffix}"
+	)
 
 
 def mix_announcement_with_bg_track(
@@ -1530,111 +1595,66 @@ def assemble_announcement_audio(
 				parsed_segments.append((s[0], "", ""))
 
 		if ffmpeg_bin:
-			# Generar archivos MP3 temporales con normalización dynaudnorm para nivelar volumen entre voces
-			temp_seg_files: list[Path] = []
-			for i, (seg_bytes, _cat, _v) in enumerate(parsed_segments):
-				raw_file = work_dir / f"raw_seg_{i}.mp3"
-				raw_file.write_bytes(seg_bytes)
-				norm_file = work_dir / f"norm_seg_{i}.mp3"
-				norm_cmd = [
-					ffmpeg_bin,
-					"-y",
-					"-i",
-					str(raw_file),
-					"-af",
-					"dynaudnorm=p=0.9:s=5",
-					"-c:a",
-					"libmp3lame",
-					"-b:a",
-					"192k",
-					str(norm_file),
-				]
-				try:
-					proc_norm = subprocess.run(
-						norm_cmd,
-						capture_output=True,
-						timeout=min(ffmpeg_timeout, 3.0),
-						check=False,
-					)
-					if proc_norm.returncode == 0 and norm_file.is_file() and norm_file.stat().st_size > 0:
-						temp_seg_files.append(norm_file)
-					else:
-						temp_seg_files.append(raw_file)
-				except Exception:
-					temp_seg_files.append(raw_file)
-
-			blocks: list[tuple[Path, str, str]] = []
-			skip_next = False
-			for i in range(len(parsed_segments)):
-				if skip_next:
-					skip_next = False
-					continue
-
-				_bytes_i, cat_i, voice_i = parsed_segments[i]
-				file_i = temp_seg_files[i]
-
-				# Caso 1: fusión continua (sin gap de silencio) entre 'hora' y 'minuto' consecutivos de la misma voz
-				if cat_i == "hora" and i + 1 < len(parsed_segments):
-					_bytes_next, cat_next, voice_next = parsed_segments[i + 1]
-					if cat_next == "minuto" and (voice_i == voice_next or not voice_i or not voice_next):
-						file_next = temp_seg_files[i + 1]
-						time_combined = work_dir / f"time_combined_{i}.mp3"
-						filter_fade = (
-							"[0:a]areverse,silenceremove=start_periods=1:start_threshold=-35dB:start_duration=0.02,areverse[h];"
-							"[1:a]silenceremove=start_periods=1:start_threshold=-35dB:start_duration=0.02[m];"
-							"[h][m]acrossfade=d=0.05:c1=tri:c2=tri[a]"
+			# Atajo directo cuando hay un único parlamento/segmento (discurso completo continuo)
+			if len(parsed_segments) == 1:
+				tmp_voice_combined.write_bytes(parsed_segments[0][0])
+				concat_ok = tmp_voice_combined.is_file() and tmp_voice_combined.stat().st_size > 0
+			else:
+				# Generar archivos MP3 temporales con normalización dynaudnorm para nivelar volumen entre voces
+				temp_seg_files: list[Path] = []
+				for i, (seg_bytes, _cat, _v) in enumerate(parsed_segments):
+					raw_file = work_dir / f"raw_seg_{i}.mp3"
+					raw_file.write_bytes(seg_bytes)
+					norm_file = work_dir / f"norm_seg_{i}.mp3"
+					norm_cmd = [
+						ffmpeg_bin,
+						"-y",
+						"-i",
+						str(raw_file),
+						"-af",
+						"dynaudnorm=p=0.9:s=5",
+						"-c:a",
+						"libmp3lame",
+						"-b:a",
+						"192k",
+						str(norm_file),
+					]
+					try:
+						proc_norm = subprocess.run(
+							norm_cmd,
+							capture_output=True,
+							timeout=min(ffmpeg_timeout, 3.0),
+							check=False,
 						)
-						fade_cmd = [
-							ffmpeg_bin,
-							"-y",
-							"-i",
-							str(file_i),
-							"-i",
-							str(file_next),
-							"-filter_complex",
-							filter_fade,
-							"-map",
-							"[a]",
-							"-c:a",
-							"libmp3lame",
-							"-b:a",
-							"192k",
-							str(time_combined),
-						]
-						try:
-							proc_fade = subprocess.run(
-								fade_cmd,
-								capture_output=True,
-								timeout=ffmpeg_timeout,
-								check=False,
-							)
-							if (
-								proc_fade.returncode == 0
-								and time_combined.is_file()
-								and time_combined.stat().st_size > 0
-							):
-								blocks.append((time_combined, "hora_minuto", voice_i))
-								skip_next = True
-								continue
-						except Exception as e:
-							logger.debug(f"Fallo en acrossfade hora/minuto: {e}")
+						if proc_norm.returncode == 0 and norm_file.is_file() and norm_file.stat().st_size > 0:
+							temp_seg_files.append(norm_file)
+						else:
+							temp_seg_files.append(raw_file)
+					except Exception:
+						temp_seg_files.append(raw_file)
 
-				# Caso 2: reacción corta que solapa 150-250 ms sobre el final de la línea anterior (adelay + amix)
-				if i + 1 < len(parsed_segments):
-					_bytes_next, cat_next, voice_next = parsed_segments[i + 1]
-					if cat_next == "reaccion" or cat_next.startswith("reaccion"):
-						file_next = temp_seg_files[i + 1]
-						dur_i = get_audio_duration(file_i)
-						if dur_i > 0.25:
-							overlap_sec = 0.20
-							delay_ms = int(max(0.0, (dur_i - overlap_sec)) * 1000)
-							react_combined = work_dir / f"react_combined_{i}.mp3"
-							filter_overlap = (
-								f"[0:a]volume=1.0[prev];"
-								f"[1:a]volume=0.85,adelay={delay_ms}|{delay_ms}[react];"
-								f"[prev][react]amix=inputs=2:duration=longest:dropout_transition=0[out]"
+				blocks: list[tuple[Path, str, str]] = []
+				skip_next = False
+				for i in range(len(parsed_segments)):
+					if skip_next:
+						skip_next = False
+						continue
+
+					_bytes_i, cat_i, voice_i = parsed_segments[i]
+					file_i = temp_seg_files[i]
+
+					# Caso 1: fusión continua (sin gap de silencio) entre 'hora' y 'minuto' consecutivos de la misma voz
+					if cat_i == "hora" and i + 1 < len(parsed_segments):
+						_bytes_next, cat_next, voice_next = parsed_segments[i + 1]
+						if cat_next == "minuto" and (voice_i == voice_next or not voice_i or not voice_next):
+							file_next = temp_seg_files[i + 1]
+							time_combined = work_dir / f"time_combined_{i}.mp3"
+							filter_fade = (
+								"[0:a]areverse,silenceremove=start_periods=1:start_threshold=-35dB:start_duration=0.02,areverse[h];"
+								"[1:a]silenceremove=start_periods=1:start_threshold=-35dB:start_duration=0.02[m];"
+								"[h][m]acrossfade=d=0.05:c1=tri:c2=tri[a]"
 							)
-							overlap_cmd = [
+							fade_cmd = [
 								ffmpeg_bin,
 								"-y",
 								"-i",
@@ -1642,184 +1662,236 @@ def assemble_announcement_audio(
 								"-i",
 								str(file_next),
 								"-filter_complex",
-								filter_overlap,
+								filter_fade,
 								"-map",
-								"[out]",
+								"[a]",
 								"-c:a",
 								"libmp3lame",
 								"-b:a",
 								"192k",
-								str(react_combined),
+								str(time_combined),
 							]
 							try:
-								proc_react = subprocess.run(
-									overlap_cmd,
+								proc_fade = subprocess.run(
+									fade_cmd,
 									capture_output=True,
 									timeout=ffmpeg_timeout,
 									check=False,
 								)
 								if (
-									proc_react.returncode == 0
-									and react_combined.is_file()
-									and react_combined.stat().st_size > 0
+									proc_fade.returncode == 0
+									and time_combined.is_file()
+									and time_combined.stat().st_size > 0
 								):
-									blocks.append((react_combined, f"{cat_i}_reaccion", voice_i))
+									blocks.append((time_combined, "hora_minuto", voice_i))
 									skip_next = True
 									continue
 							except Exception as e:
-								logger.debug(f"Fallo solapando reacción con adelay+amix: {e}")
+								logger.debug(f"Fallo en acrossfade hora/minuto: {e}")
 
-				blocks.append((file_i, cat_i, voice_i))
+					# Caso 2: reacción corta que solapa 150-250 ms sobre el final de la línea anterior (adelay + amix)
+					if i + 1 < len(parsed_segments):
+						_bytes_next, cat_next, voice_next = parsed_segments[i + 1]
+						if cat_next == "reaccion" or cat_next.startswith("reaccion"):
+							file_next = temp_seg_files[i + 1]
+							dur_i = get_audio_duration(file_i)
+							if dur_i > 0.25:
+								overlap_sec = 0.20
+								delay_ms = int(max(0.0, (dur_i - overlap_sec)) * 1000)
+								react_combined = work_dir / f"react_combined_{i}.mp3"
+								filter_overlap = (
+									f"[0:a]volume=1.0[prev];"
+									f"[1:a]volume=0.85,adelay={delay_ms}|{delay_ms}[react];"
+									f"[prev][react]amix=inputs=2:duration=longest:dropout_transition=0[out]"
+								)
+								overlap_cmd = [
+									ffmpeg_bin,
+									"-y",
+									"-i",
+									str(file_i),
+									"-i",
+									str(file_next),
+									"-filter_complex",
+									filter_overlap,
+									"-map",
+									"[out]",
+									"-c:a",
+									"libmp3lame",
+									"-b:a",
+									"192k",
+									str(react_combined),
+								]
+								try:
+									proc_react = subprocess.run(
+										overlap_cmd,
+										capture_output=True,
+										timeout=ffmpeg_timeout,
+										check=False,
+									)
+									if (
+										proc_react.returncode == 0
+										and react_combined.is_file()
+										and react_combined.stat().st_size > 0
+									):
+										blocks.append((react_combined, f"{cat_i}_reaccion", voice_i))
+										skip_next = True
+										continue
+								except Exception as e:
+									logger.debug(f"Fallo solapando reacción con adelay+amix: {e}")
 
-			def make_room_tone(duration_sec: float, filename: str) -> Path | None:
-				tone_path = work_dir / filename
-				cmd = [
-					ffmpeg_bin,
-					"-y",
-					"-f",
-					"lavfi",
-					"-i",
-					"anoisesrc=c=pink:a=0.002:r=44100",
-					"-t",
-					f"{duration_sec:.3f}",
-					"-c:a",
-					"libmp3lame",
-					"-b:a",
-					"192k",
-					str(tone_path),
-				]
-				try:
-					res = subprocess.run(cmd, capture_output=True, timeout=ffmpeg_timeout, check=False)
-					if res.returncode == 0 and tone_path.is_file() and tone_path.stat().st_size > 0:
-						return tone_path
-				except Exception as e:
-					logger.debug(f"Fallo generando anoisesrc: {e}")
+					blocks.append((file_i, cat_i, voice_i))
 
-				# Fallback a anullsrc
-				fallback_cmd = [
-					ffmpeg_bin,
-					"-y",
-					"-f",
-					"lavfi",
-					"-i",
-					"anullsrc=r=44100:cl=mono",
-					"-t",
-					f"{duration_sec:.3f}",
-					"-c:a",
-					"libmp3lame",
-					"-b:a",
-					"192k",
-					str(tone_path),
-				]
-				try:
-					res = subprocess.run(fallback_cmd, capture_output=True, timeout=ffmpeg_timeout, check=False)
-					if res.returncode == 0 and tone_path.is_file() and tone_path.stat().st_size > 0:
-						return tone_path
-				except Exception as e:
-					logger.debug(f"Fallo generando anullsrc fallback: {e}")
+				def make_room_tone(duration_sec: float, filename: str) -> Path | None:
+					tone_path = work_dir / filename
+					cmd = [
+						ffmpeg_bin,
+						"-y",
+						"-f",
+						"lavfi",
+						"-i",
+						"anoisesrc=c=pink:a=0.002:r=44100",
+						"-t",
+						f"{duration_sec:.3f}",
+						"-c:a",
+						"libmp3lame",
+						"-b:a",
+						"192k",
+						str(tone_path),
+					]
+					try:
+						res = subprocess.run(cmd, capture_output=True, timeout=ffmpeg_timeout, check=False)
+						if res.returncode == 0 and tone_path.is_file() and tone_path.stat().st_size > 0:
+							return tone_path
+					except Exception as e:
+						logger.debug(f"Fallo generando anoisesrc: {e}")
 
-				return None
+					# Fallback a anullsrc
+					fallback_cmd = [
+						ffmpeg_bin,
+						"-y",
+						"-f",
+						"lavfi",
+						"-i",
+						"anullsrc=r=44100:cl=mono",
+						"-t",
+						f"{duration_sec:.3f}",
+						"-c:a",
+						"libmp3lame",
+						"-b:a",
+						"192k",
+						str(tone_path),
+					]
+					try:
+						res = subprocess.run(fallback_cmd, capture_output=True, timeout=ffmpeg_timeout, check=False)
+						if res.returncode == 0 and tone_path.is_file() and tone_path.stat().st_size > 0:
+							return tone_path
+					except Exception as e:
+						logger.debug(f"Fallo generando anullsrc fallback: {e}")
 
-			# Construir cadena de archivos intercalando pausas de sala y ritmo de locución
-			chain_files: list[Path] = []
+					return None
 
-			# Presencia de sala muy corta (~150ms) inicial para no cortar abruptamente
-			tone_start = make_room_tone(0.15, "tone_start.mp3")
-			if tone_start:
-				chain_files.append(tone_start)
+				# Construir cadena de archivos intercalando pausas de sala y ritmo de locución
+				chain_files: list[Path] = []
 
-			for i, (block_file, block_cat, block_voice) in enumerate(blocks):
-				chain_files.append(block_file)
-				is_last = i == len(blocks) - 1
-				if is_last:
-					continue
+				# Presencia de sala muy corta (~150ms) inicial para no cortar abruptamente
+				tone_start = make_room_tone(0.15, "tone_start.mp3")
+				if tone_start:
+					chain_files.append(tone_start)
 
-				next_cat = blocks[i + 1][1]
-				next_voice = blocks[i + 1][2]
-				is_speaker_change = bool(block_voice and next_voice and block_voice != next_voice)
-				if is_speaker_change:
-					# Cambio de locutor: gap corto (60-150 ms)
-					gap_sec = 0.10
-				elif block_cat == "hora" and next_cat == "minuto":
-					# Sin gap de silencio entre la hora y los minutos
-					gap_sec = 0.0
-				elif block_cat == "intro":
-					gap_sec = 0.30
-				elif block_cat in ("hora", "hora_minuto", "minuto"):
-					gap_sec = 0.25
-				elif block_cat == "clima":
-					gap_sec = 0.30
-				elif block_cat == "lead_in":
-					gap_sec = 0.35
-				elif block_cat == "fortuna":
-					gap_sec = 0.25
-				else:
-					gap_sec = 0.25
+				for i, (block_file, block_cat, block_voice) in enumerate(blocks):
+					chain_files.append(block_file)
+					is_last = i == len(blocks) - 1
+					if is_last:
+						continue
 
-				if gap_sec > 0.0:
-					tone = make_room_tone(gap_sec, f"tone_gap_{i}.mp3")
-					if tone:
-						chain_files.append(tone)
+					next_cat = blocks[i + 1][1]
+					next_voice = blocks[i + 1][2]
+					is_speaker_change = bool(block_voice and next_voice and block_voice != next_voice)
+					if is_speaker_change:
+						# Cambio de locutor: gap corto (60-150 ms)
+						gap_sec = 0.10
+					elif block_cat == "hora" and next_cat == "minuto":
+						# Sin gap de silencio entre la hora y los minutos
+						gap_sec = 0.0
+					elif block_cat == "intro":
+						gap_sec = 0.30
+					elif block_cat in ("hora", "hora_minuto", "minuto"):
+						gap_sec = 0.25
+					elif block_cat == "clima":
+						gap_sec = 0.30
+					elif block_cat == "lead_in":
+						gap_sec = 0.35
+					elif block_cat == "fortuna":
+						gap_sec = 0.25
+					else:
+						gap_sec = 0.25
 
-			# Concatena todos los archivos de la cadena
-			concat_inputs: list[str] = []
-			for f in chain_files:
-				concat_inputs.extend(["-i", str(f)])
+					if gap_sec > 0.0:
+						tone = make_room_tone(gap_sec, f"tone_gap_{i}.mp3")
+						if tone:
+							chain_files.append(tone)
 
-			filter_concat = (
-				"".join(f"[{k}:a]" for k in range(len(chain_files))) + f"concat=n={len(chain_files)}:v=0:a=1[v]"
-			)
+				# Concatena todos los archivos de la cadena
+				concat_inputs: list[str] = []
+				for f in chain_files:
+					concat_inputs.extend(["-i", str(f)])
 
-			concat_cmd = [
-				ffmpeg_bin,
-				"-y",
-				*concat_inputs,
-				"-filter_complex",
-				filter_concat,
-				"-map",
-				"[v]",
-				"-c:a",
-				"libmp3lame",
-				"-b:a",
-				"192k",
-				str(tmp_voice_combined),
-			]
-
-			proc = subprocess.run(concat_cmd, capture_output=True, timeout=ffmpeg_timeout, check=False)
-			concat_ok = proc.returncode == 0 and tmp_voice_combined.is_file() and tmp_voice_combined.stat().st_size > 0
-
-			# Si falla el filter_complex, intentar concat demuxer simple
-			if not concat_ok:
-				logger.warning(
-					f"ffmpeg filter_complex falló ({proc.stderr.decode('utf-8', errors='ignore')[:150]}). Probando concat demuxer..."
+				filter_concat = (
+					"".join(f"[{k}:a]" for k in range(len(chain_files))) + f"concat=n={len(chain_files)}:v=0:a=1[v]"
 				)
-				concat_list = work_dir / "concat_list.txt"
-				concat_list.write_text("\n".join(f"file '{f.name}'" for f in chain_files), encoding="utf-8")
-				demux_cmd = [
+
+				concat_cmd = [
 					ffmpeg_bin,
 					"-y",
-					"-f",
-					"concat",
-					"-safe",
-					"0",
-					"-i",
-					str(concat_list),
+					*concat_inputs,
+					"-filter_complex",
+					filter_concat,
+					"-map",
+					"[v]",
 					"-c:a",
-					"copy",
+					"libmp3lame",
+					"-b:a",
+					"192k",
 					str(tmp_voice_combined),
 				]
-				proc_demux = subprocess.run(
-					demux_cmd,
-					cwd=str(work_dir),
-					capture_output=True,
-					timeout=ffmpeg_timeout,
-					check=False,
-				)
+
+				proc = subprocess.run(concat_cmd, capture_output=True, timeout=ffmpeg_timeout, check=False)
 				concat_ok = (
-					proc_demux.returncode == 0
-					and tmp_voice_combined.is_file()
-					and tmp_voice_combined.stat().st_size > 0
+					proc.returncode == 0 and tmp_voice_combined.is_file() and tmp_voice_combined.stat().st_size > 0
 				)
+
+				# Si falla el filter_complex, intentar concat demuxer simple
+				if not concat_ok:
+					logger.warning(
+						f"ffmpeg filter_complex falló ({proc.stderr.decode('utf-8', errors='ignore')[:150]}). Probando concat demuxer..."
+					)
+					concat_list = work_dir / "concat_list.txt"
+					concat_list.write_text("\n".join(f"file '{f.name}'" for f in chain_files), encoding="utf-8")
+					demux_cmd = [
+						ffmpeg_bin,
+						"-y",
+						"-f",
+						"concat",
+						"-safe",
+						"0",
+						"-i",
+						str(concat_list),
+						"-c:a",
+						"copy",
+						str(tmp_voice_combined),
+					]
+					proc_demux = subprocess.run(
+						demux_cmd,
+						cwd=str(work_dir),
+						capture_output=True,
+						timeout=ffmpeg_timeout,
+						check=False,
+					)
+					concat_ok = (
+						proc_demux.returncode == 0
+						and tmp_voice_combined.is_file()
+						and tmp_voice_combined.stat().st_size > 0
+					)
 
 			# Mastering final de voz: filtro paso-alto ~80 Hz, compresión y normalización broadcast (-14 LUFS)
 			if concat_ok:
@@ -2009,6 +2081,9 @@ async def create_radio_announcement(
 	full_script = " ".join(t[0].strip() for t in plan if t[0].strip())
 	display_title = f"Carpincho locutor: {full_script}"
 
+	# Agrupar segmentos consecutivos del mismo locutor para alimentar a edge-tts con el parlamento/discurso completo
+	speech_turns = group_plan_into_speech_turns(plan)
+
 	try:
 		# Síntesis concurrente con TaskGroup: si una falla, cancela a las hermanas de inmediato
 		margin = 5.0 if timeout >= 1.0 else max(0.05, timeout)
@@ -2028,11 +2103,11 @@ async def create_radio_announcement(
 							db_path=db_path,
 						)
 					)
-					for text, v, category, allow_cache in plan
+					for text, v, category, allow_cache in speech_turns
 				]
 		raw_segments = [t.result() for t in task_objs]
 		segment_results: list[tuple[bytes, str, str]] = [
-			(seg_bytes, plan[i][2], plan[i][1]) for i, seg_bytes in enumerate(raw_segments)
+			(seg_bytes, speech_turns[i][2], speech_turns[i][1]) for i, seg_bytes in enumerate(raw_segments)
 		]
 
 		if is_dialogue:
