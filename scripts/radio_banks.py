@@ -7,6 +7,7 @@ reacciones de cabina, filtros léxicos y plantillas sintácticas.
 
 from __future__ import annotations
 
+import random
 import re
 
 # ---------------------------------------------------------------------------
@@ -154,6 +155,7 @@ CARPINCHO_FORTUNES: list[str] = [
 	"Gato escaldado del agua huye, pero carpincho curtido se tira de panza con cualquier marea.",
 	"El mundo gira muy rápido para los que andan a los piques; en el arroyo todo tiene su compás.",
 	"El oráculo de la laguna sentencia: si la yerba todavía tiene palo, ese mate aguanta tres vueltas más.",
+	# "Gisella, ya salió el Gerardo el Magias 3, con Gerardo de Revilla y su caballo maravilloso. ¡No te lo pierdas!",
 ]
 
 CARPINCHO_ADS: list[str] = [
@@ -379,17 +381,17 @@ WEATHER_LEAD_INS: list[str] = [
 
 WEATHER_TEMPLATES: list[str] = [
 	# Plantilla 1: Directa y clásica
-	"{lead} En {location}, tenemos {temp_str} de temperatura actual. Para hoy la mínima es de {min_today_str} y la máxima alcanzará los {max_today_str}. Para mañana esperamos {range_tomorrow_str}. {lluvia_desc}",
+	"{lead} En {location}, tenemos {temp_str} de temperatura actual.{desc_phrase} Para hoy la mínima es de {min_today_str} y la máxima alcanzará los {max_today_str}. Para mañana esperamos {range_tomorrow_str}. {lluvia_desc}",
 	# Plantilla 2: Centrada en la sensación térmica y perspectiva
-	"{lead} Para {location}, la temperatura en este momento marca {temp_str}. Hoy el termómetro se moverá entre {min_today_str} de mínima y {max_today_str} de máxima. Mañana vamos a andar {range_tomorrow_str}. {lluvia_desc}",
+	"{lead} Para {location}, la temperatura en este momento marca {temp_str}.{desc_phrase} Hoy el termómetro se moverá entre {min_today_str} de mínima y {max_today_str} de máxima. Mañana vamos a andar {range_tomorrow_str}. {lluvia_desc}",
 	# Plantilla 3: Coloquial carpinchera
-	"{lead} Clavamos {temp_str} en {location}. Para lo que queda del día esperamos entre {min_today_str} y {max_today_str}. Y ojo a mañana que esperamos {range_tomorrow_str}. {lluvia_desc}",
+	"{lead} Clavamos {temp_str} en {location}.{desc_phrase} Para lo que queda del día esperamos entre {min_today_str} y {max_today_str}. Y ojo a mañana que esperamos {range_tomorrow_str}. {lluvia_desc}",
 	# Plantilla 4: Costera / orilla
-	"{lead} Reporte fresco desde {location}: el termómetro acusa {temp_str}. Para hoy calculamos entre {min_today_str} y {max_today_str}. Mañana nos espera {range_tomorrow_str}. {lluvia_desc}",
+	"{lead} Reporte fresco desde {location}: el termómetro acusa {temp_str}.{desc_phrase} Para hoy calculamos entre {min_today_str} y {max_today_str}. Mañana nos espera {range_tomorrow_str}. {lluvia_desc}",
 	# Plantilla 5: Enfocada en la jornada
-	"{lead} Así pinta la cosa por {location}: tenemos {temp_str} de térmica. La mínima prevista para hoy ronda los {min_today_str} y la máxima trepará a {max_today_str}. Mañana andaremos {range_tomorrow_str}. {lluvia_desc}",
+	"{lead} Así pinta la cosa por {location}: tenemos {temp_str} de térmica.{desc_phrase} La mínima prevista para hoy ronda los {min_today_str} y la máxima trepará a {max_today_str}. Mañana andaremos {range_tomorrow_str}. {lluvia_desc}",
 	# Plantilla 6: Radiofónica dinámica
-	"{lead} Actualizamos los números del tiempo en {location}: clava {temp_str}. Hoy la marca irá de {min_today_str} a {max_today_str}. Y mirando a mañana, pronostican {range_tomorrow_str}. {lluvia_desc}",
+	"{lead} Actualizamos los números del tiempo en {location}: clava {temp_str}.{desc_phrase} Hoy la marca irá de {min_today_str} a {max_today_str}. Y mirando a mañana, pronostican {range_tomorrow_str}. {lluvia_desc}",
 ]
 
 # ---------------------------------------------------------------------------
@@ -435,6 +437,527 @@ RAIN_NO_RAIN: list[str] = RAIN_DESCRIPTIONS[(False, False)]
 RAIN_TODAY_ONLY: list[str] = RAIN_DESCRIPTIONS[(True, False)]
 RAIN_TOMORROW_ONLY: list[str] = RAIN_DESCRIPTIONS[(False, True)]
 RAIN_BOTH_DAYS: list[str] = RAIN_DESCRIPTIONS[(True, True)]
+
+# ---------------------------------------------------------------------------
+# Frases descriptivas del estado del cielo y tiempo según weatherDesc de wttr.in
+# ---------------------------------------------------------------------------
+
+WEATHER_CODE_TO_CATEGORY: dict[int, str] = {
+	113: "sunny",
+	116: "partly_cloudy",
+	119: "cloudy",
+	122: "overcast",
+	143: "mist",
+	176: "light_rain",
+	179: "snow",
+	182: "sleet",
+	185: "freezing_drizzle",
+	200: "thunderstorm",
+	227: "blizzard",
+	230: "blizzard",
+	248: "fog",
+	260: "fog",
+	263: "drizzle",
+	266: "drizzle",
+	281: "freezing_drizzle",
+	284: "freezing_drizzle",
+	293: "light_rain",
+	296: "light_rain",
+	299: "moderate_rain",
+	302: "moderate_rain",
+	305: "heavy_rain",
+	308: "heavy_rain",
+	311: "sleet",
+	314: "sleet",
+	317: "sleet",
+	320: "sleet",
+	323: "snow",
+	326: "snow",
+	329: "snow",
+	332: "snow",
+	335: "snow",
+	338: "snow",
+	350: "hail",
+	353: "light_rain",
+	356: "heavy_rain",
+	359: "heavy_rain",
+	362: "sleet",
+	365: "sleet",
+	368: "snow",
+	371: "snow",
+	386: "thunderstorm",
+	389: "thunderstorm",
+	392: "snow_thunder",
+	395: "snow_thunder",
+}
+
+WEATHER_DESC_TO_CATEGORY: dict[str, str] = {
+	"sunny": "sunny",
+	"clear": "sunny",
+	"soleado": "sunny",
+	"despejado": "sunny",
+	"cielo despejado": "sunny",
+	"partly cloudy": "partly_cloudy",
+	"parcialmente nublado": "partly_cloudy",
+	"intervalos nubosos": "partly_cloudy",
+	"nubosidad parcial": "partly_cloudy",
+	"cloudy": "cloudy",
+	"nublado": "cloudy",
+	"overcast": "overcast",
+	"cielo cubierto": "overcast",
+	"cubierto": "overcast",
+	"encapotado": "overcast",
+	"mist": "mist",
+	"bruma": "mist",
+	"neblina": "mist",
+	"shallow mist": "mist",
+	"bruma poco profunda": "mist",
+	"fog": "fog",
+	"niebla": "fog",
+	"partial fog": "fog",
+	"niebla parcial": "fog",
+	"patches of fog": "fog",
+	"bancos de niebla": "fog",
+	"patches of fog in vicinity": "fog",
+	"bancos de niebla en las cercanías": "fog",
+	"shallow fog": "fog",
+	"niebla poco profunda": "fog",
+	"freezing fog": "fog",
+	"niebla helada": "fog",
+	"light freezing fog": "fog",
+	"niebla helada ligera": "fog",
+	"drizzle": "drizzle",
+	"llovizna": "drizzle",
+	"garua": "drizzle",
+	"garúa": "drizzle",
+	"light drizzle": "drizzle",
+	"llovizna ligera": "drizzle",
+	"patchy light drizzle": "drizzle",
+	"llovizna ligera irregular": "drizzle",
+	"llovizna ligera localizada": "drizzle",
+	"freezing drizzle": "freezing_drizzle",
+	"llovizna helada": "freezing_drizzle",
+	"heavy freezing drizzle": "freezing_drizzle",
+	"llovizna muy helada": "freezing_drizzle",
+	"patchy freezing drizzle nearby": "freezing_drizzle",
+	"llovizna helada localizada en las cercanías": "freezing_drizzle",
+	"posible llovizna helada irregular": "freezing_drizzle",
+	"patchy freezing drizzle possible": "freezing_drizzle",
+	"patchy rain nearby": "light_rain",
+	"lluvia localizada en las cercanías": "light_rain",
+	"patchy rain possible": "light_rain",
+	"posible lluvia irregular": "light_rain",
+	"patchy light rain": "light_rain",
+	"lluvia ligera irregular": "light_rain",
+	"lluvia ligera localizada": "light_rain",
+	"light rain": "light_rain",
+	"lluvia ligera": "light_rain",
+	"light rain shower": "light_rain",
+	"chubasco de lluvia ligera": "light_rain",
+	"shower": "light_rain",
+	"chubasco": "light_rain",
+	"light shower": "light_rain",
+	"chubasco ligero": "light_rain",
+	"shower in vicinity": "light_rain",
+	"chubasco en las cercanías": "light_rain",
+	"rain in vicinity": "light_rain",
+	"lluvia en las cercanías": "light_rain",
+	"rain": "light_rain",
+	"lluvia": "light_rain",
+	"lluvia dispersa": "light_rain",
+	"moderate rain at times": "moderate_rain",
+	"lluvia moderada a intervalos": "moderate_rain",
+	"lluvia moderada ocasional": "moderate_rain",
+	"moderate rain": "moderate_rain",
+	"lluvia moderada": "moderate_rain",
+	"heavy rain at times": "heavy_rain",
+	"lluvia fuerte a intervalos": "heavy_rain",
+	"lluvia fuerte ocasional": "heavy_rain",
+	"heavy rain": "heavy_rain",
+	"lluvia fuerte": "heavy_rain",
+	"fuerte lluvia": "heavy_rain",
+	"torrential rain shower": "heavy_rain",
+	"chubasco torrencial": "heavy_rain",
+	"moderate or heavy rain shower": "heavy_rain",
+	"chubasco de lluvia moderada o fuerte": "heavy_rain",
+	"rain shower": "heavy_rain",
+	"aguacero": "heavy_rain",
+	"rain shower in vicinity": "heavy_rain",
+	"aguacero en las cercanías": "heavy_rain",
+	"thundery outbreaks possible": "thunderstorm",
+	"posibles brotes de tormentas": "thunderstorm",
+	"thundery outbreaks nearby": "thunderstorm",
+	"thundery outbreaks in nearby": "thunderstorm",
+	"brotes de tormenta en las cercanías": "thunderstorm",
+	"thunderstorm": "thunderstorm",
+	"tormenta": "thunderstorm",
+	"thunderstorm in vicinity": "thunderstorm",
+	"tormenta en las cercanías": "thunderstorm",
+	"light thunderstorm": "thunderstorm",
+	"tormenta ligera": "thunderstorm",
+	"patchy light rain with thunder": "thunderstorm",
+	"lluvia ligera irregular con truenos": "thunderstorm",
+	"lluvia ligera localizada con truenos en la zona": "thunderstorm",
+	"moderate or heavy rain with thunder": "thunderstorm",
+	"lluvia moderada o fuerte con truenos": "thunderstorm",
+	"moderate or heavy rain in area with thunder": "thunderstorm",
+	"lluvia moderada a fuerte con truenos en la zona": "thunderstorm",
+	"rain with thunderstorm": "thunderstorm",
+	"lluvia con tormenta": "thunderstorm",
+	"heavy rain with thunderstorm": "thunderstorm",
+	"fuerte lluvia con tormenta": "thunderstorm",
+	"patchy light snow": "snow",
+	"nieve ligera irregular": "snow",
+	"nieve ligera localizada": "snow",
+	"light snow": "snow",
+	"nieve ligera": "snow",
+	"patchy moderate snow": "snow",
+	"nieve moderada irregular": "snow",
+	"nieve moderada localizada": "snow",
+	"moderate snow": "snow",
+	"nieve moderada": "snow",
+	"patchy heavy snow": "snow",
+	"nieve pesada irregular": "snow",
+	"nieve fuerte localizada": "snow",
+	"heavy snow": "snow",
+	"nieve pesada": "snow",
+	"nieve fuerte": "snow",
+	"snow": "snow",
+	"nieve": "snow",
+	"nevisca": "snow",
+	"patchy snow possible": "snow",
+	"patchy snow nearby": "snow",
+	"nieve localizada en las cercanías": "snow",
+	"light snow showers": "snow",
+	"chubascos de nieve ligera": "snow",
+	"moderate or heavy snow showers": "snow",
+	"chubascos de nieve moderada o fuerte": "snow",
+	"snow shower": "snow",
+	"chubasco de nieve": "snow",
+	"snow shower in vicinity": "snow",
+	"chubasco de nieve en las cercanías": "snow",
+	"heavy snow shower": "snow",
+	"fuerte chubasco de nieve": "snow",
+	"patchy sleet possible": "sleet",
+	"posible aguanieve irregular": "sleet",
+	"patchy sleet nearby": "sleet",
+	"aguanieve localizada en las cercanías": "sleet",
+	"light sleet": "sleet",
+	"aguanieve ligera": "sleet",
+	"moderate or heavy sleet": "sleet",
+	"aguanieve moderada o fuerte": "sleet",
+	"light sleet showers": "sleet",
+	"chubascos de aguanieve ligera": "sleet",
+	"moderate or heavy sleet showers": "sleet",
+	"chubascos de aguanieve moderada o fuerte": "sleet",
+	"light freezing rain": "sleet",
+	"lluvia ligera helada": "sleet",
+	"lluvia helada ligera": "sleet",
+	"moderate or heavy freezing rain": "sleet",
+	"lluvia helada moderada o fuerte": "sleet",
+	"sleet": "sleet",
+	"aguanieve": "sleet",
+	"blowing snow": "blizzard",
+	"nieve tormentosa": "blizzard",
+	"ventiscas de nieve ligeras": "blizzard",
+	"blizzard": "blizzard",
+	"ventisca": "blizzard",
+	"ice pellets": "hail",
+	"perdigones de hielo": "hail",
+	"gránulos de hielo": "hail",
+	"granulos de hielo": "hail",
+	"small hail/snow pallets": "hail",
+	"granizo pequeño o nieve granulada ligera": "hail",
+	"small hail/snow pallets shower": "hail",
+	"chubasco de granizo pequeño o nieve granulada": "hail",
+	"hail": "hail",
+	"granizo": "hail",
+	"patchy light snow with thunder": "snow_thunder",
+	"nevada ligera irregular con truenos": "snow_thunder",
+	"nieve ligera localizada con truenos en la zona": "snow_thunder",
+	"moderate or heavy snow with thunder": "snow_thunder",
+	"nevada moderada o fuerte con truenos": "snow_thunder",
+	"moderate or heavy snow in area with thunder": "snow_thunder",
+	"nieve moderada a fuerte con truenos en la zona": "snow_thunder",
+	"snow with thunderstorm": "snow_thunder",
+	"nieve con tormenta": "snow_thunder",
+	"squalls": "wind_squalls",
+	"rachas de tormenta": "wind_squalls",
+	"smoke": "smoke_dust",
+	"humo": "smoke_dust",
+	"haze": "smoke_dust",
+	"calina": "smoke_dust",
+	"widespread dust": "smoke_dust",
+	"polvo generalizado": "smoke_dust",
+	"sand": "smoke_dust",
+	"arena": "smoke_dust",
+	"sandstorm": "smoke_dust",
+	"tormenta de arena": "smoke_dust",
+}
+
+WEATHER_DESC_PHRASES: dict[str, list[str]] = {
+	"sunny": [
+		"Cielo completamente despejado y sol a pleno para secarse el lomo en la orilla.",
+		"Sol radiante de punta a punta, ni una sola nube en el horizonte.",
+		"Cielo limpito y solazo carpincho para disfrutar en la barranca.",
+		"Sol brillante en todo el bañado, ideal para tirarse a la sombra de un ceibo.",
+		"Cielo abierto y despejado con un sol que te templa el alma.",
+		"Cielo azul impecable, una postal perfecta sobre el río.",
+	],
+	"partly_cloudy": [
+		"Cielo parcialmente nublado, con el sol jugando a las escondidas entre las nubes.",
+		"Intervalos de sol y nubes en el bañado, ideal para tomar unos mates tranqui.",
+		"Cielo a medio cubrir, con ratos de solcito que asoma entre nubes ligeras.",
+		"Parcialmente nublado sobre la laguna, ni muy tapado ni a pleno rayo.",
+		"Nubes dispersas que van y vienen pero dejan pasar una linda claridad.",
+		"Sol y nubes repartiéndose el cielo, tarde templada en el humedal.",
+	],
+	"cloudy": [
+		"Cielo nublado y grisáceo sobre la cuenca, tarde tranquila con la radio sonando.",
+		"Manta de nubes cubriendo la laguna, el sol se tomó un descanso.",
+		"Completamente nublado en la zona, ideal para unos buenos amargos en la madriguera.",
+		"Nubes bajas tapando el cielo, lindo día para quedarse al reparo escuchando música.",
+		"Cielo bien gris y nublado en los bañados, pinta para meter tortas fritas.",
+		"Nubes copando la parada por acá, tarde fresca y nublada.",
+	],
+	"overcast": [
+		"Cielo encapotado y cerrado de par en par, no pasa ni un rayo de sol.",
+		"Cielo completamente cubierto sobre el bañado, parece que se nos viene la noche antes de tiempo.",
+		"Encapotado total en la ribera, una postal gris sobre el río.",
+		"Cielo tapado hasta el cogote, el sol bien guardado tras las nubes.",
+		"Manta gris pesada cubriendo todo el horizonte isleño.",
+		"Cielo cerrado y encapotado, clima ideal para matear sin apuro.",
+	],
+	"mist": [
+		"Bruma flotando sobre el agua que le da un toque misterioso a la orilla.",
+		"Neblina mansa cubriendo los juncales, apenas si se divisa la otra orilla.",
+		"Bruma húmeda en el aire que te moja hasta los bigotes.",
+		"Vapor y bruma levantándose del río, paisaje típico de bañado.",
+		"Neblina suavecita acariciando los pastizales de la laguna.",
+		"Bruma baja que borra el horizonte del arroyo.",
+	],
+	"fog": [
+		"Bancos de niebla espesa sobre el humedal, no se ve ni la proa de la canoa.",
+		"Niebla cerrada en la cuenca, ¡ojo al piojo los que andan navegando!",
+		"Mucha niebla sobre el agua, a prender los faroles y no apurarse.",
+		"Niebla tupida cubriendo el arroyo, la laguna parece un fantasma.",
+		"Visibilidad reducida por niebla cerrada en la zona, calma total en el río.",
+		"Cerrada niebla en la barranca, el agua y el cielo parecen la misma cosa.",
+	],
+	"drizzle": [
+		"Una garúa finita que moja despacito pero constante sobre el rancho.",
+		"Llovizna suave en la zona, de esas que parece que no pero te calan el cuero.",
+		"Garúa carpincha cayendo sobre el agua, ideal para tortas fritas.",
+		"Llovizna mansa refrescando los juncos de la orilla.",
+		"Gota a gota cae una garúa serena con olorcito a tierra mojada.",
+		"Llovizna ligera y pareja, el bañado respira verde y fresco.",
+	],
+	"freezing_drizzle": [
+		"Llovizna helada cayendo en la zona, un fresquete que te parte los huesos.",
+		"Garúa congelada que escarcha el pasto, ¡a meterse a la cueva con mate hirviendo!",
+		"Agua heladísima cayendo como aguja, los carpinchos bien abrigados.",
+		"Llovizna con frío polar, ¡un invierno crudo en el bañado!",
+		"Gotas heladas que escarchan la costa, el mate es obligatorio para no congelarse.",
+		"Llovizna bajo cero congelando los pajonales, clima áspero en la ribera.",
+	],
+	"light_rain": [
+		"Lluvia ligera y chaparrones suaves regando todo el pajonal.",
+		"Lluvia mansa pero firme en los alrededores, levantando vapor de la tierra.",
+		"Chubascos ligeros cayendo sobre la laguna, los carpinchos flotando chochos.",
+		"Agua tranquila que cae del cielo, una lluvia suavecita para poner pausa y escuchar música.",
+		"Lluvia dispersa por la zona, nada que asuste pero refresca lindo.",
+		"Gotas suaves salpicando el río, lindo compás para acompañar la radio.",
+	],
+	"moderate_rain": [
+		"Lluvia moderada y constante cayendo sobre todo el humedal.",
+		"Chaparrones bien plantados en la zona, el río empieza a juntar agua.",
+		"Lluvia pareja en la laguna, el bañado agradece cada gota.",
+		"Chubascos intermitentes pero con buen ritmo, tarde mojada en la ribera.",
+		"Lluvia firme sobre el pastizal, a disfrutar del sonido del agua contra el techo.",
+		"Lluvia con ganas pero sin apuro, el arroyo va sumando caudal.",
+	],
+	"heavy_rain": [
+		"Se vino la lluvia con ganas: agua fuerte azotando la laguna.",
+		"Chaparrón intenso y lluvia torrencial, los carpinchos festejando en el agua.",
+		"Cae agua a baldes sobre el humedal, temporal lindo para escuchar La Rockola bajo techo.",
+		"Lluvia pesada y constante sobre la ribera, el río crece y la música acompaña.",
+		"Lluvia fuerte y tupida, ¡afuera el barro es una fiesta!",
+		"Aguacero bravo sobre los bañados, el agua corre que da calambre.",
+	],
+	"thunderstorm": [
+		"Tormenta eléctrica con truenos retumbando en el bañado y relámpagos a lo lejos.",
+		"Se picó el cielo: tormenta brava con truenos y chaparrones fuertes sobre la zona.",
+		"Cielo rugiendo con tormenta y rayos, ¡a desenchufar lo delicado y meterle radio!",
+		"Temporal con aparato eléctrico y truenos sonando fuerte en todo el humedal.",
+		"Tormenta eléctrica en la zona, puro espectáculo de luces y agua en la cuenca.",
+		"Truenos retumbando en la barranca y chaparrones eléctricos, ¡la tormenta se hace sentir!",
+	],
+	"snow": [
+		"Cae nieve sobre la zona, una postal blanca impensada para los carpinchos.",
+		"Copos de nieve blanqueando la barranca y el pajonal, ¡un frío polar total!",
+		"Nevada firme en el paisaje, a meter poncho criollo y leña al fuego.",
+		"Cielo blanco y nieve cubriendo la orilla, ¡para tomar chocolate caliente con tortas fritas!",
+		"Nieve cayendo mansa en el bañado, un paisaje de película para disfrutar abrigado.",
+		"Copos de nieve flotando sobre el río helado, postal insólita en la laguna.",
+	],
+	"sleet": [
+		"Aguanieve helada cayendo del cielo, ¡un frío que te congela hasta las orejas!",
+		"Lluvia helada y aguanieve golpeando en la orilla, a refugiarse en la madriguera.",
+		"Mezcla de lluvia y nieve con viento helado, tiempo crudísimo en la cuenca.",
+		"Aguanieve picando en el agua, los carpinchos pegaditos para darse calor.",
+		"Hielo fino y agua helada cayendo de golpe, ¡abríguense bien los que anden afuera!",
+		"Aguanieve persistente en la zona, el río parece escarchado.",
+	],
+	"blizzard": [
+		"Ventisca brava con viento helado y nieve volando por todos lados.",
+		"Tormenta de nieve y viento blanco, ¡no se ve un pito afuera!",
+		"Temporal helado con ráfagas de nieve, a no asomar ni la nariz del rancho.",
+		"Viento blanco azotando la orilla, a quedarse bien quietos en la cueva.",
+		"Ventisca polar en el humedal, el viento silba entre las tacuaras.",
+		"Tormenta de viento y nieve cerrada, las patas bajo techo hasta que aclare.",
+	],
+	"hail": [
+		"Chubascos de granizo y gránulos de hielo repiqueteando en las chapas.",
+		"Granizo menudo cayendo en la zona, ¡a guardar la canoa y ponerse a cubierto!",
+		"Hielo picando en el agua de la laguna, los carpinchos protegidos bajo el ceibo.",
+		"Piedra y granizo salpicando el bañado, ¡cuidado con la cabeza y los techos!",
+		"Granizo sobre el río, el agua salpica como si hirviera.",
+		"Piedra fina cayendo en el rancho, ¡a esperar que pase con unos buenos mates!",
+	],
+	"snow_thunder": [
+		"Tormenta con truenos y nevada intensa, un fenómeno de locos en la laguna.",
+		"Nieve acompañada de truenos lejanos, el cielo está que no cree en nadie.",
+		"Temporal blanco con aparato eléctrico, clima bravo pero pintoresco.",
+		"Nevada con rayos y truenos, ¡la naturaleza haciendo de las suyas en el bañado!",
+		"Nieve y relámpagos cruzando el cielo gris, postal invernal única.",
+		"Truenos en plena nevada, a resguardarse y disfrutar el calor del fogón.",
+	],
+	"wind_squalls": [
+		"Rachas de viento fuerte sacudiendo los sauces de la ribera.",
+		"Sudestada brava con viento arrachado levantando olas en el arroyo.",
+		"Viento del este soplando con furia en el bañado, a amarrar bien los botes.",
+		"Ráfagas intensas silbando entre los juncales, el río se pone picado.",
+		"Viento fuerte barriendo la cuenca, ¡cuidado con las ramas secas!",
+		"Viento arremolinado en la barranca, la sudestada se hace sentir.",
+	],
+	"smoke_dust": [
+		"Ambiente turbio con humo y visibilidad reducida sobre la cuenca.",
+		"Polvareda y calina flotando en el aire, a humedecer la garganta con unos buenos mates.",
+		"Bruma seca y polvo en suspensión sobre los bañados, tarde densa en la ribera.",
+		"Cielo opaco por humo y polvillo, a quedarse al reparo con la radio prendida.",
+		"Visibilidad baja por polvo y calina en el ambiente, tarde pesada en la isla.",
+		"Polvareda levantada por el viento seco, el horizonte se ve borroso.",
+	],
+	"default": [
+		"Tiempo característico de humedal en la zona, ideal para acompañar con buena música.",
+		"Así viene pintando el cielo por acá, con La Rockola haciéndote el aguante.",
+		"El cielo desplegando su magia sobre la laguna para disfrutar la jornada.",
+		"Clima isleño de pura cepa, perfecto para relajarse y meter play.",
+		"Panorama ribereño inmejorable, la tranquilidad del agua nos acompaña.",
+		"Condiciones ideales para bajar un cambio y dejarse llevar por el ritmo.",
+	],
+}
+
+
+def resolve_weather_desc_category(
+	desc: str | None = None,
+	code: int | str | None = None,
+	lang_es: str | None = None,
+) -> str:
+	"""
+	Determina la categoría canónica del clima según weatherCode o weatherDesc de wttr.in.
+	Prioriza el código numérico estándar WWO (weatherCode), luego lookup por texto exacto
+	(inglés o español) y finalmente coincidencias léxicas/semánticas con fallback seguro.
+	"""
+	if code is not None:
+		try:
+			code_int = int(code)
+			if code_int in WEATHER_CODE_TO_CATEGORY:
+				return WEATHER_CODE_TO_CATEGORY[code_int]
+		except (ValueError, TypeError):
+			pass
+
+	raw = lang_es or desc
+	if not raw or not isinstance(raw, str) or not raw.strip():
+		return ""
+
+	norm = raw.strip().lower()
+	if norm in WEATHER_DESC_TO_CATEGORY:
+		return WEATHER_DESC_TO_CATEGORY[norm]
+
+	# Búsqueda semántica por palabras clave
+	if any(k in norm for k in ("thunder", "torment", "truen", "rayo")):
+		return "snow_thunder" if any(k in norm for k in ("nieve", "snow", "nevad")) else "thunderstorm"
+	if any(k in norm for k in ("blizzard", "ventisca")):
+		return "blizzard"
+	if any(k in norm for k in ("granizo", "hail", "pellet", "perdigon", "piedra")):
+		return "hail"
+	if any(k in norm for k in ("sleet", "aguanieve")):
+		return "sleet"
+	if any(k in norm for k in ("freezing", "helad")):
+		return "freezing_drizzle"
+	if any(k in norm for k in ("snow", "nieve", "nevad", "nevisc")):
+		return "snow"
+	if any(k in norm for k in ("torren", "heavy", "fuerte", "aguacero")):
+		return "heavy_rain"
+	if "modera" in norm:
+		return "moderate_rain"
+	if any(k in norm for k in ("drizzle", "garua", "garúa", "llovizn")):
+		return "drizzle"
+	if any(k in norm for k in ("rain", "shower", "lluvia", "chubasco")):
+		return "light_rain"
+	if any(k in norm for k in ("fog", "niebla")):
+		return "fog"
+	if any(k in norm for k in ("mist", "bruma", "neblina")):
+		return "mist"
+	if any(k in norm for k in ("overcast", "cubierto", "encapotado")):
+		return "overcast"
+	if any(k in norm for k in ("partly", "parcial", "intervalo")):
+		return "partly_cloudy"
+	if any(k in norm for k in ("cloud", "nublado", "nube")):
+		return "cloudy"
+	if any(k in norm for k in ("sun", "soleado", "clear", "despejado")):
+		return "sunny"
+	if any(k in norm for k in ("squall", "racha", "viento")):
+		return "wind_squalls"
+	if any(k in norm for k in ("smoke", "humo", "dust", "polvo", "sand", "arena", "haze", "calina")):
+		return "smoke_dust"
+
+	return "default"
+
+
+def get_weather_desc_phrase(
+	desc: str | None = None,
+	code: int | str | None = None,
+	lang_es: str | None = None,
+	variant_idx: int | None = None,
+) -> str:
+	"""
+	Retorna una frase descriptiva con impronta criolla para el estado actual del cielo
+	según el weatherDesc, weatherCode o lang_es de wttr.in.
+	Si no se proporcionan descripciones ni códigos válidos, retorna cadena vacía "".
+	Si variant_idx se especifica, retorna esa variante determinista (variant_idx=0 es la clásica).
+	Si variant_idx es None, elige una variante aleatoria.
+	"""
+	if not desc and code is None and not lang_es:
+		return ""
+
+	category = resolve_weather_desc_category(desc=desc, code=code, lang_es=lang_es)
+	options = WEATHER_DESC_PHRASES.get(category, WEATHER_DESC_PHRASES["default"])
+	if variant_idx is not None:
+		return options[variant_idx % len(options)]
+	return random.choice(options)
+
+
+def get_all_weather_desc_phrases() -> list[str]:
+	"""Devuelve la lista consolidada de todas las descripciones de cielo/tiempo posibles."""
+	res: list[str] = []
+	for p_list in WEATHER_DESC_PHRASES.values():
+		for p in p_list:
+			if p not in res:
+				res.append(p)
+	return res
+
 
 # ---------------------------------------------------------------------------
 # Charla de cabina: Pases y Reacciones

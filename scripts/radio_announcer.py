@@ -84,9 +84,15 @@ try:
 		VOICE_TOMAS,
 		VOICE_VALENTINA,
 		VOICES,
+		WEATHER_CODE_TO_CATEGORY,
+		WEATHER_DESC_PHRASES,
+		WEATHER_DESC_TO_CATEGORY,
 		WEATHER_LEAD_INS,
 		WEATHER_RAIN_THRESHOLD,
 		WEATHER_TEMPLATES,
+		get_all_weather_desc_phrases,
+		get_weather_desc_phrase,
+		resolve_weather_desc_category,
 	)
 except ImportError:
 	from radio_banks import (
@@ -135,9 +141,15 @@ except ImportError:
 		VOICE_TOMAS,
 		VOICE_VALENTINA,
 		VOICES,
+		WEATHER_CODE_TO_CATEGORY,
+		WEATHER_DESC_PHRASES,
+		WEATHER_DESC_TO_CATEGORY,
 		WEATHER_LEAD_INS,
 		WEATHER_RAIN_THRESHOLD,
 		WEATHER_TEMPLATES,
+		get_all_weather_desc_phrases,
+		get_weather_desc_phrase,
+		resolve_weather_desc_category,
 	)
 
 __all__ = [
@@ -186,6 +198,9 @@ __all__ = [
 	"VOICE_PROSODY",
 	"VOICE_TOMAS",
 	"VOICE_VALENTINA",
+	"WEATHER_CODE_TO_CATEGORY",
+	"WEATHER_DESC_PHRASES",
+	"WEATHER_DESC_TO_CATEGORY",
 	"WEATHER_LEAD_INS",
 	"WEATHER_RAIN_THRESHOLD",
 	"WEATHER_TEMPLATES",
@@ -207,6 +222,7 @@ __all__ = [
 	"get_all_rain_descriptions",
 	"get_all_reaction_segments",
 	"get_all_time_segments",
+	"get_all_weather_desc_phrases",
 	"get_all_weather_handoff_segments",
 	"get_all_weather_reaction_segments",
 	"get_available_spanish_dbs",
@@ -218,6 +234,7 @@ __all__ = [
 	"get_radio_state",
 	"get_system_fortune",
 	"get_weather_condition",
+	"get_weather_desc_phrase",
 	"get_weather_info",
 	"has_conjugated_verb",
 	"init_tts_cache_db",
@@ -226,6 +243,7 @@ __all__ = [
 	"mix_announcement_with_bg_track",
 	"reset_radio_memory_state",
 	"reset_weather_cache",
+	"resolve_weather_desc_category",
 	"save_cached_audio",
 	"select_fortune",
 	"select_radio_hosts",
@@ -466,6 +484,24 @@ def get_weather_info(
 		else:
 			loc_clean = DEFAULT_WEATHER_LOCATION
 
+		# Extraer descripción del estado del cielo / clima actual si existe
+		curr = data["current_condition"][0] if data.get("current_condition") else {}
+		desc_raw = None
+		if curr.get("weatherDesc"):
+			desc_raw = curr["weatherDesc"][0].get("value")
+		lang_es_raw = None
+		if curr.get("lang_es"):
+			lang_es_raw = curr["lang_es"][0].get("value")
+		code_raw = curr.get("weatherCode")
+
+		weather_desc_phrase = get_weather_desc_phrase(
+			desc=desc_raw,
+			code=code_raw,
+			lang_es=lang_es_raw,
+			variant_idx=template_idx,
+		)
+		desc_phrase_str = f" {weather_desc_phrase}" if weather_desc_phrase else ""
+
 		if template_idx is not None:
 			tpl = WEATHER_TEMPLATES[template_idx % len(WEATHER_TEMPLATES)]
 		else:
@@ -475,6 +511,7 @@ def get_weather_info(
 			lead=lead,
 			location=loc_clean,
 			temp_str=temp_str,
+			desc_phrase=desc_phrase_str,
 			min_today_str=min_today_str,
 			max_today_str=max_today_str,
 			range_tomorrow_str=range_tomorrow_str,

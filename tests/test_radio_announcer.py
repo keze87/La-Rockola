@@ -1883,3 +1883,129 @@ def test_group_plan_into_speech_turns_cuts_on_speaker_change():
 	assert turns[0][1] == v1
 	assert turns[1][1] == v2
 	assert turns[2][1] == v1
+
+
+def test_weather_desc_category_resolution():
+	"""Verifica la resolución canónica de códigos y descripciones en inglés y español de wttr.in."""
+	resolve = radio_announcer.resolve_weather_desc_category
+
+	# 1. Códigos WWO numéricos
+	assert resolve(code=113) == "sunny"
+	assert resolve(code="113") == "sunny"
+	assert resolve(code="116") == "partly_cloudy"
+	assert resolve(code=119) == "cloudy"
+	assert resolve(code="122") == "overcast"
+	assert resolve(code=143) == "mist"
+	assert resolve(code=248) == "fog"
+	assert resolve(code=266) == "drizzle"
+	assert resolve(code=296) == "light_rain"
+	assert resolve(code=308) == "heavy_rain"
+	assert resolve(code=389) == "thunderstorm"
+	assert resolve(code=338) == "snow"
+	assert resolve(code=350) == "hail"
+	assert resolve(code=230) == "blizzard"
+
+	# 2. Descripciones en inglés
+	assert resolve(desc="Sunny") == "sunny"
+	assert resolve(desc="Partly cloudy") == "partly_cloudy"
+	assert resolve(desc="Patchy light drizzle") == "drizzle"
+	assert resolve(desc="Moderate or heavy rain shower") == "heavy_rain"
+	assert resolve(desc="Thundery outbreaks possible") == "thunderstorm"
+	assert resolve(desc="Blizzard") == "blizzard"
+
+	# 3. Descripciones en español (lang_es o desc)
+	assert resolve(lang_es="Soleado") == "sunny"
+	assert resolve(lang_es="Parcialmente nublado") == "partly_cloudy"
+	assert resolve(lang_es="Cielo cubierto") == "overcast"
+	assert resolve(lang_es="Niebla") == "fog"
+	assert resolve(lang_es="Llovizna") == "drizzle"
+	assert resolve(lang_es="Lluvia moderada") == "moderate_rain"
+	assert resolve(lang_es="Tormenta") == "thunderstorm"
+
+	# 4. Heurísticas por palabras clave
+	assert resolve(desc="Una tormenta eléctrica inesperada") == "thunderstorm"
+	assert resolve(desc="Fuerte granizo en la zona") == "hail"
+	assert resolve(desc="Nevisca suave en la costa") == "snow"
+
+	# 5. Vacíos o None
+	assert resolve(desc=None, code=None, lang_es=None) == ""
+	assert resolve(desc="", code="", lang_es="") == ""
+
+
+def test_weather_desc_phrase_selection():
+	"""Verifica la selección de frases según condición meteorológica y estabilidad con variant_idx."""
+	# Determinismo con variant_idx
+	p0 = radio_announcer.get_weather_desc_phrase(code=113, variant_idx=0)
+	p1 = radio_announcer.get_weather_desc_phrase(code=113, variant_idx=1)
+	assert p0 in radio_announcer.WEATHER_DESC_PHRASES["sunny"]
+	assert p1 in radio_announcer.WEATHER_DESC_PHRASES["sunny"]
+	assert p0 == radio_announcer.WEATHER_DESC_PHRASES["sunny"][0]
+	assert p1 == radio_announcer.WEATHER_DESC_PHRASES["sunny"][1]
+
+	# Por código
+	phrase_fog = radio_announcer.get_weather_desc_phrase(code=248)
+	assert phrase_fog in radio_announcer.WEATHER_DESC_PHRASES["fog"]
+
+	# Por texto en inglés
+	phrase_rain = radio_announcer.get_weather_desc_phrase(desc="Heavy rain")
+	assert phrase_rain in radio_announcer.WEATHER_DESC_PHRASES["heavy_rain"]
+
+	# Por texto en español
+	phrase_drizzle = radio_announcer.get_weather_desc_phrase(lang_es="Llovizna")
+	assert phrase_drizzle in radio_announcer.WEATHER_DESC_PHRASES["drizzle"]
+
+	# Sin datos meteorológicos retorna string vacío
+	assert radio_announcer.get_weather_desc_phrase(desc=None, code=None, lang_es=None) == ""
+	assert radio_announcer.get_weather_desc_phrase(desc="", code=None, lang_es="") == ""
+
+
+def test_get_all_weather_desc_phrases_integrity():
+	"""Verifica que todas las frases de condición climática sean válidas en español y no violen la moderación."""
+	all_phrases = radio_announcer.get_all_weather_desc_phrases()
+	assert len(all_phrases) == 20 * 6  # 20 categorías x 6 variaciones
+	for phrase in all_phrases:
+		assert phrase and phrase.strip()
+		assert radio_announcer.is_spanish_text(phrase), f"Frase no reconocida como español: '{phrase}'"
+		assert not radio_announcer.contains_blacklisted_content(phrase), f"Frase con contenido vetado: '{phrase}'"
+
+
+def test_build_weather_phrase_with_weather_desc():
+	"""Verifica que build_weather_phrase incorpore fluidamente la frase de condición climática de wttr.in."""
+	sample_sunny = {
+		"current_condition": [
+			{
+				"temp_C": "23",
+				"weatherCode": "113",
+				"weatherDesc": [{"value": "Sunny"}],
+			}
+		],
+		"weather": [
+			{"mintempC": "14", "maxtempC": "25", "hourly": []},
+			{"mintempC": "15", "maxtempC": "26", "hourly": []},
+		],
+	}
+
+	phrase = radio_announcer.build_weather_phrase(sample_sunny, template_idx=0, location="Tigre")
+	assert phrase is not None
+	expected_sunny_p0 = radio_announcer.WEATHER_DESC_PHRASES["sunny"][0]
+	assert expected_sunny_p0 in phrase
+	assert "23 grados de temperatura actual. " + expected_sunny_p0 in phrase
+
+	# Prueba con lang_es en español (Tormenta)
+	sample_storm = {
+		"current_condition": [
+			{
+				"temp_C": "19",
+				"weatherCode": "389",
+				"lang_es": [{"value": "Tormenta"}],
+			}
+		],
+		"weather": [
+			{"mintempC": "16", "maxtempC": "21", "hourly": []},
+			{"mintempC": "14", "maxtempC": "20", "hourly": []},
+		],
+	}
+	phrase_storm = radio_announcer.build_weather_phrase(sample_storm, template_idx=2, location="Paraná")
+	assert phrase_storm is not None
+	expected_storm_p2 = radio_announcer.WEATHER_DESC_PHRASES["thunderstorm"][2]
+	assert expected_storm_p2 in phrase_storm
