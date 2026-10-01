@@ -357,7 +357,8 @@ async def test_play_next_uses_pregenerated_announcement(tmp_path):
 
 	# Simular locución pregenerada lista en disco
 	pre_file = Path(state.radio_pregenerated_path)
-	pre_file.write_bytes(b"PREGENERATED_AUDIO_BYTES")
+	valid_mp3_payload = b"ID3\x04\x00\x00\x00\x00\x00\x00PREGENERATED_AUDIO_BYTES"
+	pre_file.write_bytes(valid_mp3_payload)
 	state.pregenerated_radio_announcement = {
 		"path": state.radio_pregenerated_path,
 		"display_title": "Carpincho Instantáneo",
@@ -381,7 +382,7 @@ async def test_play_next_uses_pregenerated_announcement(tmp_path):
 		mock_create_live.assert_not_called()
 		assert state.is_playing_radio_announcement is True
 		assert state.current_track == state.radio_announcement_path
-		assert Path(state.radio_announcement_path).read_bytes() == b"PREGENERATED_AUDIO_BYTES"
+		assert Path(state.radio_announcement_path).read_bytes() == valid_mp3_payload
 
 
 @pytest.mark.asyncio
@@ -399,7 +400,7 @@ async def test_hot_bg_track_mixing_on_queue_change(tmp_path):
 
 	# Audio limpio pregenerado
 	pre_file = Path(state.radio_pregenerated_path)
-	pre_file.write_bytes(b"CLEAN_SPEECH_AUDIO")
+	pre_file.write_bytes(b"ID3\x04\x00\x00\x00\x00\x00\x00CLEAN_SPEECH_AUDIO")
 	state.pregenerated_radio_announcement = {
 		"path": state.radio_pregenerated_path,
 		"display_title": "Carpincho en Vivo",
@@ -474,3 +475,168 @@ async def test_pregenerated_announcement_expires_after_15_minutes(tmp_path):
 		assert state.is_playing_radio_announcement is True
 		assert state.current_track == state.radio_announcement_path
 		assert state.pregenerated_radio_announcement is None
+
+
+def test_cancel_radio_pregeneration_deletes_partial_file(tmp_path):
+	"""Verifica que cancelar la pregeneración elimine cualquier archivo parcial dejado en disco."""
+	partial_file = tmp_path / "radio_partial.mp3"
+	partial_file.write_bytes(b"partial_ffmpeg_output")
+	assert partial_file.exists()
+
+	state.radio_pregenerated_path = str(partial_file)
+	state._cancel_radio_pregeneration()
+
+	assert not partial_file.exists()
+	assert state.radio_pregeneration_task is None
+	assert state.pregenerated_radio_announcement is None
+
+
+@pytest.mark.asyncio
+async def test_pregenerated_corrupt_file_rejected_falls_back_to_live(tmp_path):
+	"""Verifica que un archivo pregenerado corrupto o truncado sea descartado por validación de stream MP3."""
+	import time
+
+	state.radio_mode_enabled = True
+	state.radio_track_counter = 1
+	state.radio_tracks_until_next = 2
+	state.queue = ["/music/next_song.mp3"]
+	state.current_track = "/music/song1.mp3"
+
+	# Archivo con bytes que NO son MP3 válido
+	corrupt_pre = tmp_path / "corrupt_pregenerated.mp3"
+	corrupt_pre.write_bytes(b"NOT_A_VALID_MP3_STREAM_HEADER")
+	state.radio_pregenerated_path = str(corrupt_pre)
+
+	state.pregenerated_radio_announcement = {
+		"path": str(corrupt_pre),
+		"display_title": "Carpincho Corrupto",
+		"script": "Texto corrupto",
+		"created_at": time.time(),
+	}
+
+	from scripts.radio_announcer import RadioAnnouncementResult
+
+	mock_create_live = AsyncMock(
+		return_value=RadioAnnouncementResult(
+			ok=True, display_title="Carpincho Fresco", script="Texto fresco", error=None
+		)
+	)
+
+	async def fake_play_track(path):
+		state.current_track = path
+
+	with (
+		patch("server.HAS_EDGE_TTS", True),
+		patch("server.create_radio_announcement", mock_create_live),
+		patch.object(state, "play_track", side_effect=fake_play_track),
+		patch("server.broadcast_state", AsyncMock()),
+	):
+		await state.play_next(skipped_by_user=False)
+
+		# Debe descartar el pregenerado corrupto y disparar la síntesis en vivo
+		mock_create_live.assert_awaited_once()
+		assert state.is_playing_radio_announcement is True
+		assert state.current_track == state.radio_announcement_path
+		assert state.pregenerated_radio_announcement is None
+
+
+def test_archive_radio_announcement_creates_mp3_and_txt(tmp_path):
+	"""Verifica que _archive_radio_announcement copie el MP3 y guarde el guion .txt con timestamp."""
+	state.radio_archive_dir = tmp_path / "archive_test"
+	sample_mp3 = tmp_path / "source_announcement.mp3"
+	sample_mp3.write_bytes(b"ID3\x04\x00\x00\x00\x00\x00\x00SPEECH_DATA")
+
+	result = state._archive_radio_announcement(
+		src_mp3_path=sample_mp3,
+		script_text="Buenas tardes carpinchos, son las cuatro.",
+		display_title="Carpincho Locutor: Edición Central",
+	)
+
+	assert result is not None
+	dest_mp3, dest_txt = result
+	assert dest_mp3.is_file()
+	assert dest_txt.is_file()
+	assert dest_mp3.name.startswith("radio_")
+	assert dest_mp3.name.endswith(".mp3")
+	assert dest_txt.name.endswith(".txt")
+	assert dest_mp3.read_bytes() == b"ID3\x04\x00\x00\x00\x00\x00\x00SPEECH_DATA"
+
+	content = dest_txt.read_text(encoding="utf-8")
+	assert "Buenas tardes carpinchos, son las cuatro." in content
+	assert "Carpincho Locutor: Edición Central" in content
+
+
+def test_prune_radio_archive_retention_limit(tmp_path):
+	"""Verifica que la poda de retención elimine los archivos más viejos por encima del límite."""
+	import os
+	import time
+
+	state.radio_archive_dir = tmp_path / "archive_prune_test"
+	state.radio_archive_dir.mkdir(parents=True, exist_ok=True)
+	state.radio_archive_max_files = 3
+
+	base_time = time.time() - 1000.0
+	for i in range(5):
+		mp3 = state.radio_archive_dir / f"radio_2026-09-30_10-00-0{i}.mp3"
+		txt = state.radio_archive_dir / f"radio_2026-09-30_10-00-0{i}.txt"
+		mp3.write_bytes(b"MP3_DATA")
+		txt.write_text(f"Guion {i}", encoding="utf-8")
+		file_time = base_time + (i * 10.0)
+		os.utime(mp3, (file_time, file_time))
+		os.utime(txt, (file_time, file_time))
+
+	assert len(list(state.radio_archive_dir.glob("radio_*.mp3"))) == 5
+	assert len(list(state.radio_archive_dir.glob("radio_*.txt"))) == 5
+
+	pruned = state._prune_radio_archive(max_files=3)
+	assert pruned == 2
+
+	remaining_mp3s = sorted(state.radio_archive_dir.glob("radio_*.mp3"))
+	remaining_txts = sorted(state.radio_archive_dir.glob("radio_*.txt"))
+	assert len(remaining_mp3s) == 3
+	assert len(remaining_txts) == 3
+	# Los 2 más viejos (0 y 1) fueron borrados; quedan 2, 3 y 4
+	assert not any("10-00-00" in p.name for p in remaining_mp3s)
+	assert not any("10-00-01" in p.name for p in remaining_mp3s)
+	assert any("10-00-04" in p.name for p in remaining_mp3s)
+
+
+@pytest.mark.asyncio
+async def test_play_next_archives_announcement_and_script(tmp_path):
+	"""Verifica que al sonar una locución en play_next se archive copia de audio y guion."""
+	state.radio_archive_dir = tmp_path / "play_next_archive"
+	state.radio_mode_enabled = True
+	state.radio_track_counter = 1
+	state.radio_tracks_until_next = 2
+	state.queue = ["/music/next_song.mp3"]
+	state.current_track = "/music/song1.mp3"
+
+	Path(state.radio_announcement_path).write_bytes(b"ID3\x04\x00\x00\x00\x00\x00\x00PLAY_NEXT_AUDIO")
+
+	from scripts.radio_announcer import RadioAnnouncementResult
+
+	mock_create = AsyncMock(
+		return_value=RadioAnnouncementResult(
+			ok=True,
+			display_title="Carpincho Histórico",
+			script="Guion histórico archivado",
+			error=None,
+		)
+	)
+
+	async def fake_play_track(path):
+		state.current_track = path
+
+	with (
+		patch("server.HAS_EDGE_TTS", True),
+		patch("server.create_radio_announcement", mock_create),
+		patch.object(state, "play_track", side_effect=fake_play_track),
+		patch("server.broadcast_state", AsyncMock()),
+	):
+		await state.play_next(skipped_by_user=False)
+
+		archived_mp3s = list(state.radio_archive_dir.glob("radio_*.mp3"))
+		archived_txts = list(state.radio_archive_dir.glob("radio_*.txt"))
+		assert len(archived_mp3s) == 1
+		assert len(archived_txts) == 1
+		assert "Guion histórico archivado" in archived_txts[0].read_text(encoding="utf-8")

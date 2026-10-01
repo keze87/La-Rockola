@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import io
 import json
 import logging
 import random
@@ -21,11 +22,35 @@ import time
 import urllib.parse
 import urllib.request
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger("rockola.radio")
+
+
+@dataclass(slots=True)
+class RadioAnnouncementResult:
+	"""Resultado estructurado de la síntesis de un anuncio radial."""
+
+	ok: bool
+	display_title: str = ""
+	script: str = ""
+	error: str | None = None
+
+	def __iter__(self):
+		# Retrocompatibilidad con código o tests que esperan desempaquetar (ok, title, script_o_error)
+		yield self.ok
+		yield self.display_title
+		yield self.script if self.ok else (self.error or "")
+
+	def __getitem__(self, index: int):
+		return tuple(self)[index]
+
+	def __len__(self):
+		return 3
+
 
 try:
 	import edge_tts
@@ -204,6 +229,7 @@ __all__ = [
 	"WEATHER_LEAD_INS",
 	"WEATHER_RAIN_THRESHOLD",
 	"WEATHER_TEMPLATES",
+	"RadioAnnouncementResult",
 	"assemble_announcement_audio",
 	"build_radio_dialogue_plan",
 	"build_weather_phrase",
@@ -211,6 +237,7 @@ __all__ = [
 	"contains_blacklisted_content",
 	"create_radio_announcement",
 	"describir_lluvias",
+	"estimate_mp3_duration",
 	"extract_location_from_weather_data",
 	"format_fortune_for_speech",
 	"format_temperature",
@@ -239,8 +266,11 @@ __all__ = [
 	"has_conjugated_verb",
 	"init_tts_cache_db",
 	"is_spanish_text",
+	"is_valid_mp3_file",
+	"is_valid_mp3_stream",
 	"is_valid_spoken_sentence",
 	"mix_announcement_with_bg_track",
+	"prune_tts_cache_db",
 	"reset_radio_memory_state",
 	"reset_weather_cache",
 	"resolve_weather_desc_category",
@@ -560,6 +590,46 @@ def get_carpincho_data_dir() -> Path:
 	return db_dir
 
 
+def is_valid_mp3_stream(data: bytes) -> bool:
+	"""Determina si un encabezado de bytes corresponde a un stream o archivo MP3 real."""
+	if len(data) < 4:
+		return False
+	if data.startswith(b"ID3"):
+		return True
+	return bool(data[0] == 0xFF and (data[1] & 0xE0) == 0xE0)
+
+
+def is_valid_mp3_file(path: Path | str) -> bool:
+	"""Verifica que el archivo exista, tenga contenido y su encabezado comience con un stream MP3 válido."""
+	try:
+		p = Path(path)
+		if not p.is_file() or p.stat().st_size < 4:
+			return False
+		with p.open("rb") as f:
+			head = f.read(10)
+		return is_valid_mp3_stream(head)
+	except Exception:
+		return False
+
+
+def estimate_mp3_duration(data: bytes) -> float | None:
+	"""Estima la duración en segundos de un stream de audio MP3 en memoria usando mutagen.
+
+	Retorna None si mutagen no está disponible o si los datos no corresponden a un MP3 válido.
+	"""
+	if not data or not is_valid_mp3_stream(data):
+		return None
+	try:
+		from mutagen.mp3 import MP3
+
+		audio = MP3(io.BytesIO(data))
+		if audio.info and getattr(audio.info, "length", None) is not None:
+			return float(audio.info.length)
+	except Exception as e:
+		logger.debug(f"No se pudo estimar la duración del stream MP3 con mutagen: {e}")
+	return None
+
+
 def init_tts_cache_db(db_path: Path | str | None = None) -> Path:
 	"""Inicializa la base de datos SQLite para la caché de audios de TTS."""
 	target_path = Path(db_path) if db_path else (get_carpincho_data_dir() / "tts_cache.db")
@@ -635,6 +705,8 @@ def save_cached_audio(
 	"""Almacena o actualiza un segmento de audio MP3 en la base de datos de caché SQLite."""
 	if not audio_bytes:
 		return
+	if duration is None:
+		duration = estimate_mp3_duration(audio_bytes)
 	cache_key = get_cache_key(category, voice, text)
 	target_path = init_tts_cache_db(db_path)
 	now = time.time()
@@ -655,6 +727,60 @@ def save_cached_audio(
 			conn.commit()
 	except Exception as e:
 		logger.debug(f"Error guardando audio en caché TTS: {e}")
+
+
+def prune_tts_cache_db(
+	max_entries: int = 500,
+	max_age_days: float = 30.0,
+	db_path: Path | str | None = None,
+) -> int:
+	"""Poda entradas obsoletas o sobrantes de la caché SQLite de TTS.
+
+	- Elimina registros con 'last_used' anterior a max_age_days días.
+	- Si la cantidad de registros aún excede max_entries, elimina los más antiguos por 'last_used' hasta alcanzar max_entries.
+	- Ejecuta VACUUM para compactar la base de datos si se eliminó algún registro.
+	- Retorna el total de entradas eliminadas.
+	"""
+	target_path = Path(db_path) if db_path else (get_carpincho_data_dir() / "tts_cache.db")
+	if not target_path.exists():
+		return 0
+
+	deleted_count = 0
+	try:
+		with sqlite3.connect(target_path, timeout=5.0) as conn:
+			cur = conn.cursor()
+			# 1. Poda por antigüedad (last_used)
+			cutoff = time.time() - (max_age_days * 86400.0)
+			cur.execute("DELETE FROM tts_cache WHERE last_used < ?", (cutoff,))
+			deleted_count += cur.rowcount
+
+			# 2. Poda por cantidad máxima de registros
+			cur.execute("SELECT count(*) FROM tts_cache")
+			row = cur.fetchone()
+			total_entries = row[0] if row else 0
+			if total_entries > max_entries:
+				excess = total_entries - max_entries
+				cur.execute(
+					"""
+					DELETE FROM tts_cache
+					WHERE cache_key IN (
+						SELECT cache_key FROM tts_cache
+						ORDER BY last_used ASC
+						LIMIT ?
+					)
+					""",
+					(excess,),
+				)
+				deleted_count += cur.rowcount
+
+			conn.commit()
+			if deleted_count > 0:
+				conn.execute("VACUUM")
+				conn.commit()
+	except Exception as e:
+		logger.warning(f"Error podando la base de datos de caché TTS ({target_path}): {e}")
+
+	return deleted_count
 
 
 # Estado volátil en memoria para el locutor de radio (no requiere persistencia en base de datos)
@@ -1354,12 +1480,17 @@ async def synthesize_segment(
 	max_retries: int = DEFAULT_TTS_RETRIES,
 	db_path: Path | str | None = None,
 ) -> bytes:
-	"""
-	Sintetiza un segmento individual o parlamento radial.
-	Intenta PRIMERO sintetizar con 'edge-tts' en vivo para máxima naturalidad e inflexión.
-	Si tiene éxito y allow_cache es True, persiste el audio generado en la base de datos SQLite.
-	Si edge-tts falla (sin conexión a internet, error de timeout o paquete no instalado),
-	utiliza la caché SQLite como fallback confiable.
+	"""Sintetiza un segmento individual o parlamento radial.
+
+	Diseño intencional de prioridad y frescura:
+	- Intenta PRIMERO sintetizar en vivo mediante 'edge-tts' para maximizar la naturalidad,
+	  inflexión prosódica y variabilidad tonal de la locución.
+	- Si la síntesis remota tiene éxito y allow_cache=True, almacena el audio generado y
+	  su duración estimada en la base de datos SQLite (tts_cache.db).
+	- Si edge-tts falla (por desconexión de red, timeout o ausencia del paquete),
+	  consulta la base de datos de caché SQLite como fallback confiable offline.
+	- La utilidad 'scripts/preload_tts_cache.py' permite sembrar esta base para garantizar
+	  resiliencia total ante caídas prolongadas de conexión a internet.
 	"""
 
 	async def _stream_or_save(comm: edge_tts.Communicate) -> bytes:
@@ -1431,7 +1562,8 @@ async def synthesize_segment(
 		if audio_bytes:
 			if allow_cache:
 				try:
-					save_cached_audio(category, voice, text, audio_bytes, db_path=db_path)
+					clip_dur = estimate_mp3_duration(audio_bytes)
+					save_cached_audio(category, voice, text, audio_bytes, duration=clip_dur, db_path=db_path)
 				except Exception as cache_err:
 					logger.debug(f"No se pudo guardar en caché SQLite: {cache_err}")
 			return audio_bytes
@@ -1581,15 +1713,6 @@ def get_carpincho_cover_path() -> Path | None:
 		if c.is_file():
 			return c
 	return None
-
-
-def is_valid_mp3_stream(data: bytes) -> bool:
-	"""Determina si un encabezado de bytes corresponde a un stream o archivo MP3 real."""
-	if len(data) < 4:
-		return False
-	if data.startswith(b"ID3"):
-		return True
-	return bool(data[0] == 0xFF and (data[1] & 0xE0) == 0xE0)
 
 
 def embed_cover_art_in_mp3(
@@ -2169,7 +2292,7 @@ async def create_radio_announcement(
 	cover_image_path: Path | str | None = None,
 	weather_location: str | None = None,
 	dialogue_mode: bool | None = None,
-) -> tuple[bool, str, str]:
+) -> RadioAnnouncementResult:
 	"""
 	Sintetiza la locución radial con dinámica de charla de cabina entre locutores carpinchos.
 	- Selección automática de host y cohost (garantizando voces distintas).
@@ -2179,12 +2302,12 @@ async def create_radio_announcement(
 	- Síntesis asíncrona concurrente con TaskGroup y caché SQLite.
 	- Ensamblado acústico con ruido rosa de sala, gaps naturales, solapamiento de reacciones y masterizado final.
 	- Incrusta carátula ID3 en el MP3 resultante.
-	Retorna (éxito, display_title, full_script_text_o_error).
+	Retorna RadioAnnouncementResult(ok, display_title, script, error).
 	"""
 	if not HAS_EDGE_TTS or edge_tts is None:
 		err_msg = "El paquete 'edge-tts' no está instalado en el entorno de Python o falló su importación."
 		logger.warning(f"📻 El Carpincho no puede locutar: {err_msg}")
-		return False, "", err_msg
+		return RadioAnnouncementResult(ok=False, display_title="", script="", error=err_msg)
 
 	out_p = Path(output_path)
 	try:
@@ -2192,7 +2315,7 @@ async def create_radio_announcement(
 	except Exception as e:
 		err_msg = f"No se pudo crear el directorio de destino '{out_p.parent}': {type(e).__name__}: {e}"
 		logger.warning(f"📻 El Carpincho: {err_msg}")
-		return False, "", err_msg
+		return RadioAnnouncementResult(ok=False, display_title="", script="", error=err_msg)
 
 	effective_dt = dt if dt is not None else datetime.now(timezone.utc).astimezone()
 
@@ -2317,7 +2440,7 @@ async def create_radio_announcement(
 		if not ok:
 			err_msg = "Falló el ensamblado del audio del anuncio radial."
 			logger.warning(f"📻 El Carpincho: {err_msg}")
-			return False, "", err_msg
+			return RadioAnnouncementResult(ok=False, display_title="", script="", error=err_msg)
 
 		# Guardar el slot horario y timestamp del clima tras ensamblado exitoso
 		if pending_weather_slot:
@@ -2330,7 +2453,7 @@ async def create_radio_announcement(
 		if reactions_in_plan:
 			set_radio_state("last_reaction", reactions_in_plan[-1], db_path=db_path)
 
-		return True, display_title, full_script
+		return RadioAnnouncementResult(ok=True, display_title=display_title, script=full_script, error=None)
 
 	except Exception as e:
 		is_timeout = isinstance(e, (asyncio.TimeoutError, TimeoutError)) or (
@@ -2340,7 +2463,7 @@ async def create_radio_announcement(
 		if is_timeout:
 			err_msg = f"Se agotó el tiempo de espera ({timeout}s) contactando al servicio de síntesis de voz (edge-tts). Verificá la conexión a internet."
 			logger.warning(f"📻 El Carpincho: {err_msg}")
-			return False, "", err_msg
+			return RadioAnnouncementResult(ok=False, display_title="", script="", error=err_msg)
 
 		if hasattr(e, "exceptions"):
 			nested_msgs = "; ".join(
@@ -2351,4 +2474,4 @@ async def create_radio_announcement(
 		else:
 			err_msg = f"Error de síntesis ({type(e).__name__}: {e})"
 		logger.warning(f"📻 El Carpincho: {err_msg}")
-		return False, "", err_msg
+		return RadioAnnouncementResult(ok=False, display_title="", script="", error=err_msg)

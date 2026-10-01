@@ -77,9 +77,12 @@ try:
 	from scripts.radio_announcer import (
 		DEFAULT_WEATHER_LOCATION,
 		HAS_EDGE_TTS,
+		RadioAnnouncementResult,
 		create_radio_announcement,
 		embed_cover_art_in_mp3,
 		get_carpincho_cover_path,
+		is_valid_mp3_file,
+		is_valid_mp3_stream,
 		mix_announcement_with_bg_track,
 	)
 except ImportError:
@@ -87,20 +90,41 @@ except ImportError:
 		from radio_announcer import (
 			DEFAULT_WEATHER_LOCATION,
 			HAS_EDGE_TTS,
+			RadioAnnouncementResult,
 			create_radio_announcement,
 			embed_cover_art_in_mp3,
 			get_carpincho_cover_path,
+			is_valid_mp3_file,
+			is_valid_mp3_stream,
 			mix_announcement_with_bg_track,
 		)
 	except ImportError:
 		HAS_EDGE_TTS = False
+		RadioAnnouncementResult = None
 		create_radio_announcement = None
 		get_carpincho_cover_path = None
 		mix_announcement_with_bg_track = None
 		embed_cover_art_in_mp3 = None
+		is_valid_mp3_file = None
+		is_valid_mp3_stream = None
 		DEFAULT_WEATHER_LOCATION = "San Miguel de Tucumán"
 
 RADIO_PREGENERATION_MAX_AGE_SECONDS: float = 15.0 * 60.0  # 15 minutos de caducidad tras pausa prolongada
+
+
+def _is_valid_radio_mp3_file(path: Path | str) -> bool:
+	"""Valida que el archivo de locución exista y su cabecera corresponda a un MP3 válido."""
+	if is_valid_mp3_file is not None:
+		return is_valid_mp3_file(path)
+	try:
+		p = Path(path)
+		if not p.is_file() or p.stat().st_size < 4:
+			return False
+		with p.open("rb") as f:
+			head = f.read(10)
+		return bool(head.startswith(b"ID3") or (head[0] == 0xFF and (head[1] & 0xE0) == 0xE0))
+	except Exception:
+		return False
 
 
 _system_librosa_python: str | None = None
@@ -459,6 +483,7 @@ import time
 import warnings
 import webbrowser
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
 try:
 	from PIL import Image
@@ -2414,6 +2439,8 @@ class APIState:
 		self.is_synthesizing_radio = False
 		self.radio_announcement_path = str(Path(tempfile.gettempdir()) / "radio_announcement.mp3")
 		self.radio_pregenerated_path = str(Path(tempfile.gettempdir()) / "radio_pregenerated.mp3")
+		self.radio_archive_dir = Path(tempfile.gettempdir()) / "la_rockola_radio_archive"
+		self.radio_archive_max_files = 60
 		self.radio_pregeneration_task: asyncio.Task | None = None
 		self.pregenerated_radio_announcement: dict | None = None
 		self.weather_location = DEFAULT_WEATHER_LOCATION
@@ -3100,12 +3127,88 @@ class APIState:
 			track_duration = get_track_duration_seconds(str_path, self.tracks_cache)
 			self._start_radio_pregeneration(current_track_path=str_path, track_duration=track_duration)
 
+	def _prune_radio_archive(self, max_files: int | None = None) -> int:
+		"""Elimina las grabaciones y guiones históricos más antiguos por encima del límite configurado."""
+		limit = max_files if max_files is not None else self.radio_archive_max_files
+		if limit <= 0:
+			return 0
+		try:
+			if not self.radio_archive_dir.is_dir():
+				return 0
+			# Ordenar por mtime ascendente (los más antiguos primero)
+			mp3_files = sorted(
+				self.radio_archive_dir.glob("radio_*.mp3"),
+				key=lambda p: (p.stat().st_mtime, p.name),
+			)
+			pruned = 0
+			if len(mp3_files) > limit:
+				to_remove = mp3_files[: len(mp3_files) - limit]
+				for mp3 in to_remove:
+					txt = mp3.with_suffix(".txt")
+					mp3.unlink(missing_ok=True)
+					if txt.exists():
+						txt.unlink(missing_ok=True)
+					pruned += 1
+			return pruned
+		except Exception as e:
+			logger.debug(f"Error podando archivo histórico de locuciones: {e}")
+			return 0
+
+	def _archive_radio_announcement(
+		self,
+		src_mp3_path: str | Path,
+		script_text: str = "",
+		display_title: str = "",
+	) -> tuple[Path, Path] | None:
+		"""
+		Copia el MP3 final del anuncio radial emitido y guarda su guion .txt
+		en el directorio de archivo histórico con marca temporal.
+		"""
+		try:
+			src_p = Path(src_mp3_path)
+			if not src_p.is_file() or src_p.stat().st_size == 0:
+				return None
+
+			self.radio_archive_dir.mkdir(parents=True, exist_ok=True)
+
+			now = datetime.now(timezone.utc).astimezone()
+			ts_str = now.strftime("%Y-%m-%d_%H-%M-%S")
+			dest_mp3 = self.radio_archive_dir / f"radio_{ts_str}.mp3"
+			dest_txt = self.radio_archive_dir / f"radio_{ts_str}.txt"
+
+			# Si ya existiera en el mismo segundo, añadir sufijo con microsegundos
+			if dest_mp3.exists():
+				dest_mp3 = self.radio_archive_dir / f"radio_{ts_str}_{now.microsecond:06d}.mp3"
+				dest_txt = dest_mp3.with_suffix(".txt")
+
+			shutil.copyfile(src_p, dest_mp3)
+
+			header = f"Título: {display_title}\nFecha: {now.isoformat()}\n\n" if display_title else ""
+			dest_txt.write_text(f"{header}{script_text.strip()}\n", encoding="utf-8")
+
+			logger.debug(f"📻 Locución radial archivada en: {dest_mp3.name}")
+
+			# Poda de retención
+			self._prune_radio_archive()
+
+			return dest_mp3, dest_txt
+		except Exception as e:
+			logger.debug(f"No se pudo archivar la locución radial: {e}")
+			return None
+
 	def _cancel_radio_pregeneration(self):
-		"""Cancela cualquier pregeneración en curso de la locución radial."""
+		"""Cancela cualquier pregeneración en curso de la locución radial y limpia archivos parciales."""
 		if self.radio_pregeneration_task and not self.radio_pregeneration_task.done():
 			self.radio_pregeneration_task.cancel()
 		self.radio_pregeneration_task = None
 		self.pregenerated_radio_announcement = None
+		if self.radio_pregenerated_path:
+			try:
+				p = Path(self.radio_pregenerated_path)
+				if p.exists():
+					p.unlink(missing_ok=True)
+			except Exception as e:
+				logger.debug(f"Error borrando archivo parcial de pregeneración: {e}")
 
 	def _start_radio_pregeneration(self, current_track_path: str, track_duration: float = 0.0):
 		"""
@@ -3131,24 +3234,29 @@ class APIState:
 
 			try:
 				logger.info("📻 Carpincho Locutor: Iniciando pregeneración anticipada al comienzo de la canción...")
-				ok, display_title, script_or_err = await create_radio_announcement(
+				res = await create_radio_announcement(
 					self.radio_pregenerated_path,
 					dt=finish_dt,
 					bg_track_path=None,
 					weather_location=self.weather_location,
 				)
-				if ok:
+				res_ok = res.ok if hasattr(res, "ok") else bool(res[0])
+				res_title = res.display_title if hasattr(res, "display_title") else str(res[1])
+				res_script = res.script if hasattr(res, "script") else str(res[2])
+				res_err = res.error if hasattr(res, "error") else (res_script if not res_ok else None)
+
+				if res_ok:
 					self.pregenerated_radio_announcement = {
 						"path": self.radio_pregenerated_path,
-						"display_title": display_title,
-						"script": script_or_err,
+						"display_title": res_title,
+						"script": res_script,
 						"created_at": time.time(),
 					}
 					logger.info(
 						"📻 Carpincho Locutor: Pregeneración de voz lista con anticipación para el final del tema."
 					)
 				else:
-					logger.debug(f"Pregeneración radial no completada: {script_or_err}")
+					logger.debug(f"Pregeneración radial no completada: {res_err}")
 			except asyncio.CancelledError:
 				logger.debug("Pregeneración radial cancelada.")
 			except Exception as e:
@@ -3241,7 +3349,8 @@ class APIState:
 				else:
 					ok = False
 					display_title = ""
-					script_or_err = ""
+					script = ""
+					radio_err = ""
 
 					# Averiguamos qué tema viene realmente en este momento para superponerlo como cortina en caliente
 					next_track_path = None
@@ -3312,15 +3421,19 @@ class APIState:
 							)
 						else:
 							pre_p = Path(pre["path"])
-							if pre_p.is_file() and pre_p.stat().st_size > 0:
+							if _is_valid_radio_mp3_file(pre_p):
 								await _apply_hot_mix_to_announcement(
 									pre_p, Path(self.radio_announcement_path), pre["display_title"]
 								)
 								ok = True
 								display_title = pre["display_title"]
-								script_or_err = pre["script"]
+								script = pre.get("script", "")
 								logger.info(
 									"⚡ Carpincho Locutor: Transición con locución pregenerada y mezcla de cortina en caliente."
+								)
+							else:
+								logger.warning(
+									"📻 Carpincho Locutor: El archivo pregenerado está incompleto o no es un MP3 válido. Descartando..."
 								)
 						self.pregenerated_radio_announcement = None
 
@@ -3341,13 +3454,17 @@ class APIState:
 									)
 								else:
 									pre_p = Path(pre["path"])
-									if pre_p.is_file() and pre_p.stat().st_size > 0:
+									if _is_valid_radio_mp3_file(pre_p):
 										await _apply_hot_mix_to_announcement(
 											pre_p, Path(self.radio_announcement_path), pre["display_title"]
 										)
 										ok = True
 										display_title = pre["display_title"]
-										script_or_err = pre["script"]
+										script = pre.get("script", "")
+									else:
+										logger.warning(
+											"📻 Carpincho Locutor: El archivo pregenerado esperado está incompleto o no es un MP3 válido. Descartando..."
+										)
 								self.pregenerated_radio_announcement = None
 						except Exception as wait_e:
 							logger.debug(f"Espera de pregeneración agotada o falló: {wait_e}")
@@ -3363,15 +3480,22 @@ class APIState:
 						await broadcast_state()
 
 						try:
-							ok, display_title, script_or_err = await create_radio_announcement(
+							res = await create_radio_announcement(
 								self.radio_announcement_path,
 								bg_track_path=next_track_path,
 								bg_offset=bg_offset,
 								bg_volume=0.1,
 								weather_location=self.weather_location,
 							)
+							ok = res.ok if hasattr(res, "ok") else bool(res[0])
+							display_title = res.display_title if hasattr(res, "display_title") else str(res[1])
+							script = res.script if hasattr(res, "script") else str(res[2])
+							radio_err = (res.error or "") if hasattr(res, "error") else (script if not ok else "")
 						except Exception as e:
-							ok, display_title, script_or_err = False, "", f"{type(e).__name__}: {e}"
+							ok = False
+							display_title = ""
+							script = ""
+							radio_err = f"{type(e).__name__}: {e}"
 						finally:
 							self.is_synthesizing_radio = False
 
@@ -3386,6 +3510,11 @@ class APIState:
 							"album": "La Rockola del Carpincho",
 							"duration_str": "0:12",
 						}
+						self._archive_radio_announcement(
+							self.radio_announcement_path,
+							script_text=script,
+							display_title=display_title,
+						)
 						await self.play_track(self.radio_announcement_path)
 						if should_pause:
 							await self.set_pause(True)
@@ -3393,7 +3522,7 @@ class APIState:
 						return
 					else:
 						logger.warning(
-							f"🎙️ Carpincho Locutor: No se pudo sintetizar la locución radial ({script_or_err}). Pasando al tema siguiente..."
+							f"🎙️ Carpincho Locutor: No se pudo sintetizar la locución radial ({radio_err}). Pasando al tema siguiente..."
 						)
 
 		if self.queue:

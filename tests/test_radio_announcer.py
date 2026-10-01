@@ -1,5 +1,7 @@
 import asyncio
+import base64
 import json
+import sqlite3
 import subprocess
 import time
 from datetime import datetime, timezone
@@ -2009,3 +2011,180 @@ def test_build_weather_phrase_with_weather_desc():
 	assert phrase_storm is not None
 	expected_storm_p2 = radio_announcer.WEATHER_DESC_PHRASES["thunderstorm"][2]
 	assert expected_storm_p2 in phrase_storm
+
+
+def test_radio_announcement_result_dataclass_and_unpacking():
+	"""Verifica la estructura y retrocompatibilidad de RadioAnnouncementResult."""
+	# Caso de éxito
+	res_ok = radio_announcer.RadioAnnouncementResult(
+		ok=True,
+		display_title="Carpincho: Hola",
+		script="Hola a todos",
+		error=None,
+	)
+	assert res_ok.ok is True
+	assert res_ok.display_title == "Carpincho: Hola"
+	assert res_ok.script == "Hola a todos"
+	assert res_ok.error is None
+
+	# Desempaquetado como 3-tupla compatible (ok, display_title, script)
+	ok, title, text = res_ok
+	assert ok is True
+	assert title == "Carpincho: Hola"
+	assert text == "Hola a todos"
+	assert len(res_ok) == 3
+	assert res_ok[0] is True
+	assert res_ok[1] == "Carpincho: Hola"
+	assert res_ok[2] == "Hola a todos"
+
+	# Caso de error
+	res_err = radio_announcer.RadioAnnouncementResult(
+		ok=False,
+		display_title="",
+		script="",
+		error="Sin internet",
+	)
+	assert res_err.ok is False
+	assert res_err.error == "Sin internet"
+	ok_e, title_e, err_e = res_err
+	assert ok_e is False
+	assert title_e == ""
+	assert err_e == "Sin internet"
+
+
+def test_is_valid_mp3_stream_and_file(tmp_path):
+	"""Verifica la detección robusta de streams y archivos MP3 válidos y corruptos."""
+	# Streams en memoria
+	assert radio_announcer.is_valid_mp3_stream(b"ID3\x03\x00\x00\x00") is True
+	assert radio_announcer.is_valid_mp3_stream(b"\xff\xfb\x90\x64\x00") is True
+	assert radio_announcer.is_valid_mp3_stream(b"\xff\xf3\x40\x00") is True
+	assert radio_announcer.is_valid_mp3_stream(b"RIFF\x00\x00\x00") is False
+	assert radio_announcer.is_valid_mp3_stream(b"") is False
+	assert radio_announcer.is_valid_mp3_stream(b"\xff\x00") is False
+
+	# Archivos en disco
+	non_existent = tmp_path / "nope.mp3"
+	assert radio_announcer.is_valid_mp3_file(non_existent) is False
+
+	empty_file = tmp_path / "empty.mp3"
+	empty_file.write_bytes(b"")
+	assert radio_announcer.is_valid_mp3_file(empty_file) is False
+
+	corrupt_file = tmp_path / "corrupt.mp3"
+	corrupt_file.write_bytes(b"bad_data_trunc")
+	assert radio_announcer.is_valid_mp3_file(corrupt_file) is False
+
+	valid_id3_file = tmp_path / "valid_id3.mp3"
+	valid_id3_file.write_bytes(b"ID3\x04\x00\x00\x00\x00\x00\x00\xff\xfb\x90")
+	assert radio_announcer.is_valid_mp3_file(valid_id3_file) is True
+
+	valid_raw_file = tmp_path / "valid_raw.mp3"
+	valid_raw_file.write_bytes(b"\xff\xfb\x90\x64\x00\x11\x22\x33")
+	assert radio_announcer.is_valid_mp3_file(valid_raw_file) is True
+
+
+def test_estimate_mp3_duration():
+	"""Verifica la estimación de duración en segundos de streams MP3 en memoria."""
+	dummy_bytes = base64.b64decode(radio_announcer._DUMMY_MP3_DATA)
+	dur = radio_announcer.estimate_mp3_duration(dummy_bytes)
+	assert dur is not None
+	assert isinstance(dur, float)
+	assert dur > 0.0
+
+	# Streams inválidos o vacíos
+	assert radio_announcer.estimate_mp3_duration(b"") is None
+	assert radio_announcer.estimate_mp3_duration(b"RIFF\x00\x00\x00") is None
+	assert radio_announcer.estimate_mp3_duration(b"not_an_mp3_data") is None
+
+
+def test_save_cached_audio_stores_duration(tmp_path):
+	"""Verifica que save_cached_audio guarde la duración explícita y calculada en tts_cache.db."""
+	db_p = tmp_path / "tts_cache_test.db"
+	dummy_bytes = base64.b64decode(radio_announcer._DUMMY_MP3_DATA)
+
+	# 1. Guardar con duración explícita
+	radio_announcer.save_cached_audio(
+		category="intro",
+		voice=radio_announcer.VOICE_TOMAS,
+		text="Hola carpinchos",
+		audio_bytes=dummy_bytes,
+		duration=3.5,
+		db_path=db_p,
+	)
+
+	# 2. Guardar sin duración explícita (debe auto-estimar)
+	radio_announcer.save_cached_audio(
+		category="salida",
+		voice=radio_announcer.VOICE_ELENA,
+		text="Chau gente",
+		audio_bytes=dummy_bytes,
+		duration=None,
+		db_path=db_p,
+	)
+
+	with sqlite3.connect(db_p) as conn:
+		cur = conn.cursor()
+		cur.execute("SELECT category, duration FROM tts_cache ORDER BY category ASC")
+		rows = cur.fetchall()
+
+	assert len(rows) == 2
+	# intro tiene 3.5
+	assert rows[0][0] == "intro"
+	assert rows[0][1] == 3.5
+	# salida tiene duración auto-estimada mayor a 0
+	assert rows[1][0] == "salida"
+	assert rows[1][1] is not None
+	assert rows[1][1] > 0.0
+
+
+def test_prune_tts_cache_db(tmp_path):
+	"""Verifica la poda de caché SQLite por antigüedad y límite de registros con compactación VACUUM."""
+	db_p = tmp_path / "tts_cache_prune.db"
+	radio_announcer.init_tts_cache_db(db_p)
+
+	now = time.time()
+	dummy_bytes = base64.b64decode(radio_announcer._DUMMY_MP3_DATA)
+
+	# Insertamos 5 entradas con distintos timestamps de last_used
+	entries = [
+		("item_very_old_1", now - (45 * 86400)),  # 45 días
+		("item_very_old_2", now - (35 * 86400)),  # 35 días
+		("item_recent_1", now - 200),
+		("item_recent_2", now - 100),
+		("item_recent_3", now),
+	]
+	with sqlite3.connect(db_p) as conn:
+		for key, last_used in entries:
+			conn.execute(
+				"""
+				INSERT INTO tts_cache (cache_key, category, voice, text, audio_blob, duration, created_at, last_used, use_count)
+				VALUES (?, 'test', 'tomas', ?, ?, 1.0, ?, ?, 1)
+				""",
+				(key, key, dummy_bytes, last_used, last_used),
+			)
+		conn.commit()
+
+	# 1. Poda por antigüedad: max_age_days=30, max_entries=10
+	# Debe borrar item_very_old_1 e item_very_old_2 (2 eliminados)
+	deleted = radio_announcer.prune_tts_cache_db(max_entries=10, max_age_days=30.0, db_path=db_p)
+	assert deleted == 2
+
+	with sqlite3.connect(db_p) as conn:
+		cur = conn.cursor()
+		cur.execute("SELECT count(*) FROM tts_cache")
+		assert cur.fetchone()[0] == 3
+
+	# 2. Poda por cantidad máxima: quedan 3, pedimos max_entries=2
+	# Debe borrar el más antiguo de los recientes (item_recent_1)
+	deleted_excess = radio_announcer.prune_tts_cache_db(max_entries=2, max_age_days=30.0, db_path=db_p)
+	assert deleted_excess == 1
+
+	with sqlite3.connect(db_p) as conn:
+		cur = conn.cursor()
+		cur.execute("SELECT cache_key FROM tts_cache ORDER BY last_used ASC")
+		remaining = [r[0] for r in cur.fetchall()]
+		assert remaining == ["item_recent_2", "item_recent_3"]
+
+	# 3. Base de datos inexistente retorna 0 sin fallar
+	non_existent = tmp_path / "ghost.db"
+	assert radio_announcer.prune_tts_cache_db(db_path=non_existent) == 0
