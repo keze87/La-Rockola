@@ -143,8 +143,8 @@ def find_system_librosa_python(force: bool = False) -> str | None:
 
 	_system_librosa_checked = True
 
-	# 1. Si librosa se puede importar en el proceso actual, usamos sys.executable
-	if importlib.util.find_spec("librosa") is not None:
+	# 1. Si librosa se puede importar en el proceso actual y no estamos en ejecutable congelado
+	if not getattr(sys, "frozen", False) and importlib.util.find_spec("librosa") is not None:
 		_system_librosa_python = sys.executable
 		return _system_librosa_python
 
@@ -1627,12 +1627,12 @@ class Track:
 		- Si librosa se ejecuta pero falla/da error/timeout: se asigna -1.0 (error definitivo, no re-testear).
 		- Si tiene éxito: float > 0.0.
 		"""
-		# 1. Si librosa está disponible en el proceso actual (ej: ejecución directa con python3)
-		if importlib.util.find_spec("librosa") is not None:
+		# 1. Si librosa está disponible en el proceso actual (ej: ejecución directa con python3 y no congelado)
+		if not getattr(sys, "frozen", False) and importlib.util.find_spec("librosa") is not None:
 
 			def _do_librosa_work():
-				import librosa
-				import numpy as np
+				librosa = importlib.import_module("librosa")
+				np = importlib.import_module("numpy")
 
 				y, sr = librosa.load(str(self.path), sr=22050, mono=True, duration=60, offset=15)
 				if y.size == 0:
