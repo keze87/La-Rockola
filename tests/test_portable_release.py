@@ -376,3 +376,29 @@ def test_setup_flag_forces_wizard_even_with_dir(tmp_path):
 			not config_exists and not args.no_interactive and sys.stdin.isatty() and not args.dir
 		)
 		assert should_run_wizard is True
+
+
+def test_spec_file_hiddenimports():
+	"""Verify that larockola.spec includes all required hidden imports for release builds."""
+	spec_path = Path(__file__).resolve().parent.parent / "larockola.spec"
+	assert spec_path.is_file()
+
+	content = spec_path.read_text(encoding="utf-8")
+	required_modules = [
+		"mutagen",
+		"mutagen.mp3",
+		"mutagen.flac",
+		"mutagen.oggvorbis",
+		"fastapi",
+		"uvicorn",
+		"websockets",
+		"pydantic",
+		"scripts.radio_announcer",
+		"scripts.radio_banks",
+		"edge_tts",
+		"certifi",
+		"aiohttp",
+		"PIL",
+	]
+	for mod in required_modules:
+		assert f'"{mod}"' in content, f"Module '{mod}' missing from larockola.spec hiddenimports"
