@@ -540,34 +540,33 @@ async def test_pregenerated_corrupt_file_rejected_falls_back_to_live(tmp_path):
 		assert state.pregenerated_radio_announcement is None
 
 
-def test_archive_radio_announcement_creates_mp3_and_txt(tmp_path):
-	"""Verifica que _archive_radio_announcement copie el MP3 y guarde el guion .txt con timestamp."""
+def test_archive_radio_announcement_creates_txt_without_mp3(tmp_path):
+	"""Verifica que _archive_radio_announcement guarde el guion .txt y no almacene MP3s en /tmp."""
 	state.radio_archive_dir = tmp_path / "archive_test"
 	sample_mp3 = tmp_path / "source_announcement.mp3"
 	sample_mp3.write_bytes(b"ID3\x04\x00\x00\x00\x00\x00\x00SPEECH_DATA")
 
-	result = state._archive_radio_announcement(
+	dest_txt = state._archive_radio_announcement(
 		src_mp3_path=sample_mp3,
 		script_text="Buenas tardes carpinchos, son las cuatro.",
 		display_title="Carpincho Locutor: Edición Central",
 	)
 
-	assert result is not None
-	dest_mp3, dest_txt = result
-	assert dest_mp3.is_file()
+	assert dest_txt is not None
 	assert dest_txt.is_file()
-	assert dest_mp3.name.startswith("radio_")
-	assert dest_mp3.name.endswith(".mp3")
+	assert dest_txt.name.startswith("radio_")
 	assert dest_txt.name.endswith(".txt")
-	assert dest_mp3.read_bytes() == b"ID3\x04\x00\x00\x00\x00\x00\x00SPEECH_DATA"
 
 	content = dest_txt.read_text(encoding="utf-8")
 	assert "Buenas tardes carpinchos, son las cuatro." in content
 	assert "Carpincho Locutor: Edición Central" in content
 
+	# Confirmar que no se almacena ningún MP3 en el directorio de archivo histórico (/tmp)
+	assert len(list(state.radio_archive_dir.glob("*.mp3"))) == 0
+
 
 def test_prune_radio_archive_retention_limit(tmp_path):
-	"""Verifica que la poda de retención elimine los archivos más viejos por encima del límite."""
+	"""Verifica que la poda de retención elimine los guiones más viejos por encima del límite y limpie mp3s residuales."""
 	import os
 	import time
 
@@ -577,33 +576,34 @@ def test_prune_radio_archive_retention_limit(tmp_path):
 
 	base_time = time.time() - 1000.0
 	for i in range(5):
-		mp3 = state.radio_archive_dir / f"radio_2026-09-30_10-00-0{i}.mp3"
 		txt = state.radio_archive_dir / f"radio_2026-09-30_10-00-0{i}.txt"
-		mp3.write_bytes(b"MP3_DATA")
 		txt.write_text(f"Guion {i}", encoding="utf-8")
 		file_time = base_time + (i * 10.0)
-		os.utime(mp3, (file_time, file_time))
 		os.utime(txt, (file_time, file_time))
 
-	assert len(list(state.radio_archive_dir.glob("radio_*.mp3"))) == 5
+	# MP3 residual para asegurar que sea eliminado durante la poda
+	residual_mp3 = state.radio_archive_dir / "radio_residual.mp3"
+	residual_mp3.write_bytes(b"OLD_MP3")
+
 	assert len(list(state.radio_archive_dir.glob("radio_*.txt"))) == 5
+	assert residual_mp3.exists()
 
 	pruned = state._prune_radio_archive(max_files=3)
 	assert pruned == 2
 
-	remaining_mp3s = sorted(state.radio_archive_dir.glob("radio_*.mp3"))
 	remaining_txts = sorted(state.radio_archive_dir.glob("radio_*.txt"))
-	assert len(remaining_mp3s) == 3
 	assert len(remaining_txts) == 3
 	# Los 2 más viejos (0 y 1) fueron borrados; quedan 2, 3 y 4
-	assert not any("10-00-00" in p.name for p in remaining_mp3s)
-	assert not any("10-00-01" in p.name for p in remaining_mp3s)
-	assert any("10-00-04" in p.name for p in remaining_mp3s)
+	assert not any("10-00-00" in p.name for p in remaining_txts)
+	assert not any("10-00-01" in p.name for p in remaining_txts)
+	assert any("10-00-04" in p.name for p in remaining_txts)
+	# MP3 residual eliminado
+	assert not residual_mp3.exists()
 
 
 @pytest.mark.asyncio
 async def test_play_next_archives_announcement_and_script(tmp_path):
-	"""Verifica que al sonar una locución en play_next se archive copia de audio y guion."""
+	"""Verifica que al sonar una locución en play_next se archive el guion sin duplicar MP3s en disco."""
 	state.radio_archive_dir = tmp_path / "play_next_archive"
 	state.radio_mode_enabled = True
 	state.radio_track_counter = 1
@@ -637,6 +637,6 @@ async def test_play_next_archives_announcement_and_script(tmp_path):
 
 		archived_mp3s = list(state.radio_archive_dir.glob("radio_*.mp3"))
 		archived_txts = list(state.radio_archive_dir.glob("radio_*.txt"))
-		assert len(archived_mp3s) == 1
+		assert len(archived_mp3s) == 0
 		assert len(archived_txts) == 1
 		assert "Guion histórico archivado" in archived_txts[0].read_text(encoding="utf-8")

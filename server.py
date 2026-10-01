@@ -3128,26 +3128,30 @@ class APIState:
 			self._start_radio_pregeneration(current_track_path=str_path, track_duration=track_duration)
 
 	def _prune_radio_archive(self, max_files: int | None = None) -> int:
-		"""Elimina las grabaciones y guiones históricos más antiguos por encima del límite configurado."""
+		"""Elimina los guiones históricos más antiguos por encima del límite configurado y limpia cualquier MP3 residual."""
 		limit = max_files if max_files is not None else self.radio_archive_max_files
 		if limit <= 0:
 			return 0
 		try:
 			if not self.radio_archive_dir.is_dir():
 				return 0
+			# Limpiar cualquier MP3 residual en el directorio temporal de archivo
+			for mp3 in self.radio_archive_dir.glob("radio_*.mp3"):
+				try:
+					mp3.unlink(missing_ok=True)
+				except Exception:
+					pass
+
 			# Ordenar por mtime ascendente (los más antiguos primero)
-			mp3_files = sorted(
-				self.radio_archive_dir.glob("radio_*.mp3"),
+			txt_files = sorted(
+				self.radio_archive_dir.glob("radio_*.txt"),
 				key=lambda p: (p.stat().st_mtime, p.name),
 			)
 			pruned = 0
-			if len(mp3_files) > limit:
-				to_remove = mp3_files[: len(mp3_files) - limit]
-				for mp3 in to_remove:
-					txt = mp3.with_suffix(".txt")
-					mp3.unlink(missing_ok=True)
-					if txt.exists():
-						txt.unlink(missing_ok=True)
+			if len(txt_files) > limit:
+				to_remove = txt_files[: len(txt_files) - limit]
+				for txt in to_remove:
+					txt.unlink(missing_ok=True)
 					pruned += 1
 			return pruned
 		except Exception as e:
@@ -3156,44 +3160,37 @@ class APIState:
 
 	def _archive_radio_announcement(
 		self,
-		src_mp3_path: str | Path,
+		src_mp3_path: str | Path | None = None,
 		script_text: str = "",
 		display_title: str = "",
-	) -> tuple[Path, Path] | None:
+	) -> Path | None:
 		"""
-		Copia el MP3 final del anuncio radial emitido y guarda su guion .txt
-		en el directorio de archivo histórico con marca temporal.
+		Guarda el guion .txt en el directorio de archivo histórico con marca temporal.
+		No almacena archivos MP3 en /tmp ya que los segmentos de audio se encuentran
+		persistidos en la base de datos SQLite (tts_cache).
 		"""
 		try:
-			src_p = Path(src_mp3_path)
-			if not src_p.is_file() or src_p.stat().st_size == 0:
-				return None
-
 			self.radio_archive_dir.mkdir(parents=True, exist_ok=True)
 
 			now = datetime.now(UTC).astimezone()
 			ts_str = now.strftime("%Y-%m-%d_%H-%M-%S")
-			dest_mp3 = self.radio_archive_dir / f"radio_{ts_str}.mp3"
 			dest_txt = self.radio_archive_dir / f"radio_{ts_str}.txt"
 
 			# Si ya existiera en el mismo segundo, añadir sufijo con microsegundos
-			if dest_mp3.exists():
-				dest_mp3 = self.radio_archive_dir / f"radio_{ts_str}_{now.microsecond:06d}.mp3"
-				dest_txt = dest_mp3.with_suffix(".txt")
-
-			shutil.copyfile(src_p, dest_mp3)
+			if dest_txt.exists():
+				dest_txt = self.radio_archive_dir / f"radio_{ts_str}_{now.microsecond:06d}.txt"
 
 			header = f"Título: {display_title}\nFecha: {now.isoformat()}\n\n" if display_title else ""
 			dest_txt.write_text(f"{header}{script_text.strip()}\n", encoding="utf-8")
 
-			logger.debug(f"📻 Locución radial archivada en: {dest_mp3.name}")
+			logger.debug(f"📻 Guion radial archivado en: {dest_txt.name}")
 
 			# Poda de retención
 			self._prune_radio_archive()
 
-			return dest_mp3, dest_txt
+			return dest_txt
 		except Exception as e:
-			logger.debug(f"No se pudo archivar la locución radial: {e}")
+			logger.debug(f"No se pudo archivar el guion radial: {e}")
 			return None
 
 	def _cancel_radio_pregeneration(self):
