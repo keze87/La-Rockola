@@ -483,7 +483,7 @@ import time
 import warnings
 import webbrowser
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 try:
 	from PIL import Image
@@ -1778,7 +1778,7 @@ class AsyncMpvController:
 			try:
 				self.process.kill()
 				await asyncio.wait_for(self.process.wait(), timeout=1.0)
-			except (ProcessLookupError, asyncio.TimeoutError, OSError):
+			except (TimeoutError, ProcessLookupError, OSError):
 				pass
 		self.process = None
 		self.reader = None
@@ -3171,7 +3171,7 @@ class APIState:
 
 			self.radio_archive_dir.mkdir(parents=True, exist_ok=True)
 
-			now = datetime.now(timezone.utc).astimezone()
+			now = datetime.now(UTC).astimezone()
 			ts_str = now.strftime("%Y-%m-%d_%H-%M-%S")
 			dest_mp3 = self.radio_archive_dir / f"radio_{ts_str}.mp3"
 			dest_txt = self.radio_archive_dir / f"radio_{ts_str}.txt"
@@ -3227,9 +3227,9 @@ class APIState:
 		self._cancel_radio_pregeneration()
 
 		async def _do_pregeneration():
-			from datetime import datetime, timedelta, timezone
+			from datetime import datetime, timedelta
 
-			now = datetime.now(timezone.utc).astimezone()
+			now = datetime.now(UTC).astimezone()
 			finish_dt = now + timedelta(seconds=max(0.0, track_duration)) if track_duration > 0 else now
 
 			try:

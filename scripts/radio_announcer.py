@@ -23,7 +23,7 @@ import urllib.parse
 import urllib.request
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -1364,7 +1364,7 @@ def get_modular_time_segments(dt: datetime | None = None) -> tuple[str, str | No
 	- menos cinco (53..57, hora siguiente)
 	"""
 	if dt is None:
-		dt = datetime.now(timezone.utc).astimezone()
+		dt = datetime.now(UTC).astimezone()
 
 	hour = dt.hour
 	minute = dt.minute
@@ -2317,7 +2317,7 @@ async def create_radio_announcement(
 		logger.warning(f"📻 El Carpincho: {err_msg}")
 		return RadioAnnouncementResult(ok=False, display_title="", script="", error=err_msg)
 
-	effective_dt = dt if dt is not None else datetime.now(timezone.utc).astimezone()
+	effective_dt = dt if dt is not None else datetime.now(UTC).astimezone()
 
 	# Selección de fortuna y asignación de roles de cabina (host y cohost distintos)
 	fortuna, is_sys = select_fortune(force_system_fortune)

@@ -4,7 +4,7 @@ import json
 import sqlite3
 import subprocess
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -305,40 +305,40 @@ def test_select_fortune():
 
 def test_get_modular_time_segments():
 	# Especial 01:00 (en punto, min 0)
-	dt_one = datetime(2026, 9, 26, 1, 0, tzinfo=timezone.utc)
+	dt_one = datetime(2026, 9, 26, 1, 0, tzinfo=UTC)
 	h_seg, m_seg, full = radio_announcer.get_modular_time_segments(dt_one)
 	assert h_seg == "Las una en punto, es hora de mimir."
 	assert m_seg is None
 	assert full == "Las una en punto, es hora de mimir."
 
 	# Especial 00:00 (medianoche en punto, min 0)
-	dt_mid = datetime(2026, 9, 26, 0, 0, tzinfo=timezone.utc)
+	dt_mid = datetime(2026, 9, 26, 0, 0, tzinfo=UTC)
 	h_seg, m_seg, full = radio_announcer.get_modular_time_segments(dt_mid)
 	assert "Las doce de la noche en punto" in h_seg
 	assert m_seg is None
 
 	# Intervalo: y veinticinco (15:23 -> min 23 cae en rango 23..27)
-	dt_mod = datetime(2026, 9, 26, 15, 23, tzinfo=timezone.utc)
+	dt_mod = datetime(2026, 9, 26, 15, 23, tzinfo=UTC)
 	h_seg, m_seg, full = radio_announcer.get_modular_time_segments(dt_mod)
 	assert h_seg == "Las tres"
 	assert m_seg == "y veinticinco."
 	assert full == "Las tres y veinticinco."
 
 	# Intervalo: en punto (09:01 -> min 1 cae en rango 0..2 / especial)
-	dt_one_min = datetime(2026, 9, 26, 9, 1, tzinfo=timezone.utc)
+	dt_one_min = datetime(2026, 9, 26, 9, 1, tzinfo=UTC)
 	h_seg, m_seg, full = radio_announcer.get_modular_time_segments(dt_one_min)
 	assert h_seg == "Las nueve de la mañana en punto, el sol calienta la barranca."
 	assert m_seg is None
 
 	# Intervalo: menos cuarto (01:45 -> min 45 cae en rango 43..47, apunta a hora 2)
-	dt_one_forty_five = datetime(2026, 9, 26, 1, 45, tzinfo=timezone.utc)
+	dt_one_forty_five = datetime(2026, 9, 26, 1, 45, tzinfo=UTC)
 	h_seg, m_seg, full = radio_announcer.get_modular_time_segments(dt_one_forty_five)
 	assert h_seg == "Las dos"
 	assert m_seg == "menos cuarto."
 	assert full == "Las dos menos cuarto."
 
 	# Intervalo: y cuarto (10:15 -> min 15 cae en rango 13..17)
-	dt_quarter = datetime(2026, 9, 26, 10, 15, tzinfo=timezone.utc)
+	dt_quarter = datetime(2026, 9, 26, 10, 15, tzinfo=UTC)
 	h_seg, m_seg, full = radio_announcer.get_modular_time_segments(dt_quarter)
 	assert h_seg == "Las diez"
 	assert m_seg == "y cuarto."
@@ -356,7 +356,7 @@ def test_get_modular_time_segments():
 		(55, "Las once", "menos cinco.", "Las once menos cinco."),
 	]
 	for m, exp_h, exp_m, exp_f in intervals:
-		dt_test = datetime(2026, 9, 26, 10, m, tzinfo=timezone.utc)
+		dt_test = datetime(2026, 9, 26, 10, m, tzinfo=UTC)
 		h, m_res, f = radio_announcer.get_modular_time_segments(dt_test)
 		assert h == exp_h
 		assert m_res == exp_m
@@ -787,7 +787,7 @@ async def test_create_radio_announcement_with_special_and_modular_dt(tmp_path):
 		patch("scripts.radio_announcer.edge_tts.Communicate", return_value=mock_comm),
 	):
 		# 1. Hora especial 01:00
-		dt_special = datetime(2026, 9, 26, 1, 0, tzinfo=timezone.utc)
+		dt_special = datetime(2026, 9, 26, 1, 0, tzinfo=UTC)
 		ok1, _title1, text1 = await radio_announcer.create_radio_announcement(
 			out_p1,
 			voice=radio_announcer.VOICE_TOMAS,
@@ -798,7 +798,7 @@ async def test_create_radio_announcement_with_special_and_modular_dt(tmp_path):
 		assert "Las una en punto, es hora de mimir." in text1
 
 		# 2. Hora modular 15:23 -> redonda a 'y veinticinco.'
-		dt_modular = datetime(2026, 9, 26, 15, 23, tzinfo=timezone.utc)
+		dt_modular = datetime(2026, 9, 26, 15, 23, tzinfo=UTC)
 		ok2, _title2, text2 = await radio_announcer.create_radio_announcement(
 			out_p2,
 			voice=radio_announcer.VOICE_ELENA,
@@ -863,7 +863,7 @@ def test_embed_cover_art_in_mp3(tmp_path):
 
 
 def test_modular_time_hour_zero_with_minutes():
-	dt = datetime(2026, 9, 27, 0, 15, tzinfo=timezone.utc)
+	dt = datetime(2026, 9, 27, 0, 15, tzinfo=UTC)
 	hora_seg, minuto_seg, full_time_str = radio_announcer.get_modular_time_segments(dt)
 	assert hora_seg == "Las doce"
 	assert minuto_seg == "y cuarto."
@@ -1349,9 +1349,9 @@ async def test_create_radio_announcement_weather_once_per_hour(tmp_path):
 	mock_comm = MagicMock()
 	mock_comm.save = AsyncMock(return_value=None)
 
-	dt_hour14_a = datetime(2026, 9, 27, 14, 5, tzinfo=timezone.utc)
-	dt_hour14_b = datetime(2026, 9, 27, 14, 35, tzinfo=timezone.utc)
-	dt_hour15 = datetime(2026, 9, 27, 15, 10, tzinfo=timezone.utc)
+	dt_hour14_a = datetime(2026, 9, 27, 14, 5, tzinfo=UTC)
+	dt_hour14_b = datetime(2026, 9, 27, 14, 35, tzinfo=UTC)
+	dt_hour15 = datetime(2026, 9, 27, 15, 10, tzinfo=UTC)
 
 	with (
 		patch("scripts.radio_announcer.HAS_EDGE_TTS", True),
@@ -1398,7 +1398,7 @@ async def test_create_radio_announcement_weather_failure_does_not_break_and_does
 
 	mock_comm = MagicMock()
 	mock_comm.save = AsyncMock(return_value=None)
-	dt_hour = datetime(2026, 9, 27, 16, 20, tzinfo=timezone.utc)
+	dt_hour = datetime(2026, 9, 27, 16, 20, tzinfo=UTC)
 
 	with (
 		patch("scripts.radio_announcer.HAS_EDGE_TTS", True),
@@ -1528,7 +1528,7 @@ async def test_create_radio_announcement_assembly_failure_does_not_mark_weather(
 	"""Verifica que si el ensamblado final falla, la hora del clima NO se marque en el estado."""
 	out = tmp_path / "announcement.mp3"
 	db_p = tmp_path / "tts_cache.db"
-	dt_hour = datetime(2026, 9, 27, 18, 15, tzinfo=timezone.utc)
+	dt_hour = datetime(2026, 9, 27, 18, 15, tzinfo=UTC)
 
 	mock_weather = {
 		"current_condition": [{"temp_C": "20"}],
@@ -1776,9 +1776,9 @@ async def test_weather_30_min_cooldown(tmp_path):
 	mock_comm = MagicMock()
 	mock_comm.save = AsyncMock(return_value=None)
 
-	dt_13_58 = datetime(2026, 9, 28, 13, 58, tzinfo=timezone.utc)
-	dt_14_02 = datetime(2026, 9, 28, 14, 2, tzinfo=timezone.utc)  # Solo 4 min después
-	dt_14_35 = datetime(2026, 9, 28, 14, 35, tzinfo=timezone.utc)  # 37 min después
+	dt_13_58 = datetime(2026, 9, 28, 13, 58, tzinfo=UTC)
+	dt_14_02 = datetime(2026, 9, 28, 14, 2, tzinfo=UTC)  # Solo 4 min después
+	dt_14_35 = datetime(2026, 9, 28, 14, 35, tzinfo=UTC)  # 37 min después
 
 	with (
 		patch("scripts.radio_announcer.HAS_EDGE_TTS", True),
