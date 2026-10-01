@@ -274,17 +274,18 @@ def test_select_folder_linux_yad_fallback(tmp_path, monkeypatch):
 
 def test_check_dependencies_frozen_message(monkeypatch, capsys):
 	monkeypatch.setattr(server.sys, "frozen", True, raising=False)
+	monkeypatch.setattr(server.sys, "platform", "linux")
 	monkeypatch.setattr(server, "_dependencies_checked", False)
 	monkeypatch.setattr(
 		server.importlib.util,
 		"find_spec",
-		lambda m: None if m in ("librosa", "dbus_next") else MagicMock(),
+		lambda m: None if m in ("dbus_next",) else MagicMock(),
 	)
-	monkeypatch.setattr(server, "find_system_librosa_python", lambda force=False: None)
+	monkeypatch.setattr(server, "find_binary", lambda name: None if name == "ffmpeg" else "/usr/bin/mpv")
 
 	server.check_dependencies(force=True)
 	captured = capsys.readouterr()
-	# In frozen mode when librosa is not found on host, it explains it is not included
+	# In frozen mode when ffmpeg is not found on host, it explains it is not included
 	assert "no incluido en la versión portable" in captured.err
 	assert "no incluido en este build de Linux" in captured.err
 

@@ -39,28 +39,12 @@ def test_enable_system_site_packages():
 					sys.path.remove(s_dir)
 
 
-def test_find_system_librosa_python(tmp_path):
-	"""Verify find_system_librosa_python cached check and candidate inspection."""
-	server._system_librosa_checked = True
-	server._system_librosa_python = "/usr/bin/python_cached"
-	assert server.find_system_librosa_python(force=False) == "/usr/bin/python_cached"
-
-	# Force check where librosa is found in current process
-	with patch("importlib.util.find_spec", return_value=MagicMock()):
-		res = server.find_system_librosa_python(force=True)
-		assert res == sys.executable
-
-	# Force check where librosa is not in current process, but found via candidate subprocess
-	fake_py = tmp_path / "python3"
-	fake_py.write_text("#!/bin/sh\nexit 0\n")
-	fake_py.chmod(0o755)
-
-	with patch("importlib.util.find_spec", return_value=None):
-		with patch("shutil.which", return_value=str(fake_py)):
-			with patch("subprocess.run") as mock_run:
-				mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0)
-				found = server.find_system_librosa_python(force=True)
-				assert found == str(fake_py)
+def test_is_mood_available_with_ffmpeg():
+	"""Verify is_mood_available checks for ffmpeg binary."""
+	with patch("server.find_binary", return_value="/usr/bin/ffmpeg"):
+		assert server.is_mood_available() is True
+	with patch("server.find_binary", return_value=None):
+		assert server.is_mood_available() is False
 
 
 def test_find_binary_python_scripts(tmp_path):
@@ -89,12 +73,12 @@ def test_check_python_packages():
 	"""Verify _check_python_packages detects missing required and optional packages."""
 	with patch("importlib.util.find_spec") as mock_find:
 		mock_find.return_value = None
-		with patch("server.find_system_librosa_python", return_value=None):
+		with patch("server.find_binary", return_value=None):
 			missing_req, missing_opt = server._check_python_packages(is_frozen=False, force=True)
 			req_names = [m[0] for m in missing_req]
 			assert "fastapi" in req_names
 			assert "uvicorn" in req_names
-			assert any("librosa" in m[0] for m in missing_opt)
+			assert any("ffmpeg" in m[0] for m in missing_opt)
 
 
 def test_check_mpv_portable():
@@ -382,18 +366,14 @@ def test_track_extract_fingerprint(small_audio_file):
 def test_track_extract_mood_exceptions(small_audio_file):
 	"""Verify Track._extract_mood assigns -1.0 on analysis errors or timeouts."""
 	track = server.Track(small_audio_file)
-	with patch("importlib.util.find_spec", return_value=MagicMock()):
-		with patch("concurrent.futures.ThreadPoolExecutor") as mock_exec_class:
-			mock_executor = MagicMock()
-			mock_future = MagicMock()
-			mock_future.result.side_effect = RuntimeError("Librosa audio decode error")
-			mock_executor.submit.return_value = mock_future
-			mock_exec_class.return_value = mock_executor
-
-			track._extract_mood()
-			assert track.bpm == -1.0
-			assert track.energy == -1.0
-			assert track.spectral_centroid == -1.0
+	with (
+		patch("server.find_binary", return_value="/usr/bin/ffmpeg"),
+		patch("server.extract_audio_features_ffmpeg", return_value=(-1.0, -1.0, -1.0)),
+	):
+		track._extract_mood()
+		assert track.bpm == -1.0
+		assert track.energy == -1.0
+		assert track.spectral_centroid == -1.0
 
 
 # ==========================================
@@ -473,12 +453,11 @@ def test_scan_music_library_uses_cached_entries(temp_db, tmp_path):
 	conn.commit()
 	conn.close()
 
-	with patch("server.importlib.util.find_spec", return_value=None):
-		with patch("server.find_system_librosa_python", return_value=None):
-			tracks = server.state.scan_directory([str(music_folder)])
-			assert len(tracks) == 1
-			assert tracks[0]["title"] == "Cached Title"
-			assert tracks[0]["bpm"] == 120.0
+	with patch("server.find_binary", return_value=None):
+		tracks = server.state.scan_directory([str(music_folder)])
+		assert len(tracks) == 1
+		assert tracks[0]["title"] == "Cached Title"
+		assert tracks[0]["bpm"] == 120.0
 
 
 # ==========================================

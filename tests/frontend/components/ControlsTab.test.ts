@@ -7,7 +7,7 @@ import {
 	djCarpinchoEnabled,
 	djSafeModeEnabled,
 	hasEdgeTts,
-	hasLibrosa,
+	hasFfmpeg,
 	listenLocally,
 	mpvVisible,
 	radioModeEnabled,
@@ -30,7 +30,7 @@ describe('ControlsTab.vue', () => {
 		djCarpinchoEnabled.value = false;
 		djSafeModeEnabled.value = false;
 		hasEdgeTts.value = true;
-		hasLibrosa.value = true;
+		hasFfmpeg.value = true;
 		listenLocally.value = false;
 		mpvVisible.value = true;
 		radioModeEnabled.value = false;
@@ -53,8 +53,8 @@ describe('ControlsTab.vue', () => {
 		expect(wrapper.text()).toContain('Escuchar acá');
 	});
 
-	it('hides "Más Manija" button when hasLibrosa is false', () => {
-		hasLibrosa.value = false;
+	it('hides "Más Manija" button when hasFfmpeg is false', () => {
+		hasFfmpeg.value = false;
 		const wrapper = mount(ControlsTab);
 
 		expect(wrapper.text()).not.toContain('Más Manija');

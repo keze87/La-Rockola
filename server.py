@@ -11,8 +11,10 @@ Uso:
   $ python3 server.py                       # Inicia el servidor en http://0.0.0.0:8000
 """
 
+import array
 import importlib.util
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -35,7 +37,7 @@ if __name__ == "__main__":
 def enable_system_site_packages() -> None:
 	"""
 	En ejecutable congelado (PyInstaller/AppImage), permite utilizar librerías
-	instaladas en el sistema anfitrión (como librosa, numba, dbus_next, etc.).
+	instaladas en el sistema anfitrión (como dbus_next, etc.).
 	"""
 	if not getattr(sys, "frozen", False):
 		return
@@ -127,70 +129,6 @@ def _is_valid_radio_mp3_file(path: Path | str) -> bool:
 		return False
 
 
-_system_librosa_python: str | None = None
-_system_librosa_checked: bool = False
-
-
-def find_system_librosa_python(force: bool = False) -> str | None:
-	"""
-	Busca un binario de Python en el sistema anfitrión que tenga 'librosa' instalado.
-	Permite que el ejecutable congelado (AppImage / portable) use el librosa del sistema
-	mediante subprocesos sin inflar el paquete con 150MB+ de dependencias pesadas.
-	"""
-	global _system_librosa_python, _system_librosa_checked
-	if _system_librosa_checked and not force:
-		return _system_librosa_python
-
-	_system_librosa_checked = True
-
-	# 1. Si librosa se puede importar en el proceso actual y no estamos en ejecutable congelado
-	if not getattr(sys, "frozen", False) and importlib.util.find_spec("librosa") is not None:
-		_system_librosa_python = sys.executable
-		return _system_librosa_python
-
-	# 2. Buscar intérpretes de Python candidatos en el sistema
-	candidates = []
-
-	for bin_name in ("python3", "python", "py"):
-		found = shutil.which(bin_name)
-		if found and found not in candidates:
-			candidates.append(found)
-
-	extra_paths = [
-		"/usr/bin/python3",
-		"/usr/local/bin/python3",
-		"/opt/homebrew/bin/python3",
-		str(Path.home() / ".local" / "bin" / "python3"),
-	]
-	for ep in extra_paths:
-		if ep not in candidates and Path(ep).is_file():
-			candidates.append(ep)
-
-	clean_env = get_clean_env()
-	check_code = "import librosa, sys; sys.exit(0)"
-
-	for cand in candidates:
-		if getattr(sys, "frozen", False) and os.path.abspath(cand) == os.path.abspath(sys.executable):
-			continue
-		try:
-			res = subprocess.run(
-				[cand, "-c", check_code],
-				env=clean_env,
-				capture_output=True,
-				text=True,
-				timeout=3,
-				check=False,
-			)
-			if res.returncode == 0:
-				_system_librosa_python = cand
-				return _system_librosa_python
-		except (OSError, subprocess.SubprocessError):
-			pass
-
-	_system_librosa_python = None
-	return None
-
-
 def find_binary(bin_name: str) -> str | None:
 	"""Busca un binario en la carpeta del ejecutable/script, subdirectorios locales, gestores de paquetes o en el PATH del sistema."""
 	is_win = sys.platform == "win32" or os.name == "nt"
@@ -280,6 +218,121 @@ def find_binary(bin_name: str) -> str | None:
 	return None
 
 
+def is_mood_available() -> bool:
+	"""Determina si la capacidad de análisis acústico y detección de tempo/mood está habilitada (requiere FFmpeg)."""
+	return find_binary("ffmpeg") is not None
+
+
+def extract_audio_features_ffmpeg(path: str | Path, ffmpeg_bin: str = "ffmpeg") -> tuple[float, float, float]:
+	"""
+	Extrae BPM, energía RMS y brillo espectral (centroid aproximado por ZCR) decodificando
+	12 segundos de audio en PCM s16le a 11025 Hz vía FFmpeg.
+	Devuelve (bpm, energy, centroid). Si falla, retorna (-1.0, -1.0, -1.0).
+	"""
+	try:
+		clean_env = get_clean_env()
+		cmd = [
+			ffmpeg_bin,
+			"-nostats",
+			"-loglevel",
+			"error",
+			"-ss",
+			"15",
+			"-t",
+			"12",
+			"-i",
+			str(path),
+			"-ac",
+			"1",
+			"-ar",
+			"11025",
+			"-f",
+			"s16le",
+			"pipe:1",
+		]
+		res = subprocess.run(cmd, env=clean_env, capture_output=True, timeout=5.0, check=False)
+		pcm_data = res.stdout
+		if not pcm_data or len(pcm_data) < 22050:  # Menos de 1 segundo de audio decodificado
+			cmd_short = [
+				ffmpeg_bin,
+				"-nostats",
+				"-loglevel",
+				"error",
+				"-t",
+				"12",
+				"-i",
+				str(path),
+				"-ac",
+				"1",
+				"-ar",
+				"11025",
+				"-f",
+				"s16le",
+				"pipe:1",
+			]
+			res = subprocess.run(cmd_short, env=clean_env, capture_output=True, timeout=5.0, check=False)
+			pcm_data = res.stdout
+
+		if not pcm_data or len(pcm_data) < 4000:
+			return (-1.0, -1.0, -1.0)
+
+		samples = array.array("h")
+		samples.frombytes(pcm_data)
+		num_samples = len(samples)
+		if num_samples < 2000:
+			return (-1.0, -1.0, -1.0)
+
+		# 1. Energía RMS normalizada a [0.0, 1.0]
+		sum_sq = sum(s * s for s in samples)
+		rms = math.sqrt(sum_sq / num_samples) / 32768.0
+		energy = round(min(1.0, rms * 2.5), 3)
+
+		# 2. Brillo espectral aproximado por cruces por cero (ZCR * Nyquist)
+		zero_crossings = 0
+		for i in range(1, num_samples):
+			if (samples[i] >= 0 and samples[i - 1] < 0) or (samples[i] < 0 and samples[i - 1] >= 0):
+				zero_crossings += 1
+		zcr = zero_crossings / (num_samples - 1)
+		spectral_centroid = round(zcr * 5512.5, 1)
+
+		# 3. Estimación de BPM por autocorrelación de envolvente de energía (50 fps)
+		hop = 220
+		sr_env = 11025.0 / hop
+		envelope = []
+		for i in range(0, num_samples - hop, hop):
+			frame_energy = math.sqrt(sum(s * s for s in samples[i : i + hop]) / hop)
+			envelope.append(frame_energy)
+
+		diff_env = [max(0.0, envelope[j] - envelope[j - 1]) for j in range(1, len(envelope))]
+
+		if len(diff_env) > 60:
+			mean_diff = sum(diff_env) / len(diff_env)
+			centered_diff = [d - mean_diff for d in diff_env]
+			min_lag = max(1, int(sr_env * 60.0 / 185.0))
+			max_lag = min(len(centered_diff) - 1, int(sr_env * 60.0 / 60.0))
+
+			best_lag = 0
+			best_corr = -1e9
+			n_env = len(centered_diff)
+
+			for lag in range(min_lag, max_lag + 1):
+				corr = sum(centered_diff[k] * centered_diff[k + lag] for k in range(n_env - lag))
+				if corr > best_corr:
+					best_corr = corr
+					best_lag = lag
+
+			if best_lag > 0 and best_corr > 0:
+				bpm = round(sr_env * 60.0 / best_lag, 1)
+			else:
+				bpm = 120.0
+		else:
+			bpm = 120.0
+
+		return (bpm, energy, spectral_centroid)
+	except Exception:
+		return (-1.0, -1.0, -1.0)
+
+
 _dependencies_checked = False
 
 
@@ -293,15 +346,15 @@ def _check_python_packages(is_frozen: bool, force: bool = False) -> tuple[list[t
 		if importlib.util.find_spec(mod) is None:
 			missing_req.append((mod, f"pip install {mod}"))
 
-	# Paquetes opcionales
-	has_librosa = importlib.util.find_spec("librosa") is not None or find_system_librosa_python(force=force) is not None
-	if not has_librosa:
+	# Herramientas opcionales (análisis de tempo/mood vía FFmpeg)
+	has_ffmpeg = is_mood_available()
+	if not has_ffmpeg:
 		fix = (
-			"no incluido en la versión portable (instalá 'pip install librosa' en tu sistema para análisis de mood/BPM)"
+			"no incluido en la versión portable (instalá 'ffmpeg' en tu sistema para análisis de mood/BPM)"
 			if is_frozen
-			else "pip install librosa (para el análisis de mood/BPM)"
+			else "instalar ffmpeg (para el análisis de mood/BPM)"
 		)
-		missing_opt.append(("librosa", fix))
+		missing_opt.append(("ffmpeg", fix))
 
 	if sys.platform not in ("win32", "darwin") and importlib.util.find_spec("dbus_next") is None:
 		fix = (
@@ -480,7 +533,6 @@ import socket
 import sqlite3
 import tempfile
 import time
-import warnings
 import webbrowser
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -623,7 +675,7 @@ def init_db():
 		except sqlite3.OperationalError:
 			pass  # Las columnas ya están, todo piola
 
-		# Migración para el mood: BPM, energía (RMS) y brillo espectral, calculados con librosa y la huella digital (Chromaprint/fpcalc)
+		# Migración para el mood: BPM, energía (RMS) y brillo espectral, calculados con FFmpeg/tags y la huella digital (Chromaprint/fpcalc)
 		try:
 			c.execute("ALTER TABLE tracks ADD COLUMN bpm REAL")
 			c.execute("ALTER TABLE tracks ADD COLUMN energy REAL")
@@ -723,10 +775,6 @@ logger = logging.getLogger("RockolaCarpincho")
 # SILENCIADOR DE MATEMÁTICAS: Callamos la catarata de logs de Numba
 logging.getLogger("numba").setLevel(logging.WARNING)
 logging.getLogger("llvmlite").setLevel(logging.WARNING)
-
-# SILENCIADOR DE AUDIOREAD/LIBROSA: Callamos los warnings de archivos desactualizados
-warnings.filterwarnings("ignore", category=UserWarning, module="librosa")
-warnings.filterwarnings("ignore", category=FutureWarning, module="librosa")
 
 # --- CONFIGURACIÓN PERSISTENTE (rockola_config.json) ---
 DEFAULT_CONFIG = {
@@ -1557,6 +1605,7 @@ class Track:
 		self.artist = "Desconocido"
 		self.album = "Desconocido"
 		self.duration_str = "0:00"
+		self.tag_bpm: float | None = None
 		self.bpm = 0.0
 		self.energy = 0.0
 		self.spectral_centroid = 0.0
@@ -1591,6 +1640,19 @@ class Track:
 						val = tags[k]
 						self.album = val[0] if isinstance(val, list) else str(val)
 						break
+				for k in ["tbpm", "bpm", "tempo", "tmpo"]:
+					if k in tags:
+						val = tags[k]
+						val_str = val[0] if isinstance(val, list) else str(val)
+						try:
+							clean_num = re.search(r"[-+]?\d*\.?\d+", str(val_str))
+							if clean_num:
+								parsed_bpm = float(clean_num.group(0))
+								if parsed_bpm > 0:
+									self.tag_bpm = round(parsed_bpm, 1)
+									break
+						except (ValueError, TypeError):
+							pass
 			if audio and hasattr(audio, "info") and hasattr(audio.info, "length"):
 				length = audio.info.length
 				if length:
@@ -1620,120 +1682,29 @@ class Track:
 	def _extract_mood(self):
 		"""
 		Analiza un pedazo representativo del audio para sacar el 'mood' del tema:
-		BPM (tempo), energía (RMS) y brillo espectral (centroid).
-		No cargamos el archivo entero: 60 segundos arrancando a los 15s alcanza
-		y sobra para tempo/energía, y es mucho más rápido que decodificar todo.
-		- Si librosa no está disponible: queda en 0.0 (no testeado).
-		- Si librosa se ejecuta pero falla/da error/timeout: se asigna -1.0 (error definitivo, no re-testear).
-		- Si tiene éxito: float > 0.0.
+		BPM (tempo), energía (RMS) y brillo espectral (centroid aproximado).
+		Prioridades:
+		1. FFmpeg (análisis acústico rápido vía decodificación PCM).
+		2. Tags de metadatos (si FFmpeg no está disponible o para sobreescribir el BPM con el valor de estudio).
+		3. Degradación limpia (0.0 si no hay FFmpeg ni tags disponibles).
 		"""
-		# 1. Si librosa está disponible en el proceso actual (ej: ejecución directa con python3 y no congelado)
-		if not getattr(sys, "frozen", False) and importlib.util.find_spec("librosa") is not None:
-
-			def _do_librosa_work():
-				librosa = importlib.import_module("librosa")
-				np = importlib.import_module("numpy")
-
-				y, sr = librosa.load(str(self.path), sr=22050, mono=True, duration=60, offset=15)
-				if y.size == 0:
-					# Tema corto (menos de 15s): probamos de nuevo desde el arranque
-					y, sr = librosa.load(str(self.path), sr=22050, mono=True)
-
-				if y.size == 0:
-					return 0.0, 0.0, 0.0
-
-				tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
-				bpm_val = float(np.mean(tempo)) if tempo is not None else 0.0
-
-				rms = librosa.feature.rms(y=y)[0]
-				energy_val = float(np.mean(rms)) if rms.size else 0.0
-
-				centroid = librosa.feature.spectral_centroid(y=y, sr=sr)[0]
-				centroid_val = float(np.mean(centroid)) if centroid.size else 0.0
-
-				return bpm_val, energy_val, centroid_val
-
-			import concurrent.futures
-
-			# Usamos un ThreadPool para poder meterle un timeout
-			executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-			future = executor.submit(_do_librosa_work)
-
-			try:
-				# Le damos 25 segundos máximo. Si es un MKV pesado o algo larguísimo, lo abortamos.
-				b, e, c = future.result(timeout=25.0)
-				if b > 0.0:
-					self.bpm = b
-					self.energy = e
-					self.spectral_centroid = c
-				else:
-					self.bpm, self.energy, self.spectral_centroid = -1.0, -1.0, -1.0
-			except concurrent.futures.TimeoutError:
-				logger.warning(f"¡Se re colgó! Timeout de 25s sacando el mood a {self.path}")
+		ffmpeg_bin = find_binary("ffmpeg")
+		if ffmpeg_bin:
+			b, e, c = extract_audio_features_ffmpeg(self.path, ffmpeg_bin)
+			if b < 0.0:
 				self.bpm, self.energy, self.spectral_centroid = -1.0, -1.0, -1.0
-			except Exception as exc:
-				logger.warning(f"No le pude sacar el mood (bpm/energía) a {self.path}: {exc}")
-				# Si falla feo (por archivo corrupto o falta de permisos) le mandamos -1.0
-				# Así diferenciamos los rotos de los que todavía no se analizaron (0.0)
-				self.bpm, self.energy, self.spectral_centroid = -1.0, -1.0, -1.0
-			finally:
-				# Cerramos el executor sin esperar. Si el hilo se quedó colgado en C/FFmpeg, que muera de fondo.
-				executor.shutdown(wait=False, cancel_futures=True)
+			else:
+				self.bpm = self.tag_bpm if self.tag_bpm is not None else b
+				self.energy = e
+				self.spectral_centroid = c
 			return
 
-		# 2. Si estamos en un paquete congelado (AppImage/portable), usamos el Python del sistema anfitrión como subproceso
-		sys_python = find_system_librosa_python()
-		if sys_python:
-			script = (
-				"import librosa, json, sys, numpy as np\n"
-				"try:\n"
-				"    p = sys.argv[1]\n"
-				"    y, sr = librosa.load(p, sr=22050, mono=True, duration=60, offset=15)\n"
-				"    if y.size == 0:\n"
-				"        y, sr = librosa.load(p, sr=22050, mono=True)\n"
-				"    if y.size == 0:\n"
-				"        print(json.dumps({'bpm': -1.0, 'energy': -1.0, 'centroid': -1.0}))\n"
-				"        sys.exit(0)\n"
-				"    tempo, _ = librosa.beat.beat_track(y=y, sr=sr)\n"
-				"    bpm_val = float(np.mean(tempo)) if tempo is not None else 0.0\n"
-				"    rms = librosa.feature.rms(y=y)[0]\n"
-				"    energy_val = float(np.mean(rms)) if rms.size else 0.0\n"
-				"    centroid = librosa.feature.spectral_centroid(y=y, sr=sr)[0]\n"
-				"    centroid_val = float(np.mean(centroid)) if centroid.size else 0.0\n"
-				"    print(json.dumps({'bpm': bpm_val, 'energy': energy_val, 'centroid': centroid_val}))\n"
-				"except Exception as e:\n"
-				"    sys.stderr.write(str(e))\n"
-				"    sys.exit(1)\n"
-			)
-			try:
-				proc = subprocess.run(
-					[sys_python, "-c", script, str(self.path)],
-					env=get_clean_env(),
-					capture_output=True,
-					text=True,
-					timeout=25.0,
-					check=False,
-				)
-				if proc.returncode == 0 and proc.stdout.strip():
-					data = json.loads(proc.stdout.strip())
-					bpm_out = float(data.get("bpm", -1.0))
-					self.bpm = bpm_out if bpm_out > 0.0 else -1.0
-					self.energy = float(data.get("energy", -1.0))
-					self.spectral_centroid = float(data.get("centroid", -1.0))
-				else:
-					err_msg = proc.stderr.strip() or f"Código de salida: {proc.returncode}"
-					logger.warning(f"No le pude sacar el mood (bpm/energía) a {self.path} con {sys_python}: {err_msg}")
-					self.bpm, self.energy, self.spectral_centroid = -1.0, -1.0, -1.0
-			except subprocess.TimeoutExpired:
-				logger.warning(f"¡Se re colgó! Timeout de 25s sacando el mood a {self.path} (subproceso)")
-				self.bpm, self.energy, self.spectral_centroid = -1.0, -1.0, -1.0
-			except Exception as exc:
-				logger.warning(f"No le pude sacar el mood a {self.path} (subproceso): {exc}")
-				self.bpm, self.energy, self.spectral_centroid = -1.0, -1.0, -1.0
+		if self.tag_bpm is not None:
+			self.bpm = self.tag_bpm
+			self.energy = 0.0
+			self.spectral_centroid = 0.0
 			return
 
-		# 3. Librosa no está disponible ni en proceso ni en el sistema anfitrión
-		logger.debug(f"Librosa no disponible para analizar mood en {self.path}")
 		self.bpm, self.energy, self.spectral_centroid = 0.0, 0.0, 0.0
 
 	def to_dict(self):
@@ -2513,9 +2484,8 @@ class APIState:
 			"duration": self.duration,
 			"favorites": active_favs,
 			"has_edge_tts": HAS_EDGE_TTS,
-			"has_librosa": (
-				importlib.util.find_spec("librosa") is not None or find_system_librosa_python() is not None
-			),
+			"has_ffmpeg": is_mood_available(),
+			"has_mood": is_mood_available(),
 			"history": list(self.history),
 			"is_scanning": self.is_scanning,
 			"local_ip": self.local_ip,
@@ -2680,7 +2650,7 @@ class APIState:
 		logger.info(f"Encontré {len(raw_files)} archivos en total. Revisando cuáles son nuevos o cambiaron...")
 		raw_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
 
-		has_librosa = importlib.util.find_spec("librosa") is not None or find_system_librosa_python() is not None
+		has_mood = is_mood_available()
 
 		# --- CARGAMOS LA CACHÉ DE LA DB AL PRINCIPIO ---
 		db_cache = {}
@@ -2713,7 +2683,7 @@ class APIState:
 						"album": db_album,
 						"artist": db_artist,
 						"duration_str": db_dur,
-						# 0.0: no testeado / librosa ausente; -1.0: librosa retornó error (no re-testear); > 0.0: procesado
+						# 0.0: no testeado / análisis ausente; -1.0: análisis retornó error (no re-testear); > 0.0: procesado
 						"bpm": db_bpm if db_bpm is not None else 0.0,
 						"energy": db_energy if db_energy is not None else 0.0,
 						"spectral_centroid": (db_centroid if db_centroid is not None else 0.0),
@@ -2735,7 +2705,7 @@ class APIState:
 			if i > 0 and i % 50 == 0:
 				logger.info(f"Ya procesé la data de {i}/{len(raw_files)} joyitas...")
 				# EL CAMIÓN DE LA BASURA: Forzamos a Python a cerrar todos los archivos temporales
-				# de librosa/mutagen para que no nos coma los File Descriptors (Límite del OS).
+				# de mutagen para que no nos coma los File Descriptors (Límite del OS).
 				gc.collect()
 
 			file_str = str(f)
@@ -2747,26 +2717,26 @@ class APIState:
 				continue
 
 			# 1. Miramos si está en memoria (escaneo en caliente)
-			# Si el BPM es 0.0 (no testeado), solo re-testeamos si librosa está disponible.
+			# Si el BPM es 0.0 (no testeado), solo re-testeamos si el análisis de mood está disponible.
 			# Si ya dio error (-1.0) o fue procesado con éxito (> 0.0), usamos la caché en memoria.
 			if (
 				file_str in self.track_cache_by_path
 				and self.track_cache_by_path[file_str]["mtime"] == current_mtime
-				and (self.track_cache_by_path[file_str]["data"].get("bpm", 0.0) != 0.0 or not has_librosa)
+				and (self.track_cache_by_path[file_str]["data"].get("bpm", 0.0) != 0.0 or not has_mood)
 			):
 				track_dict = self.track_cache_by_path[file_str]["data"]
 				track_hash = track_dict.get("track_hash")
 				seen_track_ids.add(track_hash)
 
 			# 2. Miramos si está intacto en la DB (arranque de servidor)
-			# Si el BPM es 0.0 (no testeado), solo re-testeamos si librosa está disponible.
+			# Si el BPM es 0.0 (no testeado), solo re-testeamos si el análisis de mood está disponible.
 			# Si ya dio error (-1.0) o fue procesado con éxito (> 0.0), usamos la caché de la DB.
 			elif (
 				file_str in db_cache
 				and db_cache[file_str]["mtime"] == current_mtime
 				and db_cache[file_str]["file_size"] == current_size
 				and db_cache[file_str].get("bpm") is not None
-				and (db_cache[file_str].get("bpm") != 0.0 or not has_librosa)
+				and (db_cache[file_str].get("bpm") != 0.0 or not has_mood)
 				and db_cache[file_str].get("fingerprint") is not None
 			):
 				cached = db_cache[file_str]

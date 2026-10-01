@@ -5,8 +5,8 @@
 - **First-Class Targets**: Linux (`x86_64` AppImage) and Windows (`x86_64` Portable ZIP / `.exe`).
 - **User-Friendly Releases**:
     - Releases must be standalone and zero-friction for the end user (click and run).
-    - External binaries (such as `mpv` or `yt-dlp`) should be auto-detected, auto-downloaded, or updated smoothly when missing on portable platforms.
-    - Optional heavy dependencies (like `librosa` for BPM/mood analysis) must degrade gracefully: utilize system Python if installed on the host, or hide advanced mood features in the UI without crashing or preventing core playback.
+    - External binaries (such as `mpv`, `ffmpeg` or `yt-dlp`) should be auto-detected, auto-downloaded, or updated smoothly when missing on portable platforms.
+    - Mood/BPM analysis utilizes `ffmpeg` and audio metadata tags with clean graceful degradation (hiding advanced mood features in the UI when unavailable without crashing or preventing core playback).
 
 ---
 
@@ -23,6 +23,10 @@
 - **Core Stack**: Vue + TypeScript + Vite + Tailwind CSS.
 - **State Management**:
     - Do NOT create duplicate local state in components for shared playback, volume, queue, or server capability flags.
+
+### Force TDD
+
+Whenever changes are about to be made, first create the tests, make sure they fail, and then start implementing the changes.
 
 ---
 

@@ -120,116 +120,163 @@ def test_compare_fps():
 	assert server.compare_fps(fp1, fp2) == 0.0
 
 
-def test_find_system_librosa_python_in_process():
-	"""When librosa is in-process, find_system_librosa_python returns sys.executable."""
-	with patch("importlib.util.find_spec", return_value=MagicMock()):
-		found = server.find_system_librosa_python(force=True)
-		assert found == server.sys.executable
+def test_is_mood_available():
+	"""Test is_mood_available detects presence of ffmpeg binary."""
+	with patch("server.find_binary", return_value="/usr/bin/ffmpeg"):
+		assert server.is_mood_available() is True
+
+	with patch("server.find_binary", return_value=None):
+		assert server.is_mood_available() is False
 
 
-def test_find_system_librosa_python_subprocess_found():
-	"""When librosa is not in-process, finds candidate in PATH via subprocess."""
+def test_extract_audio_features_ffmpeg_success(tmp_path):
+	"""Test extract_audio_features_ffmpeg computes bpm, energy and centroid from raw PCM."""
+	import array
+	import math
+
+	test_file = tmp_path / "test.mp3"
+	test_file.write_bytes(b"dummy")
+
+	# Generate 12 seconds of synthetic audio at 11025 Hz with 2 Hz beat (120 BPM)
+	sr = 11025
+	duration_sec = 12
+	total_samples = sr * duration_sec
+	raw_samples = array.array("h")
+	for i in range(total_samples):
+		t = i / sr
+		# Carrier 440 Hz modulated by 2 Hz envelope (120 BPM)
+		env = 0.5 * (1.0 + math.cos(2 * math.pi * 2.0 * t))
+		val = int(env * 10000.0 * math.sin(2 * math.pi * 440.0 * t))
+		raw_samples.append(val)
+
+	pcm_bytes = raw_samples.tobytes()
 	mock_proc = MagicMock()
 	mock_proc.returncode = 0
-	with (
-		patch("importlib.util.find_spec", return_value=None),
-		patch("shutil.which", side_effect=lambda name: "/usr/bin/python3" if name == "python3" else None),
-		patch("subprocess.run", return_value=mock_proc),
-	):
-		found = server.find_system_librosa_python(force=True)
-		assert found == "/usr/bin/python3"
+	mock_proc.stdout = pcm_bytes
+
+	with patch("subprocess.run", return_value=mock_proc):
+		bpm, energy, centroid = server.extract_audio_features_ffmpeg(test_file, ffmpeg_bin="/usr/bin/ffmpeg")
+		assert 110.0 <= bpm <= 130.0
+		assert energy > 0.0
+		assert centroid > 0.0
 
 
-def test_find_system_librosa_python_none_found():
-	"""When no candidates have librosa, returns None."""
-	mock_proc = MagicMock()
-	mock_proc.returncode = 1
-	with (
-		patch("importlib.util.find_spec", return_value=None),
-		patch("shutil.which", return_value=None),
-		patch("pathlib.Path.is_file", return_value=False),
-	):
-		found = server.find_system_librosa_python(force=True)
-		assert found is None
+def test_extract_audio_features_ffmpeg_timeout(tmp_path):
+	"""Test extract_audio_features_ffmpeg returns (-1.0, -1.0, -1.0) on subprocess timeout."""
+	import subprocess
+
+	test_file = tmp_path / "timeout.mp3"
+	test_file.write_bytes(b"dummy")
+
+	with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="ffmpeg", timeout=5.0)):
+		bpm, energy, centroid = server.extract_audio_features_ffmpeg(test_file, ffmpeg_bin="/usr/bin/ffmpeg")
+		assert bpm == -1.0
+		assert energy == -1.0
+		assert centroid == -1.0
 
 
-def test_extract_mood_subprocess_success(tmp_path):
-	"""Test mood extraction using system python subprocess when in-process librosa is absent."""
-	test_file = tmp_path / "test.flac"
+def test_extract_audio_features_ffmpeg_failure(tmp_path):
+	"""Test extract_audio_features_ffmpeg returns (-1.0, -1.0, -1.0) on error or non-zero exit."""
+	test_file = tmp_path / "error.mp3"
 	test_file.write_bytes(b"dummy")
 
 	mock_proc = MagicMock()
-	mock_proc.returncode = 0
-	mock_proc.stdout = '{"bpm": 128.0, "energy": 0.45, "centroid": 1500.0}\n'
+	mock_proc.returncode = 1
+	mock_proc.stdout = b""
+
+	with patch("subprocess.run", return_value=mock_proc):
+		bpm, energy, centroid = server.extract_audio_features_ffmpeg(test_file, ffmpeg_bin="/usr/bin/ffmpeg")
+		assert bpm == -1.0
+		assert energy == -1.0
+		assert centroid == -1.0
+
+
+def test_track_mood_ffmpeg_success(tmp_path):
+	"""Test Track mood extraction via ffmpeg."""
+	test_file = tmp_path / "song.mp3"
+	test_file.write_bytes(b"dummy")
 
 	with (
 		patch("server.MutagenFile", return_value=None),
 		patch.object(server.Track, "_extract_fingerprint", return_value=None),
-		patch("importlib.util.find_spec", return_value=None),
-		patch("server.find_system_librosa_python", return_value="/usr/bin/python3"),
-		patch("subprocess.run", return_value=mock_proc),
+		patch("server.find_binary", return_value="/usr/bin/ffmpeg"),
+		patch("server.extract_audio_features_ffmpeg", return_value=(128.0, 0.65, 1850.0)),
 	):
 		track = server.Track(test_file)
 		assert track.bpm == 128.0
-		assert track.energy == 0.45
-		assert track.spectral_centroid == 1500.0
+		assert track.energy == 0.65
+		assert track.spectral_centroid == 1850.0
 
 
-def test_extract_mood_subprocess_timeout(tmp_path):
-	"""Test mood extraction handles subprocess timeout gracefully."""
-	import subprocess
-
-	test_file = tmp_path / "timeout.flac"
+def test_track_mood_tag_priority_over_ffmpeg(tmp_path):
+	"""When tags contain BPM, tag BPM takes priority while energy and centroid come from ffmpeg."""
+	test_file = tmp_path / "song_tagged.mp3"
 	test_file.write_bytes(b"dummy")
 
+	mock_audio = MagicMock()
+	mock_audio.info.length = 180.0
+	mock_audio.tags = {"TBPM": ["140"]}
+
 	with (
-		patch("server.MutagenFile", return_value=None),
+		patch("server.MutagenFile", return_value=mock_audio),
 		patch.object(server.Track, "_extract_fingerprint", return_value=None),
-		patch("importlib.util.find_spec", return_value=None),
-		patch("server.find_system_librosa_python", return_value="/usr/bin/python3"),
-		patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="python3", timeout=25.0)),
+		patch("server.find_binary", return_value="/usr/bin/ffmpeg"),
+		patch("server.extract_audio_features_ffmpeg", return_value=(138.5, 0.72, 2100.0)),
 	):
 		track = server.Track(test_file)
-		assert track.bpm == -1.0
-		assert track.energy == -1.0
-		assert track.spectral_centroid == -1.0
+		assert track.bpm == 140.0
+		assert track.energy == 0.72
+		assert track.spectral_centroid == 2100.0
 
 
-def test_extract_mood_subprocess_failure(tmp_path):
-	"""Test mood extraction handles non-zero exit code or error output."""
-	test_file = tmp_path / "corrupt.flac"
+def test_track_mood_tags_fallback_without_ffmpeg(tmp_path):
+	"""When ffmpeg is missing but tags have BPM, uses tag BPM and leaves energy/centroid at 0.0."""
+	test_file = tmp_path / "song_tag_fallback.mp3"
 	test_file.write_bytes(b"dummy")
 
-	mock_proc = MagicMock()
-	mock_proc.returncode = 1
-	mock_proc.stdout = ""
-	mock_proc.stderr = "Corrupt audio header"
+	mock_audio = MagicMock()
+	mock_audio.info.length = 180.0
+	mock_audio.tags = {"bpm": ["125.5"]}
 
 	with (
-		patch("server.MutagenFile", return_value=None),
+		patch("server.MutagenFile", return_value=mock_audio),
 		patch.object(server.Track, "_extract_fingerprint", return_value=None),
-		patch("importlib.util.find_spec", return_value=None),
-		patch("server.find_system_librosa_python", return_value="/usr/bin/python3"),
-		patch("subprocess.run", return_value=mock_proc),
+		patch("server.find_binary", return_value=None),
 	):
 		track = server.Track(test_file)
-		assert track.bpm == -1.0
-		assert track.energy == -1.0
-		assert track.spectral_centroid == -1.0
+		assert track.bpm == 125.5
+		assert track.energy == 0.0
+		assert track.spectral_centroid == 0.0
 
 
-def test_extract_mood_no_librosa_available(tmp_path):
-	"""When librosa is not available anywhere, leaves defaults at 0.0 (untested)."""
-	test_file = tmp_path / "no_librosa.flac"
+def test_track_mood_clean_degradation(tmp_path):
+	"""When neither ffmpeg nor tags are available, leaves bpm, energy, centroid at 0.0."""
+	test_file = tmp_path / "song_clean_deg.mp3"
 	test_file.write_bytes(b"dummy")
 
 	with (
 		patch("server.MutagenFile", return_value=None),
 		patch.object(server.Track, "_extract_fingerprint", return_value=None),
-		patch("importlib.util.find_spec", return_value=None),
-		patch("server.find_system_librosa_python", return_value=None),
+		patch("server.find_binary", return_value=None),
 	):
 		track = server.Track(test_file)
 		assert track.bpm == 0.0
 		assert track.energy == 0.0
 		assert track.spectral_centroid == 0.0
+
+
+def test_track_mood_ffmpeg_error(tmp_path):
+	"""When ffmpeg fails/errors, assigns -1.0 to avoid retrying corrupt tracks."""
+	test_file = tmp_path / "song_corrupt.mp3"
+	test_file.write_bytes(b"dummy")
+
+	with (
+		patch("server.MutagenFile", return_value=None),
+		patch.object(server.Track, "_extract_fingerprint", return_value=None),
+		patch("server.find_binary", return_value="/usr/bin/ffmpeg"),
+		patch("server.extract_audio_features_ffmpeg", return_value=(-1.0, -1.0, -1.0)),
+	):
+		track = server.Track(test_file)
+		assert track.bpm == -1.0
+		assert track.energy == -1.0
+		assert track.spectral_centroid == -1.0

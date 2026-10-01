@@ -42,9 +42,9 @@ async def test_get_full_state_dict_strips_heavy_keys(clean_state):
 	assert "energy" not in dj_track
 	assert dj_track["display_title"] == "Song Title"
 
-	# Check has_librosa flag
-	assert "has_librosa" in full_state
-	assert isinstance(full_state["has_librosa"], bool)
+	# Check has_ffmpeg flag
+	assert "has_ffmpeg" in full_state
+	assert isinstance(full_state["has_ffmpeg"], bool)
 
 
 @pytest.mark.asyncio

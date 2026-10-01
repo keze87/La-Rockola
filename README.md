@@ -82,9 +82,9 @@ Ensure you have Python 3 installed. You can install the required Python packages
 - `mutagen`: `pip install mutagen`.
 - `pydantic`: `pip install pydantic`.
 
-**Optional Packages:**
+**Optional Packages & Tools:**
 
-- `librosa`: `pip install librosa` (Enables mood and BPM analysis for your tracks).
+- `ffmpeg`: System binary (Enables mood and BPM analysis for your tracks).
 - `dbus-next`: `pip install dbus-next` (Required only on Linux to enable control via multimedia keys).
 
 ### 3. Running the Server

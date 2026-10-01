@@ -18,7 +18,8 @@ export interface PlayerState {
 	duration?: number;
 	favorites?: string[];
 	has_edge_tts?: boolean;
-	has_librosa?: boolean;
+	has_ffmpeg?: boolean;
+	has_mood?: boolean;
 	history?: string[];
 	is_playing_radio_announcement?: boolean;
 	is_scanning?: boolean;

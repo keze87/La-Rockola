@@ -11,7 +11,7 @@ import {
 	duration,
 	favorites,
 	hasEdgeTts,
-	hasLibrosa,
+	hasFfmpeg,
 	historyState,
 	isDraggingSeek,
 	isPaused,
@@ -100,7 +100,8 @@ export function useSocket() {
 						if (state.duration !== undefined) duration.value = state.duration;
 						if (state.favorites !== undefined) favorites.value = state.favorites;
 						if (state.has_edge_tts !== undefined) hasEdgeTts.value = state.has_edge_tts;
-						if (state.has_librosa !== undefined) hasLibrosa.value = state.has_librosa;
+						if (state.has_ffmpeg !== undefined) hasFfmpeg.value = state.has_ffmpeg;
+						else if (state.has_mood !== undefined) hasFfmpeg.value = state.has_mood;
 						if (state.history) historyState.value = state.history;
 						if (state.is_scanning !== undefined) isScanning.value = state.is_scanning;
 						if (state.is_synthesizing_radio !== undefined)
