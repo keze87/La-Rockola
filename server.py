@@ -2359,38 +2359,53 @@ def parse_duration_str(duration_str: str | None) -> float:
 	return 0.0
 
 
-def get_track_duration_seconds(path: str | None, tracks_cache: list[dict] | None = None) -> float:
-	"""Obtiene la duración en segundos de una pista consultando el cache o ffprobe."""
+def get_track_duration_seconds(path: str | Path | None, tracks_cache: list[dict] | None = None) -> float:
+	"""Obtiene la duración en segundos de una pista consultando el cache, mutagen o ffprobe."""
 	if not path:
 		return 0.0
 	if tracks_cache:
 		for t in tracks_cache:
-			if t.get("path") == path:
+			if t.get("path") == str(path):
 				dur = parse_duration_str(t.get("duration_str"))
 				if dur > 0:
 					return dur
-	if Path(path).is_file() and shutil.which("ffprobe"):
+	p = Path(path)
+	if p.is_file():
+		# 1. Preferir mutagen si está disponible
 		try:
-			res = subprocess.run(
-				[
-					shutil.which("ffprobe"),
-					"-v",
-					"error",
-					"-show_entries",
-					"format=duration",
-					"-of",
-					"default=noprint_wrappers=1:nokey=1",
-					str(path),
-				],
-				capture_output=True,
-				text=True,
-				timeout=2.0,
-				check=False,
-			)
-			if res.returncode == 0 and res.stdout.strip():
-				return float(res.stdout.strip())
+			from mutagen import File as MutagenFile
+
+			audio = MutagenFile(p)
+			if audio and audio.info and getattr(audio.info, "length", None) is not None:
+				dur = float(audio.info.length)
+				if dur > 0.0:
+					return dur
 		except Exception:
 			pass
+
+		# 2. Fallback con ffprobe
+		if shutil.which("ffprobe"):
+			try:
+				res = subprocess.run(
+					[
+						shutil.which("ffprobe"),
+						"-v",
+						"error",
+						"-show_entries",
+						"format=duration",
+						"-of",
+						"default=noprint_wrappers=1:nokey=1",
+						str(p),
+					],
+					capture_output=True,
+					text=True,
+					timeout=2.0,
+					check=False,
+				)
+				if res.returncode == 0 and res.stdout.strip():
+					return float(res.stdout.strip())
+			except Exception:
+				pass
 	return 0.0
 
 

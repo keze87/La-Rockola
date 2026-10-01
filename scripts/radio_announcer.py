@@ -1616,30 +1616,40 @@ def mix_announcement_with_bg_track(
 
 	# Averiguamos la duración de la voz para calibrar el fade-out
 	voice_dur = 0.0
-	ffprobe_bin = shutil.which("ffprobe")
-	if ffprobe_bin:
-		try:
-			probe_timeout = max(2.0, timeout * 0.3)
-			res = subprocess.run(
-				[
-					ffprobe_bin,
-					"-v",
-					"error",
-					"-show_entries",
-					"format=duration",
-					"-of",
-					"default=noprint_wrappers=1:nokey=1",
-					str(voice_p),
-				],
-				capture_output=True,
-				text=True,
-				timeout=probe_timeout,
-				check=False,
-			)
-			if res.returncode == 0 and res.stdout.strip():
-				voice_dur = float(res.stdout.strip())
-		except Exception:
-			pass
+	try:
+		from mutagen import File as MutagenFile
+
+		audio_v = MutagenFile(voice_p)
+		if audio_v and audio_v.info and getattr(audio_v.info, "length", None) is not None:
+			voice_dur = float(audio_v.info.length)
+	except Exception:
+		pass
+
+	if voice_dur <= 0.0:
+		ffprobe_bin = shutil.which("ffprobe")
+		if ffprobe_bin:
+			try:
+				probe_timeout = max(2.0, timeout * 0.3)
+				res = subprocess.run(
+					[
+						ffprobe_bin,
+						"-v",
+						"error",
+						"-show_entries",
+						"format=duration",
+						"-of",
+						"default=noprint_wrappers=1:nokey=1",
+						str(voice_p),
+					],
+					capture_output=True,
+					text=True,
+					timeout=probe_timeout,
+					check=False,
+				)
+				if res.returncode == 0 and res.stdout.strip():
+					voice_dur = float(res.stdout.strip())
+			except Exception:
+				pass
 
 	if voice_dur > 2.0:
 		fade_in = 1.0
@@ -1741,7 +1751,41 @@ def embed_cover_art_in_mp3(
 	if not cover_p or not cover_p.is_file():
 		return False
 
-	# 1. Intentar primero con ffmpeg
+	# 1. Intentar primero con mutagen (rápido, directo y nativo en Python)
+	try:
+		from mutagen.id3 import APIC, ID3, TALB, TIT2, TPE1, ID3NoHeaderError
+
+		try:
+			tags = ID3(str(mp3_p))
+		except ID3NoHeaderError:
+			tags = ID3()
+
+		cover_bytes = cover_p.read_bytes()
+		mime = "image/png" if cover_p.suffix.lower() == ".png" else "image/jpeg"
+
+		tags.add(
+			APIC(
+				encoding=3,  # UTF-8
+				mime=mime,
+				type=3,  # Front cover
+				desc="Cover",
+				data=cover_bytes,
+			)
+		)
+		if title:
+			tags.add(TIT2(encoding=3, text=[title]))
+		if artist:
+			tags.add(TPE1(encoding=3, text=[artist]))
+		if album:
+			tags.add(TALB(encoding=3, text=[album]))
+
+		tags.save(str(mp3_p))
+		logger.debug(f"🖼️ Carátula del carpincho incrustada con mutagen en '{mp3_p.name}'")
+		return True
+	except Exception as e:
+		logger.debug(f"Mutagen falló al incrustar carátula en {mp3_p}: {e}. Probando fallback con ffmpeg...")
+
+	# 2. Fallback con ffmpeg si mutagen no estuviera disponible o fallara
 	ffmpeg_bin = shutil.which("ffmpeg")
 	if ffmpeg_bin:
 		tmp_tagged = mp3_p.parent / f".tmp_tag_{uuid.uuid4().hex[:8]}.mp3"
@@ -1782,10 +1826,10 @@ def embed_cover_art_in_mp3(
 				return True
 			else:
 				logger.debug(
-					f"ffmpeg falló al incrustar carátula: {proc.stderr.decode('utf-8', errors='ignore')[:150]}. Probando mutagen..."
+					f"ffmpeg falló al incrustar carátula: {proc.stderr.decode('utf-8', errors='ignore')[:150]}"
 				)
 		except Exception as e:
-			logger.debug(f"Excepción usando ffmpeg para carátula: {e}. Probando mutagen...")
+			logger.debug(f"Excepción usando ffmpeg para carátula: {e}")
 		finally:
 			if tmp_tagged.exists():
 				try:
@@ -1793,44 +1837,24 @@ def embed_cover_art_in_mp3(
 				except Exception:
 					pass
 
-	# 2. Fallback con mutagen
-	try:
-		from mutagen.id3 import APIC, ID3, TALB, TIT2, TPE1, ID3NoHeaderError
-
-		try:
-			tags = ID3(str(mp3_p))
-		except ID3NoHeaderError:
-			tags = ID3()
-
-		cover_bytes = cover_p.read_bytes()
-		mime = "image/png" if cover_p.suffix.lower() == ".png" else "image/jpeg"
-
-		tags.add(
-			APIC(
-				encoding=3,  # UTF-8
-				mime=mime,
-				type=3,  # Front cover
-				desc="Cover",
-				data=cover_bytes,
-			)
-		)
-		if title:
-			tags.add(TIT2(encoding=3, text=[title]))
-		if artist:
-			tags.add(TPE1(encoding=3, text=[artist]))
-		if album:
-			tags.add(TALB(encoding=3, text=[album]))
-
-		tags.save(str(mp3_p))
-		logger.debug(f"🖼️ Carátula del carpincho incrustada con mutagen en '{mp3_p.name}'")
-		return True
-	except Exception as e:
-		logger.debug(f"No se pudo incrustar la carátula en {mp3_p}: {e}")
-		return False
+	return False
 
 
 def get_audio_duration(file_path: Path | str, timeout: float = 2.0) -> float:
-	"""Obtiene la duración en segundos de un archivo de audio con ffprobe."""
+	"""Obtiene la duración en segundos de un archivo de audio prefiriendo mutagen antes de ffprobe."""
+	p = Path(file_path)
+	if p.is_file():
+		try:
+			from mutagen import File as MutagenFile
+
+			audio = MutagenFile(p)
+			if audio and audio.info and getattr(audio.info, "length", None) is not None:
+				dur = float(audio.info.length)
+				if dur > 0.0:
+					return dur
+		except Exception:
+			pass
+
 	ffprobe_bin = shutil.which("ffprobe")
 	if not ffprobe_bin:
 		return 0.0
