@@ -34,6 +34,7 @@ Whenever changes are about to be made, first create the tests, make sure they fa
 
 - User-facing logs, CLI setup wizards, and UI copy embrace an authentic, friendly Argentine tone (_"ojo al piojo"_, _"joyita"_, _"cortala de una"_, _"más manija"_).
 - Internal code remains clean, modular, and strongly typed.
+- Before finalizing create commit name with the friendly Argentine tone.
 
 ---
 

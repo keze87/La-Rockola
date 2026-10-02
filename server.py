@@ -843,6 +843,8 @@ def configure_logging(debug: bool = False):
 	logging.getLogger("numba").setLevel(logging.WARNING)
 	logging.getLogger("llvmlite").setLevel(logging.WARNING)
 	logging.getLogger("PIL").setLevel(logging.WARNING)
+	# Silenciamos los logs de acceso HTTP de Uvicorn si no estamos en modo debug
+	logging.getLogger("uvicorn.access").setLevel(logging.DEBUG if debug else logging.WARNING)
 
 
 # Configuración inicial de logging (por defecto INFO, o DEBUG si se solicita vía variable de entorno)
@@ -3244,8 +3246,7 @@ class APIState:
 					import ytdlp_installer
 
 				logger.info("yt-dlp no encontrado para procesar link de YouTube. Intentando instalar...")
-				loop = asyncio.get_running_loop()
-				installed = await loop.run_in_executor(None, ytdlp_installer.ensure_ytdlp)
+				installed = await asyncio.to_thread(ytdlp_installer.ensure_ytdlp)
 				if installed:
 					ytdlp_bin = installed
 			except Exception as e:
@@ -3706,9 +3707,7 @@ class APIState:
 							and mix_announcement_with_bg_track is not None
 						):
 							try:
-								loop = asyncio.get_running_loop()
-								mixed = await loop.run_in_executor(
-									None,
+								mixed = await asyncio.to_thread(
 									mix_announcement_with_bg_track,
 									voice_file,
 									out_file,
@@ -3720,8 +3719,7 @@ class APIState:
 								if mixed:
 									if embed_cover_art_in_mp3 is not None:
 										cover_p = get_carpincho_cover_path() if get_carpincho_cover_path else None
-										await loop.run_in_executor(
-											None,
+										await asyncio.to_thread(
 											embed_cover_art_in_mp3,
 											out_file,
 											cover_p,
@@ -4056,8 +4054,7 @@ async def lifespan(app: FastAPI):
 			except ImportError:
 				import ytdlp_installer
 
-			loop = asyncio.get_running_loop()
-			await loop.run_in_executor(None, ytdlp_installer.update_ytdlp)
+			await asyncio.to_thread(ytdlp_installer.update_ytdlp)
 		except Exception as e:
 			logger.debug(f"Aviso en actualización de yt-dlp: {e}")
 
@@ -4077,8 +4074,7 @@ async def lifespan(app: FastAPI):
 						break
 
 			logger.info(f"🌐 Abriendo La Rockola en tu navegador: {target_url}")
-			loop = asyncio.get_running_loop()
-			await loop.run_in_executor(None, open_browser_url, target_url)
+			await asyncio.to_thread(open_browser_url, target_url)
 		except Exception as e:
 			logger.debug(f"Aviso al abrir el navegador automáticamente: {e}")
 
@@ -5132,4 +5128,11 @@ if __name__ == "__main__":
 		weather_location=final_weather_location,
 	)
 
-	uvicorn.run(app, host=final_host, port=final_port, proxy_headers=True, forwarded_allow_ips="*")
+	uvicorn.run(
+		app,
+		host=final_host,
+		port=final_port,
+		proxy_headers=True,
+		forwarded_allow_ips="*",
+		access_log=args.debug,
+	)

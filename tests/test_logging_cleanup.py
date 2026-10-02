@@ -13,6 +13,7 @@ def test_default_log_level_and_silenced_loggers():
 	assert logging.getLogger("PIL").level >= logging.WARNING
 	assert logging.getLogger("numba").level >= logging.WARNING
 	assert logging.getLogger("llvmlite").level >= logging.WARNING
+	assert logging.getLogger("uvicorn.access").level >= logging.WARNING
 
 
 def test_configure_logging_debug_mode():
