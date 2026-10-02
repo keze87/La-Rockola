@@ -523,6 +523,7 @@ check_dependencies()
 # --- 2. AHORA SÍ, IMPORTAMOS TRANQUIS ---
 import argparse
 import asyncio
+import concurrent.futures
 import gc
 import hashlib
 import io
@@ -1606,7 +1607,7 @@ def compare_fps(fp1: list[int] | None, fp2: list[int] | None) -> float:
 class Track:
 	"""Guarda la data y la ruta del temita."""
 
-	def __init__(self, path: Path):
+	def __init__(self, path: Path, extract_mood: bool = True, extract_fingerprint: bool = True):
 		self.path = path
 		self.title = path.stem
 		self.artist = "Desconocido"
@@ -1619,8 +1620,17 @@ class Track:
 		self.fingerprint = None
 
 		self._extract_metadata()
-		self._extract_mood()
-		self._extract_fingerprint()
+		if extract_mood:
+			self._extract_mood()
+		else:
+			self.bpm = self.tag_bpm if self.tag_bpm is not None else 0.0
+			self.energy = 0.0
+			self.spectral_centroid = 0.0
+
+		if extract_fingerprint:
+			self._extract_fingerprint()
+		else:
+			self.fingerprint = None
 
 		self.search_string = f"{self.artist} {self.title}".lower()
 		self.track_hash = str(generate_smart_hash(self.path))
@@ -1686,33 +1696,38 @@ class Track:
 			except Exception as e:
 				logger.debug(f"Pifió fpcalc sacando la huella a {self.path}: {e}")
 
-	def _extract_mood(self):
+	def analyze_fingerprint(self) -> str | None:
+		"""Saca la huella acústica con fpcalc."""
+		self._extract_fingerprint()
+		return self.fingerprint
+
+	def analyze_mood(self, ffmpeg_bin: str | None = None) -> tuple[float, float, float]:
 		"""
 		Analiza un pedazo representativo del audio para sacar el 'mood' del tema:
 		BPM (tempo), energía (RMS) y brillo espectral (centroid aproximado).
-		Prioridades:
-		1. FFmpeg (análisis acústico rápido vía decodificación PCM).
-		2. Tags de metadatos (si FFmpeg no está disponible o para sobreescribir el BPM con el valor de estudio).
-		3. Degradación limpia (0.0 si no hay FFmpeg ni tags disponibles).
 		"""
-		ffmpeg_bin = find_binary("ffmpeg")
-		if ffmpeg_bin:
-			b, e, c = extract_audio_features_ffmpeg(self.path, ffmpeg_bin)
+		bin_to_use = ffmpeg_bin or find_binary("ffmpeg")
+		if bin_to_use:
+			b, e, c = extract_audio_features_ffmpeg(self.path, bin_to_use)
 			if b < 0.0:
 				self.bpm, self.energy, self.spectral_centroid = -1.0, -1.0, -1.0
 			else:
 				self.bpm = self.tag_bpm if self.tag_bpm is not None else b
 				self.energy = e
 				self.spectral_centroid = c
-			return
+			return (self.bpm, self.energy, self.spectral_centroid)
 
 		if self.tag_bpm is not None:
 			self.bpm = self.tag_bpm
 			self.energy = 0.0
 			self.spectral_centroid = 0.0
-			return
+			return (self.bpm, self.energy, self.spectral_centroid)
 
 		self.bpm, self.energy, self.spectral_centroid = 0.0, 0.0, 0.0
+		return (self.bpm, self.energy, self.spectral_centroid)
+
+	def _extract_mood(self):
+		self.analyze_mood()
 
 	def to_dict(self):
 		return {
@@ -2397,6 +2412,12 @@ class APIState:
 		self.id_to_current_path = {}
 		self.initial_dir = initial_dir
 		self.is_scanning = False
+		self.is_analyzing_mood = False
+		self.scan_phase = "idle"  # "idle", "discovering", "metadata", "mood"
+		self.scan_current = 0
+		self.scan_total = 0
+		self.scan_message = ""
+		self.background_mood_task: asyncio.Task | None = None
 		self.last_broadcast = {}
 		self.mpv_paused = False
 		self.path_to_id = {}
@@ -2494,6 +2515,14 @@ class APIState:
 			"has_ffmpeg": is_mood_available(),
 			"history": list(self.history),
 			"is_scanning": self.is_scanning,
+			"scan_status": {
+				"is_scanning": self.is_scanning,
+				"is_analyzing_mood": self.is_analyzing_mood,
+				"phase": self.scan_phase,
+				"current": self.scan_current,
+				"total": self.scan_total,
+				"message": self.scan_message,
+			},
 			"local_ip": self.local_ip,
 			"mpv_visible": self.mpv_visible,
 			"pause_after_path": self.pause_after_path,
@@ -2626,7 +2655,42 @@ class APIState:
 		except Exception as e:
 			logger.error(f"Error guardando el log de URLs en DB: {e}")
 
-	def scan_directory(self, target_dirs: list):
+	def recalculate_mood_scores(self):
+		"""Recalcula el mood_score normalizado para todos los temas en tracks_cache."""
+
+		def _normalize(val, values):
+			if val <= 0 or not values:
+				return 0.5
+			lo, hi = min(values), max(values)
+			if hi - lo < 1e-9:
+				return 0.5
+			return (val - lo) / (hi - lo)
+
+		tracks = self.tracks_cache
+		if not tracks:
+			return
+
+		valid_bpms = [t.get("bpm", -1.0) for t in tracks if t.get("bpm", -1.0) > 0]
+		valid_energies = [t.get("energy", -1.0) for t in tracks if t.get("energy", -1.0) > 0]
+		valid_centroids = [t.get("spectral_centroid", -1.0) for t in tracks if t.get("spectral_centroid", -1.0) > 0]
+
+		for t in tracks:
+			b = t.get("bpm", -1.0)
+			e = t.get("energy", -1.0)
+			c = t.get("spectral_centroid", -1.0)
+
+			if b <= 0:
+				t["mood_score"] = 0.0
+			else:
+				nb = _normalize(b, valid_bpms)
+				ne = _normalize(e, valid_energies)
+				nc = _normalize(c, valid_centroids)
+				t["mood_score"] = round(0.5 * nb + 0.35 * ne + 0.15 * nc, 4)
+
+	def scan_directory(self, target_dirs: list, extract_mood: bool = True, extract_fingerprint: bool | None = None):
+		if extract_fingerprint is None:
+			extract_fingerprint = extract_mood
+
 		logger.info(f"Pegando una ojeada por estas carpetas: {target_dirs}")
 		extensions = [
 			"*.flac",
@@ -2640,6 +2704,11 @@ class APIState:
 			"*.webm",
 		]
 		raw_files = []
+
+		self.scan_phase = "discovering"
+		self.scan_current = 0
+		self.scan_total = 0
+		self.scan_message = "Buscando archivos de audio..."
 
 		for target_dir in target_dirs:
 			if not target_dir:
@@ -2655,6 +2724,11 @@ class APIState:
 
 		logger.info(f"Encontré {len(raw_files)} archivos en total. Revisando cuáles son nuevos o cambiaron...")
 		raw_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+
+		self.scan_total = len(raw_files)
+		self.scan_phase = "metadata"
+		self.scan_current = 0
+		self.scan_message = f"Procesando metadatos (0/{len(raw_files)})..."
 
 		has_ffmpeg = is_mood_available()
 
@@ -2689,7 +2763,6 @@ class APIState:
 						"album": db_album,
 						"artist": db_artist,
 						"duration_str": db_dur,
-						# 0.0: no testeado / análisis ausente; -1.0: análisis retornó error (no re-testear); > 0.0: procesado
 						"bpm": db_bpm if db_bpm is not None else 0.0,
 						"energy": db_energy if db_energy is not None else 0.0,
 						"spectral_centroid": (db_centroid if db_centroid is not None else 0.0),
@@ -2698,52 +2771,44 @@ class APIState:
 		except Exception as e:
 			logger.warning(f"No pude cargar la caché de la DB (capaz está vacía): {e}")
 
-		tracks = []
-		self.id_to_current_path.clear()
-		self.path_to_id.clear()
-		new_cache = {}
-		tracks_to_insert = []  # Guardamos acá los nuevos para hacer un solo INSERT masivo
-
-		seen_track_ids = set()
-		new_tracks_for_reconciliation = []
-
-		for i, f in enumerate(raw_files):
-			if i > 0 and i % 50 == 0:
-				logger.info(f"Ya procesé la data de {i}/{len(raw_files)} joyitas...")
-				# EL CAMIÓN DE LA BASURA: Forzamos a Python a cerrar todos los archivos temporales
-				# de mutagen para que no nos coma los File Descriptors (Límite del OS).
-				gc.collect()
-
+		def _process_single_file(item):
+			idx, f = item
 			file_str = str(f)
 			try:
 				stat = f.stat()
 				current_mtime = stat.st_mtime
 				current_size = stat.st_size
 			except OSError:
-				continue
+				return idx, None
 
 			# 1. Miramos si está en memoria (escaneo en caliente)
-			# Si el BPM es 0.0 (no testeado), solo re-testeamos si el análisis de mood está disponible.
-			# Si ya dio error (-1.0) o fue procesado con éxito (> 0.0), usamos la caché en memoria.
 			if (
 				file_str in self.track_cache_by_path
 				and self.track_cache_by_path[file_str]["mtime"] == current_mtime
-				and (self.track_cache_by_path[file_str]["data"].get("bpm", 0.0) != 0.0 or not has_ffmpeg)
+				and (
+					self.track_cache_by_path[file_str]["data"].get("bpm", 0.0) != 0.0
+					or not has_ffmpeg
+					or not extract_mood
+				)
 			):
-				track_dict = self.track_cache_by_path[file_str]["data"]
+				track_dict = dict(self.track_cache_by_path[file_str]["data"])
 				track_hash = track_dict.get("track_hash")
-				seen_track_ids.add(track_hash)
+				return idx, {
+					"type": "cached",
+					"file_str": file_str,
+					"current_mtime": current_mtime,
+					"track_dict": track_dict,
+					"track_hash": track_hash,
+				}
 
 			# 2. Miramos si está intacto en la DB (arranque de servidor)
-			# Si el BPM es 0.0 (no testeado), solo re-testeamos si el análisis de mood está disponible.
-			# Si ya dio error (-1.0) o fue procesado con éxito (> 0.0), usamos la caché de la DB.
 			elif (
 				file_str in db_cache
 				and db_cache[file_str]["mtime"] == current_mtime
 				and db_cache[file_str]["file_size"] == current_size
 				and db_cache[file_str].get("bpm") is not None
-				and (db_cache[file_str].get("bpm") != 0.0 or not has_ffmpeg)
-				and db_cache[file_str].get("fingerprint") is not None
+				and (db_cache[file_str].get("bpm") != 0.0 or not has_ffmpeg or not extract_mood)
+				and (db_cache[file_str].get("fingerprint") is not None or not extract_fingerprint)
 			):
 				cached = db_cache[file_str]
 				track_hash = cached["track_hash"]
@@ -2762,46 +2827,84 @@ class APIState:
 					"spectral_centroid": cached["spectral_centroid"],
 					"fingerprint": cached.get("fingerprint"),
 				}
-				seen_track_ids.add(track_hash)
+				return idx, {
+					"type": "cached",
+					"file_str": file_str,
+					"current_mtime": current_mtime,
+					"track_dict": track_dict,
+					"track_hash": track_hash,
+				}
 
-			# 3. NO HAY CACHÉ VALIDA: Leemos los metadatos y calculamos el hash desde cero
+			# 3. NO HAY CACHÉ VÁLIDA: Leemos los metadatos y calculamos el hash desde cero
 			else:
-				track_obj = Track(f)
+				track_obj = Track(f, extract_mood=extract_mood, extract_fingerprint=extract_fingerprint)
 				track_dict = track_obj.to_dict()
 				track_hash = track_obj.track_hash
-
-				# Lo anotamos para mandarlo a la DB al final
-				tracks_to_insert.append(
-					(
-						track_hash,
-						file_str,
-						track_dict["title"],
-						track_dict.get("album", "Desconocido"),
-						track_dict["artist"],
-						track_dict["duration_str"],
-						current_mtime,
-						current_size,
-						track_dict.get("bpm", 0.0),
-						track_dict.get("energy", 0.0),
-						track_dict.get("spectral_centroid", 0.0),
-						track_obj.fingerprint,
-					)
+				ins_tuple = (
+					track_hash,
+					file_str,
+					track_dict["title"],
+					track_dict.get("album", "Desconocido"),
+					track_dict["artist"],
+					track_dict["duration_str"],
+					current_mtime,
+					current_size,
+					track_dict.get("bpm", 0.0),
+					track_dict.get("energy", 0.0),
+					track_dict.get("spectral_centroid", 0.0),
+					track_obj.fingerprint,
 				)
-				seen_track_ids.add(track_hash)
-				if track_obj.fingerprint:
+				return idx, {
+					"type": "fresh",
+					"file_str": file_str,
+					"current_mtime": current_mtime,
+					"track_dict": track_dict,
+					"track_hash": track_hash,
+					"insert_tuple": ins_tuple,
+					"fingerprint": track_obj.fingerprint,
+				}
+
+		max_workers = min(16, (os.cpu_count() or 4) * 2)
+		results = [None] * len(raw_files)
+		with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+			futures = [executor.submit(_process_single_file, (idx, f)) for idx, f in enumerate(raw_files)]
+			for count, fut in enumerate(concurrent.futures.as_completed(futures), 1):
+				idx, res = fut.result()
+				results[idx] = res
+				self.scan_current = count
+				if count % 50 == 0:
+					self.scan_message = f"Procesando metadatos ({count}/{len(raw_files)})..."
+					gc.collect()
+
+		tracks = []
+		self.id_to_current_path.clear()
+		self.path_to_id.clear()
+		new_cache = {}
+		tracks_to_insert = []
+		seen_track_ids = set()
+		new_tracks_for_reconciliation = []
+
+		for res in results:
+			if res is None:
+				continue
+			file_str = res["file_str"]
+			track_dict = res["track_dict"]
+			track_hash = res["track_hash"]
+			current_mtime = res["current_mtime"]
+
+			if res["type"] == "fresh":
+				tracks_to_insert.append(res["insert_tuple"])
+				if res.get("fingerprint"):
 					new_tracks_for_reconciliation.append(track_dict)
 
+			seen_track_ids.add(track_hash)
 			new_cache[file_str] = {"mtime": current_mtime, "data": track_dict}
 			tracks.append(track_dict)
-
 			self.id_to_current_path[track_hash] = file_str
 			self.path_to_id[file_str] = track_hash
 
 		# --- RECONCILIACIÓN DE HUELLAS ACÚSTICAS ---
-		# Si un archivo se reemplazó (ej. MP3 a FLAC) o se le metió una tapa (cambió tamaño),
-		# su viejo "track_hash" va a faltar y va a haber uno nuevo para la misma canción.
 		missing_db_tracks = [t for t in db_cache.values() if t["track_hash"] not in seen_track_ids]
-
 		if missing_db_tracks and new_tracks_for_reconciliation:
 			logger.info(
 				f"🔎 Reconciliando {len(new_tracks_for_reconciliation)} temas nuevos con {len(missing_db_tracks)} temas desaparecidos..."
@@ -2825,7 +2928,6 @@ class APIState:
 						best_sim = sim
 						best_match = miss_t
 
-				# Si hay similitud acústica del 85% o más, asumimos que es exactamente la misma canción
 				if best_sim > 0.85:
 					old_id = best_match["track_hash"]
 					new_id = new_t["track_hash"]
@@ -2835,13 +2937,11 @@ class APIState:
 
 					new_t["track_hash"] = old_id
 
-					# Actualizar la lista principal
 					for trk in tracks:
 						if trk["path"] == new_t["path"]:
 							trk["track_hash"] = old_id
 							break
 
-					# Actualizar las tuplas por insertarse para que se sobreescriba el ID viejo con la ruta nueva
 					for idx, ins_tuple in enumerate(tracks_to_insert):
 						if ins_tuple[1] == new_t["path"]:
 							l = list(ins_tuple)
@@ -2849,7 +2949,6 @@ class APIState:
 							tracks_to_insert[idx] = tuple(l)
 							break
 
-					# Actualizar los mapas rápidos de búsqueda
 					self.id_to_current_path[old_id] = new_t["path"]
 					self.path_to_id[new_t["path"]] = old_id
 					if new_id in self.id_to_current_path:
@@ -2858,39 +2957,10 @@ class APIState:
 					seen_track_ids.add(old_id)
 					missing_db_tracks.remove(best_match)
 
-		# --- CALCULAMOS EL MOOD SCORE (normalizado contra el resto de la librería) ---
-		def _normalize(val, values):
-			if val <= 0 or not values:
-				return 0.5
-			lo, hi = min(values), max(values)
-			if hi - lo < 1e-9:
-				return 0.5
-			return (val - lo) / (hi - lo)
-
-		if tracks:
-			# Filtramos los que dieron error (-1.0) para que no rompan las matemáticas de promedios
-			valid_bpms = [t.get("bpm", -1.0) for t in tracks if t.get("bpm", -1.0) > 0]
-			valid_energies = [t.get("energy", -1.0) for t in tracks if t.get("energy", -1.0) > 0]
-			valid_centroids = [t.get("spectral_centroid", -1.0) for t in tracks if t.get("spectral_centroid", -1.0) > 0]
-
-			# Peso mayor al tempo, energía (RMS) le sigue de cerca, brillo espectral desempata
-			for t in tracks:
-				b = t.get("bpm", -1.0)
-				e = t.get("energy", -1.0)
-				c = t.get("spectral_centroid", -1.0)
-
-				# Si falló al escanear o no tiene audio, le clavamos 0.0 y lo tiramos al fondo
-				if b <= 0:
-					t["mood_score"] = 0.0
-				else:
-					nb = _normalize(b, valid_bpms)
-					ne = _normalize(e, valid_energies)
-					nc = _normalize(c, valid_centroids)
-					t["mood_score"] = round(0.5 * nb + 0.35 * ne + 0.15 * nc, 4)
-
+		self.tracks_cache = tracks
+		self.recalculate_mood_scores()
 		self.track_cache_by_path = new_cache
 
-		# Guardamos los tracks nuevos/modificados en la DB en un solo bloque ---
 		if tracks_to_insert:
 			try:
 				with sqlite3.connect(DB_PATH) as conn:
@@ -2906,8 +2976,171 @@ class APIState:
 			except Exception as e:
 				logger.error(f"Error guardando tracks en la DB: {e}")
 
+		self.scan_current = len(tracks)
+		self.scan_message = f"Listo el escaneo ({len(tracks)} temas)."
 		logger.info("¡Listo el escaneo, maestro!")
 		return tracks
+
+	def start_background_mood_analysis(self):
+		"""Lanza la tarea en segundo plano para analizar BPM y fingerprints sin bloquear."""
+		if self.background_mood_task and not self.background_mood_task.done():
+			self.background_mood_task.cancel()
+		self.background_mood_task = asyncio.create_task(self.run_background_mood_analysis())
+		return self.background_mood_task
+
+	async def run_background_mood_analysis(self):
+		"""Worker que procesa de forma asíncrona BPM/mood y huella acústica en lotes pequeños."""
+		ffmpeg_bin = find_binary("ffmpeg")
+		has_fpcalc = shutil.which("fpcalc") is not None
+
+		if not ffmpeg_bin and not has_fpcalc:
+			logger.info("Sin FFmpeg ni fpcalc, salteando análisis acústico de fondo.")
+			self.is_analyzing_mood = False
+			self.scan_phase = "idle"
+			return
+
+		pending_tracks = []
+		for t in self.tracks_cache:
+			need_mood = bool(ffmpeg_bin and t.get("bpm", 0.0) == 0.0)
+			need_fp = bool(has_fpcalc and not t.get("fingerprint"))
+			if need_mood or need_fp:
+				pending_tracks.append((t, need_mood, need_fp))
+
+		if not pending_tracks:
+			self.is_analyzing_mood = False
+			self.scan_phase = "idle"
+			return
+
+		self.is_analyzing_mood = True
+		self.scan_phase = "mood"
+		self.scan_total = len(pending_tracks)
+		self.scan_current = 0
+		self.scan_message = f"Sintonizando la vibra de los temas (0/{len(pending_tracks)})..."
+		try:
+			await broadcast_state()
+		except Exception:
+			pass
+
+		logger.info(f"Comenzando análisis acústico en segundo plano para {len(pending_tracks)} temas...")
+
+		def _process_mood_item(item):
+			t_dict, need_mood, need_fp = item
+			path_str = t_dict["path"]
+			bpm = t_dict.get("bpm", 0.0)
+			energy = t_dict.get("energy", 0.0)
+			centroid = t_dict.get("spectral_centroid", 0.0)
+			fp = t_dict.get("fingerprint")
+
+			if need_mood:
+				tag_bpm = None
+				try:
+					audio = MutagenFile(path_str, easy=True) or MutagenFile(path_str)
+					if audio and getattr(audio, "tags", None):
+						tags = {k.lower(): v for k, v in audio.tags.items()}
+						for k in ["tbpm", "bpm", "tempo", "tmpo"]:
+							if k in tags:
+								val = tags[k]
+								val_str = val[0] if isinstance(val, list) else str(val)
+								clean_num = re.search(r"[-+]?\d*\.?\d+", str(val_str))
+								if clean_num and float(clean_num.group(0)) > 0:
+									tag_bpm = round(float(clean_num.group(0)), 1)
+									break
+				except Exception:
+					pass
+
+				b, e, c = extract_audio_features_ffmpeg(path_str, ffmpeg_bin)
+				if b < 0.0:
+					bpm, energy, centroid = -1.0, -1.0, -1.0
+				else:
+					bpm = tag_bpm if tag_bpm is not None else b
+					energy = e
+					centroid = c
+
+			if need_fp and shutil.which("fpcalc"):
+				try:
+					proc = subprocess.run(
+						["fpcalc", "-raw", "-length", "60", path_str],
+						capture_output=True,
+						text=True,
+						timeout=10,
+						check=False,
+					)
+					for line in proc.stdout.splitlines():
+						if line.startswith("FINGERPRINT="):
+							fp = line.split("=", 1)[1]
+							break
+				except Exception as e:
+					logger.debug(f"Pifió fpcalc en background para {path_str}: {e}")
+
+			return t_dict["track_hash"], path_str, bpm, energy, centroid, fp
+
+		batch_size = 25
+		max_workers = min(4, os.cpu_count() or 2)
+
+		try:
+			for i in range(0, len(pending_tracks), batch_size):
+				batch = pending_tracks[i : i + batch_size]
+				loop = asyncio.get_running_loop()
+
+				with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
+					batch_results = await loop.run_in_executor(
+						pool,
+						lambda b: [_process_mood_item(item) for item in b],
+						batch,
+					)
+
+				# Actualizamos en SQLite el lote
+				try:
+					with sqlite3.connect(DB_PATH) as conn:
+						conn.executemany(
+							"UPDATE tracks SET bpm=?, energy=?, spectral_centroid=?, fingerprint=? WHERE track_id=?",
+							[(r[2], r[3], r[4], r[5], r[0]) for r in batch_results],
+						)
+						conn.commit()
+				except Exception as e:
+					logger.error(f"Error actualizando mood en DB: {e}")
+
+				# Actualizamos en memoria
+				res_map = {r[0]: r for r in batch_results}
+				for t in self.tracks_cache:
+					tid = t.get("track_hash")
+					if tid in res_map:
+						_, p, b, e, c, fp = res_map[tid]
+						t["bpm"] = b
+						t["energy"] = e
+						t["spectral_centroid"] = c
+						t["fingerprint"] = fp
+						if p in self.track_cache_by_path:
+							self.track_cache_by_path[p]["data"].update(
+								{
+									"bpm": b,
+									"energy": e,
+									"spectral_centroid": c,
+									"fingerprint": fp,
+								}
+							)
+
+				self.scan_current = min(self.scan_total, i + len(batch))
+				self.scan_message = f"Sintonizando la vibra ({self.scan_current}/{self.scan_total})..."
+				self.recalculate_mood_scores()
+				try:
+					await broadcast_state()
+				except Exception:
+					pass
+				gc.collect()
+
+		except asyncio.CancelledError:
+			logger.info("Análisis de mood en background cancelado por nueva solicitud.")
+			raise
+		finally:
+			self.is_analyzing_mood = False
+			self.scan_phase = "idle"
+			self.scan_message = ""
+			try:
+				await broadcast_state()
+			except Exception:
+				pass
+			logger.info("Análisis acústico en segundo plano finalizado.")
 
 	async def fetch_yt_dlp_metadata(self, url):
 		"""Obtiene asincrónicamente la data de yt-dlp y avisa a los clientes"""
@@ -3973,18 +4206,49 @@ async def scan_library(dir: str | None = None, dir2: str | None = None):
 
 	# Prendemos el "Cargando" y le avisamos al front
 	state.is_scanning = True
+	state.scan_phase = "discovering"
+	state.scan_current = 0
+	state.scan_total = 0
+	state.scan_message = "Buscando archivos de audio..."
 	await broadcast_state()
 
 	# Guardamos el tamaño anterior para detectar cambios
 	prev_count = len(state.tracks_cache)
 
-	# Hacemos el trabajo pesado
-	state.tracks_cache = await asyncio.to_thread(state.scan_directory, target_dirs)
+	stop_ticker = asyncio.Event()
+
+	async def _progress_ticker():
+		while not stop_ticker.is_set():
+			try:
+				await asyncio.sleep(0.4)
+				await broadcast_state()
+			except asyncio.CancelledError:
+				break
+			except Exception:
+				pass
+
+	ticker_task = asyncio.create_task(_progress_ticker())
+
+	try:
+		# Paso 1: Escaneo rápido en paralelo sin bloquear con FFmpeg/fpcalc
+		state.tracks_cache = await asyncio.to_thread(state.scan_directory, target_dirs, False)
+	finally:
+		stop_ticker.set()
+		ticker_task.cancel()
+		try:
+			await ticker_task
+		except asyncio.CancelledError:
+			pass
 
 	# Si la librería cambió, la incluimos en el broadcast para que todos los clientes la actualicen sin hacer un GET /library
 	library_changed = len(state.tracks_cache) != prev_count
 	state.is_scanning = False
+	state.scan_phase = "idle"
+	state.scan_message = ""
 	await broadcast_state(include_library=library_changed)
+
+	# Paso 2: Lanzar worker de enriquecimiento acústico en segundo plano
+	state.start_background_mood_analysis()
 
 	return {"data": state.tracks_cache}
 

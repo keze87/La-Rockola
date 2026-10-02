@@ -8,6 +8,7 @@ import {
 	isScanning,
 	isSynthesizingRadio,
 	queueState,
+	scanStatus,
 	trackMap,
 } from '@/composables/player/state';
 
@@ -22,6 +23,14 @@ describe('App.vue', () => {
 		currentTrackPath.value = null;
 		isFogonMode.value = false;
 		isScanning.value = false;
+		scanStatus.value = {
+			is_scanning: false,
+			is_analyzing_mood: false,
+			phase: 'idle',
+			current: 0,
+			total: 0,
+			message: '',
+		};
 		queueState.value = [];
 		trackMap.value = {};
 	});
@@ -60,6 +69,35 @@ describe('App.vue', () => {
 		const wrapper = mount(App);
 
 		expect(wrapper.text()).toContain('[Avisando] Chusmeando temas, aguantá fiera... 🧉');
+	});
+
+	it('renders scanning indicator with counter when scanStatus has total > 0', () => {
+		isScanning.value = true;
+		scanStatus.value = {
+			is_scanning: true,
+			phase: 'metadata',
+			current: 450,
+			total: 1765,
+			message: '',
+		};
+		const wrapper = mount(App);
+
+		expect(wrapper.text()).toContain('[Avisando] Chusmeando temas (450/1765)... 🧉');
+	});
+
+	it('renders mood analysis indicator when is_analyzing_mood is true', () => {
+		isScanning.value = false;
+		scanStatus.value = {
+			is_scanning: false,
+			is_analyzing_mood: true,
+			phase: 'mood',
+			current: 12,
+			total: 50,
+			message: '',
+		};
+		const wrapper = mount(App);
+
+		expect(wrapper.text()).toContain('Sintonizando la vibra (12/50)... 🎶');
 	});
 
 	it('renders current track title in header when a song is playing', () => {

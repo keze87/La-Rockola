@@ -10,6 +10,15 @@ export interface Track {
 	title?: string;
 }
 
+export interface ScanStatus {
+	is_scanning: boolean;
+	is_analyzing_mood?: boolean;
+	phase: 'idle' | 'discovering' | 'metadata' | 'mood' | 'reconciling';
+	current: number;
+	total: number;
+	message: string;
+}
+
 export interface PlayerState {
 	current_track?: string;
 	dj_carpincho_enabled?: boolean;
@@ -30,6 +39,7 @@ export interface PlayerState {
 	paused?: boolean;
 	queue?: string[];
 	radio_mode_enabled?: boolean;
+	scan_status?: ScanStatus;
 	server_muted?: boolean;
 	server_url?: string;
 	time_pos?: number;

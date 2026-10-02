@@ -13,8 +13,10 @@
 		handleLibraryClick,
 		haptic,
 		isPaused,
+		isScanning,
 		librarySearchQuery: searchQuery,
 		queueIndex,
+		scanStatus,
 	} = usePlayer();
 
 	// Local state for this tab only
@@ -119,6 +121,36 @@
 			</div>
 		</div>
 
+		<!-- Scanning / Mood Banner -->
+		<div
+			v-if="isScanning || Boolean(scanStatus.is_analyzing_mood)"
+			class="bg-carpincho-panel border-carpincho-border mx-4 my-2 rounded-xl border p-3 shadow-md"
+		>
+			<div class="text-carpincho-text flex items-center justify-between text-sm font-semibold">
+				<div class="flex items-center gap-2">
+					<i class="material-icons text-carpincho-warning animate-spin text-base">sync</i>
+					<span>
+						{{
+							isScanning
+								? `${scanStatus.current} de ${scanStatus.total || '?'} joyitas listas`
+								: `Sintonizando la vibra (${scanStatus.current}/${scanStatus.total || '?'})...`
+						}}
+					</span>
+				</div>
+				<span v-if="scanStatus.total > 0" class="text-carpincho-muted font-mono text-xs">
+					{{ Math.min(100, Math.round((scanStatus.current / scanStatus.total) * 100)) }}%
+				</span>
+			</div>
+			<div class="mt-2 h-1 w-full overflow-hidden rounded-full bg-gray-700">
+				<div
+					v-if="scanStatus.total > 0"
+					class="bg-carpincho-warning h-full transition-all duration-300 ease-out"
+					:style="{ width: `${Math.min(100, Math.round((scanStatus.current / scanStatus.total) * 100))}%` }"
+				/>
+				<div v-else class="bg-carpincho-primary h-full w-1/3 animate-[pulse_1s_ease-in-out_infinite]" />
+			</div>
+		</div>
+
 		<!-- Table Header (CSS Grid Equivalent) -->
 		<div
 			class="bg-carpincho-panel text-carpincho-primary border-carpincho-border grid grid-cols-[5rem_minmax(0,1fr)_minmax(0,1fr)] items-center border-b shadow-sm sm:grid-cols-[5rem_minmax(0,1fr)_minmax(0,1fr)_5.5rem]"
@@ -143,7 +175,10 @@
 
 			<!-- Empty State -->
 			<div v-if="filteredTracks.length === 0" class="text-carpincho-primary p-8 text-center italic">
-				No hay nada por acá con ese nombre, fiera.
+				<template v-if="isScanning">
+					🧉 Chusmeando la biblioteca por primera vez... Aguantá que ya asoman los temazos.
+				</template>
+				<template v-else>No hay nada por acá con ese nombre, fiera.</template>
 			</div>
 		</div>
 	</section>

@@ -28,6 +28,7 @@ import {
 	pendingSeekTime,
 	queueState,
 	radioModeEnabled,
+	scanStatus,
 	serverMuted,
 	serverUrl,
 	setWsSend,
@@ -102,6 +103,7 @@ export function useSocket() {
 						if (state.has_edge_tts !== undefined) hasEdgeTts.value = state.has_edge_tts;
 						if (state.has_ffmpeg !== undefined) hasFfmpeg.value = state.has_ffmpeg;
 						if (state.history) historyState.value = state.history;
+						if (state.scan_status !== undefined) scanStatus.value = state.scan_status;
 						if (state.is_scanning !== undefined) isScanning.value = state.is_scanning;
 						if (state.is_synthesizing_radio !== undefined)
 							isSynthesizingRadio.value = state.is_synthesizing_radio;

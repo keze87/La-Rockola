@@ -1,6 +1,6 @@
 import { useUrlSearchParams } from '@vueuse/core';
 import { ref, computed } from 'vue';
-import type { Track } from '../../types';
+import type { ScanStatus, Track } from '../../types';
 
 // Central reactive state for the player, shared across every composable in
 // this folder. This file holds no business logic — just the raw refs and
@@ -22,6 +22,14 @@ export const topPlayedState = ref<Track[]>([]);
 export const currentTracks = ref<Track[]>([]);
 export const favorites = ref<string[]>([]);
 export const isScanning = ref<boolean>(false);
+export const scanStatus = ref<ScanStatus>({
+	is_scanning: false,
+	is_analyzing_mood: false,
+	phase: 'idle',
+	current: 0,
+	total: 0,
+	message: '',
+});
 export const librarySearchQuery = ref<string>('');
 export const originalTracks = ref<Track[]>([]);
 export const trackMap = ref<Record<string, Track>>({});

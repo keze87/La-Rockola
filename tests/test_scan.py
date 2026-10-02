@@ -298,3 +298,148 @@ def test_scan_directory_skips_failed_mood(clean_state, temp_db, tmp_path):
 		assert len(tracks_cached) == 1
 		assert tracks_cached[0]["bpm"] == -1.0
 		assert not mood_retested
+
+
+def test_track_explicit_methods(tmp_path):
+	"""Test Track constructor flags (extract_mood=False, extract_fingerprint=False) and explicit analyze methods."""
+	test_file = tmp_path / "song.mp3"
+	test_file.write_bytes(b"DUMMY_AUDIO_BYTES_TEST")
+
+	# When flags are False, mood and fingerprint extraction are deferred
+	t = server.Track(test_file, extract_mood=False, extract_fingerprint=False)
+	assert t.bpm == 0.0
+	assert t.energy == 0.0
+	assert t.spectral_centroid == 0.0
+	assert t.fingerprint is None
+
+	# Explicit analyze_mood
+	with patch("server.extract_audio_features_ffmpeg", return_value=(128.0, 0.7, 1800.0)):
+		t.analyze_mood(ffmpeg_bin="/usr/bin/ffmpeg")
+		assert t.bpm == 128.0
+		assert t.energy == 0.7
+		assert t.spectral_centroid == 1800.0
+
+	# Explicit analyze_fingerprint
+	with patch("shutil.which", return_value="/usr/bin/fpcalc"), patch("subprocess.run") as mock_subproc:
+		mock_subproc.return_value.stdout = "FINGERPRINT=123,456,789\nDURATION=120\n"
+		t.analyze_fingerprint()
+		assert t.fingerprint == "123,456,789"
+
+
+def test_scan_directory_parallel_fast_pass(clean_state, temp_db, tmp_path):
+	"""Test scan_directory with extract_mood=False performs fast parallel scan without acoustic analysis."""
+	music_dir = tmp_path / "Music"
+	music_dir.mkdir()
+
+	files = []
+	for i in range(10):
+		f = music_dir / f"track_{i}.mp3"
+		f.write_bytes(f"{i}".encode() * (50 + i * 10))
+		files.append(f)
+
+	state = clean_state
+
+	mood_called = False
+	fp_called = False
+
+	def mock_mood(self):
+		nonlocal mood_called
+		mood_called = True
+
+	def mock_fp(self):
+		nonlocal fp_called
+		fp_called = True
+
+	with (
+		patch.object(server.Track, "_extract_mood", mock_mood),
+		patch.object(server.Track, "_extract_fingerprint", mock_fp),
+	):
+		tracks = state.scan_directory([str(music_dir)], extract_mood=False)
+		assert len(tracks) == 10
+		assert not mood_called
+		assert not fp_called
+
+		for t in tracks:
+			assert t["bpm"] == 0.0
+			assert t["energy"] == 0.0
+			assert t["fingerprint"] is None
+
+		# Check SQLite DB insertion
+		with sqlite3.connect(temp_db) as conn:
+			count = conn.execute("SELECT COUNT(*) FROM tracks").fetchone()[0]
+			assert count == 10
+
+
+def test_scan_status_progress_reporting(clean_state):
+	"""Test APIState scan_status dict exposed in get_full_state_dict."""
+	state = clean_state
+	state.is_scanning = True
+	state.scan_phase = "metadata"
+	state.scan_current = 42
+	state.scan_total = 100
+	state.scan_message = "Procesando metadatos..."
+
+	full_state = state.get_full_state_dict()
+	assert full_state["is_scanning"] is True
+	assert "scan_status" in full_state
+	status = full_state["scan_status"]
+	assert status["is_scanning"] is True
+	assert status["is_analyzing_mood"] is False
+	assert status["phase"] == "metadata"
+	assert status["current"] == 42
+	assert status["total"] == 100
+	assert status["message"] == "Procesando metadatos..."
+
+
+import pytest
+
+
+@pytest.mark.asyncio
+async def test_background_mood_analysis(clean_state, temp_db, tmp_path):
+	"""Test background mood worker processes pending tracks and updates state and DB."""
+	music_dir = tmp_path / "Music"
+	music_dir.mkdir()
+
+	f1 = music_dir / "song1.mp3"
+	f1.write_bytes(b"A" * 50)
+	f2 = music_dir / "song2.mp3"
+	f2.write_bytes(b"B" * 60)
+
+	state = clean_state
+
+	# Step 1: Fast scan without mood
+	tracks = state.scan_directory([str(music_dir)], extract_mood=False)
+	assert len(tracks) == 2
+	assert tracks[0]["bpm"] == 0.0
+	assert tracks[1]["bpm"] == 0.0
+	state.tracks_cache = tracks
+
+	# Step 2: Run background mood worker
+	def mock_extract_audio(path, ffmpeg_bin):
+		return (130.0, 0.6, 2000.0)
+
+	with (
+		patch("server.find_binary", return_value="/usr/bin/ffmpeg"),
+		patch("server.extract_audio_features_ffmpeg", side_effect=mock_extract_audio),
+		patch("shutil.which", return_value=None),  # No fpcalc in this test
+	):
+		await state.run_background_mood_analysis()
+
+	assert state.is_analyzing_mood is False
+	assert state.scan_phase == "idle"
+
+	# Verify tracks_cache updated with new BPM and recalculated mood_score
+	for t in state.tracks_cache:
+		assert t["bpm"] == 130.0
+		assert t["energy"] == 0.6
+		assert t["spectral_centroid"] == 2000.0
+		assert t["mood_score"] > 0.0
+
+	# Verify SQLite DB updated
+	with sqlite3.connect(temp_db) as conn:
+		rows = conn.execute("SELECT bpm, energy, spectral_centroid FROM tracks").fetchall()
+		assert len(rows) == 2
+		for row in rows:
+			assert row[0] == 130.0
+			assert row[1] == 0.6
+			assert row[2] == 2000.0

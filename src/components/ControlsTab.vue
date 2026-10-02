@@ -25,10 +25,12 @@
 		haptic,
 		hasEdgeTts,
 		hasFfmpeg,
+		isScanning,
 		listenLocally,
 		loadLibrary,
 		mpvVisible,
 		radioModeEnabled,
+		scanStatus,
 		serverMuted,
 		setVolume,
 		sortLibrary,
@@ -158,7 +160,14 @@
 		<div class="mb-8 flex flex-wrap justify-center gap-3">
 			<PillButton icon="access_time" @click="sortLibrary('time')">Como llegaron</PillButton>
 			<PillButton icon="person" @click="sortLibrary('artist')">Por el que canta</PillButton>
-			<PillButton v-if="hasFfmpeg" icon="bolt" @click="sortLibrary('mood')">Más Manija</PillButton>
+			<PillButton
+				v-if="hasFfmpeg"
+				icon="bolt"
+				:disabled="Boolean(scanStatus?.is_analyzing_mood)"
+				@click="sortLibrary('mood')"
+			>
+				{{ scanStatus?.is_analyzing_mood ? 'Sintonizando vibra...' : 'Más Manija' }}
+			</PillButton>
 			<PillButton icon="shuffle" @click="sortLibrary('shuffle', false)">Mezcladito (A lo loco)</PillButton>
 		</div>
 
@@ -234,8 +243,21 @@
 				{{ serverMuted ? 'Desmutear' : 'Mutear' }}
 			</PillButton>
 
-			<PillButton icon="refresh" color-class="bg-green-700 hover:bg-green-600" @click="loadLibrary(true)">
-				Pegale otra escaneada
+			<PillButton
+				:icon="isScanning ? 'sync' : 'refresh'"
+				:color-class="
+					isScanning || Boolean(scanStatus?.is_analyzing_mood)
+						? 'bg-gray-700'
+						: 'bg-green-700 hover:bg-green-600'
+				"
+				:disabled="isScanning || Boolean(scanStatus?.is_analyzing_mood)"
+				@click="loadLibrary(true)"
+			>
+				<template v-if="isScanning">
+					Escaneando...
+					<template v-if="scanStatus?.total > 0">({{ scanStatus.current }}/{{ scanStatus.total }})</template>
+				</template>
+				<template v-else>Pegale otra escaneada</template>
 			</PillButton>
 
 			<PillButton

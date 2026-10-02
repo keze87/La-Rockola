@@ -3,10 +3,12 @@
 		defineProps<{
 			icon?: string | null;
 			colorClass?: string;
+			disabled?: boolean;
 		}>(),
 		{
 			icon: null,
 			colorClass: 'bg-gray-800 hover:bg-gray-700',
+			disabled: false,
 		}
 	);
 	defineEmits<{
@@ -16,11 +18,12 @@
 
 <template>
 	<button
-		class="flex items-center gap-2 rounded-full px-5 py-2 font-medium text-white transition active:scale-95"
+		:disabled="disabled"
+		class="flex items-center gap-2 rounded-full px-5 py-2 font-medium text-white transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
 		:class="colorClass"
-		@click="$emit('click')"
+		@click="!disabled && $emit('click')"
 	>
-		<i v-if="icon" class="material-icons">{{ icon }}</i>
+		<i v-if="icon" class="material-icons" :class="{ 'animate-spin': icon === 'sync' }">{{ icon }}</i>
 		<slot />
 	</button>
 </template>

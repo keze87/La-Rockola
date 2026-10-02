@@ -7,8 +7,10 @@ import {
 	currentTracks,
 	favorites,
 	isPaused,
+	isScanning,
 	librarySearchQuery,
 	queueState,
+	scanStatus,
 	trackMap,
 } from '@/composables/player/state';
 
@@ -82,6 +84,15 @@ describe('LibraryTab.vue', () => {
 		currentTracks.value = [...mockTracks];
 		favorites.value = [];
 		isPaused.value = false;
+		isScanning.value = false;
+		scanStatus.value = {
+			is_scanning: false,
+			is_analyzing_mood: false,
+			phase: 'idle',
+			current: 0,
+			total: 0,
+			message: '',
+		};
 		librarySearchQuery.value = '';
 		queueState.value = [];
 		trackMap.value = {
@@ -157,5 +168,29 @@ describe('LibraryTab.vue', () => {
 		const scrollBtn = wrapper.find('button[title="Ir al tema actual"]');
 		expect(scrollBtn.exists()).toBe(true);
 		await scrollBtn.trigger('click');
+	});
+
+	it('renders scanning banner with progress when isScanning is true', () => {
+		isScanning.value = true;
+		scanStatus.value = {
+			is_scanning: true,
+			phase: 'metadata',
+			current: 50,
+			total: 200,
+			message: '',
+		};
+		const wrapper = mount(LibraryTab);
+
+		expect(wrapper.text()).toContain('50 de 200 joyitas listas');
+	});
+
+	it('renders initial empty state message when isScanning is true and no tracks yet', () => {
+		isScanning.value = true;
+		currentTracks.value = [];
+		const wrapper = mount(LibraryTab);
+
+		expect(wrapper.text()).toContain(
+			'Chusmeando la biblioteca por primera vez... Aguantá que ya asoman los temazos.'
+		);
 	});
 });

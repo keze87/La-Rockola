@@ -39,6 +39,7 @@
 		localPlayerRef,
 		localTimePos,
 		queueState,
+		scanStatus,
 		switchTab,
 	} = usePlayer();
 
@@ -149,7 +150,16 @@
 			<div class="flex h-[40px] min-w-0 flex-1 items-center overflow-hidden">
 				<transition name="lyric" mode="out-in">
 					<span v-if="isScanning" class="block w-full truncate text-left">
-						[Avisando] Chusmeando temas, aguantá fiera... 🧉
+						<template v-if="scanStatus.total > 0">
+							[Avisando] Chusmeando temas ({{ scanStatus.current }}/{{ scanStatus.total }})... 🧉
+						</template>
+						<template v-else>[Avisando] Chusmeando temas, aguantá fiera... 🧉</template>
+					</span>
+					<span v-else-if="scanStatus.is_analyzing_mood" class="block w-full truncate text-left">
+						<template v-if="scanStatus.total > 0">
+							Sintonizando la vibra ({{ scanStatus.current }}/{{ scanStatus.total }})... 🎶
+						</template>
+						<template v-else>Sintonizando la vibra... 🎶</template>
 					</span>
 					<span
 						v-else-if="currentTrackPath && currentLyricLine && currentLyricLine.trim() !== ''"
@@ -171,20 +181,37 @@
 				@error="hideBrokenCover"
 			/>
 			<div v-else class="flex h-10 w-10 shrink-0 items-center justify-center rounded shadow-sm">
-				<i class="material-icons text-carpincho-warning">
-					{{ isScanning ? 'sync' : isPlaying ? 'nightlife' : 'music_note' }}
+				<i
+					class="material-icons text-carpincho-warning"
+					:class="{ 'animate-spin': isScanning || Boolean(scanStatus.is_analyzing_mood) }"
+				>
+					{{
+						isScanning || Boolean(scanStatus.is_analyzing_mood)
+							? 'sync'
+							: isPlaying
+								? 'nightlife'
+								: 'music_note'
+					}}
 				</i>
 			</div>
 		</div>
 	</nav>
 
 	<!-- BARRA DE PROGRESO / SCAN INFERIOR NAV -->
-	<div v-show="isScanning" class="bg-carpincho-panel h-1 w-full shrink-0 overflow-hidden">
-		<div class="bg-carpincho-primary h-full w-1/3 animate-[pulse_1s_ease-in-out_infinite]" />
+	<div
+		v-show="isScanning || Boolean(scanStatus.is_analyzing_mood)"
+		class="bg-carpincho-panel h-1 w-full shrink-0 overflow-hidden"
+	>
+		<div
+			v-if="scanStatus.total > 0"
+			class="bg-carpincho-warning h-full transition-all duration-300 ease-out"
+			:style="{ width: `${Math.min(100, Math.round((scanStatus.current / scanStatus.total) * 100))}%` }"
+		/>
+		<div v-else class="bg-carpincho-primary h-full w-1/3 animate-[pulse_1s_ease-in-out_infinite]" />
 	</div>
 
 	<div
-		v-show="!isScanning && currentTrackPath"
+		v-show="!isScanning && !Boolean(scanStatus.is_analyzing_mood) && currentTrackPath"
 		class="bg-carpincho-panel group relative flex h-2 w-full shrink-0 cursor-pointer touch-none items-start"
 		style="-webkit-tap-highlight-color: transparent"
 		@pointerdown="startSeek"

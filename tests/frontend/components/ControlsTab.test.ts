@@ -8,9 +8,11 @@ import {
 	djSafeModeEnabled,
 	hasEdgeTts,
 	hasFfmpeg,
+	isScanning,
 	listenLocally,
 	mpvVisible,
 	radioModeEnabled,
+	scanStatus,
 	serverMuted,
 	serverUrl,
 	volume,
@@ -37,6 +39,15 @@ describe('ControlsTab.vue', () => {
 		serverMuted.value = false;
 		serverUrl.value = null;
 		volume.value = 80;
+		isScanning.value = false;
+		scanStatus.value = {
+			is_scanning: false,
+			is_analyzing_mood: false,
+			phase: 'idle',
+			current: 0,
+			total: 0,
+			message: '',
+		};
 	});
 
 	it('renders volume controls, sort buttons, and toggles', () => {
@@ -230,5 +241,42 @@ describe('ControlsTab.vue', () => {
 
 		await byTime?.trigger('click');
 		await byShuffle?.trigger('click');
+	});
+
+	it('disables "Más Manija" and displays "Sintonizando vibra..." when is_analyzing_mood is true', () => {
+		scanStatus.value = {
+			is_scanning: false,
+			is_analyzing_mood: true,
+			phase: 'mood',
+			current: 10,
+			total: 50,
+			message: '',
+		};
+		const wrapper = mount(ControlsTab);
+
+		const moodBtn = wrapper
+			.findAllComponents({ name: 'PillButton' })
+			.find((w) => w.text().includes('Sintonizando vibra'));
+		expect(moodBtn).toBeDefined();
+		expect(moodBtn?.attributes('disabled')).toBeDefined();
+	});
+
+	it('disables "Pegale otra escaneada" and displays progress when isScanning is true', () => {
+		isScanning.value = true;
+		scanStatus.value = {
+			is_scanning: true,
+			phase: 'metadata',
+			current: 120,
+			total: 500,
+			message: '',
+		};
+		const wrapper = mount(ControlsTab);
+
+		const scanBtn = wrapper
+			.findAllComponents({ name: 'PillButton' })
+			.find((w) => w.text().includes('Escaneando...'));
+		expect(scanBtn).toBeDefined();
+		expect(scanBtn?.text()).toContain('120/500');
+		expect(scanBtn?.attributes('disabled')).toBeDefined();
 	});
 });
