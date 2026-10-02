@@ -831,15 +831,23 @@ if not DBUS_AVAILABLE:
 			self.name = name
 
 
-logging.basicConfig(
-	level=logging.DEBUG,  # Set to DEBUG to see everything
-	format="%(asctime)s - %(levelname)s - [%(funcName)s] %(message)s",
-)
-logger = logging.getLogger("RockolaCarpincho")
+def configure_logging(debug: bool = False):
+	"""Configura el nivel de logging global y silencia bibliotecas ruidosas."""
+	level = logging.DEBUG if debug else logging.INFO
+	logging.basicConfig(
+		level=level,
+		format="%(asctime)s - %(levelname)s - [%(funcName)s] %(message)s",
+		force=True,
+	)
+	# Silenciamos bibliotecas externas ruidosas (PIL/Pillow, Numba, LLVMlite)
+	logging.getLogger("numba").setLevel(logging.WARNING)
+	logging.getLogger("llvmlite").setLevel(logging.WARNING)
+	logging.getLogger("PIL").setLevel(logging.WARNING)
 
-# SILENCIADOR DE MATEMÁTICAS: Callamos la catarata de logs de Numba
-logging.getLogger("numba").setLevel(logging.WARNING)
-logging.getLogger("llvmlite").setLevel(logging.WARNING)
+
+# Configuración inicial de logging (por defecto INFO, o DEBUG si se solicita vía variable de entorno)
+configure_logging(debug=os.environ.get("ROCKOLA_DEBUG", "").lower() in ("1", "true", "yes"))
+logger = logging.getLogger("RockolaCarpincho")
 
 # --- CONFIGURACIÓN PERSISTENTE (rockola_config.json) ---
 DEFAULT_CONFIG = {
@@ -2389,7 +2397,11 @@ class ConnectionManager:
 				dj_copy["fingerprint"] = "<Fingerprint omitido del log>"
 			log_msg["dj_next_track"] = dj_copy
 
-		logger.debug(f"AVISANDO A LA MUCHACHADA:\n{highlight_json(log_msg)}")
+		# Evitamos spamear la consola si el broadcast es solo el pulso periódico de posición
+		is_routine_tick = set(message.keys()) <= {"type", "time_pos"}
+		if not is_routine_tick:
+			logger.debug(f"AVISANDO A LA MUCHACHADA:\n{highlight_json(log_msg)}")
+
 		for connection in self.active_connections.copy():
 			try:
 				await connection.send_json(message)
@@ -4947,11 +4959,8 @@ async def websocket_endpoint(websocket: WebSocket):
 				logger.debug(f"Pifió restaurando mute de MPV: {e}")
 
 
-if __name__ == "__main__":
-	import multiprocessing
-
-	multiprocessing.freeze_support()
-
+def build_arg_parser() -> argparse.ArgumentParser:
+	"""Construye el parser de argumentos de línea de comandos."""
 	parser = argparse.ArgumentParser(
 		description="🦦 La Rockola del Carpincho — Servidor de música y reproductor con alma de campo y sabor a mate.",
 		epilog="""Ejemplos de uso:
@@ -4960,6 +4969,7 @@ if __name__ == "__main__":
   larockola --setup                      Ejecuta el asistente interactivo para elegir carpetas
   larockola --dir ~/Musica --port 8080   Usa una carpeta y un puerto específicos
   larockola --host 127.0.0.1             Modo solo local (sin acceso desde la red Wi-Fi)
+  larockola --debug                      Habilita logs detallados en nivel DEBUG
 """,
 		formatter_class=argparse.RawDescriptionHelpFormatter,
 	)
@@ -5030,7 +5040,25 @@ if __name__ == "__main__":
 		default=None,
 		help="No abre el navegador web automáticamente al iniciar",
 	)
+	parser.add_argument(
+		"--debug",
+		action="store_true",
+		default=os.environ.get("ROCKOLA_DEBUG", "").lower() in ("1", "true", "yes"),
+		help="Activa logs detallados en nivel DEBUG (predeterminado: INFO)",
+	)
+	return parser
+
+
+if __name__ == "__main__":
+	import multiprocessing
+
+	multiprocessing.freeze_support()
+
+	parser = build_arg_parser()
 	args = parser.parse_args()
+
+	if args.debug:
+		configure_logging(debug=True)
 
 	# Re-ejecutamos check_dependencies por si fue omitido para mostrar --help
 	check_dependencies()
