@@ -23,6 +23,7 @@ import {
 	pendingSeekTime,
 	queueState,
 	radioModeEnabled,
+	scanStatus,
 	serverMuted,
 	setWsSend,
 	timePos,
@@ -73,6 +74,14 @@ describe('useSocket.ts', () => {
 		isDraggingSeek.value = false;
 		isPaused.value = false;
 		isScanning.value = false;
+		scanStatus.value = {
+			is_scanning: false,
+			is_analyzing_mood: false,
+			phase: 'idle',
+			current: 0,
+			total: 0,
+			message: '',
+		};
 		listenLocally.value = false;
 		localTimePos.value = 0;
 		mpvVisible.value = true;
@@ -243,5 +252,30 @@ describe('useSocket.ts', () => {
 		expect(() => {
 			capturedOptions.onMessage(null, { data: 'invalid json string <<<' });
 		}).not.toThrow();
+	});
+
+	it('updates scanStatus and isScanning on receiving scan_status in state_update', () => {
+		const { connectWebSocket } = useSocket();
+		connectWebSocket();
+
+		capturedOptions.onMessage(null, {
+			data: JSON.stringify({
+				type: 'state_update',
+				is_scanning: true,
+				scan_status: {
+					is_scanning: true,
+					is_analyzing_mood: false,
+					phase: 'metadata',
+					current: 25,
+					total: 100,
+					message: 'Chusmeando temas...',
+				},
+			}),
+		});
+
+		expect(isScanning.value).toBe(true);
+		expect(scanStatus.value.current).toBe(25);
+		expect(scanStatus.value.total).toBe(100);
+		expect(scanStatus.value.phase).toBe('metadata');
 	});
 });

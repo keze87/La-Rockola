@@ -2687,7 +2687,13 @@ class APIState:
 				nc = _normalize(c, valid_centroids)
 				t["mood_score"] = round(0.5 * nb + 0.35 * ne + 0.15 * nc, 4)
 
-	def scan_directory(self, target_dirs: list, extract_mood: bool = True, extract_fingerprint: bool | None = None):
+	def scan_directory(
+		self,
+		target_dirs: list,
+		extract_mood: bool = True,
+		max_workers: int = 16,
+		extract_fingerprint: bool | None = None,
+	):
 		if extract_fingerprint is None:
 			extract_fingerprint = extract_mood
 
@@ -2723,14 +2729,15 @@ class APIState:
 				raw_files.extend(list(music_dir.rglob(ext)))
 
 		logger.info(f"Encontré {len(raw_files)} archivos en total. Revisando cuáles son nuevos o cambiaron...")
+		self.scan_phase = "metadata"
+		self.scan_total = len(raw_files)
+		self.scan_current = 0
+		self.scan_message = f"Encontré {len(raw_files)} archivos en total. Revisando cuáles son nuevos o cambiaron..."
+
 		raw_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
 
-		self.scan_total = len(raw_files)
-		self.scan_phase = "metadata"
-		self.scan_current = 0
-		self.scan_message = f"Procesando metadatos (0/{len(raw_files)})..."
-
 		has_ffmpeg = is_mood_available()
+		has_fpcalc = bool(shutil.which("fpcalc"))
 
 		# --- CARGAMOS LA CACHÉ DE LA DB AL PRINCIPIO ---
 		db_cache = {}
@@ -2771,15 +2778,24 @@ class APIState:
 		except Exception as e:
 			logger.warning(f"No pude cargar la caché de la DB (capaz está vacía): {e}")
 
-		def _process_single_file(item):
-			idx, f = item
+		self.id_to_current_path.clear()
+		self.path_to_id.clear()
+		new_cache = {}
+		tracks_to_insert = []
+		seen_track_ids = set()
+		new_tracks_for_reconciliation = []
+
+		cache_hits = {}
+		miss_files = []
+
+		for f in raw_files:
 			file_str = str(f)
 			try:
 				stat = f.stat()
 				current_mtime = stat.st_mtime
 				current_size = stat.st_size
 			except OSError:
-				return idx, None
+				continue
 
 			# 1. Miramos si está en memoria (escaneo en caliente)
 			if (
@@ -2791,28 +2807,21 @@ class APIState:
 					or not extract_mood
 				)
 			):
-				track_dict = dict(self.track_cache_by_path[file_str]["data"])
-				track_hash = track_dict.get("track_hash")
-				return idx, {
-					"type": "cached",
-					"file_str": file_str,
-					"current_mtime": current_mtime,
-					"track_dict": track_dict,
-					"track_hash": track_hash,
-				}
+				td = self.track_cache_by_path[file_str]["data"]
+				th = td.get("track_hash")
+				cache_hits[file_str] = (current_mtime, td, th)
 
 			# 2. Miramos si está intacto en la DB (arranque de servidor)
 			elif (
 				file_str in db_cache
 				and db_cache[file_str]["mtime"] == current_mtime
 				and db_cache[file_str]["file_size"] == current_size
-				and db_cache[file_str].get("bpm") is not None
-				and (db_cache[file_str].get("bpm") != 0.0 or not has_ffmpeg or not extract_mood)
-				and (db_cache[file_str].get("fingerprint") is not None or not extract_fingerprint)
+				and (db_cache[file_str].get("bpm", 0.0) != 0.0 or not has_ffmpeg or not extract_mood)
+				and (db_cache[file_str].get("fingerprint") is not None or not has_fpcalc or not extract_fingerprint)
 			):
 				cached = db_cache[file_str]
-				track_hash = cached["track_hash"]
-				track_dict = {
+				th = cached["track_hash"]
+				td = {
 					"path": file_str,
 					"display_title": cached["title"],
 					"display_artist": cached["artist"],
@@ -2821,87 +2830,77 @@ class APIState:
 					"search_string": f"{cached['artist']} {cached['title']}".lower(),
 					"title": cached["title"],
 					"artist": cached["artist"],
-					"track_hash": track_hash,
+					"track_hash": th,
 					"bpm": cached["bpm"],
 					"energy": cached["energy"],
 					"spectral_centroid": cached["spectral_centroid"],
 					"fingerprint": cached.get("fingerprint"),
 				}
-				return idx, {
-					"type": "cached",
-					"file_str": file_str,
-					"current_mtime": current_mtime,
-					"track_dict": track_dict,
-					"track_hash": track_hash,
-				}
-
-			# 3. NO HAY CACHÉ VÁLIDA: Leemos los metadatos y calculamos el hash desde cero
+				cache_hits[file_str] = (current_mtime, td, th)
 			else:
-				track_obj = Track(f, extract_mood=extract_mood, extract_fingerprint=extract_fingerprint)
+				miss_files.append((f, current_mtime, current_size))
+
+		# 3. Procesamos los archivos sin caché en PARALELO
+		miss_results = {}
+		if miss_files:
+
+			def _process_single_file(item):
+				target_f, mtime, size = item
+				track_obj = Track(target_f, extract_mood=extract_mood, extract_fingerprint=extract_fingerprint)
 				track_dict = track_obj.to_dict()
 				track_hash = track_obj.track_hash
-				ins_tuple = (
+				db_tuple = (
 					track_hash,
-					file_str,
+					str(target_f),
 					track_dict["title"],
 					track_dict.get("album", "Desconocido"),
 					track_dict["artist"],
 					track_dict["duration_str"],
-					current_mtime,
-					current_size,
+					mtime,
+					size,
 					track_dict.get("bpm", 0.0),
 					track_dict.get("energy", 0.0),
 					track_dict.get("spectral_centroid", 0.0),
 					track_obj.fingerprint,
 				)
-				return idx, {
-					"type": "fresh",
-					"file_str": file_str,
-					"current_mtime": current_mtime,
-					"track_dict": track_dict,
-					"track_hash": track_hash,
-					"insert_tuple": ins_tuple,
-					"fingerprint": track_obj.fingerprint,
-				}
+				return (str(target_f), mtime, track_dict, track_hash, db_tuple, track_obj.fingerprint)
 
-		max_workers = min(16, (os.cpu_count() or 4) * 2)
-		results = [None] * len(raw_files)
-		with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-			futures = [executor.submit(_process_single_file, (idx, f)) for idx, f in enumerate(raw_files)]
-			for count, fut in enumerate(concurrent.futures.as_completed(futures), 1):
-				idx, res = fut.result()
-				results[idx] = res
-				self.scan_current = count
-				if count % 50 == 0:
-					self.scan_message = f"Procesando metadatos ({count}/{len(raw_files)})..."
-					gc.collect()
+			worker_count = min(max_workers, (os.cpu_count() or 4) * 2)
+			with concurrent.futures.ThreadPoolExecutor(max_workers=worker_count) as executor:
+				futures = {executor.submit(_process_single_file, item): item for item in miss_files}
+				for processed_count, future in enumerate(concurrent.futures.as_completed(futures), 1):
+					res = future.result()
+					if res:
+						f_str, mtime, t_dict, t_hash, db_tup, fp = res
+						miss_results[f_str] = (mtime, t_dict, t_hash, db_tup, fp)
+					self.scan_current = len(cache_hits) + processed_count
+					if processed_count % 50 == 0:
+						logger.info(
+							f"Ya procesé la data de {processed_count}/{len(miss_files)} joyitas nuevas/modificadas..."
+						)
+						gc.collect()
 
+		# Armamos la lista ordenada de tracks conservando el orden de raw_files
 		tracks = []
-		self.id_to_current_path.clear()
-		self.path_to_id.clear()
-		new_cache = {}
-		tracks_to_insert = []
-		seen_track_ids = set()
-		new_tracks_for_reconciliation = []
-
-		for res in results:
-			if res is None:
-				continue
-			file_str = res["file_str"]
-			track_dict = res["track_dict"]
-			track_hash = res["track_hash"]
-			current_mtime = res["current_mtime"]
-
-			if res["type"] == "fresh":
-				tracks_to_insert.append(res["insert_tuple"])
-				if res.get("fingerprint"):
+		for f in raw_files:
+			file_str = str(f)
+			if file_str in cache_hits:
+				current_mtime, track_dict, track_hash = cache_hits[file_str]
+				seen_track_ids.add(track_hash)
+				new_cache[file_str] = {"mtime": current_mtime, "data": track_dict}
+				tracks.append(track_dict)
+				self.id_to_current_path[track_hash] = file_str
+				self.path_to_id[file_str] = track_hash
+			elif file_str in miss_results:
+				current_mtime, track_dict, track_hash, db_tuple, fp = miss_results[file_str]
+				tracks_to_insert.append(db_tuple)
+				seen_track_ids.add(track_hash)
+				if fp:
 					new_tracks_for_reconciliation.append(track_dict)
-
-			seen_track_ids.add(track_hash)
-			new_cache[file_str] = {"mtime": current_mtime, "data": track_dict}
-			tracks.append(track_dict)
-			self.id_to_current_path[track_hash] = file_str
-			self.path_to_id[file_str] = track_hash
+				new_cache[file_str] = {"mtime": current_mtime, "data": track_dict}
+				tracks.append(track_dict)
+				self.id_to_current_path[track_hash] = file_str
+				self.path_to_id[file_str] = track_hash
 
 		# --- RECONCILIACIÓN DE HUELLAS ACÚSTICAS ---
 		missing_db_tracks = [t for t in db_cache.values() if t["track_hash"] not in seen_track_ids]
@@ -2977,16 +2976,21 @@ class APIState:
 				logger.error(f"Error guardando tracks en la DB: {e}")
 
 		self.scan_current = len(tracks)
-		self.scan_message = f"Listo el escaneo ({len(tracks)} temas)."
+		self.scan_total = len(tracks)
+		self.scan_message = "¡Listo el escaneo, maestro!"
 		logger.info("¡Listo el escaneo, maestro!")
 		return tracks
 
 	def start_background_mood_analysis(self):
 		"""Lanza la tarea en segundo plano para analizar BPM y fingerprints sin bloquear."""
 		if self.background_mood_task and not self.background_mood_task.done():
-			self.background_mood_task.cancel()
-		self.background_mood_task = asyncio.create_task(self.run_background_mood_analysis())
-		return self.background_mood_task
+			return self.background_mood_task
+		try:
+			loop = asyncio.get_running_loop()
+			self.background_mood_task = loop.create_task(self.run_background_mood_analysis())
+			return self.background_mood_task
+		except RuntimeError:
+			return None
 
 	async def run_background_mood_analysis(self):
 		"""Worker que procesa de forma asíncrona BPM/mood y huella acústica en lotes pequeños."""
@@ -3137,7 +3141,7 @@ class APIState:
 			self.scan_phase = "idle"
 			self.scan_message = ""
 			try:
-				await broadcast_state()
+				await broadcast_state(include_library=True)
 			except Exception:
 				pass
 			logger.info("Análisis acústico en segundo plano finalizado.")
@@ -4233,6 +4237,9 @@ async def scan_library(dir: str | None = None, dir2: str | None = None):
 		# Paso 1: Escaneo rápido en paralelo sin bloquear con FFmpeg/fpcalc
 		state.tracks_cache = await asyncio.to_thread(state.scan_directory, target_dirs, False)
 	finally:
+		state.is_scanning = False
+		state.scan_phase = "idle"
+		state.scan_message = ""
 		stop_ticker.set()
 		ticker_task.cancel()
 		try:
@@ -4242,13 +4249,20 @@ async def scan_library(dir: str | None = None, dir2: str | None = None):
 
 	# Si la librería cambió, la incluimos en el broadcast para que todos los clientes la actualicen sin hacer un GET /library
 	library_changed = len(state.tracks_cache) != prev_count
-	state.is_scanning = False
-	state.scan_phase = "idle"
-	state.scan_message = ""
 	await broadcast_state(include_library=library_changed)
 
 	# Paso 2: Lanzar worker de enriquecimiento acústico en segundo plano
-	state.start_background_mood_analysis()
+	mood_task = state.start_background_mood_analysis()
+
+	async def _finish_mood_broadcasting():
+		if mood_task:
+			try:
+				await mood_task
+			except Exception:
+				pass
+		await broadcast_state(include_library=True)
+
+	asyncio.create_task(_finish_mood_broadcasting())
 
 	return {"data": state.tracks_cache}
 

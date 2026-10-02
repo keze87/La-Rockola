@@ -443,3 +443,86 @@ async def test_background_mood_analysis(clean_state, temp_db, tmp_path):
 			assert row[0] == 130.0
 			assert row[1] == 0.6
 			assert row[2] == 2000.0
+
+
+@pytest.mark.asyncio
+async def test_scan_library_resets_is_scanning_on_error(clean_state, tmp_path):
+	"""Test that scan_library resets is_scanning to False and scan_phase to idle even if scan_directory fails."""
+	with (
+		patch.object(server.state, "scan_directory", side_effect=RuntimeError("Disk failure")),
+		patch("server.broadcast_state", return_value=None),
+	):
+		with pytest.raises(RuntimeError):
+			await server.scan_library(str(tmp_path))
+
+	assert server.state.is_scanning is False
+	assert server.state.scan_phase == "idle"
+
+
+def test_scan_directory_without_fpcalc_uses_cache(clean_state, temp_db, tmp_path):
+	"""Test that when fpcalc is unavailable, DB cache entries with fingerprint=None are still valid hits."""
+	music_dir = tmp_path / "Music"
+	music_dir.mkdir()
+
+	f1 = music_dir / "track_no_fp.mp3"
+	f1.write_bytes(b"DATA_FOR_NO_FPCALC_TEST")
+
+	state = clean_state
+
+	# Pre-insert track into SQLite DB with bpm > 0 but fingerprint = None
+	mtime = f1.stat().st_mtime
+	size = f1.stat().st_size
+	tid = "test_tid_no_fp"
+	with sqlite3.connect(temp_db) as conn:
+		conn.execute(
+			"""
+			INSERT INTO tracks (track_id, path, title, album, artist, duration_str, mtime, file_size, bpm, energy, spectral_centroid, fingerprint)
+			VALUES (?, ?, 'Title', 'Album', 'Artist', '3:00', ?, ?, 120.0, 0.5, 1500.0, NULL)
+		""",
+			(tid, str(f1), mtime, size),
+		)
+		conn.commit()
+
+	track_instantiated = False
+
+	def mock_track_init(self, *args, **kwargs):
+		nonlocal track_instantiated
+		track_instantiated = True
+
+	with (
+		patch("shutil.which", return_value=None),  # fpcalc is not installed
+		patch("server.is_mood_available", return_value=True),
+		patch.object(server.Track, "__init__", mock_track_init),
+	):
+		tracks = state.scan_directory([str(music_dir)], extract_mood=True)
+		assert len(tracks) == 1
+		assert tracks[0]["track_hash"] == tid
+		# Should have hit DB cache without instantiating a fresh Track
+		assert not track_instantiated
+
+
+@pytest.mark.asyncio
+async def test_background_mood_broadcasts_library(clean_state, tmp_path):
+	"""Test that background mood analysis worker broadcasts state with include_library=True upon completion."""
+	music_dir = tmp_path / "Music"
+	music_dir.mkdir()
+	f = music_dir / "test.mp3"
+	f.write_bytes(b"TEST_BROADCAST_AUDIO")
+
+	state = clean_state
+	state.tracks_cache = [{"path": str(f), "track_hash": "th1", "bpm": 0.0, "energy": 0.0, "spectral_centroid": 0.0}]
+
+	broadcast_calls = []
+
+	async def mock_broadcast(**kwargs):
+		broadcast_calls.append(kwargs)
+
+	with (
+		patch("server.find_binary", return_value="/usr/bin/ffmpeg"),
+		patch("server.extract_audio_features_ffmpeg", return_value=(120.0, 0.5, 1500.0)),
+		patch("shutil.which", return_value=None),
+		patch("server.broadcast_state", side_effect=mock_broadcast),
+	):
+		await state.run_background_mood_analysis()
+
+	assert any(c.get("include_library") is True for c in broadcast_calls)

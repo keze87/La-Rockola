@@ -121,33 +121,27 @@
 			</div>
 		</div>
 
-		<!-- Scanning / Mood Banner -->
+		<!-- Scan Status Banner -->
 		<div
-			v-if="isScanning || Boolean(scanStatus.is_analyzing_mood)"
-			class="bg-carpincho-panel border-carpincho-border mx-4 my-2 rounded-xl border p-3 shadow-md"
+			v-if="isScanning || scanStatus?.is_analyzing_mood"
+			class="bg-carpincho-panel border-carpincho-border text-carpincho-text flex items-center justify-between border-b px-4 py-2.5 text-xs font-semibold shadow-inner"
 		>
-			<div class="text-carpincho-text flex items-center justify-between text-sm font-semibold">
-				<div class="flex items-center gap-2">
-					<i class="material-icons text-carpincho-warning animate-spin text-base">sync</i>
-					<span>
-						{{
-							isScanning
-								? `${scanStatus.current} de ${scanStatus.total || '?'} joyitas listas`
-								: `Sintonizando la vibra (${scanStatus.current}/${scanStatus.total || '?'})...`
-						}}
-					</span>
-				</div>
-				<span v-if="scanStatus.total > 0" class="text-carpincho-muted font-mono text-xs">
-					{{ Math.min(100, Math.round((scanStatus.current / scanStatus.total) * 100)) }}%
+			<div class="flex items-center gap-2 truncate">
+				<i class="material-icons text-carpincho-warning animate-spin text-base">sync</i>
+				<span class="truncate">
+					{{
+						isScanning
+							? scanStatus?.total
+								? `Chusmeando temas: ${scanStatus.current} de ${scanStatus.total} listos 🧉`
+								: 'Chusmeando la biblioteca, aguantá fiera... 🧉'
+							: scanStatus?.total
+								? `Sintonizando vibra: ${scanStatus.current} de ${scanStatus.total} temas analizados 🎶`
+								: 'Sintonizando vibra de los temas en segundo plano... 🎶'
+					}}
 				</span>
 			</div>
-			<div class="mt-2 h-1 w-full overflow-hidden rounded-full bg-gray-700">
-				<div
-					v-if="scanStatus.total > 0"
-					class="bg-carpincho-warning h-full transition-all duration-300 ease-out"
-					:style="{ width: `${Math.min(100, Math.round((scanStatus.current / scanStatus.total) * 100))}%` }"
-				/>
-				<div v-else class="bg-carpincho-primary h-full w-1/3 animate-[pulse_1s_ease-in-out_infinite]" />
+			<div v-if="scanStatus?.total" class="text-carpincho-warning ml-2 shrink-0 font-bold">
+				{{ Math.round((scanStatus.current / scanStatus.total) * 100) }}%
 			</div>
 		</div>
 

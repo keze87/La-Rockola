@@ -181,7 +181,7 @@ describe('LibraryTab.vue', () => {
 		};
 		const wrapper = mount(LibraryTab);
 
-		expect(wrapper.text()).toContain('50 de 200 joyitas listas');
+		expect(wrapper.text()).toContain('50 de 200 listos');
 	});
 
 	it('renders initial empty state message when isScanning is true and no tracks yet', () => {

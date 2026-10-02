@@ -82,7 +82,7 @@ describe('App.vue', () => {
 		};
 		const wrapper = mount(App);
 
-		expect(wrapper.text()).toContain('[Avisando] Chusmeando temas (450/1765)... 🧉');
+		expect(wrapper.text()).toContain('[Avisando] Chusmeando temas (450/1765), aguantá fiera... 🧉');
 	});
 
 	it('renders mood analysis indicator when is_analyzing_mood is true', () => {
@@ -97,7 +97,7 @@ describe('App.vue', () => {
 		};
 		const wrapper = mount(App);
 
-		expect(wrapper.text()).toContain('Sintonizando la vibra (12/50)... 🎶');
+		expect(wrapper.text()).toContain('Sintonizando la vibra de los temas (12/50)... 🎶');
 	});
 
 	it('renders current track title in header when a song is playing', () => {
