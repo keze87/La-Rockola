@@ -440,6 +440,62 @@ def _check_ytdlp(is_win: bool, is_mac: bool, is_frozen: bool) -> tuple[str, str]
 	return ("yt-dlp", fix)
 
 
+def _check_ffmpeg(is_win: bool, is_mac: bool, is_frozen: bool) -> tuple[str, str] | None:
+	"""Verifica la presencia de FFmpeg, gestionando instalación automática si está disponible."""
+	if find_binary("ffmpeg") is not None:
+		return None
+
+	is_portable = is_win or is_mac or is_frozen
+	if is_portable:
+		try:
+			try:
+				from scripts import ffmpeg_installer
+			except ImportError:
+				import ffmpeg_installer
+
+			installed = ffmpeg_installer.install_ffmpeg(force=False, log_fn=lambda m: print(f"  {m}", file=sys.stderr))
+			if installed and find_binary("ffmpeg"):
+				print("🦦 ¡FFmpeg instalado con éxito para el análisis de mood y BPM! 🧉🎶\n", file=sys.stderr)
+				return None
+		except Exception as e:
+			print(f"⚠️ Aviso al intentar auto-instalar FFmpeg: {e}", file=sys.stderr)
+
+	fix = (
+		"winget install Gyan.FFmpeg (o poné ffmpeg.exe al lado de larockola.exe)"
+		if is_win
+		else ("brew install ffmpeg" if is_mac else "sudo apt install ffmpeg (para análisis de mood/BPM)")
+	)
+	return ("ffmpeg", fix)
+
+
+def _check_fpcalc(is_win: bool, is_mac: bool, is_frozen: bool) -> tuple[str, str] | None:
+	"""Verifica la presencia de fpcalc (Chromaprint), gestionando instalación automática si está disponible."""
+	if find_binary("fpcalc") is not None:
+		return None
+
+	is_portable = is_win or is_mac or is_frozen
+	if is_portable:
+		try:
+			try:
+				from scripts import fpcalc_installer
+			except ImportError:
+				import fpcalc_installer
+
+			installed = fpcalc_installer.install_fpcalc(force=False, log_fn=lambda m: print(f"  {m}", file=sys.stderr))
+			if installed and find_binary("fpcalc"):
+				print("🦦 ¡fpcalc instalado con éxito para huellas acústicas! 🧉🎶\n", file=sys.stderr)
+				return None
+		except Exception as e:
+			print(f"⚠️ Aviso al intentar auto-instalar fpcalc: {e}", file=sys.stderr)
+
+	fix = (
+		"descargar fpcalc (Chromaprint) y ponerlo al lado de larockola.exe"
+		if is_win
+		else ("brew install chromaprint" if is_mac else "sudo apt install libchromaprint-tools")
+	)
+	return ("fpcalc", fix)
+
+
 def check_dependencies(force: bool = False):
 	"""
 	Revisa que esté todo piola para arrancar la Rockola del Carpincho.
@@ -477,6 +533,14 @@ def check_dependencies(force: bool = False):
 	ytdlp_missing = _check_ytdlp(is_win, is_mac, is_frozen)
 	if ytdlp_missing:
 		missing_opt_sys.append(ytdlp_missing)
+
+	ffmpeg_missing = _check_ffmpeg(is_win, is_mac, is_frozen)
+	if ffmpeg_missing and not any(m[0] == "ffmpeg" for m in missing_opt_py):
+		missing_opt_sys.append(ffmpeg_missing)
+
+	fpcalc_missing = _check_fpcalc(is_win, is_mac, is_frozen)
+	if fpcalc_missing:
+		missing_opt_sys.append(fpcalc_missing)
 
 	# Avisar si faltan dependencias opcionales
 	if missing_opt_py or missing_opt_sys:
@@ -1683,8 +1747,9 @@ class Track:
 		"""Saca la huella acústica con fpcalc para detectar temas migrados (re-codeos, retags)."""
 		if shutil.which("fpcalc"):
 			try:
+				fpcalc_bin = find_binary("fpcalc") or "fpcalc"
 				proc = subprocess.run(
-					["fpcalc", "-raw", "-length", "60", str(self.path)],
+					[fpcalc_bin, "-raw", "-length", "60", str(self.path)],
 					capture_output=True,
 					text=True,
 					timeout=10,
@@ -2377,11 +2442,12 @@ def get_track_duration_seconds(path: str | Path | None, tracks_cache: list[dict]
 			pass
 
 		# 2. Fallback con ffprobe
-		if shutil.which("ffprobe"):
+		ffprobe_bin = find_binary("ffprobe")
+		if ffprobe_bin:
 			try:
 				res = subprocess.run(
 					[
-						shutil.which("ffprobe"),
+						ffprobe_bin,
 						"-v",
 						"error",
 						"-show_entries",
@@ -2903,6 +2969,8 @@ class APIState:
 				self.path_to_id[file_str] = track_hash
 
 		# --- RECONCILIACIÓN DE HUELLAS ACÚSTICAS ---
+		# Si un archivo se reemplazó (ej. MP3 a FLAC) o se le metió una tapa (cambió tamaño),
+		# su viejo "track_hash" va a faltar y va a haber uno nuevo para la misma canción.
 		missing_db_tracks = [t for t in db_cache.values() if t["track_hash"] not in seen_track_ids]
 		if missing_db_tracks and new_tracks_for_reconciliation:
 			logger.info(
@@ -2927,6 +2995,7 @@ class APIState:
 						best_sim = sim
 						best_match = miss_t
 
+				# Si hay similitud acústica del 85% o más, asumimos que es exactamente la misma canción
 				if best_sim > 0.85:
 					old_id = best_match["track_hash"]
 					new_id = new_t["track_hash"]
@@ -3062,8 +3131,9 @@ class APIState:
 
 			if need_fp and shutil.which("fpcalc"):
 				try:
+					fpcalc_bin = find_binary("fpcalc") or "fpcalc"
 					proc = subprocess.run(
-						["fpcalc", "-raw", "-length", "60", path_str],
+						[fpcalc_bin, "-raw", "-length", "60", path_str],
 						capture_output=True,
 						text=True,
 						timeout=10,

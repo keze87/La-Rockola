@@ -160,6 +160,15 @@ REQUISITOS DEL SISTEMA:
   La Rockola lo descargará automáticamente en la carpeta 'mpv/' la primera
   vez que reproduzcas un link de YouTube y lo mantendrá actualizado para vos.
 
+- FFmpeg (Opcional):
+  Permite el análisis acústico avanzado de tempo (BPM) y mood/brillo espectral,
+  así como la locución fluida de radio. Si no está en el sistema, La Rockola
+  lo puede descargar automáticamente.
+
+- fpcalc / Chromaprint (Opcional):
+  Permite calcular huellas acústicas para detectar temas duplicados o renombrados.
+  Si no está en el sistema, La Rockola lo puede descargar automáticamente.
+
 DATOS Y CONFIGURACIÓN:
 - Configuración: Se almacena en 'rockola_config.json'.
 - Base de datos: El historial, favoritos y análisis acústico se guardan

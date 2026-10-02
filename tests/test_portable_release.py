@@ -279,6 +279,8 @@ def test_build_windows_zip_structure(tmp_path, monkeypatch):
 		# Third party binaries must not be bundled (they are downloaded at runtime)
 		assert not any("mpv.exe" in name.lower() for name in names)
 		assert not any("yt-dlp" in name.lower() for name in names)
+		assert not any("ffmpeg" in name.lower() for name in names)
+		assert not any("fpcalc" in name.lower() for name in names)
 
 
 def test_first_run_skips_wizard_when_dir_provided(tmp_path):
@@ -395,6 +397,8 @@ def test_spec_file_hiddenimports():
 		"pydantic",
 		"scripts.radio_announcer",
 		"scripts.radio_banks",
+		"scripts.fpcalc_installer",
+		"scripts.ffmpeg_installer",
 		"edge_tts",
 		"certifi",
 		"aiohttp",
