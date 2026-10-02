@@ -437,6 +437,51 @@ async def test_hot_bg_track_mixing_on_queue_change(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_pregenerated_announcement_copies_subtitles_to_radio_announcement(tmp_path):
+	"""Verifica que los subtítulos .lrc y .srt de la locución pregenerada se copien a radio_announcement."""
+	state.radio_mode_enabled = True
+	state.radio_track_counter = 1
+	state.radio_tracks_until_next = 2
+	state.current_track = "/music/song1.mp3"
+
+	new_song = tmp_path / "song.mp3"
+	new_song.write_bytes(b"SONG_AUDIO")
+	state.queue = [str(new_song)]
+
+	# Audio y subtítulos pregenerados
+	pre_file = Path(state.radio_pregenerated_path)
+	pre_file.write_bytes(b"ID3\x04\x00\x00\x00\x00\x00\x00CLEAN_SPEECH_AUDIO")
+	pre_lrc = pre_file.with_suffix(".lrc")
+	pre_lrc.write_text("[00:00.15] Subtítulo pregenerado")
+	pre_srt = pre_file.with_suffix(".srt")
+	pre_srt.write_text("1\n00:00:00,150 --> 00:00:02,000\nSubtítulo pregenerado\n")
+
+	state.pregenerated_radio_announcement = {
+		"path": state.radio_pregenerated_path,
+		"display_title": "Carpincho en Vivo",
+		"script": "Texto limpio",
+	}
+
+	mock_mix = MagicMock(return_value=True)
+
+	with (
+		patch("server.HAS_EDGE_TTS", True),
+		patch("server.mix_announcement_with_bg_track", mock_mix),
+		patch("server.embed_cover_art_in_mp3", MagicMock()),
+		patch.object(state, "play_track", AsyncMock()),
+		patch("server.broadcast_state", AsyncMock()),
+	):
+		await state.play_next(skipped_by_user=False)
+
+		announcement_lrc = Path(state.radio_announcement_path).with_suffix(".lrc")
+		announcement_srt = Path(state.radio_announcement_path).with_suffix(".srt")
+
+		assert announcement_lrc.is_file(), "El archivo .lrc de radio_announcement no fue copiado"
+		assert announcement_lrc.read_text(encoding="utf-8") == "[00:00.15] Subtítulo pregenerado"
+		assert announcement_srt.is_file(), "El archivo .srt de radio_announcement no fue copiado"
+
+
+@pytest.mark.asyncio
 async def test_pregenerated_announcement_expires_after_15_minutes(tmp_path):
 	"""Verifica que una locución pregenerada con más de 15 minutos (ej. pausa prolongada) sea descartada y se re-sintetice fresca."""
 	import time

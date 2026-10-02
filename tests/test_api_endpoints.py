@@ -95,6 +95,18 @@ async def test_serve_lrc_endpoint(tmp_path, clean_state, monkeypatch):
 	res_radio = await server.serve_lrc(path=str(radio_mp3))
 	assert res_radio.status_code == 200
 
+	# Radio announcement .lrc fallback from pregenerated if direct lrc is missing
+	radio_lrc.unlink()
+	pre_mp3 = tmp_path / "radio_pregenerated.mp3"
+	pre_mp3.write_bytes(b"AUDIO")
+	pre_lrc = tmp_path / "radio_pregenerated.lrc"
+	pre_lrc.write_text("[00:00.15] Subtítulo fallback pregenerado")
+	clean_state.radio_pregenerated_path = str(pre_mp3)
+
+	res_fallback = await server.serve_lrc(path=str(radio_mp3))
+	assert res_fallback.status_code == 200
+	assert str(res_fallback.path) == str(pre_lrc)
+
 
 @pytest.mark.asyncio
 async def test_mpv_visibility_endpoints(clean_state, monkeypatch):

@@ -3424,6 +3424,12 @@ class APIState:
 			sub_candidate = Path(str_path).with_suffix(".srt")
 			if not sub_candidate.is_file():
 				sub_candidate = Path(str_path).with_suffix(".lrc")
+			if not sub_candidate.is_file() and self.radio_pregenerated_path:
+				pre_sub = Path(self.radio_pregenerated_path).with_suffix(".srt")
+				if not pre_sub.is_file():
+					pre_sub = Path(self.radio_pregenerated_path).with_suffix(".lrc")
+				if pre_sub.is_file():
+					sub_candidate = pre_sub
 			if sub_candidate.is_file():
 				try:
 					await self.mpv._send(
@@ -3681,6 +3687,7 @@ class APIState:
 
 					async def _apply_hot_mix_to_announcement(voice_file: Path, out_file: Path, title: str) -> bool:
 						"""Superpone la cortina musical en caliente sobre la voz usando la pista que efectivamente suena después."""
+						mixed_ok = False
 						if (
 							next_track_path
 							and Path(next_track_path).is_file()
@@ -3710,7 +3717,7 @@ class APIState:
 											"Carpincho Locutor 🎙️",
 											"La Rockola del Carpincho",
 										)
-									return True
+									mixed_ok = True
 							except Exception as mix_err:
 								logger.debug(f"Fallo en mezcla en caliente con '{next_track_path}': {mix_err}")
 
@@ -3721,11 +3728,12 @@ class APIState:
 							if sub_src.is_file():
 								try:
 									shutil.copyfile(sub_src, sub_dst)
-								except Exception:
-									pass
+								except Exception as copy_sub_err:
+									logger.debug(f"Error copiando subtítulo {sub_src} a {sub_dst}: {copy_sub_err}")
 
-						# Fallback seguro si no hay pista de fondo o falló la mezcla en caliente
-						shutil.copyfile(voice_file, out_file)
+						if not mixed_ok:
+							# Fallback seguro si no hay pista de fondo o falló la mezcla en caliente
+							shutil.copyfile(voice_file, out_file)
 						return True
 
 					# 1. Comprobar si ya está lista la pregeneración de fondo (0 ms de latencia)
@@ -4547,6 +4555,12 @@ async def serve_lrc(path: str = Query(...)):
 		return Response(status_code=404)
 
 	lrc_path = Path(path).with_suffix(".lrc")
+	if is_radio and not lrc_path.exists():
+		pre_p = getattr(state, "radio_pregenerated_path", None)
+		if pre_p:
+			alt_lrc = Path(pre_p).with_suffix(".lrc")
+			if alt_lrc.is_file():
+				lrc_path = alt_lrc
 
 	if not lrc_path.exists():
 		return Response(status_code=404)
