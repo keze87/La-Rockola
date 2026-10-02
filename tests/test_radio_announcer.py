@@ -2191,19 +2191,31 @@ def test_prune_tts_cache_db(tmp_path):
 
 
 def test_record_phrase_played_and_get_last_played(tmp_path):
-	db_p = tmp_path / "test_tts.db"
+	radio_announcer.reset_radio_memory_state()
 	phrase = "Buenas tardes, chamigo."
 	cat = "intro"
 
 	# Antes de registrar, last_played es None
-	assert radio_announcer.get_phrase_last_played(phrase, category=cat, db_path=db_p) is None
+	assert radio_announcer.get_phrase_last_played(phrase, category=cat) is None
 
 	now = time.time()
-	radio_announcer.record_phrase_played(phrase, category=cat, timestamp=now, db_path=db_p)
+	radio_announcer.record_phrase_played(phrase, category=cat, timestamp=now)
 
-	recorded = radio_announcer.get_phrase_last_played(phrase, category=cat, db_path=db_p)
+	recorded = radio_announcer.get_phrase_last_played(phrase, category=cat)
 	assert recorded is not None
 	assert abs(recorded - now) < 0.1
+
+	# reset_radio_memory_state limpia la memoria
+	radio_announcer.reset_radio_memory_state()
+	assert radio_announcer.get_phrase_last_played(phrase, category=cat) is None
+
+	# Verificar que no se crea la tabla phrase_history en la base SQLite
+	db_p = tmp_path / "tts_cache.db"
+	radio_announcer.init_tts_cache_db(db_p)
+	with sqlite3.connect(db_p) as conn:
+		cur = conn.cursor()
+		cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='phrase_history'")
+		assert cur.fetchone() is None
 
 
 def test_weighted_choice_by_recency(tmp_path):

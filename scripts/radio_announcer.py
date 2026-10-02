@@ -659,17 +659,6 @@ def init_tts_cache_db(db_path: Path | str | None = None) -> Path:
 			"""
 		)
 		conn.execute("CREATE INDEX IF NOT EXISTS idx_tts_cache_cat_voice ON tts_cache (category, voice)")
-		conn.execute(
-			"""
-			CREATE TABLE IF NOT EXISTS phrase_history (
-				phrase_key TEXT PRIMARY KEY,
-				category TEXT NOT NULL,
-				last_played REAL NOT NULL,
-				play_count INTEGER DEFAULT 1
-			)
-			"""
-		)
-		conn.execute("CREATE INDEX IF NOT EXISTS idx_phrase_history_cat ON phrase_history (category)")
 		conn.commit()
 	return target_path
 
@@ -828,24 +817,8 @@ def get_phrase_last_played(
 	category: str = "",
 	db_path: Path | str | None = None,
 ) -> float | None:
-	"""Recupera la marca de tiempo (timestamp) en que una frase fue reproducida por última vez."""
+	"""Recupera la marca de tiempo (timestamp) en que una frase fue reproducida por última vez en memoria."""
 	norm_key = f"{category}:{phrase.strip().lower()}" if category else phrase.strip().lower()
-	target_path = Path(db_path) if db_path else (get_carpincho_data_dir() / "tts_cache.db")
-	if target_path.exists():
-		conn = None
-		try:
-			conn = sqlite3.connect(target_path, timeout=5.0)
-			cur = conn.cursor()
-			cur.execute("SELECT last_played FROM phrase_history WHERE phrase_key = ?", (norm_key,))
-			row = cur.fetchone()
-			if row and row[0] is not None:
-				return float(row[0])
-		except Exception as e:
-			logger.debug(f"Fallo consultando historial de frase en SQLite ({target_path}): {e}")
-		finally:
-			if conn is not None:
-				conn.close()
-
 	return _PHRASE_HISTORY_MEMORY.get(norm_key)
 
 
@@ -855,30 +828,10 @@ def record_phrase_played(
 	timestamp: float | None = None,
 	db_path: Path | str | None = None,
 ) -> None:
-	"""Registra la reproducción de una frase actualizando su marca de tiempo en memoria y SQLite."""
+	"""Registra en memoria la reproducción de una frase actualizando su marca de tiempo."""
 	norm_key = f"{category}:{phrase.strip().lower()}" if category else phrase.strip().lower()
 	ts = timestamp if timestamp is not None else time.time()
 	_PHRASE_HISTORY_MEMORY[norm_key] = ts
-	conn = None
-	try:
-		target_path = init_tts_cache_db(db_path)
-		conn = sqlite3.connect(target_path, timeout=5.0)
-		conn.execute(
-			"""
-			INSERT INTO phrase_history (phrase_key, category, last_played, play_count)
-			VALUES (?, ?, ?, 1)
-			ON CONFLICT(phrase_key) DO UPDATE SET
-				last_played = excluded.last_played,
-				play_count = play_count + 1
-			""",
-			(norm_key, category, ts),
-		)
-		conn.commit()
-	except Exception as e:
-		logger.debug(f"Fallo registrando historial de frase en SQLite ({db_path}): {e}")
-	finally:
-		if conn is not None:
-			conn.close()
 
 
 def weighted_choice_by_recency(
