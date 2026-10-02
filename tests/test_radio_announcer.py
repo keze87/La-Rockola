@@ -2273,3 +2273,66 @@ def test_assemble_announcement_audio_creates_subtitles(tmp_path):
 		assert srt_p.exists()
 		assert "Buenas tardes chamigo." in lrc_p.read_text(encoding="utf-8")
 		assert "Seguimos con buena música." in srt_p.read_text(encoding="utf-8")
+
+
+@pytest.mark.asyncio
+async def test_synthesize_segment_returns_sentence_boundary_cues(tmp_path):
+	"""Verifica que synthesize_segment capture límites de oraciones (SentenceBoundary) cuando return_cues=True."""
+	db_p = tmp_path / "tts.db"
+
+	class BoundaryCommunicator:
+		def __init__(self, text, voice, *args, **kwargs):
+			self.text = text
+			self.voice = voice
+
+		async def stream(self):
+			yield {"type": "SentenceBoundary", "offset": 1000000, "duration": 15000000, "text": "Hola chamigo."}
+			yield {"type": "audio", "data": b"AUDIO1"}
+			yield {"type": "SentenceBoundary", "offset": 16000000, "duration": 20000000, "text": "Buenas tardes."}
+			yield {"type": "audio", "data": b"AUDIO2"}
+
+	with (
+		patch("scripts.radio_announcer.HAS_EDGE_TTS", True),
+		patch("scripts.radio_announcer.edge_tts.Communicate", side_effect=BoundaryCommunicator),
+	):
+		res = await radio_announcer.synthesize_segment(
+			"Hola chamigo. Buenas tardes.",
+			radio_announcer.VOICE_TOMAS,
+			"intro",
+			allow_cache=False,
+			db_path=db_p,
+			return_cues=True,
+		)
+		audio_bytes, cues = res
+		assert audio_bytes == b"AUDIO1AUDIO2"
+		assert len(cues) == 2
+		assert cues[0] == (0.1, 1.6, "Hola chamigo.")
+		assert cues[1] == (1.6, 3.6, "Buenas tardes.")
+
+
+def test_assemble_announcement_audio_uses_fine_grained_cues(tmp_path):
+	"""Verifica que assemble_announcement_audio preserve y desplace los cues finos (SentenceBoundary) en el timeline."""
+	out_p = tmp_path / "radio.mp3"
+	fine_cues_1 = [(0.1, 1.5, "Hola chamigo."), (1.5, 3.0, "Buenas tardes.")]
+	fine_cues_2 = [(0.0, 2.0, "Seguimos con buena música.")]
+
+	segments = [
+		(b"AUDIO1", "intro", radio_announcer.VOICE_TOMAS, "Hola chamigo. Buenas tardes.", fine_cues_1),
+		(b"AUDIO2", "salida", radio_announcer.VOICE_TOMAS, "Seguimos con buena música.", fine_cues_2),
+	]
+
+	with patch("shutil.which", return_value=None):
+		ok = radio_announcer.assemble_announcement_audio(segments, out_p)
+		assert ok is True
+		lrc_p = out_p.with_suffix(".lrc")
+		srt_p = out_p.with_suffix(".srt")
+		assert lrc_p.exists()
+		assert srt_p.exists()
+		lrc_text = lrc_p.read_text(encoding="utf-8")
+		srt_text = srt_p.read_text(encoding="utf-8")
+
+		# Deben aparecer las 3 frases individuales en lugar de solo 2 bloques
+		assert "Hola chamigo." in lrc_text
+		assert "Buenas tardes." in lrc_text
+		assert "Seguimos con buena música." in lrc_text
+		assert "1\n00:00:00,100" in srt_text

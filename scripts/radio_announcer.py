@@ -1553,7 +1553,9 @@ async def synthesize_segment(
 	timeout: float = DEFAULT_TTS_TIMEOUT,
 	max_retries: int = DEFAULT_TTS_RETRIES,
 	db_path: Path | str | None = None,
-) -> bytes:
+	boundary: str = "SentenceBoundary",
+	return_cues: bool = False,
+) -> bytes | tuple[bytes, list[tuple[float, float, str]]]:
 	"""Sintetiza un segmento individual o parlamento radial.
 
 	Diseño intencional de prioridad y frescura:
@@ -1565,15 +1567,29 @@ async def synthesize_segment(
 	  consulta la base de datos de caché SQLite como fallback confiable offline.
 	- La utilidad 'scripts/preload_tts_cache.py' permite sembrar esta base para garantizar
 	  resiliencia total ante caídas prolongadas de conexión a internet.
+	- Si return_cues=True, retorna una tupla (audio_bytes, cues) con la sincronización
+	  fina por oración/palabra obtenida del stream de edge-tts.
 	"""
 
+	captured_cues: list[tuple[float, float, str]] = []
+
 	async def _stream_or_save(comm: edge_tts.Communicate) -> bytes:
+		nonlocal captured_cues
+		captured_cues = []
 		data = bytearray()
 		if hasattr(comm, "stream"):
 			try:
 				async for chunk in comm.stream():
-					if isinstance(chunk, dict) and chunk.get("type") == "audio":
-						data.extend(chunk.get("data", b""))
+					if isinstance(chunk, dict):
+						chunk_type = chunk.get("type")
+						if chunk_type == "audio":
+							data.extend(chunk.get("data", b""))
+						elif chunk_type in ("SentenceBoundary", "WordBoundary"):
+							offset_sec = chunk["offset"] / 10_000_000.0
+							duration_sec = chunk["duration"] / 10_000_000.0
+							chunk_text = str(chunk.get("text", "")).strip()
+							if chunk_text:
+								captured_cues.append((offset_sec, offset_sec + duration_sec, chunk_text))
 			except Exception as e:
 				logger.debug(
 					f"Fallo o interrupción en communicate.stream() para '{text}': {e}. Intentando communicate.save()..."
@@ -1615,9 +1631,14 @@ async def synthesize_segment(
 		for attempt in range(max_retries + 1):
 			try:
 				try:
-					communicate = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch, volume=volume)
+					communicate = edge_tts.Communicate(
+						text, voice, rate=rate, pitch=pitch, volume=volume, boundary=boundary
+					)
 				except TypeError:
-					communicate = edge_tts.Communicate(text, voice)
+					try:
+						communicate = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch, volume=volume)
+					except TypeError:
+						communicate = edge_tts.Communicate(text, voice)
 				audio_bytes = await asyncio.wait_for(_stream_or_save(communicate), timeout=attempt_timeout)
 				if not audio_bytes:
 					raise RuntimeError(f"edge-tts no produjo bytes de audio para '{text}'")
@@ -1640,6 +1661,11 @@ async def synthesize_segment(
 					save_cached_audio(category, voice, text, audio_bytes, duration=clip_dur, db_path=db_path)
 				except Exception as cache_err:
 					logger.debug(f"No se pudo guardar en caché SQLite: {cache_err}")
+			if return_cues:
+				if not captured_cues:
+					clip_dur = estimate_mp3_duration(audio_bytes) or 1.0
+					captured_cues = [(0.0, clip_dur, text.strip())]
+				return audio_bytes, captured_cues
 			return audio_bytes
 		else:
 			err_msg = f"{type(last_err).__name__}: {last_err}" if str(last_err) else type(last_err).__name__
@@ -1654,6 +1680,9 @@ async def synthesize_segment(
 		cached_blob = get_cached_audio(category, voice, text, db_path=db_path)
 		if cached_blob:
 			logger.info(f"⚡ [TTS Cache Fallback HIT] '{category}' ({voice}): '{text}'")
+			if return_cues:
+				clip_dur = estimate_mp3_duration(cached_blob) or 1.0
+				return cached_blob, [(0.0, clip_dur, text.strip())]
 			return cached_blob
 
 	err_suffix = f": {last_err}" if last_err else ""
@@ -2038,18 +2067,20 @@ def assemble_announcement_audio(
 		tmp_voice_combined = work_dir / "voice_combined.mp3"
 		ffmpeg_timeout = max(5.0, timeout)
 
-		# Normalizar segmentos a tuplas (bytes, categoria, voz, texto)
-		parsed_segments: list[tuple[bytes, str, str, str]] = []
+		# Normalizar segmentos a tuplas (bytes, categoria, voz, texto, cues)
+		parsed_segments: list[tuple[bytes, str, str, str, list[tuple[float, float, str]] | None]] = []
 		for idx, s in enumerate(segments):
 			txt = cues_text[idx] if cues_text and idx < len(cues_text) else ""
-			if len(s) >= 4:
-				parsed_segments.append((s[0], str(s[1]), str(s[2]), str(s[3])))
+			if len(s) >= 5:
+				parsed_segments.append((s[0], str(s[1]), str(s[2]), str(s[3]), s[4]))
+			elif len(s) == 4:
+				parsed_segments.append((s[0], str(s[1]), str(s[2]), str(s[3]), None))
 			elif len(s) == 3:
-				parsed_segments.append((s[0], str(s[1]), str(s[2]), txt))
+				parsed_segments.append((s[0], str(s[1]), str(s[2]), txt, None))
 			elif len(s) == 2:
-				parsed_segments.append((s[0], str(s[1]), "", txt))
+				parsed_segments.append((s[0], str(s[1]), "", txt, None))
 			else:
-				parsed_segments.append((s[0], "", "", txt))
+				parsed_segments.append((s[0], "", "", txt, None))
 
 		cues: list[tuple[float, float, str]] = []
 
@@ -2059,7 +2090,11 @@ def assemble_announcement_audio(
 				tmp_voice_combined.write_bytes(parsed_segments[0][0])
 				concat_ok = tmp_voice_combined.is_file() and tmp_voice_combined.stat().st_size > 0
 				t_single = parsed_segments[0][3]
-				if t_single:
+				cues_single = parsed_segments[0][4]
+				if cues_single:
+					for cs, ce, ct in cues_single:
+						cues.append((cs, ce, ct))
+				elif t_single:
 					dur_single = (
 						get_audio_duration(tmp_voice_combined) or estimate_mp3_duration(parsed_segments[0][0]) or 1.0
 					)
@@ -2067,7 +2102,7 @@ def assemble_announcement_audio(
 			else:
 				# Generar archivos MP3 temporales con normalización dynaudnorm para nivelar volumen entre voces
 				temp_seg_files: list[Path] = []
-				for i, (seg_bytes, _cat, _v, _txt) in enumerate(parsed_segments):
+				for i, (seg_bytes, _cat, _v, _txt, *_rest) in enumerate(parsed_segments):
 					raw_file = work_dir / f"raw_seg_{i}.mp3"
 					raw_file.write_bytes(seg_bytes)
 					norm_file = work_dir / f"norm_seg_{i}.mp3"
@@ -2098,19 +2133,19 @@ def assemble_announcement_audio(
 					except Exception:
 						temp_seg_files.append(raw_file)
 
-				blocks: list[tuple[Path, str, str, str]] = []
+				blocks: list[tuple[Path, str, str, str, list[tuple[float, float, str]] | None]] = []
 				skip_next = False
 				for i in range(len(parsed_segments)):
 					if skip_next:
 						skip_next = False
 						continue
 
-					_bytes_i, cat_i, voice_i, text_i = parsed_segments[i]
+					_bytes_i, cat_i, voice_i, text_i, cues_i = parsed_segments[i]
 					file_i = temp_seg_files[i]
 
 					# Caso 1: fusión continua (sin gap de silencio) entre 'hora' y 'minuto' consecutivos de la misma voz
 					if cat_i == "hora" and i + 1 < len(parsed_segments):
-						_bytes_next, cat_next, voice_next, text_next = parsed_segments[i + 1]
+						_bytes_next, cat_next, voice_next, text_next, cues_next = parsed_segments[i + 1]
 						if cat_next == "minuto" and (voice_i == voice_next or not voice_i or not voice_next):
 							file_next = temp_seg_files[i + 1]
 							time_combined = work_dir / f"time_combined_{i}.mp3"
@@ -2149,7 +2184,28 @@ def assemble_announcement_audio(
 									and time_combined.stat().st_size > 0
 								):
 									combined_time_text = f"{text_i} {text_next}".strip()
-									blocks.append((time_combined, "hora_minuto", voice_i, combined_time_text))
+									combined_cues: list[tuple[float, float, str]] | None = None
+									if cues_i or cues_next:
+										dur_i = get_audio_duration(file_i) or estimate_mp3_duration(_bytes_i) or 1.0
+										combined_cues = []
+										if cues_i:
+											combined_cues.extend(cues_i)
+										elif text_i:
+											combined_cues.append((0.0, dur_i, text_i))
+										shift_next = max(0.0, dur_i - 0.05)
+										if cues_next:
+											for cs, ce, ct in cues_next:
+												combined_cues.append((cs + shift_next, ce + shift_next, ct))
+										elif text_next:
+											dur_next = (
+												get_audio_duration(file_next)
+												or estimate_mp3_duration(_bytes_next)
+												or 1.0
+											)
+											combined_cues.append((shift_next, shift_next + dur_next, text_next))
+									blocks.append(
+										(time_combined, "hora_minuto", voice_i, combined_time_text, combined_cues)
+									)
 									skip_next = True
 									continue
 							except Exception as e:
@@ -2157,7 +2213,7 @@ def assemble_announcement_audio(
 
 					# Caso 2: reacción corta que solapa 150-250 ms sobre el final de la línea anterior (adelay + amix)
 					if i + 1 < len(parsed_segments):
-						_bytes_next, cat_next, voice_next, text_next = parsed_segments[i + 1]
+						_bytes_next, cat_next, voice_next, text_next, cues_next = parsed_segments[i + 1]
 						if cat_next == "reaccion" or cat_next.startswith("reaccion"):
 							file_next = temp_seg_files[i + 1]
 							dur_i = get_audio_duration(file_i)
@@ -2200,15 +2256,39 @@ def assemble_announcement_audio(
 										and react_combined.stat().st_size > 0
 									):
 										combined_react_text = f"{text_i} {text_next}".strip()
+										combined_cues = None
+										if cues_i or cues_next:
+											combined_cues = []
+											if cues_i:
+												combined_cues.extend(cues_i)
+											elif text_i:
+												combined_cues.append((0.0, dur_i, text_i))
+											shift_next = max(0.0, dur_i - overlap_sec)
+											if cues_next:
+												for cs, ce, ct in cues_next:
+													combined_cues.append((cs + shift_next, ce + shift_next, ct))
+											elif text_next:
+												dur_next = (
+													get_audio_duration(temp_seg_files[i + 1])
+													or estimate_mp3_duration(_bytes_next)
+													or 1.0
+												)
+												combined_cues.append((shift_next, shift_next + dur_next, text_next))
 										blocks.append(
-											(react_combined, f"{cat_i}_reaccion", voice_i, combined_react_text)
+											(
+												react_combined,
+												f"{cat_i}_reaccion",
+												voice_i,
+												combined_react_text,
+												combined_cues,
+											)
 										)
 										skip_next = True
 										continue
 								except Exception as e:
 									logger.debug(f"Fallo solapando reacción con adelay+amix: {e}")
 
-					blocks.append((file_i, cat_i, voice_i, text_i))
+					blocks.append((file_i, cat_i, voice_i, text_i, cues_i))
 
 				def make_room_tone(duration_sec: float, filename: str) -> Path | None:
 					tone_path = work_dir / filename
@@ -2269,7 +2349,7 @@ def assemble_announcement_audio(
 					chain_files.append(tone_start)
 					current_time = 0.15
 
-				for i, (block_file, block_cat, block_voice, block_text) in enumerate(blocks):
+				for i, (block_file, block_cat, block_voice, block_text, block_cues) in enumerate(blocks):
 					chain_files.append(block_file)
 					dur = get_audio_duration(block_file)
 					if dur <= 0.0:
@@ -2278,7 +2358,10 @@ def assemble_announcement_audio(
 						except Exception:
 							dur = 1.0
 
-					if block_text:
+					if block_cues:
+						for cs, ce, ct in block_cues:
+							cues.append((current_time + cs, current_time + ce, ct))
+					elif block_text:
 						cues.append((current_time, current_time + dur, block_text))
 					current_time += dur
 
@@ -2419,7 +2502,11 @@ def assemble_announcement_audio(
 			curr_offset = 0.0
 			for seg in parsed_segments:
 				dur_fb = estimate_mp3_duration(seg[0]) or 1.0
-				if seg[3]:
+				seg_cues = seg[4]
+				if seg_cues:
+					for cs, ce, ct in seg_cues:
+						cues.append((curr_offset + cs, curr_offset + ce, ct))
+				elif seg[3]:
 					cues.append((curr_offset, curr_offset + dur_fb, seg[3]))
 				curr_offset += dur_fb
 
@@ -2608,15 +2695,19 @@ async def create_radio_announcement(
 							timeout=timeout,
 							max_retries=max_retries,
 							db_path=db_path,
+							return_cues=True,
 						)
 					)
 					for text, v, category, allow_cache in speech_turns
 				]
 		raw_segments = [t.result() for t in task_objs]
-		segment_results: list[tuple[bytes, str, str, str]] = [
-			(seg_bytes, speech_turns[i][2], speech_turns[i][1], speech_turns[i][0])
-			for i, seg_bytes in enumerate(raw_segments)
-		]
+		segment_results: list[tuple[bytes, str, str, str, list[tuple[float, float, str]] | None]] = []
+		for i, res in enumerate(raw_segments):
+			if isinstance(res, tuple) and len(res) == 2:
+				seg_bytes, seg_cues = res
+			else:
+				seg_bytes, seg_cues = res, None
+			segment_results.append((seg_bytes, speech_turns[i][2], speech_turns[i][1], speech_turns[i][0], seg_cues))
 
 		if is_dialogue:
 			logger.info(f"🎙️ Locución radial en cabina ({locutor_nombre} y {cohost_nombre}): '{full_script}'")
