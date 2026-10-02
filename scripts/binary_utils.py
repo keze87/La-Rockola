@@ -10,6 +10,8 @@ import platform
 import socket
 import subprocess
 import sys
+import urllib.request
+from pathlib import Path
 
 
 def resolve_platform_and_arch(platform_name: str | None = None, arch: str | None = None) -> tuple[str, str]:
@@ -192,3 +194,137 @@ def is_internet_available(timeout: float = 0.8) -> bool:
 async def check_internet_async(timeout: float = 0.8) -> bool:
 	"""Versión asíncrona de is_internet_available que ejecuta el sondeo en un hilo para no bloquear el bucle de eventos."""
 	return await asyncio.to_thread(is_internet_available, timeout)
+
+
+def download_file(
+	url: str,
+	dest_path: Path,
+	log_fn=None,
+	user_agent: str = "LaRockola-Installer/1.0",
+	timeout: int = 30,
+) -> None:
+	"""Descarga un archivo con reporte de progreso unificado."""
+	headers = {"User-Agent": user_agent}
+	req = urllib.request.Request(url, headers=headers)
+	dest_path.parent.mkdir(parents=True, exist_ok=True)
+
+	with urllib.request.urlopen(req, timeout=timeout) as resp, open(dest_path, "wb") as out_f:
+		total_size = int(resp.headers.get("Content-Length", 0))
+		downloaded = 0
+		last_percent = -1
+		chunk_size = 1024 * 1024
+
+		while True:
+			chunk = resp.read(chunk_size)
+			if not chunk:
+				break
+			out_f.write(chunk)
+			downloaded += len(chunk)
+			if total_size > 0 and log_fn:
+				percent = int(downloaded * 100 / total_size)
+				if percent >= last_percent + 5 or percent == 100:
+					log_fn(
+						f"Descargando: {percent}% ({downloaded // (1024 * 1024)}MB / {total_size // (1024 * 1024)}MB)"
+					)
+					last_percent = percent
+
+
+def is_rockola_managed(bin_path: str | Path, tool_name: str | None = None) -> bool:
+	"""
+	Verifica si un binario fue descargado o gestionado por La Rockola.
+	Evita tocar o actualizar binarios gestionados por el sistema operativo.
+	"""
+	path = Path(bin_path).resolve()
+	parent = path if path.is_dir() else path.parent
+
+	if tool_name:
+		if (parent / f".rockola_managed_{tool_name}").is_file():
+			return True
+	else:
+		# Check any rockola marker file
+		if list(parent.glob(".rockola_managed_*")):
+			return True
+
+	base = (
+		Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
+	).resolve()
+	try:
+		path.relative_to(base)
+		return True
+	except ValueError:
+		pass
+
+	try:
+		import server
+
+		data_dir = getattr(server, "DATA_DIR", None)
+		if data_dir:
+			path.relative_to(Path(data_dir).resolve().parent)
+			return True
+	except Exception:
+		pass
+
+	return False
+
+
+def get_default_install_dir(tool_name: str = "mpv") -> Path:
+	"""Determina el directorio por defecto donde instalar un binario o herramienta."""
+	if tool_name != "mpv":
+		try:
+			import server
+
+			mpv_path = server.find_binary("mpv")
+			if mpv_path:
+				mpv_dir = Path(mpv_path).parent
+				try:
+					test_file = mpv_dir / ".carpincho_write_test"
+					test_file.touch(exist_ok=True)
+					test_file.unlink(missing_ok=True)
+					return mpv_dir
+				except OSError:
+					pass
+		except Exception:
+			pass
+
+	base = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
+
+	# Probar si el directorio base es escribible (modo portable)
+	try:
+		test_file = base / ".carpincho_write_test"
+		test_file.touch(exist_ok=True)
+		test_file.unlink(missing_ok=True)
+		if (base / "mpv").is_dir():
+			return base / "mpv"
+		if (base / "bin").is_dir():
+			return base / "bin"
+		return base / "mpv" if tool_name == "mpv" else base
+	except OSError:
+		pass
+
+	# Si es de solo lectura (ej. AppDir o C:\Program Files), recurrir al directorio de datos del usuario
+	if sys.platform == "win32":
+		app_data = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+	elif sys.platform == "darwin":
+		app_data = Path.home() / "Library" / "Application Support"
+	else:
+		app_data = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+
+	return app_data / "carpincho" / (tool_name if tool_name == "mpv" else "bin")
+
+
+def build_frontend(root_dir: Path | None = None, force: bool = False, log_fn=None) -> None:
+	"""Compila el frontend de Vue 3 (npm run build) de forma unificada para los scripts de empaquetado."""
+	root = root_dir or Path(__file__).resolve().parent.parent
+	dist_dir = root / "dist"
+	index_html = dist_dir / "index.html"
+
+	if not index_html.exists() or force:
+		if log_fn:
+			log_fn("Compilando el frontend de Vue 3 (npm run build)...")
+		npm_cmd = "npm.cmd" if os.name == "nt" else "npm"
+		subprocess.run([npm_cmd, "run", "build"], cwd=str(root), check=True)
+		if log_fn:
+			log_fn("Frontend compilado con éxito en dist/")
+	else:
+		if log_fn:
+			log_fn("Frontend ya compilado en dist/. (Usá --rebuild-frontend para forzar)")

@@ -109,6 +109,19 @@ def test_check_ytdlp_portable():
 				assert result[0] == "yt-dlp"
 
 
+def test_check_portable_dependency_generic():
+	"""Verify _check_portable_dependency directly handles present, installed, and error states."""
+	with patch("server.find_binary", return_value="/usr/bin/tool"):
+		res = server._check_portable_dependency("tool", None, "install", "ok", "fix", True)
+		assert res is None
+
+	fake_mod = MagicMock()
+	fake_mod.install.return_value = True
+	with patch("server.find_binary", side_effect=[None, "/path/installed"]):
+		res = server._check_portable_dependency("tool", fake_mod, "install", "ok", "fix", True)
+		assert res is None
+
+
 def test_check_dependencies_exit():
 	"""Verify check_dependencies halts execution when required dependencies are missing."""
 	with patch("server._check_python_packages", return_value=([("fastapi", "pip install fastapi")], [])):

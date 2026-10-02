@@ -19,8 +19,10 @@ def reset_radio_state(tmp_path):
 	state.is_playing_radio_announcement = False
 	state.radio_announcement_path = str(tmp_path / "radio.mp3")
 	state.radio_pregenerated_path = str(tmp_path / "radio_pregenerated.mp3")
+	state.pregenerated_radio_announcement = None
 	state._cancel_radio_pregeneration()
 	state.queue = []
+
 	state.history = []
 	state.current_track = None
 	state.mpv = MagicMock()

@@ -30,8 +30,10 @@ def default_logger(msg: str):
 
 
 try:
+	from . import binary_utils
 	from .binary_utils import get_clean_env, resolve_platform_and_arch
 except (ImportError, ValueError):
+	import binary_utils
 	from binary_utils import get_clean_env, resolve_platform_and_arch
 
 
@@ -86,35 +88,7 @@ def is_rockola_managed(bin_path: str | Path) -> bool:
 	Verifica si un binario o directorio de MPV fue descargado/gestionado por La Rockola.
 	Solo se deben actualizar binarios gestionados por La Rockola, nunca instalaciones del sistema.
 	"""
-	path = Path(bin_path).resolve()
-	target_dir = path if path.is_dir() else path.parent
-
-	# 1. Marcador explícito en la carpeta de mpv
-	if (target_dir / ".rockola_managed_mpv").is_file():
-		return True
-
-	# 2. Ubicado dentro del directorio base de la aplicación (ej. en base / "mpv")
-	base = (
-		Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
-	).resolve()
-	try:
-		path.relative_to(base)
-		return True
-	except ValueError:
-		pass
-
-	# 3. Ubicado dentro de los datos de usuario de Rockola
-	try:
-		import server
-
-		data_dir = getattr(server, "DATA_DIR", None)
-		if data_dir:
-			path.relative_to(Path(data_dir).resolve().parent)
-			return True
-	except Exception:
-		pass
-
-	return False
+	return binary_utils.is_rockola_managed(bin_path, "mpv")
 
 
 def fetch_release_info(timeout: int = 10) -> dict:
@@ -228,32 +202,10 @@ def select_best_asset(assets: list[dict], platform_name: str, arch: str) -> dict
 
 def download_asset(url: str, dest_path: Path, log_fn=default_logger):
 	"""Descarga un archivo por HTTP con reporte de progreso."""
-	headers = {"User-Agent": USER_AGENT}
-	req = urllib.request.Request(url, headers=headers)
-	dest_path.parent.mkdir(parents=True, exist_ok=True)
+	binary_utils.download_file(url, dest_path, log_fn=log_fn, user_agent=USER_AGENT)
 
-	with urllib.request.urlopen(req, timeout=30) as resp:
-		total_size = int(resp.headers.get("content-length", 0))
-		downloaded = 0
-		chunk_size = 64 * 1024
-		last_logged_pct = -1
 
-		with open(dest_path, "wb") as f:
-			while True:
-				chunk = resp.read(chunk_size)
-				if not chunk:
-					break
-				f.write(chunk)
-				downloaded += len(chunk)
-				if total_size > 0:
-					pct = int((downloaded / total_size) * 100)
-					if pct != last_logged_pct and pct % 10 == 0:
-						last_logged_pct = pct
-						mb_down = downloaded / (1024 * 1024)
-						mb_total = total_size / (1024 * 1024)
-						log_fn(f"Descargando MPV: {mb_down:.1f}/{mb_total:.1f} MB ({pct}%)")
-				elif downloaded % (5 * 1024 * 1024) == 0:
-					log_fn(f"Descargando MPV: {downloaded / (1024 * 1024):.1f} MB...")
+download_file = download_asset
 
 
 def _safe_extract(zf: zipfile.ZipFile, dest_dir: Path):
@@ -310,27 +262,7 @@ def extract_mpv_zip(zip_path: Path, target_dir: Path, log_fn=default_logger) -> 
 
 def get_default_install_dir() -> Path:
 	"""Determina el directorio por defecto donde instalar MPV (portable o datos de usuario)."""
-	base = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
-	base = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
-
-	# Probar si el directorio base es escribible (modo portable)
-	try:
-		test_file = base / ".carpincho_write_test"
-		test_file.touch(exist_ok=True)
-		test_file.unlink(missing_ok=True)
-		return base / "mpv"
-	except OSError:
-		pass
-
-	# Si es de solo lectura (ej. C:\\Program Files), usar AppData/Local o similar
-	if sys.platform == "win32":
-		app_data = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
-	elif sys.platform == "darwin":
-		app_data = Path.home() / "Library" / "Application Support"
-	else:
-		app_data = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
-
-	return app_data / "carpincho" / "mpv"
+	return binary_utils.get_default_install_dir("mpv")
 
 
 def install_mpv(

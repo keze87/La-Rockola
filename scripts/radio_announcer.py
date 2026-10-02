@@ -248,9 +248,7 @@ __all__ = [
 	"generate_modular_radio_script",
 	"get_all_degree_segments",
 	"get_all_fortune_reaction_segments",
-	"get_all_handoff_segments",
 	"get_all_rain_descriptions",
-	"get_all_reaction_segments",
 	"get_all_time_segments",
 	"get_all_weather_desc_phrases",
 	"get_all_weather_handoff_segments",
@@ -1256,27 +1254,6 @@ def get_all_time_segments() -> list[str]:
 def get_all_degree_segments(min_deg: int = -5, max_deg: int = 42) -> list[str]:
 	"""Devuelve las frases de temperaturas en grados para locución modular del clima."""
 	return [format_temperature(d) for d in range(min_deg, max_deg + 1)]
-
-
-def get_all_reaction_segments() -> list[str]:
-	"""Devuelve la lista consolidada de reacciones de cabina."""
-	combined = list(RADIO_REACTIONS)
-	for r in get_all_weather_reaction_segments():
-		if r not in combined:
-			combined.append(r)
-	for r in get_all_fortune_reaction_segments():
-		if r not in combined:
-			combined.append(r)
-	return combined
-
-
-def get_all_handoff_segments() -> list[str]:
-	"""Devuelve la lista consolidada de pases de cabina."""
-	combined = list(RADIO_HANDOFFS)
-	for h in get_all_weather_handoff_segments():
-		if h not in combined:
-			combined.append(h)
-	return combined
 
 
 def build_radio_dialogue_plan(

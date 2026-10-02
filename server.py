@@ -129,6 +129,15 @@ def _is_valid_radio_mp3_file(path: Path | str) -> bool:
 		return False
 
 
+def _unpack_radio_result(res) -> tuple[bool, str, str, str]:
+	"""Normaliza el resultado devuelto por create_radio_announcement."""
+	ok = res.ok if hasattr(res, "ok") else bool(res[0])
+	title = res.display_title if hasattr(res, "display_title") else str(res[1])
+	script = res.script if hasattr(res, "script") else str(res[2])
+	err = res.error if hasattr(res, "error") else (script if not ok else "")
+	return ok, title, script, err or ""
+
+
 def find_binary(bin_name: str) -> str | None:
 	"""Busca un binario en la carpeta del ejecutable/script, subdirectorios locales, gestores de paquetes o en el PATH del sistema."""
 	is_win = sys.platform == "win32" or os.name == "nt"
@@ -412,88 +421,104 @@ def _check_mpv(is_win: bool, is_mac: bool, is_frozen: bool) -> tuple[str, str] |
 	return None
 
 
-def _check_ytdlp(is_win: bool, is_mac: bool, is_frozen: bool) -> tuple[str, str] | None:
-	"""Verifica la presencia de yt-dlp, gestionando instalación automática si está disponible."""
-	if find_binary("yt-dlp") is not None:
+def _check_portable_dependency(
+	bin_name: str,
+	installer_mod,
+	install_func_name: str,
+	success_msg: str,
+	fix_msg: str,
+	is_portable: bool,
+) -> tuple[str, str] | None:
+	"""Función compartida para verificación e instalación automática de binarios externos."""
+	if find_binary(bin_name) is not None:
 		return None
 
-	is_portable = is_win or is_mac or is_frozen
-	if is_portable:
+	if is_portable and installer_mod is not None:
 		try:
-			try:
-				from scripts import ytdlp_installer
-			except ImportError:
-				import ytdlp_installer
-
-			installed = ytdlp_installer.install_ytdlp(force=False, log_fn=lambda m: print(f"  {m}", file=sys.stderr))
-			if installed and find_binary("yt-dlp"):
-				print("🦦 ¡yt-dlp instalado con éxito para temas de YouTube! 🧉🎶\n", file=sys.stderr)
+			install_fn = getattr(installer_mod, install_func_name)
+			installed = install_fn(force=False, log_fn=lambda m: print(f"  {m}", file=sys.stderr))
+			if installed and find_binary(bin_name):
+				print(success_msg, file=sys.stderr)
 				return None
 		except Exception as e:
-			print(f"⚠️ Aviso al intentar auto-instalar yt-dlp: {e}", file=sys.stderr)
+			print(f"⚠️ Aviso al intentar auto-instalar {bin_name}: {e}", file=sys.stderr)
+
+	return (bin_name, fix_msg)
+
+
+def _check_ytdlp(is_win: bool, is_mac: bool, is_frozen: bool) -> tuple[str, str] | None:
+	"""Verifica la presencia de yt-dlp, gestionando instalación automática si está disponible."""
+	try:
+		from scripts import ytdlp_installer
+	except ImportError:
+		try:
+			import ytdlp_installer
+		except ImportError:
+			ytdlp_installer = None
 
 	fix = (
 		"winget install yt-dlp (o poné yt-dlp.exe al lado de larockola.exe)"
 		if is_win
 		else "pip install yt-dlp (para reproducir temas de YouTube/Internet)"
 	)
-	return ("yt-dlp", fix)
+	return _check_portable_dependency(
+		bin_name="yt-dlp",
+		installer_mod=ytdlp_installer,
+		install_func_name="install_ytdlp",
+		success_msg="🦦 ¡yt-dlp instalado con éxito para temas de YouTube! 🧉🎶\n",
+		fix_msg=fix,
+		is_portable=is_win or is_mac or is_frozen,
+	)
 
 
 def _check_ffmpeg(is_win: bool, is_mac: bool, is_frozen: bool) -> tuple[str, str] | None:
 	"""Verifica la presencia de FFmpeg, gestionando instalación automática si está disponible."""
-	if find_binary("ffmpeg") is not None:
-		return None
-
-	is_portable = is_win or is_mac or is_frozen
-	if is_portable:
+	try:
+		from scripts import ffmpeg_installer
+	except ImportError:
 		try:
-			try:
-				from scripts import ffmpeg_installer
-			except ImportError:
-				import ffmpeg_installer
-
-			installed = ffmpeg_installer.install_ffmpeg(force=False, log_fn=lambda m: print(f"  {m}", file=sys.stderr))
-			if installed and find_binary("ffmpeg"):
-				print("🦦 ¡FFmpeg instalado con éxito para el análisis de mood y BPM! 🧉🎶\n", file=sys.stderr)
-				return None
-		except Exception as e:
-			print(f"⚠️ Aviso al intentar auto-instalar FFmpeg: {e}", file=sys.stderr)
+			import ffmpeg_installer
+		except ImportError:
+			ffmpeg_installer = None
 
 	fix = (
 		"winget install Gyan.FFmpeg (o poné ffmpeg.exe al lado de larockola.exe)"
 		if is_win
 		else ("brew install ffmpeg" if is_mac else "sudo apt install ffmpeg (para análisis de mood/BPM)")
 	)
-	return ("ffmpeg", fix)
+	return _check_portable_dependency(
+		bin_name="ffmpeg",
+		installer_mod=ffmpeg_installer,
+		install_func_name="install_ffmpeg",
+		success_msg="🦦 ¡FFmpeg instalado con éxito para el análisis de mood y BPM! 🧉🎶\n",
+		fix_msg=fix,
+		is_portable=is_win or is_mac or is_frozen,
+	)
 
 
 def _check_fpcalc(is_win: bool, is_mac: bool, is_frozen: bool) -> tuple[str, str] | None:
 	"""Verifica la presencia de fpcalc (Chromaprint), gestionando instalación automática si está disponible."""
-	if find_binary("fpcalc") is not None:
-		return None
-
-	is_portable = is_win or is_mac or is_frozen
-	if is_portable:
+	try:
+		from scripts import fpcalc_installer
+	except ImportError:
 		try:
-			try:
-				from scripts import fpcalc_installer
-			except ImportError:
-				import fpcalc_installer
-
-			installed = fpcalc_installer.install_fpcalc(force=False, log_fn=lambda m: print(f"  {m}", file=sys.stderr))
-			if installed and find_binary("fpcalc"):
-				print("🦦 ¡fpcalc instalado con éxito para huellas acústicas! 🧉🎶\n", file=sys.stderr)
-				return None
-		except Exception as e:
-			print(f"⚠️ Aviso al intentar auto-instalar fpcalc: {e}", file=sys.stderr)
+			import fpcalc_installer
+		except ImportError:
+			fpcalc_installer = None
 
 	fix = (
 		"descargar fpcalc (Chromaprint) y ponerlo al lado de larockola.exe"
 		if is_win
 		else ("brew install chromaprint" if is_mac else "sudo apt install libchromaprint-tools")
 	)
-	return ("fpcalc", fix)
+	return _check_portable_dependency(
+		bin_name="fpcalc",
+		installer_mod=fpcalc_installer,
+		install_func_name="install_fpcalc",
+		success_msg="🦦 ¡fpcalc instalado con éxito para huellas acústicas! 🧉🎶\n",
+		fix_msg=fix,
+		is_portable=is_win or is_mac or is_frozen,
+	)
 
 
 def check_dependencies(force: bool = False):
@@ -3567,10 +3592,7 @@ class APIState:
 					bg_track_path=None,
 					weather_location=self.weather_location,
 				)
-				res_ok = res.ok if hasattr(res, "ok") else bool(res[0])
-				res_title = res.display_title if hasattr(res, "display_title") else str(res[1])
-				res_script = res.script if hasattr(res, "script") else str(res[2])
-				res_err = res.error if hasattr(res, "error") else (res_script if not res_ok else None)
+				res_ok, res_title, res_script, res_err = _unpack_radio_result(res)
 
 				if res_ok:
 					self.pregenerated_radio_announcement = {
@@ -3823,10 +3845,7 @@ class APIState:
 								bg_volume=0.1,
 								weather_location=self.weather_location,
 							)
-							ok = res.ok if hasattr(res, "ok") else bool(res[0])
-							display_title = res.display_title if hasattr(res, "display_title") else str(res[1])
-							script = res.script if hasattr(res, "script") else str(res[2])
-							radio_err = (res.error or "") if hasattr(res, "error") else (script if not ok else "")
+							ok, display_title, script, radio_err = _unpack_radio_result(res)
 						except Exception as e:
 							ok = False
 							display_title = ""

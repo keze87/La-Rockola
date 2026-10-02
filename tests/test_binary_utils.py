@@ -121,3 +121,61 @@ async def test_check_internet_async(monkeypatch):
 	monkeypatch.setattr(binary_utils.socket, "create_connection", fake_conn)
 	res = await binary_utils.check_internet_async(timeout=0.8)
 	assert res is True
+
+
+def test_shared_download_file(tmp_path, monkeypatch):
+	dest = tmp_path / "test_download.bin"
+	logs = []
+
+	class FakeResponse:
+		def __init__(self):
+			self.headers = {"Content-Length": "10"}
+			self._read_done = False
+
+		def read(self, size):
+			if not self._read_done:
+				self._read_done = True
+				return b"0123456789"
+			return b""
+
+		def __enter__(self):
+			return self
+
+		def __exit__(self, exc_type, exc_val, exc_tb):
+			pass
+
+	monkeypatch.setattr(binary_utils.urllib.request, "urlopen", lambda req, timeout=30: FakeResponse())
+	binary_utils.download_file("http://example.com/file", dest, log_fn=logs.append)
+	assert dest.read_bytes() == b"0123456789"
+	assert any("100%" in m for m in logs)
+
+
+def test_shared_is_rockola_managed(tmp_path):
+	marker_dir = tmp_path / "bin"
+	marker_dir.mkdir()
+	(marker_dir / ".rockola_managed_ffmpeg").touch()
+	target_bin = marker_dir / "ffmpeg"
+	target_bin.touch()
+
+	assert binary_utils.is_rockola_managed(target_bin, "ffmpeg") is True
+	assert binary_utils.is_rockola_managed(target_bin, "mpv") is False
+
+
+def test_shared_get_default_install_dir(tmp_path, monkeypatch):
+	# Test fallback directory resolution
+	monkeypatch.setattr(sys, "frozen", False, raising=False)
+	resolved = binary_utils.get_default_install_dir("ffmpeg")
+	assert isinstance(resolved, Path)
+
+
+def test_shared_build_frontend(tmp_path, monkeypatch):
+	called = False
+
+	def fake_run(cmd, cwd=None, check=True):
+		nonlocal called
+		called = True
+		return MagicMock()
+
+	monkeypatch.setattr(subprocess, "run", fake_run)
+	binary_utils.build_frontend(root_dir=tmp_path, force=True)
+	assert called is True

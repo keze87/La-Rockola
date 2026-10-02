@@ -11,8 +11,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import urllib.error
-import urllib.request
 from pathlib import Path
 
 YTDLP_BASE_URL = "https://github.com/yt-dlp/yt-dlp/releases/latest/download"
@@ -24,8 +22,10 @@ def default_logger(msg: str):
 
 
 try:
+	from . import binary_utils
 	from .binary_utils import get_clean_env, resolve_platform_and_arch
 except (ImportError, ValueError):
+	import binary_utils
 	from binary_utils import get_clean_env, resolve_platform_and_arch
 
 
@@ -53,40 +53,7 @@ def get_ytdlp_download_url(platform_name: str | None = None, arch: str | None = 
 
 def get_default_install_dir() -> Path:
 	"""Determina el directorio donde ubicar yt-dlp (en el mismo directorio que mpv para que lo reconozca)."""
-	# 1. Si MPV ya está instalado, ubicar yt-dlp en el mismo directorio que mpv
-	try:
-		import server
-
-		mpv_path = server.find_binary("mpv")
-		if mpv_path:
-			mpv_dir = Path(mpv_path).parent
-			try:
-				test_file = mpv_dir / ".carpincho_write_test"
-				test_file.touch(exist_ok=True)
-				test_file.unlink(missing_ok=True)
-				return mpv_dir
-			except OSError:
-				pass
-	except Exception:
-		pass
-
-	# 2. Si no, consultar el directorio por defecto de mpv_installer (mpv/ o datos de usuario)
-	try:
-		from scripts import mpv_installer
-
-		return mpv_installer.get_default_install_dir()
-	except Exception:
-		try:
-			import mpv_installer
-
-			return mpv_installer.get_default_install_dir()
-		except Exception:
-			pass
-
-	base = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
-	if (base / "mpv").is_dir():
-		return base / "mpv"
-	return base
+	return binary_utils.get_default_install_dir("ytdlp")
 
 
 def is_rockola_managed(bin_path: str | Path) -> bool:
@@ -94,64 +61,12 @@ def is_rockola_managed(bin_path: str | Path) -> bool:
 	Verifica si un binario de yt-dlp fue descargado/gestionado por La Rockola.
 	Solo se deben actualizar binarios gestionados por La Rockola, nunca instalaciones del sistema.
 	"""
-	path = Path(bin_path).resolve()
-	parent = path.parent
-
-	# 1. Marcador explícito
-	if (parent / ".rockola_managed_ytdlp").is_file():
-		return True
-
-	# 2. Ubicado dentro del directorio base de la aplicación (ej. en mpv/)
-	base = (Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent).resolve()
-	base = (
-		Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
-	).resolve()
-	try:
-		path.relative_to(base)
-		return True
-	except ValueError:
-		pass
-
-	# 3. Ubicado dentro de los datos de usuario de Rockola
-	try:
-		import server
-
-		data_dir = getattr(server, "DATA_DIR", None)
-		if data_dir:
-			path.relative_to(Path(data_dir).resolve().parent)
-			return True
-	except Exception:
-		pass
-
-	return False
+	return binary_utils.is_rockola_managed(bin_path, "ytdlp")
 
 
 def download_file(url: str, dest_path: Path, log_fn=default_logger):
 	"""Descarga un archivo con reporte de progreso."""
-	headers = {"User-Agent": USER_AGENT}
-	req = urllib.request.Request(url, headers=headers)
-	dest_path.parent.mkdir(parents=True, exist_ok=True)
-
-	with urllib.request.urlopen(req, timeout=30) as resp:
-		total_size = int(resp.headers.get("content-length", 0))
-		downloaded = 0
-		chunk_size = 64 * 1024
-		last_logged_pct = -1
-
-		with open(dest_path, "wb") as f:
-			while True:
-				chunk = resp.read(chunk_size)
-				if not chunk:
-					break
-				f.write(chunk)
-				downloaded += len(chunk)
-				if total_size > 0:
-					pct = int((downloaded / total_size) * 100)
-					if pct != last_logged_pct and pct % 20 == 0:
-						last_logged_pct = pct
-						mb_down = downloaded / (1024 * 1024)
-						mb_total = total_size / (1024 * 1024)
-						log_fn(f"Descargando yt-dlp: {mb_down:.1f}/{mb_total:.1f} MB ({pct}%)")
+	binary_utils.download_file(url, dest_path, log_fn=log_fn, user_agent=USER_AGENT)
 
 
 def install_ytdlp(
