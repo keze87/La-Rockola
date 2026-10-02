@@ -556,10 +556,7 @@ async def test_serve_cover_variations(tmp_path):
 
 async def test_serve_cover_resizing(tmp_path):
 	"""Verify serve_cover resizes images when size is specified and caches them."""
-	try:
-		from PIL import Image
-	except (ImportError, Exception):
-		pytest.skip("PIL / Pillow not functional on this environment")
+	from PIL import Image
 
 	song_file = tmp_path / "song_resized.mp3"
 	song_file.write_bytes(b"DUMMY_AUDIO")

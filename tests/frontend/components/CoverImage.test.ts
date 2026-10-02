@@ -44,11 +44,11 @@ describe('CoverImage.vue', () => {
 		expect(wrapper.find('.material-icons').exists()).toBe(true);
 	});
 
-	it('uses 256px size by default and allows custom sizePx or null', () => {
-		const wrapper256 = mount(CoverImage, {
+	it('uses 512px size by default and allows custom sizePx or null', () => {
+		const wrapperDefault = mount(CoverImage, {
 			props: { path: '/music/song.mp3' },
 		});
-		expect(wrapper256.find('img').attributes('src')).toContain('&size=256');
+		expect(wrapperDefault.find('img').attributes('src')).toContain('&size=512');
 
 		const wrapper512 = mount(CoverImage, {
 			props: { path: '/music/song.mp3', sizePx: 512 },

@@ -20,7 +20,7 @@
 			size: 'h-10 w-10',
 			rounded: 'rounded',
 			iconSize: '!text-lg',
-			sizePx: 256,
+			sizePx: 512,
 			unloadWhenHidden: true,
 		}
 	);

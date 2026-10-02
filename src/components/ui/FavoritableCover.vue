@@ -20,7 +20,7 @@
 			iconSize: '!text-lg',
 			buttonSize: 'h-6 w-6',
 			buttonIconSize: '!text-[0.9rem]',
-			sizePx: 256,
+			sizePx: 512,
 			unloadWhenHidden: true,
 		}
 	);
