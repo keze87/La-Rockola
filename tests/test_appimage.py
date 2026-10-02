@@ -37,11 +37,13 @@ def test_create_appdir_structure(tmp_path):
 	dest_bin = appdir / "usr" / "bin" / "larockola"
 	assert dest_bin.is_file()
 	assert dest_bin.read_text() == "elf_binary_content"
-	assert dest_bin.stat().st_mode & stat.S_IXUSR
+	if sys.platform != "win32":
+		assert dest_bin.stat().st_mode & stat.S_IXUSR
 
 	# AppRun permissions and content
 	apprun = appdir / "AppRun"
-	assert apprun.stat().st_mode & stat.S_IXUSR
+	if sys.platform != "win32":
+		assert apprun.stat().st_mode & stat.S_IXUSR
 	apprun_text = apprun.read_text(encoding="utf-8")
 	assert 'exec "${HERE}/usr/bin/larockola" "$@"' in apprun_text
 	assert "LD_LIBRARY_PATH" in apprun_text
@@ -120,7 +122,8 @@ def test_ensure_appimagetool_download(tmp_path, monkeypatch):
 		tool = build_appimage.ensure_appimagetool()
 		assert tool == fake_build / "tools" / "appimagetool"
 		assert tool.is_file()
-		assert tool.stat().st_mode & stat.S_IXUSR
+		if sys.platform != "win32":
+			assert tool.stat().st_mode & stat.S_IXUSR
 
 
 def test_build_appimage_success(tmp_path, monkeypatch):
@@ -147,7 +150,8 @@ def test_build_appimage_success(tmp_path, monkeypatch):
 		res_path = build_appimage.build_appimage(appdir=fake_appdir)
 		assert res_path == out_appimage
 		assert res_path.is_file()
-		assert res_path.stat().st_mode & stat.S_IXUSR
+		if sys.platform != "win32":
+			assert res_path.stat().st_mode & stat.S_IXUSR
 
 
 def test_build_frontend_skips_when_not_forced(tmp_path, monkeypatch):
@@ -217,8 +221,17 @@ def test_parse_selected_dir(tmp_path):
 	assert server._parse_selected_dir(str(test_dir)) == str(test_dir)
 	# Trailing slash
 	assert server._parse_selected_dir(str(test_dir) + "/") == str(test_dir)
+	# Trailing backslash
+	assert server._parse_selected_dir(str(test_dir) + "\\") == str(test_dir)
 	# File URL scheme
 	assert server._parse_selected_dir(f"file://{test_dir}") == str(test_dir)
+	# Windows file URL scheme
+	with (
+		patch("server.sys.platform", "win32"),
+		patch("urllib.request.url2pathname", side_effect=lambda p: p.lstrip("/").replace("/", "\\")),
+		patch.object(Path, "is_dir", return_value=True),
+	):
+		assert server._parse_selected_dir("file:///C:/Users/Music/") in ("C:\\Users\\Music", "C:/Users/Music")
 	# None or empty
 	assert server._parse_selected_dir(None) is None
 	assert server._parse_selected_dir("") is None

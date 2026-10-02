@@ -1,6 +1,7 @@
 import hashlib
 import io
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -49,24 +50,20 @@ def test_is_mood_available_with_ffmpeg():
 
 def test_find_binary_python_scripts(tmp_path):
 	"""Verify find_binary checks Python Scripts/bin directories."""
-	fake_bin = tmp_path / "custom_test_bin"
-	fake_bin.write_text("")
-	fake_bin.chmod(0o755)
+	is_win = sys.platform == "win32" or os.name == "nt"
+	scripts_dir_name = "Scripts" if is_win else "bin"
+	bin_dir = tmp_path.parent / scripts_dir_name
+	bin_dir.mkdir(parents=True, exist_ok=True)
+	ext = ".exe" if is_win else ""
+	target = bin_dir / f"custom_test_tool{ext}"
+	target.write_text("")
+	target.chmod(0o755)
 
-	with patch("shutil.which", return_value=None):
-		with patch("sys.prefix", str(tmp_path.parent)):
-			with patch("server.sys.platform", "linux"):
-				# Put binary in parent / bin
-				bin_dir = tmp_path.parent / "bin"
-				bin_dir.mkdir(parents=True, exist_ok=True)
-				target = bin_dir / "custom_test_tool"
-				target.write_text("")
-				target.chmod(0o755)
-
-				found = server.find_binary("custom_test_tool")
-				assert found is not None
-				assert "custom_test_tool" in found
-				target.unlink()
+	with patch("shutil.which", return_value=None), patch("sys.prefix", str(tmp_path.parent)):
+		found = server.find_binary("custom_test_tool")
+		assert found is not None
+		assert "custom_test_tool" in found
+	target.unlink()
 
 
 def test_check_python_packages():
@@ -171,18 +168,20 @@ def test_open_browser_platforms():
 
 	# 2. darwin: open command
 	with patch("sys.platform", "darwin"):
-		with patch("subprocess.Popen") as mock_popen:
-			server.open_browser_url("http://localhost:1729")
-			mock_popen.assert_called_once()
-			assert mock_popen.call_args[0][0][0] == "open"
-
-	# 3. linux: xdg-open command
-	with patch("sys.platform", "linux"):
-		with patch("shutil.which", return_value="/usr/bin/xdg-open"):
+		with patch("server.get_clean_env", return_value={}):
 			with patch("subprocess.Popen") as mock_popen:
 				server.open_browser_url("http://localhost:1729")
 				mock_popen.assert_called_once()
-				assert mock_popen.call_args[0][0][0] == "xdg-open"
+				assert mock_popen.call_args[0][0][0] == "open"
+
+	# 3. linux: xdg-open command
+	with patch("sys.platform", "linux"):
+		with patch("server.get_clean_env", return_value={}):
+			with patch("shutil.which", return_value="/usr/bin/xdg-open"):
+				with patch("subprocess.Popen") as mock_popen:
+					server.open_browser_url("http://localhost:1729")
+					mock_popen.assert_called_once()
+					assert mock_popen.call_args[0][0][0] == "xdg-open"
 
 	# 4. Fallback to webbrowser.open
 	with patch("sys.platform", "linux"):
@@ -557,9 +556,10 @@ async def test_serve_cover_variations(tmp_path):
 
 async def test_serve_cover_resizing(tmp_path):
 	"""Verify serve_cover resizes images when size is specified and caches them."""
-	import io
-
-	from PIL import Image
+	try:
+		from PIL import Image
+	except (ImportError, Exception):
+		pytest.skip("PIL / Pillow not functional on this environment")
 
 	song_file = tmp_path / "song_resized.mp3"
 	song_file.write_bytes(b"DUMMY_AUDIO")

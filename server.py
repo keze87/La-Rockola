@@ -1026,13 +1026,20 @@ def _parse_selected_dir(raw_out: str | None) -> str | None:
 		return None
 	out = raw_out.strip()
 	if out.startswith("file://"):
+		import urllib.request
 		from urllib.parse import unquote, urlparse
 
 		parsed = urlparse(out)
-		out = unquote(parsed.path)
+		path_part = unquote(parsed.path)
+		if parsed.netloc:
+			path_part = f"{parsed.netloc}{path_part}"
+		if sys.platform == "win32" or os.name == "nt":
+			out = urllib.request.url2pathname(path_part)
+		else:
+			out = path_part
 	out = out.strip("\"'")
-	if out != "/" and out.endswith("/"):
-		out = out.rstrip("/")
+	if out != "/" and out.endswith(("/", "\\")):
+		out = out.rstrip("/\\")
 	if out and Path(out).is_dir():
 		return out
 	return None
