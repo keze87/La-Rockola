@@ -101,7 +101,6 @@ export function useSocket() {
 						if (state.favorites !== undefined) favorites.value = state.favorites;
 						if (state.has_edge_tts !== undefined) hasEdgeTts.value = state.has_edge_tts;
 						if (state.has_ffmpeg !== undefined) hasFfmpeg.value = state.has_ffmpeg;
-						else if (state.has_mood !== undefined) hasFfmpeg.value = state.has_mood;
 						if (state.history) historyState.value = state.history;
 						if (state.is_scanning !== undefined) isScanning.value = state.is_scanning;
 						if (state.is_synthesizing_radio !== undefined)

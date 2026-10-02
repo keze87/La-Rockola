@@ -2485,7 +2485,6 @@ class APIState:
 			"favorites": active_favs,
 			"has_edge_tts": HAS_EDGE_TTS,
 			"has_ffmpeg": is_mood_available(),
-			"has_mood": is_mood_available(),
 			"history": list(self.history),
 			"is_scanning": self.is_scanning,
 			"local_ip": self.local_ip,
@@ -2650,7 +2649,7 @@ class APIState:
 		logger.info(f"Encontré {len(raw_files)} archivos en total. Revisando cuáles son nuevos o cambiaron...")
 		raw_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
 
-		has_mood = is_mood_available()
+		has_ffmpeg = is_mood_available()
 
 		# --- CARGAMOS LA CACHÉ DE LA DB AL PRINCIPIO ---
 		db_cache = {}
@@ -2722,7 +2721,7 @@ class APIState:
 			if (
 				file_str in self.track_cache_by_path
 				and self.track_cache_by_path[file_str]["mtime"] == current_mtime
-				and (self.track_cache_by_path[file_str]["data"].get("bpm", 0.0) != 0.0 or not has_mood)
+				and (self.track_cache_by_path[file_str]["data"].get("bpm", 0.0) != 0.0 or not has_ffmpeg)
 			):
 				track_dict = self.track_cache_by_path[file_str]["data"]
 				track_hash = track_dict.get("track_hash")
@@ -2736,7 +2735,7 @@ class APIState:
 				and db_cache[file_str]["mtime"] == current_mtime
 				and db_cache[file_str]["file_size"] == current_size
 				and db_cache[file_str].get("bpm") is not None
-				and (db_cache[file_str].get("bpm") != 0.0 or not has_mood)
+				and (db_cache[file_str].get("bpm") != 0.0 or not has_ffmpeg)
 				and db_cache[file_str].get("fingerprint") is not None
 			):
 				cached = db_cache[file_str]

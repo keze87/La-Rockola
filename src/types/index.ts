@@ -19,7 +19,6 @@ export interface PlayerState {
 	favorites?: string[];
 	has_edge_tts?: boolean;
 	has_ffmpeg?: boolean;
-	has_mood?: boolean;
 	history?: string[];
 	is_playing_radio_announcement?: boolean;
 	is_scanning?: boolean;

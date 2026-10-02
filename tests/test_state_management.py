@@ -45,6 +45,7 @@ async def test_get_full_state_dict_strips_heavy_keys(clean_state):
 	# Check has_ffmpeg flag
 	assert "has_ffmpeg" in full_state
 	assert isinstance(full_state["has_ffmpeg"], bool)
+	assert "has_mood" not in full_state
 
 
 @pytest.mark.asyncio

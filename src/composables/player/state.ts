@@ -71,7 +71,6 @@ export const localIp = ref<string | null>(null);
 // Server Capabilities
 export const hasEdgeTts = ref<boolean>(false);
 export const hasFfmpeg = ref<boolean>(false);
-export const hasMood = hasFfmpeg;
 
 export const isPlaying = computed(() => !!currentTrackPath.value && !isPaused.value);
 export const volIcon = computed(() => {
