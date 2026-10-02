@@ -3419,6 +3419,19 @@ class APIState:
 		else:
 			await self.mpv._send(json.dumps({"command": ["set_property", "mute", self.server_muted]}))
 
+		# Si es la locución radial y tiene subtítulos generados, se los inyectamos a MPV si la ventana está activa
+		if str_path == self.radio_announcement_path and state.mpv_visible and getattr(self.mpv, "has_display", True):
+			sub_candidate = Path(str_path).with_suffix(".srt")
+			if not sub_candidate.is_file():
+				sub_candidate = Path(str_path).with_suffix(".lrc")
+			if sub_candidate.is_file():
+				try:
+					await self.mpv._send(
+						json.dumps({"command": ["sub-add", str(sub_candidate), "select"]}, ensure_ascii=False)
+					)
+				except Exception as sub_err:
+					logger.debug(f"Fallo cargando subtítulos en MPV: {sub_err}")
+
 		# Modo Radio: Si este no es el anuncio radial y la próxima transición toca locución,
 		# iniciamos el procesamiento y síntesis al comienzo de la canción para tener latencia cero.
 		if str_path != self.radio_announcement_path and self.radio_mode_enabled:
@@ -3700,6 +3713,16 @@ class APIState:
 									return True
 							except Exception as mix_err:
 								logger.debug(f"Fallo en mezcla en caliente con '{next_track_path}': {mix_err}")
+
+						# Copiar archivos de subtítulos sincronizados si existen
+						for ext in (".lrc", ".srt"):
+							sub_src = voice_file.with_suffix(ext)
+							sub_dst = out_file.with_suffix(ext)
+							if sub_src.is_file():
+								try:
+									shutil.copyfile(sub_src, sub_dst)
+								except Exception:
+									pass
 
 						# Fallback seguro si no hay pista de fondo o falló la mezcla en caliente
 						shutil.copyfile(voice_file, out_file)
@@ -4515,8 +4538,12 @@ async def stream_audio(path: str = Query(...)):
 
 @app.get("/lrc")
 async def serve_lrc(path: str = Query(...)):
-	"""Sirve el archivo .lrc local si existe junto a la pista original."""
-	if path not in state.path_to_id and not any(t["path"] == path for t in state.tracks_cache):
+	"""Sirve el archivo .lrc local si existe junto a la pista original o locución radial."""
+	is_radio = path in (
+		getattr(state, "radio_announcement_path", None),
+		getattr(state, "radio_pregenerated_path", None),
+	)
+	if not is_radio and path not in state.path_to_id and not any(t["path"] == path for t in state.tracks_cache):
 		return Response(status_code=404)
 
 	lrc_path = Path(path).with_suffix(".lrc")
@@ -4528,7 +4555,7 @@ async def serve_lrc(path: str = Query(...)):
 		lrc_path,
 		media_type="text/plain",
 		headers={
-			"Cache-Control": "public, max-age=600, must-revalidate",
+			"Cache-Control": "no-cache" if is_radio else "public, max-age=600, must-revalidate",
 		},
 	)
 

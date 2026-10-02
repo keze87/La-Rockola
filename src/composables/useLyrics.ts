@@ -29,7 +29,7 @@ export function useLyrics(player: { localTimePos: Ref<number> }) {
 		try {
 			const res = await fetch(apiUrl('/lrc?path=' + encodeURIComponent(path)));
 
-			if (res.ok) {
+			if (res.ok && typeof res.text === 'function') {
 				const text = await res.text();
 				parseLrc(text);
 			}

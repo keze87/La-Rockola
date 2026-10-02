@@ -11,6 +11,7 @@ import hashlib
 import io
 import json
 import logging
+import math
 import random
 import re
 import shutil
@@ -231,7 +232,9 @@ __all__ = [
 	"WEATHER_TEMPLATES",
 	"RadioAnnouncementResult",
 	"assemble_announcement_audio",
+	"build_lrc_content",
 	"build_radio_dialogue_plan",
+	"build_srt_content",
 	"build_weather_phrase",
 	"clean_fortune_text",
 	"contains_blacklisted_content",
@@ -257,6 +260,7 @@ __all__ = [
 	"get_modular_hour_segments",
 	"get_modular_minute_segments",
 	"get_modular_time_segments",
+	"get_phrase_last_played",
 	"get_radio_fortune",
 	"get_radio_state",
 	"get_system_fortune",
@@ -271,6 +275,7 @@ __all__ = [
 	"is_valid_spoken_sentence",
 	"mix_announcement_with_bg_track",
 	"prune_tts_cache_db",
+	"record_phrase_played",
 	"reset_radio_memory_state",
 	"reset_weather_cache",
 	"resolve_weather_desc_category",
@@ -279,6 +284,7 @@ __all__ = [
 	"select_radio_hosts",
 	"set_radio_state",
 	"synthesize_segment",
+	"weighted_choice_by_recency",
 ]
 
 _WEATHER_CACHE: dict[tuple[str, str], tuple[float, dict]] = {}
@@ -484,7 +490,9 @@ def get_weather_info(
 
 		condition = get_weather_condition(current_temp, llueve_hoy=llueve_hoy, llueve_manana=llueve_manana)
 
-		lead = lead_in if lead_in is not None else random.choice(WEATHER_LEAD_INS)
+		lead = (
+			lead_in if lead_in is not None else weighted_choice_by_recency(WEATHER_LEAD_INS, category="weather_lead_in")
+		)
 		temp_str = format_temperature(current_temp)
 
 		if min_today < 0:
@@ -651,6 +659,17 @@ def init_tts_cache_db(db_path: Path | str | None = None) -> Path:
 			"""
 		)
 		conn.execute("CREATE INDEX IF NOT EXISTS idx_tts_cache_cat_voice ON tts_cache (category, voice)")
+		conn.execute(
+			"""
+			CREATE TABLE IF NOT EXISTS phrase_history (
+				phrase_key TEXT PRIMARY KEY,
+				category TEXT NOT NULL,
+				last_played REAL NOT NULL,
+				play_count INTEGER DEFAULT 1
+			)
+			"""
+		)
+		conn.execute("CREATE INDEX IF NOT EXISTS idx_phrase_history_cat ON phrase_history (category)")
 		conn.commit()
 	return target_path
 
@@ -785,6 +804,7 @@ def prune_tts_cache_db(
 
 # Estado volátil en memoria para el locutor de radio (no requiere persistencia en base de datos)
 _RADIO_MEMORY_STATE: dict[str, Any] = {}
+_PHRASE_HISTORY_MEMORY: dict[str, float] = {}
 
 
 def get_radio_state(key: str, default: Any = None, db_path: Path | str | None = None) -> Any:
@@ -800,6 +820,100 @@ def set_radio_state(key: str, value: Any, db_path: Path | str | None = None) -> 
 def reset_radio_memory_state() -> None:
 	"""Limpia el estado en memoria del locutor de radio (útil para pruebas y reinicio limpio)."""
 	_RADIO_MEMORY_STATE.clear()
+	_PHRASE_HISTORY_MEMORY.clear()
+
+
+def get_phrase_last_played(
+	phrase: str,
+	category: str = "",
+	db_path: Path | str | None = None,
+) -> float | None:
+	"""Recupera la marca de tiempo (timestamp) en que una frase fue reproducida por última vez."""
+	norm_key = f"{category}:{phrase.strip().lower()}" if category else phrase.strip().lower()
+	target_path = Path(db_path) if db_path else (get_carpincho_data_dir() / "tts_cache.db")
+	if target_path.exists():
+		conn = None
+		try:
+			conn = sqlite3.connect(target_path, timeout=5.0)
+			cur = conn.cursor()
+			cur.execute("SELECT last_played FROM phrase_history WHERE phrase_key = ?", (norm_key,))
+			row = cur.fetchone()
+			if row and row[0] is not None:
+				return float(row[0])
+		except Exception as e:
+			logger.debug(f"Fallo consultando historial de frase en SQLite ({target_path}): {e}")
+		finally:
+			if conn is not None:
+				conn.close()
+
+	return _PHRASE_HISTORY_MEMORY.get(norm_key)
+
+
+def record_phrase_played(
+	phrase: str,
+	category: str = "",
+	timestamp: float | None = None,
+	db_path: Path | str | None = None,
+) -> None:
+	"""Registra la reproducción de una frase actualizando su marca de tiempo en memoria y SQLite."""
+	norm_key = f"{category}:{phrase.strip().lower()}" if category else phrase.strip().lower()
+	ts = timestamp if timestamp is not None else time.time()
+	_PHRASE_HISTORY_MEMORY[norm_key] = ts
+	conn = None
+	try:
+		target_path = init_tts_cache_db(db_path)
+		conn = sqlite3.connect(target_path, timeout=5.0)
+		conn.execute(
+			"""
+			INSERT INTO phrase_history (phrase_key, category, last_played, play_count)
+			VALUES (?, ?, ?, 1)
+			ON CONFLICT(phrase_key) DO UPDATE SET
+				last_played = excluded.last_played,
+				play_count = play_count + 1
+			""",
+			(norm_key, category, ts),
+		)
+		conn.commit()
+	except Exception as e:
+		logger.debug(f"Fallo registrando historial de frase en SQLite ({db_path}): {e}")
+	finally:
+		if conn is not None:
+			conn.close()
+
+
+def weighted_choice_by_recency(
+	candidates: list[str],
+	category: str = "",
+	db_path: Path | str | None = None,
+	current_time: float | None = None,
+	tau: float = 1800.0,
+	min_weight: float = 0.02,
+) -> str:
+	"""
+	Selecciona una frase de la lista candidata ponderando por antigüedad de última reproducción.
+	- Frases nunca reproducidas tienen peso máximo (1.0).
+	- Frases recién reproducidas ven su peso deprimido a min_weight (default 0.02),
+	  evitando repeticiones consecutivas pero permitiéndolas con probabilidad muy baja ("aunque pueda pasar").
+	- A medida que transcurre el tiempo (delta_t), el peso se recupera exponencialmente hacia 1.0 según tau.
+	"""
+	if not candidates:
+		raise ValueError("La lista de frases candidatas no puede estar vacía.")
+	if len(candidates) == 1:
+		return candidates[0]
+
+	now = current_time if current_time is not None else time.time()
+	weights: list[float] = []
+
+	for phrase in candidates:
+		last_played = get_phrase_last_played(phrase, category=category, db_path=db_path)
+		if last_played is None or last_played <= 0:
+			weights.append(1.0)
+		else:
+			delta_t = max(0.0, now - float(last_played))
+			w = max(min_weight, 1.0 - math.exp(-delta_t / tau))
+			weights.append(w)
+
+	return random.choices(candidates, weights=weights, k=1)[0]
 
 
 # Nombres de bases de datos de fortune que contienen frases en español
@@ -1070,23 +1184,27 @@ def get_system_fortune(timeout: float = 2.0, max_attempts: int = 3) -> str | Non
 	return None
 
 
-def select_fortune(force_system_fortune: bool | None = None) -> tuple[str, bool]:
+def select_fortune(
+	force_system_fortune: bool | None = None,
+	db_path: Path | str | None = None,
+) -> tuple[str, bool]:
 	"""
 	Selecciona una fortuna garantizada en español y retorna (texto_fortuna, es_del_sistema).
 	Por defecto intenta con probabilidad 1/6 consultar una fortuna del sistema si está disponible en español,
-	o recurre al banco curado de frases criollas del carpincho.
+	o recurre al banco curado de frases criollas del carpincho con selección ponderada por recencia.
 	"""
 	if force_system_fortune is not False and (force_system_fortune is True or random.random() < 1 / 6):
 		sys_fort = get_system_fortune()
 		if sys_fort and is_spanish_text(sys_fort):
 			return sys_fort, True
 
-	return random.choice(CARPINCHO_FORTUNES), False
+	chosen = weighted_choice_by_recency(CARPINCHO_FORTUNES, category="fortuna", db_path=db_path)
+	return chosen, False
 
 
-def get_radio_fortune() -> str:
+def get_radio_fortune(db_path: Path | str | None = None) -> str:
 	"""Devuelve una frase o fortuna garantizada en español."""
-	fortuna, _ = select_fortune()
+	fortuna, _ = select_fortune(db_path=db_path)
 	return fortuna
 
 
@@ -1222,12 +1340,13 @@ def build_radio_dialogue_plan(
 	weather_condition: str | None = None,
 	dialogue_mode: bool = True,
 	last_reaction: str | None = None,
+	db_path: Path | str | None = None,
 ) -> list[tuple[str, str, str, bool]]:
 	"""
 	Construye el plan estructurado de segmentos para la locución radial (texto, voz, categoría, allow_cache).
 	Si dialogue_mode es True, organiza una charla viva de cabina entre host y cohost.
 	Si dialogue_mode es False, retorna la locución solo tradicional.
-	Garantiza que nunca haya dos reacciones consecutivas idénticas.
+	Garantiza que nunca haya dos reacciones consecutivas idénticas y pondera frases por recencia.
 	"""
 	time_phrase = f"{hora_seg} {minuto_seg}".strip() if minuto_seg else hora_seg.strip()
 	fortune_text = format_fortune_for_speech(fortuna)
@@ -1259,7 +1378,7 @@ def build_radio_dialogue_plan(
 	# 1. Clima
 	if weather_text:
 		cohost_name = VOICE_NAMES.get(cohost_voice, DEFAULT_COHOST_NAME)
-		pase_template = random.choice(PASES_A_CLIMA)
+		pase_template = weighted_choice_by_recency(PASES_A_CLIMA, category="pase", db_path=db_path)
 		pase_text = pase_template.format(cohost=cohost_name)
 		plan.append((pase_text, host_voice, "pase", True))
 
@@ -1268,7 +1387,8 @@ def build_radio_dialogue_plan(
 		cond = weather_condition or "agradable"
 		candidates = REACCIONES_CLIMA.get(cond, REACCIONES_CLIMA["agradable"])
 		valid_reactions = [r for r in candidates if r != prev_reaction]
-		reaccion_clima = random.choice(valid_reactions if valid_reactions else candidates)
+		pool_clima = valid_reactions if valid_reactions else candidates
+		reaccion_clima = weighted_choice_by_recency(pool_clima, category="reaccion_clima", db_path=db_path)
 		plan.append((reaccion_clima, host_voice, "reaccion", True))
 		prev_reaction = reaccion_clima
 
@@ -1283,7 +1403,8 @@ def build_radio_dialogue_plan(
 	plan.append((format_fortune_for_speech(fortuna), fortune_voice, "fortuna", True))
 
 	valid_fortune_reactions = [r for r in REACCIONES_FORTUNA if r != prev_reaction]
-	reaccion_fortuna = random.choice(valid_fortune_reactions if valid_fortune_reactions else REACCIONES_FORTUNA)
+	pool_fortuna = valid_fortune_reactions if valid_fortune_reactions else REACCIONES_FORTUNA
+	reaccion_fortuna = weighted_choice_by_recency(pool_fortuna, category="reaccion_fortuna", db_path=db_path)
 	react_voice = host_voice if fortune_voice == cohost_voice else cohost_voice
 	plan.append((reaccion_fortuna, react_voice, "reaccion", True))
 
@@ -1882,8 +2003,59 @@ def get_audio_duration(file_path: Path | str, timeout: float = 2.0) -> float:
 	return 0.0
 
 
+def format_lrc_timestamp(seconds: float) -> str:
+	"""Formatea segundos en formato de marca de tiempo LRC [mm:ss.xx]."""
+	total_sec = max(0.0, seconds)
+	mins = int(total_sec // 60)
+	secs = total_sec % 60
+	return f"{mins:02d}:{secs:05.2f}"
+
+
+def format_srt_timestamp(seconds: float) -> str:
+	"""Formatea segundos en formato de marca de tiempo SRT hh:mm:ss,mmm."""
+	total_sec = max(0.0, seconds)
+	hours = int(total_sec // 3600)
+	mins = int((total_sec % 3600) // 60)
+	secs = int(total_sec % 60)
+	millis = round((total_sec - int(total_sec)) * 1000)
+	if millis >= 1000:
+		secs += 1
+		millis -= 1000
+	return f"{hours:02d}:{mins:02d}:{secs:02d},{millis:03d}"
+
+
+def build_lrc_content(cues: list[tuple[float, float, str]]) -> str:
+	"""
+	Construye el contenido de un archivo de subtítulos/letras sincronizadas en formato .lrc.
+	Cada cue es (start_time, end_time, text).
+	"""
+	lines: list[str] = []
+	for start, _end, text in cues:
+		clean = text.strip()
+		if clean:
+			lines.append(f"[{format_lrc_timestamp(start)}] {clean}")
+	return "\n".join(lines) + "\n" if lines else ""
+
+
+def build_srt_content(cues: list[tuple[float, float, str]]) -> str:
+	"""
+	Construye el contenido de subtítulos en formato SubRip (.srt).
+	Cada cue es (start_time, end_time, text).
+	"""
+	blocks: list[str] = []
+	idx = 1
+	for start, end, text in cues:
+		clean = text.strip()
+		if clean:
+			start_str = format_srt_timestamp(start)
+			end_str = format_srt_timestamp(max(end, start + 0.1))
+			blocks.append(f"{idx}\n{start_str} --> {end_str}\n{clean}\n")
+			idx += 1
+	return "\n".join(blocks)
+
+
 def assemble_announcement_audio(
-	segments: list[tuple[bytes, str] | tuple[bytes, str, str]],
+	segments: list[tuple[bytes, str] | tuple[bytes, str, str] | tuple[bytes, str, str, str]],
 	output_path: Path | str,
 	bg_track_path: Path | str | None = None,
 	bg_offset: float = 0.0,
@@ -1892,6 +2064,7 @@ def assemble_announcement_audio(
 	title: str | None = DEFAULT_RADIO_TITLE,
 	artist: str | None = DEFAULT_RADIO_ARTIST,
 	timeout: float = 10.0,
+	cues_text: list[str] | None = None,
 ) -> bool:
 	"""
 	Concatena los segmentos de audio MP3 intercalando ruido de sala sutil (~100-350ms),
@@ -1899,6 +2072,7 @@ def assemble_announcement_audio(
 	solapando reacciones cortas (~200ms) sobre la línea anterior,
 	igualando volumen entre voces con dynaudnorm y pasando el master final por filtro highpass + compresión.
 	Opcionalmente superpone cortina musical de fondo utilizando ffmpeg e incrusta cover art.
+	Genera simultáneamente archivos de subtítulos sincronizados (.lrc y .srt) junto al audio.
 	Todas las operaciones intermedias se ejecutan en RAM (tmpfs /tmp).
 	"""
 	out_p = Path(output_path)
@@ -1911,25 +2085,36 @@ def assemble_announcement_audio(
 		tmp_voice_combined = work_dir / "voice_combined.mp3"
 		ffmpeg_timeout = max(5.0, timeout)
 
-		# Normalizar segmentos a tuplas (bytes, categoria, voz)
-		parsed_segments: list[tuple[bytes, str, str]] = []
-		for s in segments:
-			if len(s) >= 3:
-				parsed_segments.append((s[0], str(s[1]), str(s[2])))
+		# Normalizar segmentos a tuplas (bytes, categoria, voz, texto)
+		parsed_segments: list[tuple[bytes, str, str, str]] = []
+		for idx, s in enumerate(segments):
+			txt = cues_text[idx] if cues_text and idx < len(cues_text) else ""
+			if len(s) >= 4:
+				parsed_segments.append((s[0], str(s[1]), str(s[2]), str(s[3])))
+			elif len(s) == 3:
+				parsed_segments.append((s[0], str(s[1]), str(s[2]), txt))
 			elif len(s) == 2:
-				parsed_segments.append((s[0], str(s[1]), ""))
+				parsed_segments.append((s[0], str(s[1]), "", txt))
 			else:
-				parsed_segments.append((s[0], "", ""))
+				parsed_segments.append((s[0], "", "", txt))
+
+		cues: list[tuple[float, float, str]] = []
 
 		if ffmpeg_bin:
 			# Atajo directo cuando hay un único parlamento/segmento (discurso completo continuo)
 			if len(parsed_segments) == 1:
 				tmp_voice_combined.write_bytes(parsed_segments[0][0])
 				concat_ok = tmp_voice_combined.is_file() and tmp_voice_combined.stat().st_size > 0
+				t_single = parsed_segments[0][3]
+				if t_single:
+					dur_single = (
+						get_audio_duration(tmp_voice_combined) or estimate_mp3_duration(parsed_segments[0][0]) or 1.0
+					)
+					cues.append((0.0, dur_single, t_single))
 			else:
 				# Generar archivos MP3 temporales con normalización dynaudnorm para nivelar volumen entre voces
 				temp_seg_files: list[Path] = []
-				for i, (seg_bytes, _cat, _v) in enumerate(parsed_segments):
+				for i, (seg_bytes, _cat, _v, _txt) in enumerate(parsed_segments):
 					raw_file = work_dir / f"raw_seg_{i}.mp3"
 					raw_file.write_bytes(seg_bytes)
 					norm_file = work_dir / f"norm_seg_{i}.mp3"
@@ -1960,19 +2145,19 @@ def assemble_announcement_audio(
 					except Exception:
 						temp_seg_files.append(raw_file)
 
-				blocks: list[tuple[Path, str, str]] = []
+				blocks: list[tuple[Path, str, str, str]] = []
 				skip_next = False
 				for i in range(len(parsed_segments)):
 					if skip_next:
 						skip_next = False
 						continue
 
-					_bytes_i, cat_i, voice_i = parsed_segments[i]
+					_bytes_i, cat_i, voice_i, text_i = parsed_segments[i]
 					file_i = temp_seg_files[i]
 
 					# Caso 1: fusión continua (sin gap de silencio) entre 'hora' y 'minuto' consecutivos de la misma voz
 					if cat_i == "hora" and i + 1 < len(parsed_segments):
-						_bytes_next, cat_next, voice_next = parsed_segments[i + 1]
+						_bytes_next, cat_next, voice_next, text_next = parsed_segments[i + 1]
 						if cat_next == "minuto" and (voice_i == voice_next or not voice_i or not voice_next):
 							file_next = temp_seg_files[i + 1]
 							time_combined = work_dir / f"time_combined_{i}.mp3"
@@ -2010,7 +2195,8 @@ def assemble_announcement_audio(
 									and time_combined.is_file()
 									and time_combined.stat().st_size > 0
 								):
-									blocks.append((time_combined, "hora_minuto", voice_i))
+									combined_time_text = f"{text_i} {text_next}".strip()
+									blocks.append((time_combined, "hora_minuto", voice_i, combined_time_text))
 									skip_next = True
 									continue
 							except Exception as e:
@@ -2018,7 +2204,7 @@ def assemble_announcement_audio(
 
 					# Caso 2: reacción corta que solapa 150-250 ms sobre el final de la línea anterior (adelay + amix)
 					if i + 1 < len(parsed_segments):
-						_bytes_next, cat_next, voice_next = parsed_segments[i + 1]
+						_bytes_next, cat_next, voice_next, text_next = parsed_segments[i + 1]
 						if cat_next == "reaccion" or cat_next.startswith("reaccion"):
 							file_next = temp_seg_files[i + 1]
 							dur_i = get_audio_duration(file_i)
@@ -2060,13 +2246,16 @@ def assemble_announcement_audio(
 										and react_combined.is_file()
 										and react_combined.stat().st_size > 0
 									):
-										blocks.append((react_combined, f"{cat_i}_reaccion", voice_i))
+										combined_react_text = f"{text_i} {text_next}".strip()
+										blocks.append(
+											(react_combined, f"{cat_i}_reaccion", voice_i, combined_react_text)
+										)
 										skip_next = True
 										continue
 								except Exception as e:
 									logger.debug(f"Fallo solapando reacción con adelay+amix: {e}")
 
-					blocks.append((file_i, cat_i, voice_i))
+					blocks.append((file_i, cat_i, voice_i, text_i))
 
 				def make_room_tone(duration_sec: float, filename: str) -> Path | None:
 					tone_path = work_dir / filename
@@ -2119,14 +2308,27 @@ def assemble_announcement_audio(
 
 				# Construir cadena de archivos intercalando pausas de sala y ritmo de locución
 				chain_files: list[Path] = []
+				current_time = 0.0
 
 				# Presencia de sala muy corta (~150ms) inicial para no cortar abruptamente
 				tone_start = make_room_tone(0.15, "tone_start.mp3")
 				if tone_start:
 					chain_files.append(tone_start)
+					current_time = 0.15
 
-				for i, (block_file, block_cat, block_voice) in enumerate(blocks):
+				for i, (block_file, block_cat, block_voice, block_text) in enumerate(blocks):
 					chain_files.append(block_file)
+					dur = get_audio_duration(block_file)
+					if dur <= 0.0:
+						try:
+							dur = estimate_mp3_duration(block_file.read_bytes()) or 1.0
+						except Exception:
+							dur = 1.0
+
+					if block_text:
+						cues.append((current_time, current_time + dur, block_text))
+					current_time += dur
+
 					is_last = i == len(blocks) - 1
 					if is_last:
 						continue
@@ -2157,6 +2359,7 @@ def assemble_announcement_audio(
 						tone = make_room_tone(gap_sec, f"tone_gap_{i}.mp3")
 						if tone:
 							chain_files.append(tone)
+						current_time += gap_sec
 
 				# Concatena todos los archivos de la cadena
 				concat_inputs: list[str] = []
@@ -2260,6 +2463,22 @@ def assemble_announcement_audio(
 			# Si no hay ffmpeg disponible, concatenación directa de streams MP3
 			combined = b"".join(seg[0] for seg in parsed_segments)
 			tmp_voice_combined.write_bytes(combined)
+			curr_offset = 0.0
+			for seg in parsed_segments:
+				dur_fb = estimate_mp3_duration(seg[0]) or 1.0
+				if seg[3]:
+					cues.append((curr_offset, curr_offset + dur_fb, seg[3]))
+				curr_offset += dur_fb
+
+		def _save_subtitles():
+			if cues:
+				lrc_content = build_lrc_content(cues)
+				srt_content = build_srt_content(cues)
+				try:
+					out_p.with_suffix(".lrc").write_text(lrc_content, encoding="utf-8")
+					out_p.with_suffix(".srt").write_text(srt_content, encoding="utf-8")
+				except Exception as sub_e:
+					logger.debug(f"Error escribiendo subtítulos en {out_p}: {sub_e}")
 
 		# Si se solicitó cortina musical y el archivo de fondo existe
 		has_bg = bg_track_path is not None and Path(bg_track_path).is_file()
@@ -2280,6 +2499,7 @@ def assemble_announcement_audio(
 					artist=artist,
 					timeout=timeout,
 				)
+				_save_subtitles()
 				return True
 
 		# Copia segura al destino desde RAM
@@ -2292,6 +2512,7 @@ def assemble_announcement_audio(
 			timeout=timeout,
 		)
 		tmp_dest.replace(out_p)
+		_save_subtitles()
 		return True
 	except Exception as e:
 		logger.warning(f"Error ensamblando locución radial: {e}")
@@ -2344,7 +2565,7 @@ async def create_radio_announcement(
 	effective_dt = dt if dt is not None else datetime.now(UTC).astimezone()
 
 	# Selección de fortuna y asignación de roles de cabina (host y cohost distintos)
-	fortuna, is_sys = select_fortune(force_system_fortune)
+	fortuna, is_sys = select_fortune(force_system_fortune, db_path=db_path)
 	host_voice, cohost_voice = select_radio_hosts(host_voice=voice, is_system_fortune=is_sys)
 	locutor_nombre = VOICE_NAMES.get(host_voice, DEFAULT_HOST_NAME)
 	cohost_nombre = VOICE_NAMES.get(cohost_voice, DEFAULT_COHOST_DISPLAY_NAME)
@@ -2386,10 +2607,10 @@ async def create_radio_announcement(
 		except Exception as e:
 			logger.debug(f"Fallo no crítico obteniendo/procesando reporte del clima: {e}")
 
-	intro = random.choice(RADIO_INTROS)
+	intro = weighted_choice_by_recency(RADIO_INTROS, category="intro", db_path=db_path)
 	hora_seg, minuto_seg, _ = get_modular_time_segments(effective_dt)
-	lead_in = random.choice(RADIO_LEAD_INS)
-	outro = random.choice(RADIO_OUTROS)
+	lead_in = weighted_choice_by_recency(RADIO_LEAD_INS, category="lead_in", db_path=db_path)
+	outro = weighted_choice_by_recency(RADIO_OUTROS, category="salida", db_path=db_path)
 
 	is_dialogue = dialogue_mode if dialogue_mode is not None else (random.random() < 0.85)
 	last_reaction = get_radio_state("last_reaction", db_path=db_path)
@@ -2408,6 +2629,7 @@ async def create_radio_announcement(
 		weather_condition=weather_condition,
 		dialogue_mode=is_dialogue,
 		last_reaction=last_reaction,
+		db_path=db_path,
 	)
 
 	full_script = " ".join(t[0].strip() for t in plan if t[0].strip())
@@ -2438,8 +2660,9 @@ async def create_radio_announcement(
 					for text, v, category, allow_cache in speech_turns
 				]
 		raw_segments = [t.result() for t in task_objs]
-		segment_results: list[tuple[bytes, str, str]] = [
-			(seg_bytes, speech_turns[i][2], speech_turns[i][1]) for i, seg_bytes in enumerate(raw_segments)
+		segment_results: list[tuple[bytes, str, str, str]] = [
+			(seg_bytes, speech_turns[i][2], speech_turns[i][1], speech_turns[i][0])
+			for i, seg_bytes in enumerate(raw_segments)
 		]
 
 		if is_dialogue:
@@ -2476,6 +2699,12 @@ async def create_radio_announcement(
 		reactions_in_plan = [text for text, _v, cat, _c in plan if cat == "reaccion" or "reaccion" in cat]
 		if reactions_in_plan:
 			set_radio_state("last_reaction", reactions_in_plan[-1], db_path=db_path)
+
+		# Registrar frases en phrase_history para ponderación por última reproducción
+		for seg_text, _v, cat, _c in plan:
+			clean_s = seg_text.strip()
+			if clean_s:
+				record_phrase_played(clean_s, category=cat, timestamp=now_ts, db_path=db_path)
 
 		return RadioAnnouncementResult(ok=True, display_title=display_title, script=full_script, error=None)
 

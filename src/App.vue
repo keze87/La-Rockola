@@ -1,5 +1,5 @@
 <script setup lang="ts">
-	import { computed, onMounted } from 'vue';
+	import { computed, onMounted, watch } from 'vue';
 	import { Toaster } from 'vue-sonner';
 	import { apiUrl } from './composables/useApi';
 	import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts';
@@ -71,7 +71,14 @@
 		}
 	);
 
-	const { currentLyricLine } = useLyrics({ localTimePos });
+	const { currentLyricLine, loadLyrics } = useLyrics({ localTimePos });
+	watch(
+		currentTrackPath,
+		(newPath: string | null) => {
+			loadLyrics(newPath);
+		},
+		{ immediate: true }
+	);
 
 	// Keyboard shortcuts (space, arrows, f, l, t, n, p, m, esc...) – wire it up
 	useKeyboardShortcuts();

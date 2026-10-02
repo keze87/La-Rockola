@@ -2188,3 +2188,76 @@ def test_prune_tts_cache_db(tmp_path):
 	# 3. Base de datos inexistente retorna 0 sin fallar
 	non_existent = tmp_path / "ghost.db"
 	assert radio_announcer.prune_tts_cache_db(db_path=non_existent) == 0
+
+
+def test_record_phrase_played_and_get_last_played(tmp_path):
+	db_p = tmp_path / "test_tts.db"
+	phrase = "Buenas tardes, chamigo."
+	cat = "intro"
+
+	# Antes de registrar, last_played es None
+	assert radio_announcer.get_phrase_last_played(phrase, category=cat, db_path=db_p) is None
+
+	now = time.time()
+	radio_announcer.record_phrase_played(phrase, category=cat, timestamp=now, db_path=db_p)
+
+	recorded = radio_announcer.get_phrase_last_played(phrase, category=cat, db_path=db_p)
+	assert recorded is not None
+	assert abs(recorded - now) < 0.1
+
+
+def test_weighted_choice_by_recency(tmp_path):
+	db_p = tmp_path / "test_tts.db"
+	now = time.time()
+	cat = "test_cat"
+
+	candidates = ["frase_antigua", "frase_reciente"]
+	# frase_reciente acaba de sonar hace 1 segundo
+	radio_announcer.record_phrase_played("frase_reciente", category=cat, timestamp=now - 1.0, db_path=db_p)
+	# frase_antigua nunca sonó (peso = 1.0)
+
+	# En 200 tiradas, frase_antigua debe ser elegida la inmensa mayoría de las veces
+	counts = {"frase_antigua": 0, "frase_reciente": 0}
+	for _ in range(200):
+		chosen = radio_announcer.weighted_choice_by_recency(
+			candidates, category=cat, db_path=db_p, current_time=now, tau=1800.0, min_weight=0.02
+		)
+		counts[chosen] += 1
+
+	assert counts["frase_antigua"] > 160
+	# Y la frase reciente puede salir ("aunque pueda pasar", peso no nulo)
+	# Peso mínimo es 0.02 vs 1.0 -> ~2% probabilidad
+
+
+def test_build_lrc_and_srt_content():
+	cues = [
+		(0.15, 2.50, "Buenas tardes, chamigo."),
+		(2.70, 5.12, "Son las cuatro de la tarde."),
+	]
+
+	lrc = radio_announcer.build_lrc_content(cues)
+	assert "[00:00.15] Buenas tardes, chamigo." in lrc
+	assert "[00:02.70] Son las cuatro de la tarde." in lrc
+
+	srt = radio_announcer.build_srt_content(cues)
+	assert "1\n00:00:00,150 --> 00:00:02,500\nBuenas tardes, chamigo." in srt
+	assert "2\n00:00:02,700 --> 00:00:05,120\nSon las cuatro de la tarde." in srt
+
+
+def test_assemble_announcement_audio_creates_subtitles(tmp_path):
+	out_p = tmp_path / "radio.mp3"
+	segments = [
+		(b"AUDIO1", "intro", radio_announcer.VOICE_TOMAS, "Buenas tardes chamigo."),
+		(b"AUDIO2", "salida", radio_announcer.VOICE_TOMAS, "Seguimos con buena música."),
+	]
+
+	with patch("shutil.which", return_value=None):
+		ok = radio_announcer.assemble_announcement_audio(segments, out_p)
+		assert ok is True
+		assert out_p.exists()
+		lrc_p = out_p.with_suffix(".lrc")
+		srt_p = out_p.with_suffix(".srt")
+		assert lrc_p.exists()
+		assert srt_p.exists()
+		assert "Buenas tardes chamigo." in lrc_p.read_text(encoding="utf-8")
+		assert "Seguimos con buena música." in srt_p.read_text(encoding="utf-8")

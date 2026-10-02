@@ -85,6 +85,16 @@ async def test_serve_lrc_endpoint(tmp_path, clean_state, monkeypatch):
 	res_missing = await server.serve_lrc(path=str(song_no_lrc))
 	assert res_missing.status_code == 404
 
+	# Radio announcement .lrc (not in tracks_cache nor path_to_id)
+	radio_mp3 = tmp_path / "radio.mp3"
+	radio_mp3.write_bytes(b"AUDIO")
+	radio_lrc = tmp_path / "radio.lrc"
+	radio_lrc.write_text("[00:00.15] Buenas tardes, chamigo.")
+	clean_state.radio_announcement_path = str(radio_mp3)
+
+	res_radio = await server.serve_lrc(path=str(radio_mp3))
+	assert res_radio.status_code == 200
+
 
 @pytest.mark.asyncio
 async def test_mpv_visibility_endpoints(clean_state, monkeypatch):
