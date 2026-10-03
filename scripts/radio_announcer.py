@@ -269,6 +269,7 @@ __all__ = [
 	"has_conjugated_verb",
 	"init_tts_cache_db",
 	"is_spanish_text",
+	"is_tts_friendly_fortune",
 	"is_valid_mp3_file",
 	"is_valid_mp3_stream",
 	"is_valid_spoken_sentence",
@@ -1022,6 +1023,46 @@ def is_valid_spoken_sentence(text: str) -> bool:
 	return not contains_blacklisted_content(clean)
 
 
+def is_tts_friendly_fortune(text: str) -> bool:
+	"""
+	Determina si una frase de la colección bundled de fortunas es apta para TTS.
+	Aplica un filtrado relajado para preservar la riqueza cultural, refranes cortos
+	y citas literarias/filosóficas, descartando únicamente:
+	1. Textos vacíos, de menos de 3 palabras o más de 120 palabras.
+	2. Arte ASCII (patrones repetitivos de barras, guiones, asteriscos, etc.).
+	3. Ruido de símbolos o código (> 15% de caracteres no alfanuméricos/puntuación estándar).
+	4. Textos en inglés puro (sin acentos/ñ y con predominio de palabras funcionales en inglés).
+	"""
+	if not text or not isinstance(text, str):
+		return False
+
+	clean = text.strip()
+	words = re.findall(r"\b[a-zA-ZáéíóúüñÁÉÍÓÚÜÑ0-9]+\b", clean)
+	if not (3 <= len(words) <= 120):
+		return False
+
+	# 1. Descartar arte ASCII (ej: /\\/\\/, =====, #####, ::::, etc.)
+	if re.search(r"[/\\|_#=~*]{3,}|<{3,}|>{3,}|:{3,}", clean):
+		return False
+
+	# 2. Descartar ruido de símbolos o código excesivo
+	letters = len(re.findall(r"[a-zA-ZáéíóúüñÁÉÍÓÚÜÑ]", clean))
+	symbols = len(re.findall(r"[^a-zA-ZáéíóúüñÁÉÍÓÚÜÑ0-9\s.,;:¡!¿?\"'()—–-]", clean))
+	if (letters + symbols) > 0 and (symbols / (letters + symbols)) > 0.15:
+		return False
+
+	# 3. Descartar inglés puro si no contiene caracteres exclusivos del español
+	has_spanish_exclusive = bool(re.search(r"[áéíóúüñÁÉÍÓÚÜÑ¿¡]", clean))
+	if not has_spanish_exclusive:
+		pure_en = {w for w in COMMON_ENGLISH_WORDS if w not in COMMON_SPANISH_WORDS and w not in {"no", "a", "me"}}
+		lower_words = [w.lower() for w in words]
+		en_matches = [w for w in lower_words if w in pure_en]
+		if len(words) > 0 and (len(en_matches) / len(words) >= 0.35 or len(set(en_matches)) >= 3):
+			return False
+
+	return True
+
+
 def get_available_spanish_dbs(timeout: float = 2.0) -> list[str]:
 	"""Detecta y cachea las bases de datos en español disponibles para el comando fortune."""
 	global _SPANISH_FORTUNE_DBS_CACHE
@@ -1194,7 +1235,7 @@ def load_bundled_fortunes(target: Path | str | None = None) -> list[str]:
 			raw = file_path.read_text(encoding="utf-8", errors="replace")
 			for entry in raw.split("\n%\n"):
 				cleaned = clean_fortune_text(entry.strip())
-				if cleaned and cleaned not in seen and is_spanish_text(cleaned) and is_valid_spoken_sentence(cleaned):
+				if cleaned and cleaned not in seen and is_tts_friendly_fortune(cleaned):
 					seen.add(cleaned)
 					items.append(cleaned)
 		except Exception as e:

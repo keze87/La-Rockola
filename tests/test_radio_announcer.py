@@ -200,6 +200,33 @@ def test_is_spanish_text():
 	assert radio_announcer.is_spanish_text("") is False
 
 
+def test_is_tts_friendly_fortune():
+	"""Verifica el filtrado relajado para fortunas del banco bundled."""
+	# Acepta refranes cortos y frases sin verbo conjugado
+	assert radio_announcer.is_tts_friendly_fortune("De tal palo, tal astilla.") is True
+	assert radio_announcer.is_tts_friendly_fortune("Quien calla, otorga.") is True
+	assert radio_announcer.is_tts_friendly_fortune("A asno lerdo, arriero loco.") is True
+	assert radio_announcer.is_tts_friendly_fortune("Nuevos amigos, nuevos dolores. — Mozart") is True
+
+	# Rechaza menos de 3 palabras
+	assert radio_announcer.is_tts_friendly_fortune("Solo dos.") is False
+
+	# Rechaza arte ASCII
+	assert radio_announcer.is_tts_friendly_fortune("Hola /\\/\\/\\/\\ mundo") is False
+	assert radio_announcer.is_tts_friendly_fortune("====================") is False
+
+	# Rechaza exceso de símbolos de código
+	assert radio_announcer.is_tts_friendly_fortune("$$$ %%% @@@ ### &&& ^^^") is False
+
+	# Rechaza inglés puro sin acentos ni eñes
+	assert (
+		radio_announcer.is_tts_friendly_fortune(
+			"The quick brown fox jumps over the lazy dog and runs away into the forest."
+		)
+		is False
+	)
+
+
 def test_get_system_fortune_no_binary():
 	with patch("shutil.which", return_value=None):
 		assert radio_announcer.get_system_fortune() is None
@@ -359,7 +386,7 @@ def test_load_bundled_fortunes_from_directory(tmp_path):
 def test_load_bundled_fortunes_default_project_folder():
 	"""Verifica que la carpeta por defecto del proyecto (scripts/fortune-es) cargue las fortunas de Debian."""
 	loaded = radio_announcer.load_bundled_fortunes()
-	assert len(loaded) > 500
+	assert len(loaded) >= 10000
 	assert any("Borges" in s or "Aristóteles" in s or "amigo" in s for s in loaded)
 
 
