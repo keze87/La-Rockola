@@ -92,6 +92,7 @@ try:
 		KNOWN_SPANISH_DBS,
 		MINUTE_SEGMENTS,
 		PASES_A_CLIMA,
+		PRECIPITATING_CATEGORIES,
 		PROFANITY_PHRASES,
 		PROFANITY_TERMS,
 		RADIO_HANDOFFS,
@@ -155,6 +156,7 @@ except ImportError:
 		KNOWN_SPANISH_DBS,
 		MINUTE_SEGMENTS,
 		PASES_A_CLIMA,
+		PRECIPITATING_CATEGORIES,
 		PROFANITY_PHRASES,
 		PROFANITY_TERMS,
 		RADIO_HANDOFFS,
@@ -218,6 +220,7 @@ __all__ = [
 	"KNOWN_SPANISH_DBS",
 	"MINUTE_SEGMENTS",
 	"PASES_A_CLIMA",
+	"PRECIPITATING_CATEGORIES",
 	"PROFANITY_PHRASES",
 	"PROFANITY_TERMS",
 	"RADIO_HANDOFFS",
@@ -511,6 +514,18 @@ def get_weather_info(
 		min_tomorrow = round(float(tomorrow["mintempC"]))
 		max_tomorrow = round(float(tomorrow["maxtempC"]))
 
+		# Extraer descripción del estado del cielo / clima actual si existe
+		curr = data["current_condition"][0] if data.get("current_condition") else {}
+		desc_raw = None
+		if curr.get("weatherDesc"):
+			desc_raw = curr["weatherDesc"][0].get("value")
+		lang_es_raw = None
+		if curr.get("lang_es"):
+			lang_es_raw = curr["lang_es"][0].get("value")
+		code_raw = curr.get("weatherCode")
+
+		current_cat = resolve_weather_desc_category(desc=desc_raw, code=code_raw, lang_es=lang_es_raw)
+
 		today_hourly = today.get("hourly", [])
 		if current_hour is not None:
 			today_hourly = [h for h in today_hourly if _is_slot_relevant_for_hour(h, current_hour)]
@@ -524,7 +539,7 @@ def get_weather_info(
 			default=0,
 		)
 
-		llueve_hoy = rain_today >= WEATHER_RAIN_THRESHOLD
+		llueve_hoy = (rain_today >= WEATHER_RAIN_THRESHOLD) or (current_cat in PRECIPITATING_CATEGORIES)
 		llueve_manana = rain_tomorrow >= WEATHER_RAIN_THRESHOLD
 		lluvia_desc = describir_lluvias(llueve_hoy, llueve_manana, variant_idx=template_idx)
 
@@ -565,16 +580,6 @@ def get_weather_info(
 				loc_clean = clean_candidate
 		else:
 			loc_clean = DEFAULT_WEATHER_LOCATION
-
-		# Extraer descripción del estado del cielo / clima actual si existe
-		curr = data["current_condition"][0] if data.get("current_condition") else {}
-		desc_raw = None
-		if curr.get("weatherDesc"):
-			desc_raw = curr["weatherDesc"][0].get("value")
-		lang_es_raw = None
-		if curr.get("lang_es"):
-			lang_es_raw = curr["lang_es"][0].get("value")
-		code_raw = curr.get("weatherCode")
 
 		weather_desc_phrase = get_weather_desc_phrase(
 			desc=desc_raw,

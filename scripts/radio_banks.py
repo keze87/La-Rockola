@@ -554,18 +554,30 @@ WEATHER_TEMPLATES: list[str] = [
 	"{lead} Actualizamos los números del tiempo en {location}: clava {temp_str}.{desc_phrase} Hoy la marca irá de {min_today_str} a {max_today_str}. Y mirando a mañana, pronostican {range_tomorrow_str}. {lluvia_desc}",
 ]
 
-# ---------------------------------------------------------------------------
-# Previsiones de precipitaciones por condición (llueve_hoy, llueve_manana)
-# ---------------------------------------------------------------------------
+PRECIPITATING_CATEGORIES: frozenset[str] = frozenset(
+	{
+		"blizzard",
+		"drizzle",
+		"freezing_drizzle",
+		"hail",
+		"heavy_rain",
+		"light_rain",
+		"moderate_rain",
+		"sleet",
+		"snow",
+		"snow_thunder",
+		"thunderstorm",
+	}
+)
 
 RAIN_DESCRIPTIONS: dict[tuple[bool, bool], list[str]] = {
 	(False, False): [
-		"De lluvias ni hablemos: cielo despejado, ideal para unos buenos mates al sol.",
-		"Ni una sola nube que amenace agua: cielo limpito para secarse al sol en la orilla.",
-		"Cero agua en el horizonte: el cielo nos regala una jornada impecable para disfrutar.",
-		"Olvidate del paraguas: sol pleno en el bañado y ni miras de que caiga una gota.",
-		"El tiempo nos sonríe sin lluvias a la vista: tarde hermosa para relajarse y meter buena música.",
-		"Sin una gota a la vista: cielo abierto y despejado para andar panza arriba en la barranca.",
+		"De lluvias ni hablemos: cero precipitaciones en el horizonte, ideal para unos buenos mates.",
+		"Sin lluvias a la vista: no hay agua que amenace la jornada en la orilla.",
+		"Cero agua en el horizonte: ni miras de precipitaciones para hoy ni para mañana.",
+		"Olvidate del paraguas: el agua no dice presente y zafamos del chaparrón.",
+		"El tiempo nos acompaña sin lluvias a la vista: jornada tranquila para relajarse y meter buena música.",
+		"Sin una gota a la vista: tiempo seco en la zona para andar tranquilos en la barranca.",
 	],
 	(True, False): [
 		"Atenti que hoy se esperan lluvias y chaparrones, pero mañana ya zafamos y mejora la cosa.",
