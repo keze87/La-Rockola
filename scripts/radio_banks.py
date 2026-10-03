@@ -155,6 +155,25 @@ CARPINCHO_FORTUNES: list[str] = [
 	"Gato escaldado del agua huye, pero carpincho curtido se tira de panza con cualquier marea.",
 	"El mundo gira muy rápido para los que andan a los piques; en el arroyo todo tiene su compás.",
 	"El oráculo de la laguna sentencia: si la yerba todavía tiene palo, ese mate aguanta tres vueltas más.",
+	# Saludos y mensajes de los oyentes
+	"Un saludo enorme para Horacio de las islas, que nos escucha mientras le tira un pedazo de pan a los carpinchos del fondo. ¡Grande, Horacio!",
+	"Línea abierta en la Rockola. Saludo especial para toda la gente que nos saca a pasear en el estéreo del auto, del camión, o de la motito de delivery.",
+	'Mensajito que entra al WhatsApp: "Locutor, acá los pibes del taller de chapa y pintura pidiendo cumbia para que el soplete agarre ritmo". ¡Abrazo a esa barra laburadora!',
+	'Nos escribe Gladys desde Berazategui: "Cebando unos amargos con cascarita de naranja mientras escucho La Rockola". ¡Esa es la actitud, Gladys!',
+	'Atenti este mensaje: "Mandale un saludo al Beto que prometió prender el fuego a las doce y todavía está buscando el carbón". ¡Apurate, Beto, que la hinchada tiene hambre!',
+	'Entra un audio de oyente: "Acá el chofer de la línea sesenta clavado en el puente pero con la radio al palo. Hacen el viaje un lujo". ¡Fuerza en ese volante, maestro!',
+	'Mensaje de la comunidad: "Un saludo para los muchachos de la obra que están festejando el final de la losa con unos sánguches de salame y queso". ¡Salud, laburantes!',
+	'Nos mandan foto al WhatsApp: "Mirá cómo duerme la siesta el perro con La Rockola de fondo". Ronca acompasado con el bajo, ¡un fenómeno!',
+	'Llega un mensaje desde la ruta: "Acá el camionero Jorge pasando por Zárate con la cabina llena de mates y temazos". ¡Buenas rutas y buen viaje, Jorge!',
+	'Audio de oyente al dial: "Locutor, decile a mi compañero de oficina que deje de robarme las criollitas". ¡Quedaste escrachado al aire, compadre!',
+	'Nos escribe Pocho desde la isla: "Acá desenredando la red con la radio a batería colgada de un sauce". ¡Buena pesca y abrazo grande, Pocho!',
+	'Mensaje de los que madrugan: "Acá la guardia del hospital metiéndole onda a la madrugada con La Rockola". ¡Un aplauso de pie para todo el equipo de salud!',
+	'Otro mensaje que llega al control: "Saludo para la tía Marta que cumple ochenta y está bailando en chancletas en el patio". ¡Qué grande la tía Marta, esa vitalidad vale oro!',
+	'WhatsApp de la radio: "Acá esperando que abra la panadería para comprar las criollitas calientes". ¡El que madruga Dios lo ayuda, pero el panadero más!',
+	# Filosofía de Carpincho (Humor absurdo)
+	"Señoras y señores, recuerden el consejo del día: la vida es como un carpincho tomando sol al costado del río... hay que tomársela con calma y que nada te altere.",
+	"¿Problemas de dinero? ¿Problemas de amor? Olvidadlo por tres minutos y medio. Dejate llevar por el ritmo de la Rockola del Carpincho.",
+	"Me preguntan por privado de qué especie es el Carpincho de la Rockola. Es de la especie que sabe disfrutar de la buena música, chamigo.",
 	# "Gisella, ya salió el Gerardo el Magias 3, con Gerardo de Revilla y su caballo maravilloso. ¡No te lo pierdas!",
 ]
 
@@ -235,6 +254,13 @@ RADIO_INTROS: list[str] = [
 	"Desde la cabina de madera sobre pilotes, tiramos buena vibra a todo el humedal. ¡Esto es La Rockola!",
 	"Corré el camalote de la antena que salimos al aire con todo en La Rockola del Carpincho.",
 	"Tardecita dorada en la ribera y nosotros listos para hacerte el aguante en La Rockola.",
+	# El arranque y la energía de la mañana
+	"¡Sintonía total en todo el país! Estás en la Rockola del Carpincho, donde la música no para y los carpinchos tampoco. ¡Buen día para todos!",
+	"¡Arriba, arriba, arriba! Subí el volumen que si el vecino se queja, lo invitamos a tomar unos mates. ¡Arrancamos otra hora de puros éxitos!",
+	"Estás escuchando la Rockola del Carpincho. Conduce quien les habla, musicaliza el destino, y del otro lado... ¡la mejor audiencia del planeta!",
+	"¡Hola, hola! Reportándonos en vivo desde el mejor rincón del dial. Si estás yendo a laburar, paciencia; si estás volviendo, ¡sos un héroe nacional!",
+	# Cierre de tanda / Separadores cortos
+	"La Rockola del Carpincho: tu dosis diaria de música, mates y buena onda. No aceptes imitaciones.",
 ]
 
 RADIO_LEAD_INS: list[str] = [
@@ -266,6 +292,9 @@ RADIO_LEAD_INS: list[str] = [
 	"Palabra santa que llega navegando entre los camalotes.",
 	"Abrí la mente y sentí la posta que nos trae la corriente.",
 	"Para vos que andás medio a las corridas, prestale atención a esta joyita.",
+	# Pases a mensajes de oyentes
+	"Suena la campanita de mensajes en cabina; escuchate este:",
+	"Bandeja de mensajes hasta las manos en La Rockola; atendé:",
 ]
 
 RADIO_OUTROS: list[str] = [
@@ -295,6 +324,12 @@ RADIO_OUTROS: list[str] = [
 	"¡Dejate llevar por el compás que la tarde pide fiesta en la orilla!",
 	"¡Volumen al mango que los carpinchos quieren cumbia!",
 	"¡Acomodá el parlante mirando al río y disfrutá de este cañonazo musical!",
+	# Presentando el "Próximo Tema"
+	"Y ahora, un temazo que te va a hacer mover los muebles del living. ¡Ajustate los cinturones porque se viene un clásico de clásicos!",
+	"Abrimos el arcón de los recuerdos en la Rockola. Subile el volumen a la radio, que este tema te va a hacer viajar en el tiempo.",
+	"¿Querías ritmo? Tomá ritmo. A partir de este momento, se prohíbe quedarse sentado. ¡Que suene la música en la Rockola!",
+	# Cierre de tanda / Separadores cortos
+	"Pausa publicitaria en la mente, pero la música sigue acá. Estás en la Rockola.",
 	# "¡Para Maru que nos escucha desde casa, te deseamos que tengas un buen día! ¡Un carpinchazo de tema para vos; cambiame la música!",
 ]
 
