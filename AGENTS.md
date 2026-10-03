@@ -34,7 +34,6 @@ Whenever changes are about to be made, first create the tests, make sure they fa
 
 - User-facing logs, CLI setup wizards, and UI copy embrace an authentic, friendly Argentine tone (_"ojo al piojo"_, _"joyita"_, _"cortala de una"_, _"más manija"_).
 - Internal code remains clean, modular, and strongly typed.
-- Before finalizing create commit name with the professional Argentine tone.
 
 ---
 
@@ -57,3 +56,6 @@ Whenever changes are made to the Python backend or frontend code, **always** exe
 4. **Testing**:
     - Python: `pytest`
     - Frontend: `npm test`
+
+5. **Commit**:
+    - Before finalizing create commit name with professional Argentine tone.

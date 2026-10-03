@@ -300,10 +300,16 @@ def test_run_interactive_wizard(tmp_path):
 	default_folder.mkdir()
 	initial_cfg = {"music_dir": str(default_folder)}
 
-	# Option 1: default directory
-	with patch("builtins.input", side_effect=["1"]):
+	# Option 2: default directory
+	with patch("builtins.input", side_effect=["2"]):
 		cfg = server.run_interactive_wizard(config_path, initial_cfg.copy())
 		assert cfg["music_dir"] == str(default_folder)
+
+	# Option 1 (or default): folder selector dialog
+	with patch("server.select_folder_dialog", return_value=str(default_folder)):
+		with patch("builtins.input", side_effect=["1"]):
+			cfg = server.run_interactive_wizard(config_path, initial_cfg.copy())
+			assert cfg["music_dir"] == str(default_folder)
 
 	# Option 3: manual directory with create prompt 's'
 	new_dir = tmp_path / "fresh_music"

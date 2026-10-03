@@ -198,35 +198,36 @@ def test_select_folder_dialog_cancel(tmp_path):
 			assert res is None
 
 
-def test_run_interactive_wizard_using_selector_dialog(tmp_path):
-	"""Test choosing option 2 (folder selector dialog) in the wizard."""
+def test_run_interactive_wizard_using_default_option_opens_selector(tmp_path):
+	"""Test pressing Enter (default option 1) in the wizard opens the folder selector dialog."""
 	cfg_file = tmp_path / "rockola_config.json"
 	picked_folder = tmp_path / "PickedMusic"
 	picked_folder.mkdir()
 
-	# Choice 2 for primary folder dialog
-	inputs = ["2"]
+	# Enter (default option) opens folder selector dialog
+	inputs = [""]
 
-	with patch("server.select_folder_dialog", return_value=str(picked_folder)):
+	with patch("server.select_folder_dialog", return_value=str(picked_folder)) as mock_dialog:
 		with patch("builtins.input", side_effect=inputs):
 			cfg = server.run_interactive_wizard(cfg_file)
 
+	mock_dialog.assert_called_once()
 	assert cfg["music_dir"] == str(picked_folder.resolve())
 	assert cfg["music_dir2"] is None
 	assert cfg["port"] == 1729
 	assert cfg["host"] == "0.0.0.0"
 
 
-def test_run_interactive_wizard_using_default_option(tmp_path):
-	"""Test choosing option 1 (or pressing Enter) to use the default ~/Music."""
+def test_run_interactive_wizard_using_default_folder_option(tmp_path):
+	"""Test choosing option 2 to use the standard/default music folder."""
 	cfg_file = tmp_path / "rockola_config.json"
 	default_folder = tmp_path / "DefaultMusic"
 	default_folder.mkdir()
 
 	initial_cfg = {"music_dir": str(default_folder)}
 
-	# Enter (option 1 default)
-	inputs = [""]
+	# Choice 2 uses default directory
+	inputs = ["2"]
 
 	with patch("builtins.input", side_effect=inputs):
 		cfg = server.run_interactive_wizard(cfg_file, current_config=initial_cfg)

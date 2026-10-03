@@ -1387,8 +1387,8 @@ def run_interactive_wizard(config_path: Path, current_config: dict | None = None
 	default_resolved = str(Path(default_dir).expanduser().resolve())
 
 	print("📁 Carpeta de música:")
-	print(f"  [1] Usar por defecto: {default_dir} ({default_resolved})")
-	print("  [2] 📂 Abrir selector de carpetas... (Gráfico / Terminal)")
+	print("  [1] 📂 Abrir selector de carpetas... (Gráfico / Terminal) [predeterminado]")
+	print(f"  [2] Usar carpeta estándar: {default_dir} ({default_resolved})")
 	print("  [3] Escribir ruta manualmente (con soporte para tecla Tab)\n")
 
 	while True:
@@ -1398,9 +1398,7 @@ def run_interactive_wizard(config_path: Path, current_config: dict | None = None
 			print("\nOperación cancelada. Usando valores actuales.")
 			return cfg
 
-		if choice == "" or choice == "1":
-			chosen_dir = default_dir
-		elif choice in ("2", "b", "e", "examinar", "browse", "selector"):
+		if choice == "" or choice == "1" or choice.lower() in ("b", "e", "examinar", "browse", "selector"):
 			print("⏳ Abriendo selector de carpetas...")
 			selected = select_folder_dialog(
 				title="Seleccioná la carpeta principal de música",
@@ -1429,6 +1427,8 @@ def run_interactive_wizard(config_path: Path, current_config: dict | None = None
 						chosen_dir = explore_tui
 				except (EOFError, KeyboardInterrupt):
 					continue
+		elif choice == "2" or choice.lower() in ("d", "defecto", "default"):
+			chosen_dir = default_dir
 		elif choice == "3":
 			try:
 				manual_val = input("📁 Ingresá la ruta de la carpeta (podés usar Tab para autocompletar): ").strip()
