@@ -329,6 +329,40 @@ def test_load_bundled_fortunes(tmp_path):
 	assert not any(s == "Short" for s in loaded)
 
 
+def test_load_bundled_fortunes_from_directory(tmp_path):
+	"""Verifica la carga recursiva o múltiple de una carpeta estilo Debian con varios archivos .fortunes."""
+	fortunes_dir = tmp_path / "fortune-es"
+	fortunes_dir.mkdir()
+
+	f1 = fortunes_dir / "amistad.fortunes"
+	f1.write_text(
+		"La amistad es un alma que habita en dos cuerpos. — Aristóteles.\n%\nUn amigo fiel es un refugio seguro.\n",
+		encoding="utf-8",
+	)
+
+	f2 = fortunes_dir / "refranes.fortunes"
+	f2.write_text(
+		"A caballo regalado no se le miran los dientes.\n%\nAl mal tiempo, uno siempre tiene que poner buena cara.\n",
+		encoding="utf-8",
+	)
+
+	# Archivo accesorio o documentación que debe ser ignorado
+	(fortunes_dir / "LEAME.Debian").write_text("Documentación del paquete\n", encoding="utf-8")
+	(fortunes_dir / "varios.fortunes-pre").write_text("Ignorar borrador\n", encoding="utf-8")
+
+	loaded = radio_announcer.load_bundled_fortunes(fortunes_dir)
+	assert len(loaded) >= 4
+	assert "La amistad es un alma que habita en dos cuerpos. — Aristóteles." in loaded
+	assert "Al mal tiempo, uno siempre tiene que poner buena cara." in loaded
+
+
+def test_load_bundled_fortunes_default_project_folder():
+	"""Verifica que la carpeta por defecto del proyecto (scripts/fortune-es) cargue las fortunas de Debian."""
+	loaded = radio_announcer.load_bundled_fortunes()
+	assert len(loaded) > 500
+	assert any("Borges" in s or "Aristóteles" in s or "amigo" in s for s in loaded)
+
+
 def test_select_fortune_uses_bundled_when_system_unavailable():
 	"""Verifica que select_fortune use el banco bundled si el comando fortune de Unix no existe."""
 	with (

@@ -1145,38 +1145,64 @@ _BUNDLED_FORTUNES_CACHE: list[str] | None = None
 
 
 def get_bundled_fortunes_path(custom_path: Path | str | None = None) -> Path:
-	"""Resuelve la ruta absoluta al archivo propio de fortunas en formato Unix %."""
+	"""Resuelve la ruta absoluta a la carpeta o archivo de fortunas en formato Unix %."""
 	if custom_path:
 		return Path(custom_path)
 	if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-		candidate = Path(sys._MEIPASS) / "scripts" / "data" / "fortunes_es.txt"
-		if candidate.is_file():
-			return candidate
+		candidate_dir = Path(sys._MEIPASS) / "scripts" / "fortune-es"
+		if candidate_dir.is_dir():
+			return candidate_dir
+	default_dir = Path(__file__).parent / "fortune-es"
+	if default_dir.is_dir():
+		return default_dir
 	return Path(__file__).parent / "data" / "fortunes_es.txt"
 
 
-def load_bundled_fortunes(file_path: Path | str | None = None) -> list[str]:
+def load_bundled_fortunes(target: Path | str | None = None) -> list[str]:
 	"""
-	Carga y valida el archivo propio de fortunas en formato Unix (delimitador %).
-	Garantiza que cada ítem esté redactado en español y sea apto para locución radial.
+	Carga y valida fortunas en formato Unix (delimitador %).
+	Soporta tanto un archivo individual como una carpeta completa estilo Debian
+	con múltiples archivos temáticos (.fortunes).
+	Garantiza que cada ítem esté en español y sea apto para locución radial.
 	"""
 	global _BUNDLED_FORTUNES_CACHE
-	p = get_bundled_fortunes_path(file_path)
-	if not p.is_file():
+	p = get_bundled_fortunes_path(target)
+	if not p.exists():
 		return []
-	try:
-		raw = p.read_text(encoding="utf-8", errors="replace")
-		items: list[str] = []
-		for entry in raw.split("\n%\n"):
-			cleaned = clean_fortune_text(entry.strip())
-			if cleaned and is_spanish_text(cleaned) and is_valid_spoken_sentence(cleaned):
-				items.append(cleaned)
-		if file_path is None:
-			_BUNDLED_FORTUNES_CACHE = items
-		return items
-	except Exception as e:
-		logger.debug(f"Error cargando archivo bundled de fortunas ({p}): {e}")
-		return []
+
+	candidate_files: list[Path] = []
+	if p.is_file():
+		candidate_files = [p]
+	elif p.is_dir():
+		for f in sorted(p.iterdir()):
+			if not f.is_file():
+				continue
+			# Omitir archivos de control o borradores de Debian
+			if (
+				f.name.endswith("-pre")
+				or f.name.endswith(".dat")
+				or f.name in ("copyright", "README.Debian", "LEAME.Debian")
+			):
+				continue
+			candidate_files.append(f)
+
+	items: list[str] = []
+	seen: set[str] = set()
+
+	for file_path in candidate_files:
+		try:
+			raw = file_path.read_text(encoding="utf-8", errors="replace")
+			for entry in raw.split("\n%\n"):
+				cleaned = clean_fortune_text(entry.strip())
+				if cleaned and cleaned not in seen and is_spanish_text(cleaned) and is_valid_spoken_sentence(cleaned):
+					seen.add(cleaned)
+					items.append(cleaned)
+		except Exception as e:
+			logger.debug(f"Error leyendo archivo de fortunas ({file_path}): {e}")
+
+	if target is None:
+		_BUNDLED_FORTUNES_CACHE = items
+	return items
 
 
 def get_bundled_fortune(db_path: Path | str | None = None) -> str | None:

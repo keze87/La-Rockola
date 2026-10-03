@@ -5,7 +5,7 @@ block_cipher = None
 
 datas = [
     ("dist", "dist"),
-    ("scripts/data", "scripts/data"),
+    ("scripts/fortune-es", "scripts/fortune-es"),
 ]
 
 favicon = Path("public/favicon.ico")
