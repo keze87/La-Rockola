@@ -342,3 +342,87 @@ async def test_handle_song_ended_skips_stats_on_error():
 		await state.handle_song_ended(reason="eof")
 		mock_stat.assert_called_once_with("/music/song.mp3")
 		mock_next.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_mpv_start_debug_mode_args_and_pipes():
+	"""Verify that MPV starts with --terminal=yes, --msg-level=all=v and stdout=PIPE when debug logging is enabled."""
+	mpv = server.AsyncMpvController({})
+	mock_proc = MagicMock()
+	mock_proc.returncode = None
+	mock_proc.stdout = AsyncMock()
+	mock_proc.stdout.readline = AsyncMock(return_value=b"")
+	mock_proc.stderr = AsyncMock()
+	mock_proc.stderr.readline = AsyncMock(return_value=b"")
+
+	mock_reader = MagicMock()
+	mock_reader.readline = AsyncMock(return_value=b"")
+	mock_writer = MagicMock()
+	mock_writer.drain = AsyncMock()
+
+	with (
+		patch("server.logger.isEnabledFor", side_effect=lambda lvl: lvl == server.logging.DEBUG),
+		patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec,
+		patch("asyncio.open_unix_connection", return_value=(mock_reader, mock_writer), create=True),
+		patch("os.path.exists", return_value=True),
+		patch.object(mpv, "_send", new_callable=AsyncMock),
+	):
+		await mpv.start()
+
+		cmd_args = mock_exec.call_args[0]
+		assert "--terminal=yes" in cmd_args
+		assert "--msg-level=all=v" in cmd_args
+		assert "--quiet" not in cmd_args
+		assert mock_exec.call_args[1]["stdout"] == asyncio.subprocess.PIPE
+
+
+@pytest.mark.asyncio
+async def test_mpv_start_non_debug_mode_args_and_pipes():
+	"""Verify that MPV starts with --quiet and stdout=DEVNULL when debug logging is disabled."""
+	mpv = server.AsyncMpvController({})
+	mock_proc = MagicMock()
+	mock_proc.returncode = None
+	mock_proc.stderr = AsyncMock()
+	mock_proc.stderr.readline = AsyncMock(return_value=b"")
+
+	mock_reader = MagicMock()
+	mock_reader.readline = AsyncMock(return_value=b"")
+	mock_writer = MagicMock()
+	mock_writer.drain = AsyncMock()
+
+	with (
+		patch("server.logger.isEnabledFor", return_value=False),
+		patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec,
+		patch("asyncio.open_unix_connection", return_value=(mock_reader, mock_writer), create=True),
+		patch("os.path.exists", return_value=True),
+		patch.object(mpv, "_send", new_callable=AsyncMock),
+	):
+		await mpv.start()
+
+		cmd_args = mock_exec.call_args[0]
+		assert "--quiet" in cmd_args
+		assert "--msg-level=all=v" not in cmd_args
+		assert mock_exec.call_args[1]["stdout"] == asyncio.subprocess.DEVNULL
+
+
+@pytest.mark.asyncio
+async def test_mpv_drain_stdout_logs_debug():
+	"""Verify that _drain_stdout reads lines and logs them with [MPV stdout]."""
+	mpv = server.AsyncMpvController({})
+	mock_proc = MagicMock()
+	mock_proc.returncode = None
+	mock_stdout = AsyncMock()
+	mock_stdout.readline.side_effect = [
+		b"[cplayer] mpv v0.41.0\n",
+		b"[cplayer] audio-pts: 1.234\n",
+		b"",
+	]
+	mock_proc.stdout = mock_stdout
+	mpv.process = mock_proc
+
+	with patch("server.logger.debug") as mock_debug:
+		await mpv._drain_stdout()
+
+		assert mock_debug.call_count == 2
+		assert any("[MPV stdout] [cplayer] mpv v0.41.0" in str(call) for call in mock_debug.call_args_list)
+		assert any("[MPV stdout] [cplayer] audio-pts: 1.234" in str(call) for call in mock_debug.call_args_list)

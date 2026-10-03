@@ -68,3 +68,42 @@ def test_build_arg_parser_debug_flag():
 
 	args_debug = parser.parse_args(["--debug"])
 	assert args_debug.debug is True
+
+
+def test_default_config_has_log_level():
+	"""Verify that DEFAULT_CONFIG contains log_level with default INFO."""
+	assert "log_level" in server.DEFAULT_CONFIG
+	assert server.DEFAULT_CONFIG["log_level"] == "INFO"
+
+
+def test_configure_logging_with_log_level_string():
+	"""Verify configure_logging accepts string log level."""
+	server.configure_logging(level="DEBUG")
+	assert logging.getLogger().level == logging.DEBUG
+
+	server.configure_logging(level="WARNING")
+	assert logging.getLogger().level == logging.WARNING
+
+	server.configure_logging(level="INFO")
+	assert logging.getLogger().level == logging.INFO
+
+	# Reset
+	server.configure_logging(debug=False)
+
+
+def test_build_arg_parser_log_level_option():
+	"""Verify that build_arg_parser supports the --log-level flag."""
+	parser = server.build_arg_parser()
+	args_default = parser.parse_args([])
+	assert args_default.log_level is None
+
+	args_warn = parser.parse_args(["--log-level", "WARNING"])
+	assert args_warn.log_level == "WARNING"
+
+
+def test_load_config_loads_log_level(tmp_path):
+	"""Verify load_config reads log_level from rockola_config.json."""
+	cfg_path = tmp_path / "rockola_config.json"
+	cfg_path.write_text('{"log_level": "DEBUG"}', encoding="utf-8")
+	loaded = server.load_config(cfg_path)
+	assert loaded.get("log_level") == "DEBUG"

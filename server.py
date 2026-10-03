@@ -856,11 +856,21 @@ if not DBUS_AVAILABLE:
 			self.name = name
 
 
-def configure_logging(debug: bool = False):
+def configure_logging(debug: bool = False, level: str | int | None = None):
 	"""Configura el nivel de logging global y silencia bibliotecas ruidosas."""
-	level = logging.DEBUG if debug else logging.INFO
+	if debug:
+		target_level = logging.DEBUG
+	elif level is not None:
+		if isinstance(level, str):
+			target_level = getattr(logging, level.strip().upper(), logging.INFO)
+		else:
+			target_level = int(level)
+	else:
+		target_level = logging.INFO
+
+	is_debug = target_level <= logging.DEBUG
 	logging.basicConfig(
-		level=level,
+		level=target_level,
 		format="%(asctime)s - %(levelname)s - [%(funcName)s] %(message)s",
 		force=True,
 	)
@@ -869,7 +879,7 @@ def configure_logging(debug: bool = False):
 	logging.getLogger("llvmlite").setLevel(logging.WARNING)
 	logging.getLogger("PIL").setLevel(logging.WARNING)
 	# Silenciamos los logs de acceso HTTP de Uvicorn si no estamos en modo debug
-	logging.getLogger("uvicorn.access").setLevel(logging.DEBUG if debug else logging.WARNING)
+	logging.getLogger("uvicorn.access").setLevel(logging.DEBUG if is_debug else logging.WARNING)
 
 
 # Configuración inicial de logging (por defecto INFO, o DEBUG si se solicita vía variable de entorno)
@@ -885,6 +895,7 @@ DEFAULT_CONFIG = {
 	"open_browser": True,
 	"url": None,
 	"weather_location": DEFAULT_WEATHER_LOCATION,
+	"log_level": "INFO",
 }
 
 
@@ -1065,6 +1076,7 @@ def print_startup_banner(
 	config_path: Path | None = None,
 	custom_url: str | None = None,
 	weather_location: str | None = None,
+	log_level: str | None = None,
 ) -> None:
 	"""Imprime una pantalla de bienvenida e instrucciones claras en la consola al iniciar."""
 	urls = get_server_urls(host, port, custom_url=custom_url)
@@ -1101,6 +1113,8 @@ def print_startup_banner(
 		print(f"     • Carpeta secundaria:  {resolved_dir2}")
 	if weather_location:
 		print(f"     • Clima radial:        {weather_location}")
+	if log_level:
+		print(f"     • Nivel de registro:   {log_level}")
 
 	print("\n  💡 GUÍA RÁPIDA DE USO:")
 	if open_browser:
@@ -1944,18 +1958,27 @@ class AsyncMpvController:
 			mpris_opt = "no" if own_mpris_active else "yes"
 			keys_opt = "no" if own_mpris_active else "yes"
 
+			is_debug = logger.isEnabledFor(logging.DEBUG)
 			mpv_bin = find_binary("mpv") or "mpv"
 
 			mpv_args = [
 				mpv_bin,
 				"--idle",
-				"--quiet",
-				"--script-opts=osc-visibility=always,osc-layout=topbar",
-				f"--load-scripts={mpris_opt}",
-				f"--input-media-keys={keys_opt}",
-				"--ytdl-raw-options=no-playlist=",
-				f"--input-ipc-server={self.socket_path}",
 			]
+			if not is_debug:
+				mpv_args.append("--quiet")
+			else:
+				mpv_args.extend(["--terminal=yes", "--msg-level=all=v"])
+
+			mpv_args.extend(
+				[
+					"--script-opts=osc-visibility=always,osc-layout=topbar",
+					f"--load-scripts={mpris_opt}",
+					f"--input-media-keys={keys_opt}",
+					"--ytdl-raw-options=no-playlist=",
+					f"--input-ipc-server={self.socket_path}",
+				]
+			)
 
 			if show_window and has_display:
 				mpv_args.extend(
@@ -2011,7 +2034,7 @@ class AsyncMpvController:
 				self.process = await asyncio.create_subprocess_exec(
 					*mpv_args,
 					stdin=asyncio.subprocess.DEVNULL,
-					stdout=asyncio.subprocess.DEVNULL,
+					stdout=asyncio.subprocess.PIPE if is_debug else asyncio.subprocess.DEVNULL,
 					stderr=asyncio.subprocess.PIPE,
 					env=env,
 				)
@@ -2035,7 +2058,9 @@ class AsyncMpvController:
 			if not self.is_windows and not os.path.exists(self.socket_path):
 				raise RuntimeError("MPV se quedó dormido y no armó el socket a tiempo.")
 
-			# Drenar stderr de MPV en segundo plano para no saturar el buffer del pipe
+			# Drenar stdout y stderr de MPV en segundo plano
+			if self.process and self.process.stdout:
+				asyncio.create_task(self._drain_stdout())
 			if self.process and self.process.stderr:
 				asyncio.create_task(self._drain_stderr())
 
@@ -2062,6 +2087,19 @@ class AsyncMpvController:
 			if is_restart and "mpv_restarted" in self.callbacks:
 				asyncio.create_task(self.callbacks["mpv_restarted"]())
 
+	async def _drain_stdout(self):
+		"""Drena stdout de MPV en segundo plano y muestra los logs en nivel DEBUG."""
+		try:
+			while self.process and self.process.returncode is None and self.process.stdout:
+				line = await self.process.stdout.readline()
+				if not line:
+					break
+				decoded = line.decode("utf-8", errors="replace").rstrip()
+				if decoded:
+					logger.debug(f"[MPV stdout] {decoded}")
+		except Exception:
+			pass
+
 	async def _drain_stderr(self):
 		"""Drena stderr de MPV en segundo plano para evitar saturar el buffer del pipe."""
 		try:
@@ -2069,7 +2107,9 @@ class AsyncMpvController:
 				line = await self.process.stderr.readline()
 				if not line:
 					break
-				logger.debug(f"[MPV stderr] {line.decode('utf-8', errors='replace').rstrip()}")
+				decoded = line.decode("utf-8", errors="replace").rstrip()
+				if decoded:
+					logger.debug(f"[MPV stderr] {decoded}")
 		except Exception:
 			pass
 
@@ -2124,8 +2164,8 @@ class AsyncMpvController:
 		try:
 			event_data = json.loads(line.decode("utf-8").strip())
 			event_name = event_data.get("event")
-			# if event_name:
-			# 	logger.info(f"IPC EVENT DATA: {event_data}")
+			if logger.isEnabledFor(logging.DEBUG) and event_name:
+				logger.debug(f"[MPV event] {event_data}")
 
 			# Handle Track End
 			if event_name == "end-file":
@@ -2161,7 +2201,8 @@ class AsyncMpvController:
 	async def _send(self, cmd_payload: str):
 		if not self.is_running:
 			return
-		# logger.debug(f"Tirándole comando al MPV: \n {highlight_json(cmd_payload)}")
+		if logger.isEnabledFor(logging.DEBUG):
+			logger.debug(f"[MPV send] {cmd_payload}")
 		cmd_bytes = (cmd_payload + "\n").encode("utf-8")
 
 		try:
@@ -3765,7 +3806,13 @@ class APIState:
 
 						if not mixed_ok:
 							# Fallback seguro si no hay pista de fondo o falló la mezcla en caliente
-							shutil.copyfile(voice_file, out_file)
+							try:
+								shutil.copyfile(voice_file, out_file)
+							except Exception as copy_err:
+								logger.error(
+									f"Error copiando archivo de locución {voice_file} a {out_file}: {copy_err}"
+								)
+								return False
 						return True
 
 					# 1. Comprobar si ya está lista la pregeneración de fondo (0 ms de latencia)
@@ -5056,6 +5103,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
 		help="No abre el navegador web automáticamente al iniciar",
 	)
 	parser.add_argument(
+		"--log-level",
+		dest="log_level",
+		type=str,
+		default=None,
+		help="Nivel de registro (DEBUG, INFO, WARNING, ERROR). Por defecto se toma del config o INFO",
+	)
+	parser.add_argument(
 		"--debug",
 		action="store_true",
 		default=os.environ.get("ROCKOLA_DEBUG", "").lower() in ("1", "true", "yes"),
@@ -5072,9 +5126,6 @@ if __name__ == "__main__":
 	parser = build_arg_parser()
 	args = parser.parse_args()
 
-	if args.debug:
-		configure_logging(debug=True)
-
 	# Re-ejecutamos check_dependencies por si fue omitido para mostrar --help
 	check_dependencies()
 
@@ -5083,6 +5134,17 @@ if __name__ == "__main__":
 
 	# Cargar configuración existente o por defecto
 	config = load_config(config_path)
+
+	# Resolver nivel de registro: CLI (--debug o --log-level) tiene prioridad sobre el archivo de configuración
+	if args.debug:
+		final_log_level = "DEBUG"
+	elif args.log_level is not None:
+		final_log_level = args.log_level.upper()
+	else:
+		final_log_level = str(config.get("log_level", "INFO")).upper()
+
+	is_debug = final_log_level == "DEBUG"
+	configure_logging(debug=is_debug, level=final_log_level)
 
 	# Ejecutar asistente si se pidió --setup, o si es la primera vez (en terminal interactivo) y NO se especificó carpeta
 	should_run_wizard = args.setup or (
@@ -5103,6 +5165,10 @@ if __name__ == "__main__":
 			config["host"] = args.host
 		if args.weather_location is not None:
 			config["weather_location"] = args.weather_location
+		if args.log_level is not None:
+			config["log_level"] = args.log_level.upper()
+		elif args.debug:
+			config["log_level"] = "DEBUG"
 		save_config(config_path, config)
 
 	# Los argumentos pasados explícitamente por CLI tienen prioridad sobre el archivo de configuración
@@ -5145,6 +5211,7 @@ if __name__ == "__main__":
 		config_path=config_path,
 		custom_url=final_url,
 		weather_location=final_weather_location,
+		log_level=final_log_level,
 	)
 
 	uvicorn.run(
@@ -5153,5 +5220,6 @@ if __name__ == "__main__":
 		port=final_port,
 		proxy_headers=True,
 		forwarded_allow_ips="*",
-		access_log=args.debug,
+		access_log=is_debug,
+		log_level=final_log_level.lower(),
 	)
