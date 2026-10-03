@@ -388,11 +388,8 @@ RADIO_INTROS: list[str] = [
 ]
 RADIO_INTROS.extend(SEPARADORES_Y_SLOGANS)
 
-RADIO_LEAD_INS: list[str] = [
+LEAD_INS_FORTUNA: list[str] = [
 	"Momento de rumiar una idea mientras chupás la bombilla...",
-	"Llegó un mensaje en botella al terraplén; escuchá...",
-	"Atendé lo que nos bajó la capitanía de la laguna.",
-	"Aviso importante de la vecindad de los bañados.",
 	"Pará la oreja que esto no te lo enseñan en la escuela de natación.",
 	"Un consejo milenario directo del barro profundo.",
 	"Momento de la galletita de la fortuna...",
@@ -401,9 +398,6 @@ RADIO_LEAD_INS: list[str] = [
 	"Tiramos una frase para reflexionar mientras te tomás unos mates.",
 	"Dice la fortuna del día...",
 	"Atenti a esta reflexión carpinchera.",
-	"Espacio publicitario en La Rockola.",
-	"Atenti a este aviso de la comunidad carpinchera.",
-	"Mensaje de nuestros queridos auspiciantes.",
 	"Che, atenti al oráculo; sabiduría pura de la laguna.",
 	"Posta, escuchate esta reflexión carpinchera.",
 	"Pará la oreja; mirá lo que nos deja el oráculo hoy.",
@@ -417,10 +411,46 @@ RADIO_LEAD_INS: list[str] = [
 	"Palabra santa que llega navegando entre los camalotes.",
 	"Abrí la mente y sentí la posta que nos trae la corriente.",
 	"Para vos que andás medio a las corridas, prestale atención a esta joyita.",
-	# Pases a mensajes de oyentes
+]
+
+LEAD_INS_AVISOS: list[str] = [
+	"Espacio publicitario en La Rockola.",
+	"Atenti a este aviso de la comunidad carpinchera.",
+	"Mensaje de nuestros queridos auspiciantes.",
+	"Aviso importante de la vecindad de los bañados.",
+	"Atendé lo que nos bajó la capitanía de la laguna.",
+	"Llegó un aviso urgente a la mesa de control; pará la oreja:",
+	"Parte comunitario y comercial en el aire de La Rockola:",
+	"Avisos parroquiales y novedades de la cuenca; tomá nota:",
+	"Llegó un mensaje en botella al terraplén; escuchá...",
+]
+
+LEAD_INS_OYENTES: list[str] = [
 	"Suena la campanita de mensajes en cabina; escuchate este:",
 	"Bandeja de mensajes hasta las manos en La Rockola; atendé:",
+	"Llegó un audio de WhatsApp a la consola; mirá lo que piden:",
+	"Mensaje de la muchachada que nos acompaña del otro lado:",
+	"Pará la oreja que los oyentes mandan reporte en vivo:",
+	"Revisando los mensajes del pueblo en La Rockola; escuchá:",
+	"La audiencia se hace sentir en el WhatsApp de la radio; atendé:",
 ]
+
+LEAD_INS_ALERTAS: list[str] = [
+	"Alerta especial de incomodidad criolla en el dial:",
+	"Reporte urgente desde la costa; ojo al piojo:",
+	"Atención navegantes y vecinos del humedal con este parte:",
+	"Aviso meteorológico no oficial de los bañados:",
+	"Pará la oreja que se picó el ambiente en la ribera:",
+]
+
+LEAD_INS_BY_CATEGORY: dict[str, list[str]] = {
+	"fortuna": LEAD_INS_FORTUNA,
+	"aviso": LEAD_INS_AVISOS,
+	"oyentes": LEAD_INS_OYENTES,
+	"alerta_criolla": LEAD_INS_ALERTAS,
+}
+
+RADIO_LEAD_INS: list[str] = LEAD_INS_FORTUNA + LEAD_INS_AVISOS + LEAD_INS_OYENTES + LEAD_INS_ALERTAS
 
 RADIO_OUTROS: list[str] = [
 	"Dejamos de parlotear y que hable el bajo. ¡Metele play!",
@@ -1229,6 +1259,42 @@ REACCIONES_FORTUNA: list[str] = [
 	"¡Para ponerlo en un cartelito de madera en la entrada del rancho!",
 	"¡Posta pura! Al que no le guste, que vaya a rumiar pasto amargo.",
 ]
+
+REACCIONES_AVISOS: list[str] = [
+	"¡Buen dato para los vecinos de la zona!",
+	"Excelente servicio a la comunidad, como siempre en La Rockola.",
+	"A tenerlo muy en cuenta la muchachada de la orilla.",
+	"Ojo al piojo los que anden por ahí, tomen nota.",
+	"¡Comercio y comunidad de primera en el humedal!",
+	"¡Qué gran servicio! Siempre atentos a lo que pasa en el pago.",
+	"Dato clave para no quedarse a pata en el río.",
+]
+
+REACCIONES_OYENTES: list[str] = [
+	"¡Un abrazo gigante para toda esa linda gente que hace el aguante!",
+	"¡Qué temazo que pidieron, ya mismo se lo mandamos al aire!",
+	"¡Saludos a la barra y gracias por acompañarnos siempre!",
+	"¡Al pelo ese mensaje, aguante la audiencia carpincha!",
+	"¡Música y mate para todos ellos, que se sientan como en casa!",
+	"¡Gente laburadora y de primera sintonizando La Rockola!",
+	"¡Un saludo cariñoso para toda la muchachada que escucha!",
+]
+
+REACCIONES_ALERTAS: list[str] = [
+	"¡Qué lo tiró, che! A prender el espiral y cerrar las ventanas.",
+	"¡Mamita querida, qué plaga brava! A refugiarse en la cueva.",
+	"¡A ponerle el pecho con un buen tereré y paciencia de carpincho!",
+	"¡Cosas de nuestra tierra querida, a no aflojarle!",
+	"¡Terrible situación! Aguanten los trapos que ya va a pasar.",
+	"¡Paciencia criolla que después de la siesta afloja!",
+]
+
+REACCIONES_BY_CATEGORY: dict[str, list[str]] = {
+	"fortuna": REACCIONES_FORTUNA,
+	"aviso": REACCIONES_AVISOS,
+	"oyentes": REACCIONES_OYENTES,
+	"alerta_criolla": REACCIONES_ALERTAS,
+}
 
 RADIO_REACTIONS: list[str] = [
 	"¡Qué lo tiró, che!",
@@ -2188,3 +2254,124 @@ AI_ROBOTIC_PHRASES: list[str] = [
 	"segmentation fault",
 	"stack overflow",
 ]
+
+
+def resolve_segment_category(text: str) -> str:
+	"""
+	Clasifica el contenido radial en su categoría semántica:
+	- 'oyentes': dedicatorias y pedidos de oyentes por WhatsApp/audio.
+	- 'aviso': tanda publicitaria comercial, avisos parroquiales y tránsito fluvial.
+	- 'alerta_criolla': reportes satíricos de clima extremo, mosquitos y viento norte.
+	- 'fortuna': refranes, proverbios, máximas y reflexiones filosóficas.
+	"""
+	if not text or not isinstance(text, str):
+		return "fortuna"
+	text_clean = text.strip()
+	text_lower = text_clean.lower()
+
+	# 1. Oyentes (mensajes de WhatsApp, audios, pedidos de temas)
+	if (
+		text_clean in DEDICATORIAS_OYENTES
+		or any(
+			text_clean.startswith(p)
+			for p in ("WhatsApp", "Llega audio", "Mensajito", "Audio de", "Nos escriben", "Llega mensaje")
+		)
+		or any(
+			k in text_lower
+			for k in (
+				"whatsapp",
+				"audio de",
+				"mandale un abrazo",
+				"pide un chamamé",
+				"piden cumbia",
+				"piden cuarteto",
+				"pedimos cumbia",
+				"pedimos cuarteto",
+				"que suene gilda",
+			)
+		)
+	):
+		return "oyentes"
+
+	# 2. Alertas criollas (mosquitos, jejenes, clima molesto)
+	if text_clean in ALERTAS_INCOMODIDAD_CRIOLLA or any(
+		k in text_lower
+		for k in (
+			"mosquito",
+			"jejenes",
+			"viento zonda",
+			"viento norte",
+			"humedad del 100%",
+			"plaga de",
+			"calor de siesta",
+			"asfalto parece goma",
+		)
+	):
+		return "alerta_criolla"
+
+	# 3. Avisos comerciales, parroquiales, comunitarios y tránsito fluvial
+	if (
+		text_clean in CARPINCHO_ADS
+		or text_clean in AVISOS_PARROQUIALES_Y_EXTRAVIOS
+		or text_clean in TRANSITO_FLUVIAL_Y_CAMINOS
+		or any(
+			text_clean.startswith(p)
+			for p in (
+				"Espacio publicitario",
+				"Publicidad",
+				"Aviso ",
+				"Se busca ",
+				"Atención vecinos",
+				"Lancha colectiva",
+				"Balsa ",
+				"Corte de ruta",
+				"Alerta de tránsito",
+				"Tránsito ",
+				"Camino ",
+				"Reporte de caminos",
+				"Solidaridad ",
+				"Objeto perdido",
+				"Objeto hallado",
+				"Extravío ",
+				"Pérdida ",
+				"Urgente del pueblo",
+				"Demoras en ",
+				"Estado de caminos",
+			)
+		)
+		or any(
+			k in text_lower
+			for k in (
+				"gomería",
+				"ferretería",
+				"emparchamos",
+				"precios populares",
+				"aviso comercial",
+				"aviso parroquial",
+				"se extravió",
+				"se busca",
+				"recompensa",
+				"lancha colectiva",
+				"tránsito fluvial",
+				"puente viejo",
+				"terraplén",
+				"camino de ripio",
+				"balsa maroma",
+				"banco de arena",
+				"barro greda",
+			)
+		)
+	):
+		return "aviso"
+
+	return "fortuna"
+
+
+def get_lead_ins_for_category(category: str) -> list[str]:
+	"""Devuelve los lead-ins pertinentes a la categoría del segmento."""
+	return LEAD_INS_BY_CATEGORY.get(category, LEAD_INS_FORTUNA)
+
+
+def get_reactions_for_category(category: str) -> list[str]:
+	"""Devuelve las reacciones de cabina pertinentes a la categoría del segmento."""
+	return REACCIONES_BY_CATEGORY.get(category, REACCIONES_FORTUNA)

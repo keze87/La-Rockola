@@ -90,6 +90,11 @@ try:
 		FORBIDDEN_FORMAT_CHARS,
 		HOUR_NAMES,
 		KNOWN_SPANISH_DBS,
+		LEAD_INS_ALERTAS,
+		LEAD_INS_AVISOS,
+		LEAD_INS_BY_CATEGORY,
+		LEAD_INS_FORTUNA,
+		LEAD_INS_OYENTES,
 		MINUTE_SEGMENTS,
 		PASES_A_CLIMA,
 		PRECIPITATING_CATEGORIES,
@@ -105,8 +110,12 @@ try:
 		RAIN_NO_RAIN,
 		RAIN_TODAY_ONLY,
 		RAIN_TOMORROW_ONLY,
+		REACCIONES_ALERTAS,
+		REACCIONES_AVISOS,
+		REACCIONES_BY_CATEGORY,
 		REACCIONES_CLIMA,
 		REACCIONES_FORTUNA,
+		REACCIONES_OYENTES,
 		SEPARADORES_Y_SLOGANS,
 		SPANISH_CHARS,
 		SPECIAL_HOURS,
@@ -126,7 +135,10 @@ try:
 		WEATHER_RAIN_THRESHOLD,
 		WEATHER_TEMPLATES,
 		get_all_weather_desc_phrases,
+		get_lead_ins_for_category,
+		get_reactions_for_category,
 		get_weather_desc_phrase,
+		resolve_segment_category,
 		resolve_weather_desc_category,
 	)
 except ImportError:
@@ -154,6 +166,11 @@ except ImportError:
 		FORBIDDEN_FORMAT_CHARS,
 		HOUR_NAMES,
 		KNOWN_SPANISH_DBS,
+		LEAD_INS_ALERTAS,
+		LEAD_INS_AVISOS,
+		LEAD_INS_BY_CATEGORY,
+		LEAD_INS_FORTUNA,
+		LEAD_INS_OYENTES,
 		MINUTE_SEGMENTS,
 		PASES_A_CLIMA,
 		PRECIPITATING_CATEGORIES,
@@ -169,8 +186,12 @@ except ImportError:
 		RAIN_NO_RAIN,
 		RAIN_TODAY_ONLY,
 		RAIN_TOMORROW_ONLY,
+		REACCIONES_ALERTAS,
+		REACCIONES_AVISOS,
+		REACCIONES_BY_CATEGORY,
 		REACCIONES_CLIMA,
 		REACCIONES_FORTUNA,
+		REACCIONES_OYENTES,
 		SEPARADORES_Y_SLOGANS,
 		SPANISH_CHARS,
 		SPECIAL_HOURS,
@@ -190,7 +211,10 @@ except ImportError:
 		WEATHER_RAIN_THRESHOLD,
 		WEATHER_TEMPLATES,
 		get_all_weather_desc_phrases,
+		get_lead_ins_for_category,
+		get_reactions_for_category,
 		get_weather_desc_phrase,
+		resolve_segment_category,
 		resolve_weather_desc_category,
 	)
 
@@ -218,6 +242,11 @@ __all__ = [
 	"FORBIDDEN_FORMAT_CHARS",
 	"HOUR_NAMES",
 	"KNOWN_SPANISH_DBS",
+	"LEAD_INS_ALERTAS",
+	"LEAD_INS_AVISOS",
+	"LEAD_INS_BY_CATEGORY",
+	"LEAD_INS_FORTUNA",
+	"LEAD_INS_OYENTES",
 	"MINUTE_SEGMENTS",
 	"PASES_A_CLIMA",
 	"PRECIPITATING_CATEGORIES",
@@ -233,8 +262,12 @@ __all__ = [
 	"RAIN_NO_RAIN",
 	"RAIN_TODAY_ONLY",
 	"RAIN_TOMORROW_ONLY",
+	"REACCIONES_ALERTAS",
+	"REACCIONES_AVISOS",
+	"REACCIONES_BY_CATEGORY",
 	"REACCIONES_CLIMA",
 	"REACCIONES_FORTUNA",
+	"REACCIONES_OYENTES",
 	"SEPARADORES_Y_SLOGANS",
 	"SPANISH_CHARS",
 	"SPECIAL_HOURS",
@@ -279,12 +312,14 @@ __all__ = [
 	"get_available_spanish_dbs",
 	"get_bundled_fortune",
 	"get_cached_audio",
+	"get_lead_ins_for_category",
 	"get_modular_hour_segments",
 	"get_modular_minute_segments",
 	"get_modular_time_segments",
 	"get_phrase_last_played",
 	"get_radio_fortune",
 	"get_radio_state",
+	"get_reactions_for_category",
 	"get_system_fortune",
 	"get_weather_condition",
 	"get_weather_desc_phrase",
@@ -302,6 +337,7 @@ __all__ = [
 	"record_phrase_played",
 	"reset_radio_memory_state",
 	"reset_weather_cache",
+	"resolve_segment_category",
 	"resolve_weather_desc_category",
 	"save_cached_audio",
 	"select_fortune",
@@ -1442,7 +1478,7 @@ def build_radio_dialogue_plan(
 	intro: str,
 	hora_seg: str,
 	minuto_seg: str | None,
-	lead_in: str,
+	lead_in: str | None,
 	fortuna: str,
 	outro: str,
 	host_voice: str,
@@ -1462,6 +1498,14 @@ def build_radio_dialogue_plan(
 	"""
 	time_phrase = f"{hora_seg} {minuto_seg}".strip() if minuto_seg else hora_seg.strip()
 	fortune_text = format_fortune_for_speech(fortuna)
+	seg_cat = resolve_segment_category(fortuna)
+
+	if lead_in is not None:
+		effective_lead_in = lead_in
+	else:
+		cat_lead_ins = get_lead_ins_for_category(seg_cat)
+		effective_lead_in = weighted_choice_by_recency(cat_lead_ins, category=f"lead_in_{seg_cat}", db_path=db_path)
+
 	if not dialogue_mode:
 		fortune_voice = VOICE_ELENA if is_system_fortune else host_voice
 		solo_plan: list[tuple[str, str, str, bool]] = [
@@ -1472,7 +1516,7 @@ def build_radio_dialogue_plan(
 			solo_plan.append((weather_text, host_voice, "clima", False))
 		solo_plan.extend(
 			[
-				(lead_in, host_voice, "lead_in", True),
+				(effective_lead_in, host_voice, "lead_in", True),
 				(fortune_text, fortune_voice, "fortuna", True),
 				(outro, host_voice, "salida", True),
 			]
@@ -1504,8 +1548,8 @@ def build_radio_dialogue_plan(
 		plan.append((reaccion_clima, host_voice, "reaccion", True))
 		prev_reaction = reaccion_clima
 
-	# 2. Fortuna
-	plan.append((lead_in, host_voice, "lead_in", True))
+	# 2. Fortuna / Aviso / Oyentes
+	plan.append((effective_lead_in, host_voice, "lead_in", True))
 
 	if is_system_fortune:
 		fortune_voice = VOICE_ELENA
@@ -1514,9 +1558,10 @@ def build_radio_dialogue_plan(
 
 	plan.append((format_fortune_for_speech(fortuna), fortune_voice, "fortuna", True))
 
-	valid_fortune_reactions = [r for r in REACCIONES_FORTUNA if r != prev_reaction]
-	pool_fortuna = valid_fortune_reactions if valid_fortune_reactions else REACCIONES_FORTUNA
-	reaccion_fortuna = weighted_choice_by_recency(pool_fortuna, category="reaccion_fortuna", db_path=db_path)
+	cat_reactions = get_reactions_for_category(seg_cat)
+	valid_fortune_reactions = [r for r in cat_reactions if r != prev_reaction]
+	pool_fortuna = valid_fortune_reactions if valid_fortune_reactions else cat_reactions
+	reaccion_fortuna = weighted_choice_by_recency(pool_fortuna, category=f"reaccion_{seg_cat}", db_path=db_path)
 	react_voice = host_voice if fortune_voice == cohost_voice else cohost_voice
 	plan.append((reaccion_fortuna, react_voice, "reaccion", True))
 
@@ -1679,8 +1724,10 @@ def generate_modular_radio_script(
 
 	intro = random.choice(RADIO_INTROS)
 	hora_seg, minuto_seg, _ = get_modular_time_segments(dt)
-	lead_in = random.choice(RADIO_LEAD_INS)
 	fortuna, is_system_fortune = select_fortune(force_system_fortune)
+	seg_cat = resolve_segment_category(fortuna)
+	cat_lead_ins = get_lead_ins_for_category(seg_cat)
+	lead_in = random.choice(cat_lead_ins)
 	outro = random.choice(RADIO_OUTROS)
 	hora_full = f"{hora_seg} {minuto_seg}" if minuto_seg else hora_seg
 	fort_speech = format_fortune_for_speech(fortuna)
@@ -2842,7 +2889,9 @@ async def create_radio_announcement(
 
 	intro = weighted_choice_by_recency(RADIO_INTROS, category="intro", db_path=db_path)
 	hora_seg, minuto_seg, _ = get_modular_time_segments(effective_dt)
-	lead_in = weighted_choice_by_recency(RADIO_LEAD_INS, category="lead_in", db_path=db_path)
+	seg_cat = resolve_segment_category(fortuna)
+	cat_lead_ins = get_lead_ins_for_category(seg_cat)
+	lead_in = weighted_choice_by_recency(cat_lead_ins, category=f"lead_in_{seg_cat}", db_path=db_path)
 	outro = weighted_choice_by_recency(RADIO_OUTROS, category="salida", db_path=db_path)
 
 	is_dialogue = dialogue_mode if dialogue_mode is not None else (random.random() < 0.85)
