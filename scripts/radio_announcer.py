@@ -20,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
@@ -57,9 +58,10 @@ try:
 	import edge_tts
 
 	HAS_EDGE_TTS = True
-except ImportError:
+except ImportError as e:
 	edge_tts = None
 	HAS_EDGE_TTS = False
+	logger.info(f"Librería opcional edge-tts no disponible en el entorno: {e}")
 
 
 # Importar bancos de frases, vocabulario, voces y plantillas
@@ -71,6 +73,7 @@ try:
 		COMMON_ENGLISH_WORDS,
 		COMMON_SPANISH_VERBS,
 		COMMON_SPANISH_WORDS,
+		COMMON_VERB_ROOTS,
 		DEFAULT_BG_VOLUME,
 		DEFAULT_COHOST_DISPLAY_NAME,
 		DEFAULT_COHOST_NAME,
@@ -128,6 +131,7 @@ except ImportError:
 		COMMON_ENGLISH_WORDS,
 		COMMON_SPANISH_VERBS,
 		COMMON_SPANISH_WORDS,
+		COMMON_VERB_ROOTS,
 		DEFAULT_BG_VOLUME,
 		DEFAULT_COHOST_DISPLAY_NAME,
 		DEFAULT_COHOST_NAME,
@@ -185,6 +189,7 @@ __all__ = [
 	"COMMON_ENGLISH_WORDS",
 	"COMMON_SPANISH_VERBS",
 	"COMMON_SPANISH_WORDS",
+	"COMMON_VERB_ROOTS",
 	"DEFAULT_BG_VOLUME",
 	"DEFAULT_COHOST_DISPLAY_NAME",
 	"DEFAULT_COHOST_NAME",
@@ -323,13 +328,32 @@ def fetch_weather_json(
 		with urllib.request.urlopen(req, timeout=timeout) as resp:
 			if resp.status == 200:
 				raw_body = resp.read()
-				parsed = json.loads(raw_body.decode("utf-8", errors="ignore"))
+				try:
+					parsed = json.loads(raw_body.decode("utf-8", errors="ignore"))
+				except (json.JSONDecodeError, ValueError) as jde:
+					logger.warning(f"Respuesta JSON malformada de wttr.in para '{lugar}': {jde}")
+					parsed = None
+
 				if isinstance(parsed, dict) and "current_condition" in parsed:
 					_WEATHER_CACHE[cache_key] = (time.time(), parsed)
 					return parsed
-			logger.debug(f"Respuesta no exitosa de wttr.in ({resp.status}) para '{lugar}'")
+				elif parsed is not None:
+					logger.warning(f"Estructura JSON inesperada o incompleta de wttr.in para '{lugar}'")
+			else:
+				logger.warning(f"Respuesta HTTP no exitosa de wttr.in ({resp.status}) para '{lugar}'")
+	except urllib.error.HTTPError as he:
+		if he.code == 429:
+			logger.warning(f"Límite de peticiones alcanzado (HTTP 429 Rate Limit) en wttr.in para '{lugar}'")
+		elif he.code == 503:
+			logger.warning(f"Servicio no disponible (HTTP 503 Service Unavailable) en wttr.in para '{lugar}'")
+		else:
+			logger.warning(f"Error HTTP {he.code} ({he.reason}) al consultar wttr.in para '{lugar}'")
+	except urllib.error.URLError as ue:
+		logger.warning(f"Fallo de red o conexión al consultar wttr.in para '{lugar}': {ue.reason}")
+	except TimeoutError as te:
+		logger.warning(f"Tiempo de espera agotado (timeout) consultando wttr.in para '{lugar}': {te}")
 	except Exception as e:
-		logger.debug(f"No se pudo consultar el clima en wttr.in para '{lugar}': {e}")
+		logger.warning(f"No se pudo consultar el clima en wttr.in para '{lugar}': {e}")
 
 	# Si la petición remota falló, verificar si tenemos una respuesta previa válida de menos de 30 minutos
 	if cache_key in _WEATHER_CACHE:
@@ -446,8 +470,8 @@ def extract_location_from_weather_data(data: dict) -> str | None:
 						val = items[0].get("value")
 						if val and isinstance(val, str) and val.strip():
 							return val.replace("+", " ").replace("_", " ").strip()
-	except Exception:
-		pass
+	except Exception as e:
+		logger.warning(f"No se pudo extraer la ubicación desde los datos del clima: {e}")
 	return None
 
 
@@ -621,7 +645,8 @@ def is_valid_mp3_file(path: Path | str) -> bool:
 		with p.open("rb") as f:
 			head = f.read(10)
 		return is_valid_mp3_stream(head)
-	except Exception:
+	except Exception as e:
+		logger.warning(f"Error comprobando validez de archivo MP3 '{path}': {e}")
 		return False
 
 
@@ -638,8 +663,10 @@ def estimate_mp3_duration(data: bytes) -> float | None:
 		audio = MP3(io.BytesIO(data))
 		if audio.info and getattr(audio.info, "length", None) is not None:
 			return float(audio.info.length)
+	except ImportError as e:
+		logger.info(f"Librería opcional mutagen no está disponible para estimar duración: {e}")
 	except Exception as e:
-		logger.debug(f"No se pudo estimar la duración del stream MP3 con mutagen: {e}")
+		logger.warning(f"No se pudo estimar la duración del stream MP3 con mutagen: {e}")
 	return None
 
 
@@ -880,9 +907,9 @@ _SPANISH_FORTUNE_DBS_CACHE: list[str] | None = None
 
 def is_spanish_text(text: str) -> bool:
 	"""
-	Determina con precisión mediante NLP liviano si un texto está redactado en español.
-	Utiliza análisis de frecuencia de palabras funcionales (stopwords), detección
-	contrastiva de términos en inglés y caracteres ortográficos distintivos del español.
+	Determina con precisión y bajo costo computacional si un texto está en español.
+	Utiliza la lista cerrada de stopwords funcionales (artículos y preposiciones),
+	detección de diacríticos distintivos (á, é, í, ó, ú, ü, ñ, ¿, ¡) y n-gramas característicos.
 	"""
 	if not text or not isinstance(text, str):
 		return False
@@ -902,20 +929,23 @@ def is_spanish_text(text: str) -> bool:
 	if english_hits > 0 and len(words) <= 5 and spanish_hits == 0:
 		return False
 
-	# Presencia de caracteres distintivos del español (ñ, ¿, ¡)
-	has_spanish_exclusive = any(c in "ñÑ¿¡" for c in text)
-	if has_spanish_exclusive and english_hits <= 1:
+	# Presencia de caracteres exclusivos del español (ñ, ¿, ¡)
+	if any(c in "ñÑ¿¡" for c in text) and english_hits <= 1:
 		return True
 
-	# Coincidencia con palabras funcionales en español
-	if spanish_hits >= 2:
-		return True
-	if len(words) <= 4 and spanish_hits >= 1 and english_hits == 0:
+	# Coincidencia con stopwords esenciales en español
+	if spanish_hits >= 2 or (len(words) <= 4 and spanish_hits >= 1 and english_hits == 0):
 		return True
 
-	# Acentos en vocales (á, é, í, ó, ú, ü) si no hay presencia de inglés
-	has_accent = any(c in "áéíóúüÁÉÍÓÚÜ" for c in text)
-	return bool(has_accent and english_hits == 0 and len(words) >= 2)
+	# Acentos diacríticos en vocales o n-gramas distintivos en español sin stopwords inglesas
+	if english_hits == 0:
+		if any(c in "áéíóúüÁÉÍÓÚÜ" for c in text) and len(words) >= 2:
+			return True
+		low = text.lower()
+		if any(ng in low for ng in ("ción", "sión", "mente", "illo", "illa", "ante")):
+			return True
+
+	return False
 
 
 # ---------------------------------------------------------------------------
@@ -1076,6 +1106,8 @@ def get_available_spanish_dbs(timeout: float = 2.0) -> list[str]:
 
 	try:
 		res = subprocess.run([fortune_bin, "-f"], capture_output=True, text=True, timeout=timeout, check=False)
+		if res.returncode != 0:
+			logger.warning(f"Comando 'fortune -f' falló con código {res.returncode}: {res.stderr.strip()[:200]}")
 		dbs = []
 		for line in (res.stdout + res.stderr).splitlines():
 			m = re.search(r"^\s*[\d,.]+\%\s+([a-zA-Z0-9_\-]+)", line)
@@ -1086,7 +1118,7 @@ def get_available_spanish_dbs(timeout: float = 2.0) -> list[str]:
 		_SPANISH_FORTUNE_DBS_CACHE = dbs
 		return dbs
 	except Exception as e:
-		logger.debug(f"Error detectando bases en español de fortune: {e}")
+		logger.warning(f"Error detectando bases en español de fortune: {e}")
 		_SPANISH_FORTUNE_DBS_CACHE = []
 		return []
 
@@ -1175,8 +1207,11 @@ def get_system_fortune(timeout: float = 2.0, max_attempts: int = 3) -> str | Non
 				cleaned = clean_fortune_text(res.stdout)
 				if is_spanish_text(cleaned) and is_valid_spoken_sentence(cleaned):
 					return cleaned
+			elif res.returncode != 0:
+				err_msg = res.stderr.strip()
+				logger.warning(f"Comando fortune falló con código {res.returncode}: {err_msg[:200]}")
 		except Exception as e:
-			logger.debug(f"Error consultando bases en español de fortune: {e}")
+			logger.warning(f"Error consultando bases en español de fortune: {e}")
 			break
 
 	return None
@@ -1777,7 +1812,7 @@ async def synthesize_segment(
 				f"🌐 edge-tts no pudo sintetizar '{category}' ({voice}): {err_msg}. Probando fallback en caché SQLite..."
 			)
 	else:
-		logger.debug("edge-tts no está disponible. Recurriendo a caché SQLite como fallback...")
+		logger.info("edge-tts no está disponible en el entorno. Recurriendo a caché SQLite como fallback...")
 
 	# 2. FALLBACK A CACHÉ SQLITE
 	if allow_cache:
@@ -1829,8 +1864,10 @@ def mix_announcement_with_bg_track(
 		audio_v = MutagenFile(voice_p)
 		if audio_v and audio_v.info and getattr(audio_v.info, "length", None) is not None:
 			voice_dur = float(audio_v.info.length)
-	except Exception:
-		pass
+	except ImportError as e:
+		logger.info(f"mutagen no disponible para calcular duración en {voice_p}: {e}")
+	except Exception as e:
+		logger.warning(f"Error al leer duración con mutagen en {voice_p}: {e}")
 
 	if voice_dur <= 0.0:
 		ffprobe_bin = shutil.which("ffprobe")
@@ -1855,8 +1892,10 @@ def mix_announcement_with_bg_track(
 				)
 				if res.returncode == 0 and res.stdout.strip():
 					voice_dur = float(res.stdout.strip())
-			except Exception:
-				pass
+				elif res.returncode != 0:
+					logger.warning(f"ffprobe falló al obtener duración de {voice_p}: {res.stderr.strip()[:200]}")
+			except Exception as e:
+				logger.warning(f"Error ejecutando ffprobe para {voice_p}: {e}")
 
 	if voice_dur > 2.0:
 		fade_in = 1.0
@@ -1910,8 +1949,8 @@ def mix_announcement_with_bg_track(
 		if tmp_out.exists():
 			try:
 				tmp_out.unlink()
-			except Exception:
-				pass
+			except Exception as e:
+				logger.warning(f"No se pudo eliminar archivo temporal {tmp_out}: {e}")
 
 	return False
 
@@ -1989,8 +2028,10 @@ def embed_cover_art_in_mp3(
 		tags.save(str(mp3_p))
 		logger.debug(f"🖼️ Carátula del carpincho incrustada con mutagen en '{mp3_p.name}'")
 		return True
+	except ImportError as e:
+		logger.info(f"Librería opcional mutagen no está disponible para ID3: {e}. Probando fallback con ffmpeg...")
 	except Exception as e:
-		logger.debug(f"Mutagen falló al incrustar carátula en {mp3_p}: {e}. Probando fallback con ffmpeg...")
+		logger.warning(f"Mutagen falló al incrustar carátula en {mp3_p}: {e}. Probando fallback con ffmpeg...")
 
 	# 2. Fallback con ffmpeg si mutagen no estuviera disponible o fallara
 	ffmpeg_bin = shutil.which("ffmpeg")
@@ -2032,17 +2073,17 @@ def embed_cover_art_in_mp3(
 				logger.debug(f"🖼️ Carátula del carpincho incrustada con ffmpeg en '{mp3_p.name}'")
 				return True
 			else:
-				logger.debug(
+				logger.warning(
 					f"ffmpeg falló al incrustar carátula: {proc.stderr.decode('utf-8', errors='ignore')[:150]}"
 				)
 		except Exception as e:
-			logger.debug(f"Excepción usando ffmpeg para carátula: {e}")
+			logger.warning(f"Excepción usando ffmpeg para carátula: {e}")
 		finally:
 			if tmp_tagged.exists():
 				try:
 					tmp_tagged.unlink()
-				except Exception:
-					pass
+				except Exception as e:
+					logger.warning(f"No se pudo eliminar archivo temporal {tmp_tagged}: {e}")
 
 	return False
 
@@ -2059,8 +2100,10 @@ def get_audio_duration(file_path: Path | str, timeout: float = 2.0) -> float:
 				dur = float(audio.info.length)
 				if dur > 0.0:
 					return dur
-		except Exception:
-			pass
+		except ImportError as e:
+			logger.info(f"Librería opcional mutagen no disponible para calcular duración de {p}: {e}")
+		except Exception as e:
+			logger.warning(f"Error al calcular duración con mutagen para {p}: {e}")
 
 	ffprobe_bin = shutil.which("ffprobe")
 	if not ffprobe_bin:
@@ -2084,8 +2127,10 @@ def get_audio_duration(file_path: Path | str, timeout: float = 2.0) -> float:
 		)
 		if res.returncode == 0 and res.stdout.strip():
 			return float(res.stdout.strip())
-	except Exception:
-		pass
+		elif res.returncode != 0:
+			logger.warning(f"ffprobe falló al obtener duración de {file_path}: {res.stderr.strip()[:200]}")
+	except Exception as e:
+		logger.warning(f"Error ejecutando ffprobe para {file_path}: {e}")
 	return 0.0
 
 
@@ -2233,8 +2278,11 @@ def assemble_announcement_audio(
 						if proc_norm.returncode == 0 and norm_file.is_file() and norm_file.stat().st_size > 0:
 							temp_seg_files.append(norm_file)
 						else:
+							err_norm = proc_norm.stderr.decode("utf-8", errors="ignore").strip()
+							logger.warning(f"ffmpeg falló al normalizar segmento {i}: {err_norm[:200]}")
 							temp_seg_files.append(raw_file)
-					except Exception:
+					except Exception as e:
+						logger.warning(f"Error al normalizar segmento {i} con ffmpeg: {e}")
 						temp_seg_files.append(raw_file)
 
 				blocks: list[tuple[Path, str, str, str, list[tuple[float, float, str]] | None]] = []
@@ -2312,8 +2360,11 @@ def assemble_announcement_audio(
 									)
 									skip_next = True
 									continue
+								else:
+									err_fade = proc_fade.stderr.decode("utf-8", errors="ignore").strip()
+									logger.warning(f"ffmpeg falló en acrossfade hora/minuto: {err_fade[:200]}")
 							except Exception as e:
-								logger.debug(f"Fallo en acrossfade hora/minuto: {e}")
+								logger.warning(f"Error en acrossfade hora/minuto con ffmpeg: {e}")
 
 					# Caso 2: reacción corta que solapa 150-250 ms sobre el final de la línea anterior (adelay + amix)
 					if i + 1 < len(parsed_segments):
@@ -2389,8 +2440,11 @@ def assemble_announcement_audio(
 										)
 										skip_next = True
 										continue
+									else:
+										err_react = proc_react.stderr.decode("utf-8", errors="ignore").strip()
+										logger.warning(f"ffmpeg falló al solapar reacción: {err_react[:200]}")
 								except Exception as e:
-									logger.debug(f"Fallo solapando reacción con adelay+amix: {e}")
+									logger.warning(f"Error solapando reacción con ffmpeg: {e}")
 
 					blocks.append((file_i, cat_i, voice_i, text_i, cues_i))
 
@@ -2415,8 +2469,11 @@ def assemble_announcement_audio(
 						res = subprocess.run(cmd, capture_output=True, timeout=ffmpeg_timeout, check=False)
 						if res.returncode == 0 and tone_path.is_file() and tone_path.stat().st_size > 0:
 							return tone_path
+						else:
+							err_tone = res.stderr.decode("utf-8", errors="ignore").strip()
+							logger.warning(f"ffmpeg falló generando room tone (anoisesrc): {err_tone[:200]}")
 					except Exception as e:
-						logger.debug(f"Fallo generando anoisesrc: {e}")
+						logger.warning(f"Error ejecutando ffmpeg para room tone (anoisesrc): {e}")
 
 					# Fallback a anullsrc
 					fallback_cmd = [
@@ -2438,8 +2495,11 @@ def assemble_announcement_audio(
 						res = subprocess.run(fallback_cmd, capture_output=True, timeout=ffmpeg_timeout, check=False)
 						if res.returncode == 0 and tone_path.is_file() and tone_path.stat().st_size > 0:
 							return tone_path
+						else:
+							err_null = res.stderr.decode("utf-8", errors="ignore").strip()
+							logger.warning(f"ffmpeg falló generando anullsrc fallback: {err_null[:200]}")
 					except Exception as e:
-						logger.debug(f"Fallo generando anullsrc fallback: {e}")
+						logger.warning(f"Fallo generando anullsrc fallback con ffmpeg: {e}")
 
 					return None
 
@@ -2459,7 +2519,8 @@ def assemble_announcement_audio(
 					if dur <= 0.0:
 						try:
 							dur = estimate_mp3_duration(block_file.read_bytes()) or 1.0
-						except Exception:
+						except Exception as e:
+							logger.warning(f"Error al estimar duración MP3 para {block_file}: {e}")
 							dur = 1.0
 
 					if block_cues:
@@ -2562,6 +2623,10 @@ def assemble_announcement_audio(
 						and tmp_voice_combined.is_file()
 						and tmp_voice_combined.stat().st_size > 0
 					)
+					if not concat_ok and proc_demux.returncode != 0:
+						logger.warning(
+							f"ffmpeg concat demuxer falló con código {proc_demux.returncode}: {proc_demux.stderr.decode('utf-8', errors='ignore')[:150]}"
+						)
 
 			# Mastering final de voz: filtro paso-alto ~80 Hz, compresión y normalización broadcast (-14 LUFS)
 			if concat_ok:
@@ -2592,8 +2657,12 @@ def assemble_announcement_audio(
 						and tmp_voice_mastered.stat().st_size > 0
 					):
 						shutil.copyfile(tmp_voice_mastered, tmp_voice_combined)
+					elif proc_master.returncode != 0:
+						logger.warning(
+							f"ffmpeg falló en masterización de voz: {proc_master.stderr.decode('utf-8', errors='ignore')[:200]}"
+						)
 				except Exception as e:
-					logger.debug(f"Fallo aplicando filtro de estudio/compresión: {e}")
+					logger.warning(f"Error aplicando filtro de estudio/compresión con ffmpeg: {e}")
 
 			if not concat_ok:
 				logger.warning("ffmpeg concat demuxer también falló. Recurriendo a concatenación directa de bytes.")
