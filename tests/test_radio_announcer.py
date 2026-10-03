@@ -303,6 +303,67 @@ def test_select_fortune():
 	assert is_sys is False
 
 
+def test_load_bundled_fortunes(tmp_path):
+	"""Verifica la carga del archivo propio de fortunas en formato Unix %."""
+	dummy_fortune_file = tmp_path / "fortunes_test.txt"
+	content = (
+		"El que madruga encuentra todo cerrado.\n"
+		"%\n"
+		"La duda es uno de los nombres de la inteligencia. — Jorge Luis Borges.\n"
+		"%\n"
+		"Short\n"
+		"%\n"
+		"This is an english phrase that should be filtered out.\n"
+		"%\n"
+		"Los amigos son la familia que uno elige con el corazón.\n"
+	)
+	dummy_fortune_file.write_text(content, encoding="utf-8")
+
+	loaded = radio_announcer.load_bundled_fortunes(dummy_fortune_file)
+	assert len(loaded) >= 2
+	assert "El que madruga encuentra todo cerrado." in loaded
+	assert "La duda es uno de los nombres de la inteligencia. — Jorge Luis Borges." in loaded
+	assert "Los amigos son la familia que uno elige con el corazón." in loaded
+	# Filtró frases en inglés o demasiado cortas
+	assert not any("english phrase" in s for s in loaded)
+	assert not any(s == "Short" for s in loaded)
+
+
+def test_select_fortune_uses_bundled_when_system_unavailable():
+	"""Verifica que select_fortune use el banco bundled si el comando fortune de Unix no existe."""
+	with (
+		patch("scripts.radio_announcer.get_system_fortune", return_value=None),
+		patch(
+			"scripts.radio_announcer.get_bundled_fortune",
+			return_value="La duda es uno de los nombres de la inteligencia. — Jorge Luis Borges.",
+		),
+	):
+		fort, is_sys = radio_announcer.select_fortune(force_system_fortune=True)
+		assert fort == "La duda es uno de los nombres de la inteligencia. — Jorge Luis Borges."
+		assert is_sys is True
+
+
+def test_build_weather_phrase_with_coordinates_never_reads_raw_numbers():
+	"""Verifica que si la ubicación son coordenadas y wttr.in no devuelve nearest_area, no se lean números crudos."""
+	sample_no_area = {
+		"current_condition": [{"temp_C": "20.0"}],
+		"weather": [
+			{"mintempC": "12", "maxtempC": "22", "hourly": []},
+			{"mintempC": "11", "maxtempC": "21", "hourly": []},
+		],
+	}
+	phrase = radio_announcer.build_weather_phrase(
+		sample_no_area,
+		lead_in="Buenas:",
+		template_idx=0,
+		location="-34.6037,-58.3816",
+	)
+	assert phrase is not None
+	# No debe leer los números de lat/long crudos en la locución
+	assert "-34.6037" not in phrase
+	assert "-58.3816" not in phrase
+
+
 def test_get_modular_time_segments():
 	# Especial 01:00 (en punto, min 0)
 	dt_one = datetime(2026, 9, 26, 1, 0, tzinfo=UTC)

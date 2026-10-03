@@ -37,6 +37,7 @@ import {
 	trackMap,
 	urlMetadata,
 	volume,
+	weatherLocation,
 } from './state';
 import type { PlayerState, Track } from '../../types';
 
@@ -120,6 +121,7 @@ export function useSocket() {
 						if (state.top_played) topPlayedState.value = state.top_played;
 						if (state.url_metadata) urlMetadata.value = state.url_metadata;
 						if (state.volume !== undefined) volume.value = state.volume;
+						if (state.weather_location !== undefined) weatherLocation.value = state.weather_location;
 
 						if (state.time_pos !== undefined) {
 							timePos.value = state.time_pos;

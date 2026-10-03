@@ -254,6 +254,7 @@ __all__ = [
 	"get_all_weather_handoff_segments",
 	"get_all_weather_reaction_segments",
 	"get_available_spanish_dbs",
+	"get_bundled_fortune",
 	"get_cached_audio",
 	"get_modular_hour_segments",
 	"get_modular_minute_segments",
@@ -271,6 +272,7 @@ __all__ = [
 	"is_valid_mp3_file",
 	"is_valid_mp3_stream",
 	"is_valid_spoken_sentence",
+	"load_bundled_fortunes",
 	"mix_announcement_with_bg_track",
 	"prune_tts_cache_db",
 	"record_phrase_played",
@@ -516,7 +518,11 @@ def get_weather_info(
 		if loc_from_json:
 			loc_clean = loc_from_json
 		elif location and location.strip():
-			loc_clean = location.replace("+", " ").replace("_", " ").strip()
+			clean_candidate = location.replace("+", " ").replace("_", " ").strip()
+			if re.match(r"^[-+]?\d+(\.\d+)?\s*,\s*[-+]?\d+(\.\d+)?$", clean_candidate):
+				loc_clean = DEFAULT_WEATHER_LOCATION
+			else:
+				loc_clean = clean_candidate
 		else:
 			loc_clean = DEFAULT_WEATHER_LOCATION
 
@@ -1135,6 +1141,57 @@ def get_system_fortune(timeout: float = 2.0, max_attempts: int = 3) -> str | Non
 	return None
 
 
+_BUNDLED_FORTUNES_CACHE: list[str] | None = None
+
+
+def get_bundled_fortunes_path(custom_path: Path | str | None = None) -> Path:
+	"""Resuelve la ruta absoluta al archivo propio de fortunas en formato Unix %."""
+	if custom_path:
+		return Path(custom_path)
+	if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+		candidate = Path(sys._MEIPASS) / "scripts" / "data" / "fortunes_es.txt"
+		if candidate.is_file():
+			return candidate
+	return Path(__file__).parent / "data" / "fortunes_es.txt"
+
+
+def load_bundled_fortunes(file_path: Path | str | None = None) -> list[str]:
+	"""
+	Carga y valida el archivo propio de fortunas en formato Unix (delimitador %).
+	Garantiza que cada ítem esté redactado en español y sea apto para locución radial.
+	"""
+	global _BUNDLED_FORTUNES_CACHE
+	p = get_bundled_fortunes_path(file_path)
+	if not p.is_file():
+		return []
+	try:
+		raw = p.read_text(encoding="utf-8", errors="replace")
+		items: list[str] = []
+		for entry in raw.split("\n%\n"):
+			cleaned = clean_fortune_text(entry.strip())
+			if cleaned and is_spanish_text(cleaned) and is_valid_spoken_sentence(cleaned):
+				items.append(cleaned)
+		if file_path is None:
+			_BUNDLED_FORTUNES_CACHE = items
+		return items
+	except Exception as e:
+		logger.debug(f"Error cargando archivo bundled de fortunas ({p}): {e}")
+		return []
+
+
+def get_bundled_fortune(db_path: Path | str | None = None) -> str | None:
+	"""
+	Retorna una fortuna o cita célebre en español del banco propio bundled,
+	utilizando selección ponderada por recencia para evitar repeticiones.
+	"""
+	global _BUNDLED_FORTUNES_CACHE
+	if _BUNDLED_FORTUNES_CACHE is None:
+		_BUNDLED_FORTUNES_CACHE = load_bundled_fortunes()
+	if not _BUNDLED_FORTUNES_CACHE:
+		return None
+	return weighted_choice_by_recency(_BUNDLED_FORTUNES_CACHE, category="fortuna_bundled", db_path=db_path)
+
+
 def select_fortune(
 	force_system_fortune: bool | None = None,
 	db_path: Path | str | None = None,
@@ -1142,12 +1199,15 @@ def select_fortune(
 	"""
 	Selecciona una fortuna garantizada en español y retorna (texto_fortuna, es_del_sistema).
 	Por defecto intenta con probabilidad 1/6 consultar una fortuna del sistema si está disponible en español,
-	o recurre al banco curado de frases criollas del carpincho con selección ponderada por recencia.
+	o recurre al banco curado de frases del proyecto (o frases criollas del carpincho) con selección ponderada por recencia.
 	"""
 	if force_system_fortune is not False and (force_system_fortune is True or random.random() < 1 / 6):
 		sys_fort = get_system_fortune()
 		if sys_fort and is_spanish_text(sys_fort):
 			return sys_fort, True
+		bundled = get_bundled_fortune(db_path=db_path)
+		if bundled and is_spanish_text(bundled):
+			return bundled, True
 
 	chosen = weighted_choice_by_recency(CARPINCHO_FORTUNES, category="fortuna", db_path=db_path)
 	return chosen, False

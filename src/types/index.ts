@@ -46,6 +46,7 @@ export interface PlayerState {
 	top_played?: Track[];
 	url_metadata?: Record<string, Track>;
 	volume?: number;
+	weather_location?: string;
 }
 
 export interface ApiResponse<T = unknown> {
@@ -75,6 +76,7 @@ export interface CommandPayloads {
 	toggle_dj_carpincho: { state: boolean };
 	toggle_dj_safe_mode: { state: boolean };
 	toggle_radio_mode: { state?: boolean };
+	set_weather_location: { location: string };
 	fullscreen: undefined;
 	pause_after: { path: string };
 	move_history_item: { index: number; new_index: number };

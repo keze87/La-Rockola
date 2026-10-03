@@ -279,4 +279,20 @@ describe('ControlsTab.vue', () => {
 		expect(scanBtn?.text()).toContain('120/500');
 		expect(scanBtn?.attributes('disabled')).toBeDefined();
 	});
+
+	it('displays current weather location and opens weather modal when clicked', async () => {
+		hasEdgeTts.value = true;
+		const wrapper = mount(ControlsTab);
+
+		expect(wrapper.text()).toContain('Clima radial');
+		expect(wrapper.text()).toContain('San Miguel de Tucumán');
+
+		const mapBtn = wrapper.findAll('button').find((b) => b.text().includes('Cambiar mapa'));
+		expect(mapBtn).toBeDefined();
+		await mapBtn!.trigger('click');
+
+		const modal = wrapper.findComponent({ name: 'WeatherLocationModal' });
+		expect(modal.exists()).toBe(true);
+		expect(modal.props('isOpen')).toBe(true);
+	});
 });

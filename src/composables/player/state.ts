@@ -53,6 +53,7 @@ export const djSafeModeEnabled = ref<boolean>(false);
 export const radioModeEnabled = ref<boolean>(false);
 export const isSynthesizingRadio = ref<boolean>(false);
 export const isPlayingRadioAnnouncement = ref<boolean>(false);
+export const weatherLocation = ref<string>('San Miguel de Tucumán');
 
 // Local audio playback & Media Session
 export const duration = ref<number>(0);

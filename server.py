@@ -637,7 +637,7 @@ except ImportError:
 import uvicorn
 from fastapi import FastAPI, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from mutagen import File as MutagenFile
 from pydantic import BaseModel
@@ -2683,6 +2683,7 @@ class APIState:
 			"top_played": self.get_top_played(),
 			"url_metadata": dict(self.url_metadata),
 			"volume": self.volume,
+			"weather_location": self.weather_location,
 		}
 
 		if include_library:
@@ -4648,6 +4649,44 @@ async def serve_lrc(path: str = Query(...)):
 	)
 
 
+@app.get("/api/weather/preview")
+async def preview_weather(location: str = Query(...)):
+	"""Consulta wttr.in para una ubicación dada y devuelve el área resuelta y la frase de prueba."""
+	from scripts.radio_announcer import (
+		build_weather_phrase,
+		extract_location_from_weather_data,
+		fetch_weather_json,
+	)
+
+	loc_clean = location.strip() if location else ""
+	if not loc_clean:
+		return JSONResponse(status_code=400, content={"ok": False, "error": "Ubicación vacía"})
+
+	data = await asyncio.to_thread(fetch_weather_json, lugar=loc_clean, idioma="es", timeout=5.0)
+	if not data:
+		return JSONResponse(
+			status_code=502,
+			content={"ok": False, "error": f"No se pudo consultar el clima para '{loc_clean}'"},
+		)
+
+	area_name = extract_location_from_weather_data(data) or loc_clean
+	curr = data.get("current_condition", [{}])[0]
+	temp_c = None
+	try:
+		temp_c = round(float(curr.get("temp_C", 0)))
+	except (ValueError, TypeError):
+		pass
+
+	phrase = build_weather_phrase(data, template_idx=0, location=loc_clean)
+	return {
+		"ok": True,
+		"location": loc_clean,
+		"area_name": area_name,
+		"temp_c": temp_c,
+		"phrase": phrase or "",
+	}
+
+
 class CommandRequest(BaseModel):
 	cmd: str
 	path: str | None = None
@@ -4658,6 +4697,7 @@ class CommandRequest(BaseModel):
 	amount: float | None = None
 	state: bool | None = None
 	history_index: int | None = None
+	location: str | None = None
 
 
 @app.post("/command")
@@ -4789,6 +4829,18 @@ async def handle_command(req: CommandRequest):
 		if state.radio_mode_enabled:
 			state.radio_tracks_until_next = random.randint(1, 2)
 			state.radio_track_counter = 0
+	elif cmd == "set_weather_location":
+		if req.location and isinstance(req.location, str):
+			new_loc = req.location.strip()
+			state.weather_location = new_loc
+			cfg_path = get_config_path()
+			cfg = load_config(cfg_path)
+			cfg["weather_location"] = new_loc
+			save_config(cfg_path, cfg)
+			from scripts.radio_announcer import reset_weather_cache
+
+			reset_weather_cache()
+			logger.info(f"Ubicación del clima actualizada a: {state.weather_location}")
 	elif cmd == "pause_after":
 		state.pause_after_path = req.path
 	elif cmd == "remove_history_item":

@@ -48,6 +48,8 @@ export function usePlaybackControls() {
 		toggleDjCarpincho: (state: boolean) => execute('toggle_dj_carpincho', { state }),
 		toggleDjSafeMode: (state: boolean) => execute('toggle_dj_safe_mode', { state }),
 		toggleRadioMode: (state?: boolean) => execute('toggle_radio_mode', { state }),
+		setWeatherLocation: (location: string) =>
+			execute('set_weather_location', { location }, '¡Ubicación del clima actualizada, joyita!'),
 		toggleFavorite: (path: string) => execute('toggle_favorite', { path }),
 		toggleQueue: (path: string, title?: string) =>
 			execute('toggle_queue', { path }, title ? `¡Adentro! ${title} a la fila.` : null),

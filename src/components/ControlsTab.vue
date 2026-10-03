@@ -1,7 +1,7 @@
 <script setup lang="ts">
-	import { computed } from 'vue';
+	import { computed, ref } from 'vue';
 	import { apiUrl } from '../composables/useApi';
-	import { serverUrl } from '../composables/player/state';
+	import { serverUrl, weatherLocation } from '../composables/player/state';
 	import { useDragSlider } from '../composables/useDragSlider';
 	import { useFullscreen } from '@vueuse/core';
 	import { usePlaybackControls } from '../composables/usePlaybackControls';
@@ -9,6 +9,7 @@
 	import PillButton from './ui/PillButton.vue';
 	import QRCode from 'qrcode.vue';
 	import ToggleRow from './ui/ToggleRow.vue';
+	import WeatherLocationModal from './WeatherLocationModal.vue';
 
 	const {
 		fullscreen,
@@ -38,6 +39,8 @@
 		volIcon,
 		volume,
 	} = usePlayer();
+
+	const isWeatherModalOpen = ref(false);
 
 	let lastVolSent = 0;
 	let volThrottleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -214,6 +217,29 @@
 			@update:model-value="toggleRadioMode"
 		/>
 
+		<!-- Configuración de Ubicación del Clima -->
+		<div
+			v-if="hasEdgeTts"
+			class="mb-3 flex items-center justify-between rounded-xl border border-neutral-800 bg-neutral-900/60 px-4 py-2.5 transition hover:border-neutral-700"
+		>
+			<div class="flex items-center gap-2.5">
+				<span class="text-xl">🌤️</span>
+				<div>
+					<div class="text-xs font-semibold text-neutral-300">Clima radial</div>
+					<div class="text-carpincho-accent text-xs">{{ weatherLocation }}</div>
+				</div>
+			</div>
+			<button
+				type="button"
+				class="flex items-center gap-1 rounded-lg bg-neutral-800 px-2.5 py-1.5 text-xs font-medium text-neutral-300 transition hover:bg-neutral-700 hover:text-white"
+				aria-label="Configurar mapa del clima"
+				@click="isWeatherModalOpen = true"
+			>
+				<span class="material-symbols-outlined text-sm">map</span>
+				Cambiar mapa
+			</button>
+		</div>
+
 		<!-- Action Buttons -->
 		<div class="mb-4 flex flex-wrap justify-center gap-3">
 			<PillButton icon="stop" color-class="bg-red-700 hover:bg-red-600" @click="stop">Cortala de una</PillButton>
@@ -290,5 +316,7 @@
 			</div>
 			<p class="text-carpincho-muted mt-3 text-sm">Escaneá para entrar desde tu celu</p>
 		</div>
+
+		<WeatherLocationModal :is-open="isWeatherModalOpen" @close="isWeatherModalOpen = false" />
 	</section>
 </template>
