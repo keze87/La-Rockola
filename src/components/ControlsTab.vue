@@ -220,24 +220,24 @@
 		<!-- Configuración de Ubicación del Clima -->
 		<div
 			v-if="hasEdgeTts"
-			class="mb-3 flex items-center justify-between rounded-xl border border-neutral-800 bg-neutral-900/60 px-4 py-2.5 transition hover:border-neutral-700"
+			class="bg-carpincho-panel border-carpincho-warning mx-auto mb-8 flex w-full max-w-lg items-center justify-between rounded-xl border-l-4 p-4 shadow-md transition-all"
 		>
-			<div class="flex items-center gap-2.5">
-				<span class="text-xl">🌤️</span>
-				<div>
-					<div class="text-xs font-semibold text-neutral-300">Clima radial</div>
-					<div class="text-carpincho-accent text-xs">{{ weatherLocation }}</div>
+			<div class="text-left">
+				<div class="text-carpincho-text flex items-center gap-2 font-bold">
+					<i class="material-icons text-carpincho-warning">wb_sunny</i>
+					Clima radial
+				</div>
+				<div class="text-carpincho-muted text-xs">
+					{{ weatherLocation ? `Ubicación: ${weatherLocation}` : 'Sin configurar' }}
 				</div>
 			</div>
-			<button
-				type="button"
-				class="flex items-center gap-1 rounded-lg bg-neutral-800 px-2.5 py-1.5 text-xs font-medium text-neutral-300 transition hover:bg-neutral-700 hover:text-white"
-				aria-label="Configurar mapa del clima"
+			<PillButton
+				icon="map"
+				color-class="bg-neutral-800 hover:bg-neutral-700 text-xs px-4 py-2"
 				@click="isWeatherModalOpen = true"
 			>
-				<span class="material-symbols-outlined text-sm">map</span>
 				Cambiar mapa
-			</button>
+			</PillButton>
 		</div>
 
 		<!-- Action Buttons -->

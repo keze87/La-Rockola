@@ -215,26 +215,28 @@
 		@click.self="emit('close')"
 	>
 		<div
-			class="relative flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl border border-neutral-700 bg-neutral-900 shadow-2xl"
+			class="border-carpincho-border bg-carpincho-panel text-carpincho-text relative flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl border shadow-2xl"
 		>
 			<!-- Header -->
-			<div class="flex items-center justify-between border-b border-neutral-800 px-6 py-4">
+			<div class="border-carpincho-border flex items-center justify-between border-b px-6 py-4">
 				<div class="flex items-center gap-2">
-					<span class="text-2xl">🌤️</span>
-					<h3 id="weather-modal-title" class="text-lg font-bold text-white">Ubicación del clima radial</h3>
+					<i class="material-icons text-carpincho-warning text-2xl">wb_sunny</i>
+					<h3 id="weather-modal-title" class="text-carpincho-secondary text-lg font-bold">
+						Ubicación del clima radial
+					</h3>
 				</div>
 				<button
-					class="rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-800 hover:text-white"
+					class="text-carpincho-muted hover:bg-carpincho-bg hover:text-carpincho-warning cursor-pointer rounded-lg p-1.5 transition"
 					aria-label="Cerrar modal"
 					@click="emit('close')"
 				>
-					<span class="material-symbols-outlined text-xl">close</span>
+					<i class="material-icons text-xl">close</i>
 				</button>
 			</div>
 
 			<!-- Body -->
 			<div class="flex-1 space-y-4 overflow-y-auto p-6">
-				<p class="text-xs text-neutral-400">
+				<p class="text-carpincho-muted text-xs">
 					Hacé click en el mapa, arrastrá el carpincho 🧉 o usá la detección automática. El locutor mencionará
 					el barrio o localidad más cercana con acento radial criollo.
 				</p>
@@ -242,19 +244,19 @@
 				<!-- Map container -->
 				<div
 					ref="mapContainer"
-					class="relative h-64 w-full overflow-hidden rounded-xl border border-neutral-700 bg-neutral-950"
+					class="border-carpincho-border bg-carpincho-bg relative h-64 w-full overflow-hidden rounded-xl border shadow-inner"
 				></div>
 
 				<!-- Coords & Geolocation -->
 				<div class="flex flex-wrap items-center justify-between gap-3">
 					<div class="flex items-center gap-2 text-sm">
-						<label class="text-xs font-semibold text-neutral-400">Coords:</label>
+						<label class="text-carpincho-muted text-xs font-semibold">Coords:</label>
 						<input
 							v-model.number="lat"
 							type="number"
 							step="0.0001"
 							placeholder="Latitud"
-							class="focus:border-carpincho-success w-28 rounded-lg border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs text-white focus:outline-none"
+							class="focus:border-carpincho-warning border-carpincho-border bg-carpincho-bg text-carpincho-text w-28 rounded-lg border px-2 py-1 text-xs focus:outline-none"
 							@change="updateMarkerPosition"
 						/>
 						<input
@@ -262,7 +264,7 @@
 							type="number"
 							step="0.0001"
 							placeholder="Longitud"
-							class="focus:border-carpincho-success w-28 rounded-lg border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs text-white focus:outline-none"
+							class="focus:border-carpincho-warning border-carpincho-border bg-carpincho-bg text-carpincho-text w-28 rounded-lg border px-2 py-1 text-xs focus:outline-none"
 							@change="updateMarkerPosition"
 						/>
 					</div>
@@ -270,23 +272,23 @@
 					<button
 						type="button"
 						:disabled="isLocating"
-						class="text-carpincho-accent flex items-center gap-1.5 rounded-lg bg-neutral-800 px-3 py-1.5 text-xs font-medium transition hover:bg-neutral-700 disabled:opacity-50"
+						class="text-carpincho-warning border-carpincho-border bg-carpincho-bg hover:border-carpincho-warning hover:bg-carpincho-panel flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition hover:text-white disabled:opacity-50"
 						@click="detectLocation"
 					>
-						<span class="material-symbols-outlined text-sm">my_location</span>
+						<i class="material-icons text-sm" :class="{ 'animate-spin': isLocating }">my_location</i>
 						{{ isLocating ? 'Buscando...' : 'Detectar mi ubicación' }}
 					</button>
 				</div>
 
 				<!-- City Presets -->
 				<div>
-					<span class="mb-1.5 block text-xs font-semibold text-neutral-400">Ciudades sugeridas:</span>
+					<span class="text-carpincho-muted mb-1.5 block text-xs font-semibold">Ciudades sugeridas:</span>
 					<div class="flex flex-wrap gap-1.5">
 						<button
 							v-for="preset in presets"
 							:key="preset.name"
 							type="button"
-							class="hover:border-carpincho-accent rounded-full border border-neutral-700 bg-neutral-800/80 px-2.5 py-1 text-xs text-neutral-300 transition hover:text-white"
+							class="hover:border-carpincho-warning border-carpincho-border bg-carpincho-bg text-carpincho-muted hover:text-carpincho-text cursor-pointer rounded-full border px-2.5 py-1 text-xs transition"
 							@click="selectPreset(preset)"
 						>
 							{{ preset.name }}
@@ -295,22 +297,25 @@
 				</div>
 
 				<!-- Preview Box -->
-				<div v-if="previewData" class="rounded-xl border border-neutral-700 bg-neutral-800/60 p-3.5 text-sm">
-					<div class="flex items-center justify-between border-b border-neutral-700/60 pb-2">
-						<span class="text-carpincho-accent font-bold">📍 {{ previewData.area_name }}</span>
-						<span v-if="previewData.temp_c !== null" class="font-bold text-white">
+				<div
+					v-if="previewData"
+					class="border-carpincho-border bg-carpincho-bg/80 rounded-xl border p-3.5 text-sm"
+				>
+					<div class="border-carpincho-border/60 flex items-center justify-between border-b pb-2">
+						<span class="text-carpincho-warning font-bold">📍 {{ previewData.area_name }}</span>
+						<span v-if="previewData.temp_c !== null" class="text-carpincho-text font-bold">
 							{{ previewData.temp_c }}°C
 						</span>
 					</div>
-					<p class="mt-2 text-xs text-neutral-300 italic">"{{ previewData.phrase }}"</p>
+					<p class="text-carpincho-muted mt-2 text-xs italic">"{{ previewData.phrase }}"</p>
 				</div>
 			</div>
 
 			<!-- Footer -->
-			<div class="flex items-center justify-between border-t border-neutral-800 px-6 py-4">
+			<div class="border-carpincho-border flex items-center justify-between border-t px-6 py-4">
 				<PillButton
 					icon="sync"
-					color-class="bg-neutral-800 hover:bg-neutral-700 text-neutral-200"
+					color-class="bg-gray-700 hover:bg-gray-600 text-carpincho-text"
 					:disabled="isPreviewing"
 					@click="testWeatherPreview"
 				>
@@ -320,14 +325,14 @@
 				<div class="flex items-center gap-2">
 					<button
 						type="button"
-						class="rounded-xl px-4 py-2 text-xs font-medium text-neutral-400 transition hover:bg-neutral-800 hover:text-white"
+						class="text-carpincho-muted hover:bg-carpincho-bg hover:text-carpincho-text cursor-pointer rounded-full px-4 py-2 text-xs font-medium transition"
 						@click="emit('close')"
 					>
 						Cancelar
 					</button>
 					<PillButton
 						icon="check"
-						color-class="bg-carpincho-success hover:bg-green-600"
+						color-class="bg-carpincho-success hover:bg-green-700"
 						@click="saveLocation"
 					>
 						Guardar ubicación
@@ -337,3 +342,35 @@
 		</div>
 	</div>
 </template>
+
+<style scoped>
+	:deep(.leaflet-bar) {
+		border: 1px solid var(--color-carpincho-border) !important;
+		border-radius: 8px !important;
+		overflow: hidden;
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
+	}
+
+	:deep(.leaflet-bar a) {
+		background-color: var(--color-carpincho-panel) !important;
+		color: var(--color-carpincho-text) !important;
+		border-bottom: 1px solid var(--color-carpincho-border) !important;
+		transition:
+			background-color 0.15s,
+			color 0.15s;
+	}
+
+	:deep(.leaflet-bar a:hover) {
+		background-color: var(--color-carpincho-bg) !important;
+		color: var(--color-carpincho-warning) !important;
+	}
+
+	:deep(.leaflet-container) {
+		background-color: var(--color-carpincho-bg) !important;
+		font-family: inherit !important;
+	}
+
+	:deep(.leaflet-tile-pane) {
+		filter: brightness(0.8) invert(1) contrast(1.2) hue-rotate(200deg) saturate(0.4);
+	}
+</style>

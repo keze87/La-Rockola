@@ -39,6 +39,16 @@ describe('WeatherLocationModal.vue', () => {
 		expect(wrapper.text()).toContain('Detectar mi ubicación');
 		expect(wrapper.text()).toContain('Probar reporte');
 		expect(wrapper.text()).toContain('Guardar ubicación');
+
+		// Verification of theme classes & icons
+		const dialog = wrapper.find('.bg-carpincho-panel.border-carpincho-border.text-carpincho-text');
+		expect(dialog.exists()).toBe(true);
+
+		const icons = wrapper.findAll('.material-icons');
+		const iconTexts = icons.map((i) => i.text());
+		expect(iconTexts).toContain('close');
+		expect(iconTexts).toContain('my_location');
+		expect(wrapper.findAll('.material-symbols-outlined').length).toBe(0);
 	});
 
 	it('selects a preset city when clicked', async () => {
