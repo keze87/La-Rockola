@@ -220,6 +220,130 @@ CARPINCHO_ADS: list[str] = [
 	"Aviso parroquial: Taller de Payadas y Guitarreadas Don Ceferino. Clases abiertas los sábados bajo el sauce llorón. Traer instrumento y mate propio.",
 ]
 
+# ---------------------------------------------------------------------------
+# Bancos de frases culturales y radiofonía popular
+# ---------------------------------------------------------------------------
+
+TRANSITO_FLUVIAL_Y_CAMINOS: list[str] = [
+	"Alerta de tránsito fluvial: balsa maroma varada a la altura del arroyo Las Víboras por bajante repentina. Tengan paciencia y preparen otra pava de mate.",
+	"La lancha colectiva de las ocho viene con cuarenta minutos de demora porque enganchó un colchón de camalotes en la hélice.",
+	"Atención baqueanos: sudestada brava tapando los pilotes del puente viejo. Se recomienda cruzar despacito o esperar a que baje la marea.",
+	"Tránsito en el humedal: corte total en la bajada del terraplén por barro greda. Ni con doble tracción pasan, así que no hagan macanas.",
+	"Camino de ripio hacia el puerto totalmente anegado por el desborde del zanjón. Vayan al trote lento y con las luces prendidas.",
+	"Aviso a los navegantes del Delta: banco de arena nuevo frente a la isla del Francés. Si van a fondo van a terminar plantados en el barro.",
+	"La balsa de paso Don Romualdo opera con servicio reducido hasta que desenreden las ramas de sauce de la timonera.",
+	"Corte parcial en el camino vecinal del bajo: una familia de doce carpinchos se echó a tomar sol cruzando la calzada y nadie se anima a apurarlos.",
+	"Tránsito pesado en la curva del ceibo: huellas de tractor de medio metro llenas de agua. El que no tenga botas de caña alta que pegue la vuelta.",
+	"Demoras en el embarcadero municipal: el muelle flotante quedó inclinado por la crecida y están desembarcando de a uno por vez.",
+	"Reporte de caminos: la ruta provincial tiene tres lagunas bravas entre el puente de hierro y la estancia. Pasen en primera y con envión.",
+	"Aviso fluvial: remolcador empujando barcazas a paso de hombre en el canal principal. Cuidado con el oleaje que les va a sacudir la canoa.",
+	"Camino isleño intransitable: el camión lechero quedó encajado hasta los ejes en el zanjón norte. Se solicita ayuda con cadenas y buena voluntad.",
+	"Precaución en la desembocadura: sudestada empujando un islote entero de totoras a la deriva con dos nutrias arriba mirando el paisaje.",
+	"Balsa comunal fuera de servicio hasta nuevo aviso: el baqueano está cambiando la grasa del malacate con una espátula de cocina.",
+	"Paso a nivel del viejo ramal cortado: el agua de lluvia superó la altura de los durmientes. Desvíen por la huella de tierra seca.",
+	"Lancha almacenera demorada en el muelle de madera: se armó ronda de charla con las vecinas y todavía no descargaron las bolsas de harina.",
+	"Aviso de ruta ribereña: calzada resbaladiza por barro negro en la bajada del puente amarillo. Tiren rebajes suaves y no claven los frenos.",
+	"Alerta para boteros y canoeros: viento sur en popa levantando olitas cortas en el canal de acceso. Remen parejo y ajusten el salvavidas.",
+	"Estado de caminos del norte: huella cortada en la cañada por desborde del arroyo. El que quiera cruzar que pida permiso al puestero o nade con poncho.",
+]
+
+AVISOS_PARROQUIALES_Y_EXTRAVIOS: list[str] = [
+	"Aviso parroquial: se busca termo de acero abollado en la base con calcomanías de Los Palmeras. Se cayó de la canoa cerca del juncal.",
+	"Solidaridad comunitaria: al compadre Cacho se le escapó un chivo overo que responde al nombre de Pichicho. Fue visto rumiando cerca de la capilla.",
+	"Objeto perdido en la costa: apareció una reposera de caño a rayas verdes y blancas olvidada en el banco de arena. El dueño que la reclame con mate de por medio.",
+	"Urgente del pueblo: se busca garrafa de diez kilos pintada de azul con manija soldada. Desapareció misteriosamente del patio durante el asado del domingo.",
+	"Extravío insólito: don Evaristo perdió una boina de paño negro de tres estaciones entre el almacén y el muelle tres. Recompensa dos docenas de empanadas.",
+	"Aviso de la parroquia: apareció flotando un remo de madera de sauce tallado a mano con iniciales borrosas. Se guarda en la sacristía hasta que aparezca el botero.",
+	"Comunidad alerta: se extravió un carpincho domesticado con cinta roja en el cuello. No muerde, pero si le convidan torta frita no se va nunca más.",
+	"Pérdida en el balneario: vecina busca desesperadamente par de chancletas de goma talle cuarenta y dos perdidas en la resaca del río.",
+	"Aviso parroquial: se ofrece permuta de una pava enlozada con el pico medio torcido por una bombilla alpaca que no caliente los labios.",
+	"Atención vecinos: encontraron un cajón de herramientas de chapa oxidada al costado del terraplén. Adentro tiene tres llaves fijas y un paquete de yerba.",
+	"Solidaridad isleña: se busca cuchillo criollo con cabo de guampa de ciervo extraviado en la última carneada familiar. Se ofrece gratificación generosa.",
+	"Pérdida comunitaria: don Zoilo olvidó su radio a pilas sintonizada en La Rockola sobre el capó de la chata. Pide que por favor no le cambien el dial.",
+	"Aviso de la capilla: el domingo después de misa habrá rifa parroquial de un lechón y dos costillares a beneficio del techo del salón comunal.",
+	"Extravío en el bañado: se busca perro barcino de orejas caídas que salió corriendo atrás de una nutria y no volvió para la hora de comer.",
+	"Objeto hallado: se rescató de la correntada un fuentón de plástico amarillo con tres mudas de ropa mojada. Reclamar en el destacamento de prefectura.",
+	"Aviso parroquial: don Cosme busca su sombrero de paja de ala ancha que se le voló con el viento mientras cruzaba el arroyo en bote.",
+	"Mensaje vecinal: se extraviaron tres gallinas brizadas del corral de doña Rosa. Avisan que si las ven cerca de una olla avisen urgente.",
+	"Pérdidas insólitas: apareció una parrilla plegable de dos pisos olvidada debajo del ceibo grande. Tiene restos de grasa fresca de buen vacío.",
+	"Solidaridad del pago: se busca carretilla de madera con rueda de hierro prestada en la primavera pasada y nunca devuelta al galpón de la esquina.",
+	"Aviso de utilidad pública: se perdió una conservadora de telgopor blanca con hielo y seis botellas de cerveza. Hay desesperación en el taller mecánico.",
+]
+
+ALERTAS_INCOMODIDAD_CRIOLLA: list[str] = [
+	"Alerta de incomodidad criolla: humedad del cien por ciento en el humedal. Las puertas de madera se hincharon tanto que para salir del rancho hay que pedir permiso.",
+	"Reporte meteorológico satírico: nube espesa de mosquitos sobrevolando la costa. No piquen repelente en aerosol porque los bichos se lo toman como aperitivo.",
+	"Atención Norte argentino: calor infernal de siesta tucumana donde el asfalto parece goma fresca y hasta las palomas buscan sombra abajo de los autos.",
+	"Alerta por viento Zonda en la precordillera: sopla aire caliente como puerta de horno de panadería abierta. Bajen las persianas y tomen agua fresca.",
+	"Sensación térmica en la laguna: pesadez ribereña absoluta. El mate amargo está sudando en la pava antes de tocar la bombilla.",
+	"Aviso de plaga criolla: invasión de jejenes en el bañado. Son chiquitos pero tienen la mala leche concentrada de un yacaré con dolor de muelas.",
+	"Reporte del clima pesadito: la sal del salero se convirtió en una piedra sólida por la humedad. Se recomienda picarla con destornillador.",
+	"Alerta tucumana: ¡ura qué calor que hace chango! A las dos de la tarde el sol pega tan fuerte que el perro duerme adentro de la heladera desconectada.",
+	"Viento Norte rabioso azotando la cuenca: tierra colorada volando por todos lados y la ropa recién colgada secándose en cuatro minutos reloj.",
+	"Incomodidad climática total: los tábanos andan con chaleco antibalas y no les hace mella ni el manotazo más certero de gaucho enojado.",
+	"Reporte del cielo isleño: calor pesado con olor a barro tibio. La única actividad física recomendada es flotar como corcho en la sombra del sauce.",
+	"Alerta de siesta criolla: prohibido hacer ruido con la motoguadaña entre la una y las cinco. La condena social del pueblo puede ser implacable.",
+	"Termómetro carpincho al rojo vivo: cuarenta grados a la sombra y el ventilador de pie tira menos aire que un suspiro de abuela.",
+	"Humedad de pantano nivel crítico: las sábanas se sienten mojadas antes de acostarse y el pan francés parece una esponja de cocina.",
+	"Aviso criollo por Zonda caliente: el aire quema las pestañas y las hojas secas bailan en remolino sobre el patio de tierra. Calma chicha adentro.",
+	"Mosquitos tamaño helicóptero patrullando el muelle: si se descuidan dos minutos les levantan la reposera en el aire con ustedes sentados.",
+	"Calorazo santiagueño y tucumano de antología: el pavimento amaga con tragarse las ruedas de la bicicleta. Ni el gato se anima a cruzar la vereda.",
+	"Reporte de pesadez ambiental: la masa de las tortas fritas leudó sola en la mesada sin necesidad de prender el fuego del horno.",
+	"Alerta de jejenes en la barranca: atacan los tobillos con saña milimétrica. La mezcla de barro con ceniza es la única armadura que funciona.",
+	"Clima pesado de tormenta que amaga y no revienta: el cielo está negro como sobaco de cuervo y la modorra carpincha es ley nacional.",
+]
+
+SEPARADORES_Y_SLOGANS: list[str] = [
+	"Estás en La Rockola, noventa y ocho punto siete en modulación carpincha. La radio que no te abandona en la orilla.",
+	"Donde manda carpincho, el dial no cambia. Sintonizás la sintonía chamamecera y cumbiera del Delta.",
+	"La Rockola del Carpincho: transmitiendo con antena de tacuara y corazón de sauce para toda la cuenca.",
+	"Música de la buena, mate espumoso y cero drama. Estás prendido a La Rockola.",
+	"Noventa y ocho punto siete MHz: la frecuencia más fresca del humedal. Ponete cómodo que sobra música.",
+	"La Rockola: doscientos caballos de potencia musical para empujar cualquier bajante.",
+	"Ni FM comercial ni playlist enlatada: esto es La Rockola del Carpincho, radio hecha por y para los amigos.",
+	"Subile dos rayitas al parlante que acá no cobramos entrada. Suena La Rockola.",
+	"Desde la orilla del río para el mundo entero: La Rockola del Carpincho, tu cable a tierra musical.",
+	"En la isla, en la ruta o en el taller: la banda de La Rockola te hace la segunda todo el día.",
+	"La Rockola del Carpincho: la única radio con aroma a leña de espinillo y mate recién cebado.",
+	"Sintonizás La Rockola: pegale un trago al tereré y dejate llevar por el ritmo ribereño.",
+	"Cabina de transmisión flotante en el arroyo: acá no hay apuro, acá hay música de verdad.",
+	"La Rockola: noventa y ocho punto siete en el dial, cien por ciento carpincha en el corazón.",
+	"Frecuencia libre de malas ondas y repleta de temazos. Estás en La Rockola.",
+	"Hacete amigo del ritmo y descansá la mente: transmite La Rockola del Carpincho.",
+	"La Rockola: la emisora que te ceba el mate justo cuando más lo necesitás.",
+	"Sonido criollo de alta fidelidad ribereña. Conectate a La Rockola del Carpincho.",
+	"Donde la cumbia santafesina y el chamamé se dan la mano: La Rockola en el aire.",
+	"Transmite La Rockola del Carpincho: tu compañía fiel cuando el sol cae sobre la laguna.",
+]
+
+DEDICATORIAS_OYENTES: list[str] = [
+	'Mensaje al WhatsApp de la radio: "Acá los muchachos del taller mecánico El Pistón pidiendo una cumbia de Leo Mattioli para enderezar el chasis de una F-100". ¡Va con dedicatoria!',
+	'Entra mensaje desde la terapia: "La guardia médica del hospital de San Pedro pide un cuartetazo cordobés de La Mona para levantar la noche larga". ¡Fuerza a ese equipo de salud!',
+	'Audio de camionero en la ruta doce: "Metale un chamamé de Mario Bofill compadre, que vengo cargado de naranjas y con el mate recién armado". ¡Buen viaje por el Litoral!',
+	'Nos escriben desde la canoa: "Acá los pescadores del arroyo La Paloma esperando el pique con La Rockola de fondo. Tiren un temazo de Los Palmeras que la boga no sale con silencio".',
+	'WhatsApp del dial: "Mandale un saludo a los pibes de la gomería que están emparchando la rueda de un tractor con una cumbia de Karicia de fondo". ¡Puro pulmón muchachos!',
+	'Llega mensaje desde Tucumán: "Chango, poné un folclore bien sachero de Raly Barrionuevo que estamos amasando empanadas en el patio con cuarenta grados". ¡Qué manjar compadre!',
+	'Mensaje de la obra en construcción: "Locutor querido, tirate un rocanrol de Los Redondos para los albañiles que estamos terminando el revoque fino bajo el solazo". ¡Salud laburantes!',
+	'Audio de puestero de campo: "Acá escuchando desde el galpón de esquila; largate una zamba de Cafrune para acompañar el amargo de la tarde". ¡Abrazo paisano!',
+	'Nos escribe la barra del asado: "Decile al parrillero que afloje con el fernet y dé vuelta el vacío antes de que se haga carbón. Ponete algo de Rodrigo para bailar".',
+	'Mensaje de la lancha colectiva: "El capitán del muelle cuatro pide chamamé con acordeón verdulera para alegrar a los pasajeros que vienen cansados del laburo".',
+	'WhatsApp de los metalúrgicos: "Acá en la tornería con el ruido de las máquinas al palo pero La Rockola al doble de volumen. Queremos cumbia santafesina clásica".',
+	'Llega audio desde Corrientes: "Che locutor, mandale un abrazo a mi compadre Néstor que se quedó dormido en la canoa y la marea se lo está llevando despacito al juncal".',
+	'Mensajito de panadería de pueblo: "Amasando las medialunas de grasa desde las cuatro de la mañana con La Rockola bien prendida. Pedimos cuarteto del bueno para no cabecear".',
+	'Audio de recolectores de basura: "Un saludo grande para la cuadrilla de la noche que limpia el pueblo escuchando rock nacional en el camión. ¡Aguante La Rockola!".',
+	'Llega mensaje de la estación de servicio: "Los chicos del turno noche del surtidor pedimos cumbia con acordeón para que no nos gane la modorra de las tres de la mañana".',
+	'WhatsApp del frigorífico: "Acá en el muelle de carga con los compañeros pidiendo un chamamé de Montiel bien sentido para recordar los pagos entrerrianos".',
+	'Mensaje de almacén isleño: "La patrona está pesando los fideos y pide una chacarera de Los Manseros para alegrar el mostrador. ¡Abrazo para toda la audiencia!".',
+	'Audio de chofer de colectivo de larga distancia: "Cruzando el puente Zárate Brazo Largo con el pasaje durmiendo y el mate caliente. Tirate un tema de Spinetta para el chofer".',
+	'WhatsApp de taller de chapa: "Acá lijando masilla fina en una puerta picada. Que suene Gilda bien fuerte que con alegría el trabajo sale más rápido y derechito".',
+	'Nos escriben los guardavidas del arroyo: "Mirando el agua y cuidando a los bañistas con La Rockola en la caseta. Un saludo para todos los carpinchos que nadan tranquilos".',
+]
+
+CARPINCHO_ADS.extend(AVISOS_PARROQUIALES_Y_EXTRAVIOS)
+CARPINCHO_ADS.extend(TRANSITO_FLUVIAL_Y_CAMINOS)
+CARPINCHO_FORTUNES.extend(ALERTAS_INCOMODIDAD_CRIOLLA)
+CARPINCHO_FORTUNES.extend(DEDICATORIAS_OYENTES)
+
 CARPINCHO_FORTUNES.extend(CARPINCHO_ADS)
 
 # ---------------------------------------------------------------------------
@@ -262,6 +386,7 @@ RADIO_INTROS: list[str] = [
 	# Cierre de tanda / Separadores cortos
 	"La Rockola del Carpincho: tu dosis diaria de música, mates y buena onda. No aceptes imitaciones.",
 ]
+RADIO_INTROS.extend(SEPARADORES_Y_SLOGANS)
 
 RADIO_LEAD_INS: list[str] = [
 	"Momento de rumiar una idea mientras chupás la bombilla...",
