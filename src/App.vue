@@ -164,16 +164,6 @@
 						}}
 					</span>
 					<span
-						v-else-if="scanStatus?.is_analyzing_mood"
-						class="text-carpincho-warning block w-full truncate text-left text-[0.95rem] font-medium italic drop-shadow-sm"
-					>
-						{{
-							scanStatus?.total
-								? `Sintonizando la vibra de los temas (${scanStatus.current}/${scanStatus.total})... 🎶`
-								: 'Sintonizando la vibra de los temas... 🎶'
-						}}
-					</span>
-					<span
 						v-else-if="currentTrackPath && currentLyricLine && currentLyricLine.trim() !== ''"
 						:key="currentLyricLine"
 						class="text-carpincho-warning block w-full truncate text-left text-[0.95rem] font-medium italic drop-shadow-sm"
