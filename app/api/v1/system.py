@@ -19,7 +19,7 @@ logger = logging.getLogger("RockolaCarpincho")
 router = APIRouter(tags=["System"])
 
 
-@router.api_route("/api/weather/preview", methods=["GET", "HEAD"])
+@router.api_route("/weather/preview", methods=["GET", "HEAD"])
 async def preview_weather(location: str = Query(..., description="Ciudad o localidad a consultar")) -> JSONResponse:
 	"""Consulta wttr.in para obtener el clima actual y la frase armada de DJ Carpincho."""
 	try:

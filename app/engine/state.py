@@ -7,24 +7,15 @@ locución de DJ Carpincho e integración con MPV y MPRIS.
 from __future__ import annotations
 
 import asyncio
-import concurrent.futures
-import gc
 import json
 import logging
 import os
 import random
-import re
-import shutil
-import sqlite3
-import subprocess
-import sys
 import tempfile
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
-
-from mutagen import File as MutagenFile
 
 try:
 	from scripts.binary_utils import check_internet_async, ensure_display_env, get_clean_env
@@ -55,12 +46,14 @@ except ImportError:
 
 
 from app.core.dependencies import get_manager, get_state
+from app.db.repositories import (
+	FavoritesRepository,
+	HistoryRepository,
+	TrackRepository,
+	UrlLogsRepository,
+)
 from app.engine.audio_analysis import (
-	compare_fps,
-	extract_audio_features_ffmpeg,
-	find_binary,
 	is_mood_available,
-	parse_fp,
 )
 from app.engine.mpris import (
 	DBUS_AVAILABLE,
@@ -73,20 +66,19 @@ if DBUS_AVAILABLE:
 else:
 	MessageBus = None
 
+import app.services.radio as radio_service_mod
 from app.engine.mpv_controller import AsyncMpvController
 from app.services.library import (
-	Track,
+	LibraryService,
 	get_track_duration_seconds,
 )
 from app.services.radio import (
 	DEFAULT_WEATHER_LOCATION,
 	HAS_EDGE_TTS,
-	create_radio_announcement,
-	embed_cover_art_in_mp3,
-	get_carpincho_cover_path,
+	RadioService,
 	is_valid_mp3_file,
-	mix_announcement_with_bg_track,
 )
+from app.services.ytdlp import YtDlpService
 
 logger = logging.getLogger("RockolaCarpincho")
 
@@ -95,8 +87,9 @@ RADIO_PREGENERATION_MAX_AGE_SECONDS: float = 15.0 * 60.0  # 15 minutos de caduci
 
 def _is_valid_radio_mp3_file(path: Path | str) -> bool:
 	"""Valida que el archivo de locución exista y su cabecera corresponda a un MP3 válido."""
-	if is_valid_mp3_file is not None:
-		return is_valid_mp3_file(path)
+	validator = getattr(radio_service_mod, "is_valid_mp3_file", is_valid_mp3_file)
+	if validator is not None:
+		return validator(path)
 	try:
 		p = Path(path)
 		if not p.is_file() or p.stat().st_size < 4:
@@ -123,22 +116,8 @@ def _get_active_db_path() -> Path | str:
 	return get_default_db_path()
 
 
-def _srv(name: str, fallback: Any = None) -> Any:
-	"""Obtiene dinámicamente un atributo de server.py si está disponible, permitiendo monkeypatching en tests."""
-	srv = sys.modules.get("server")
-	if srv is not None and hasattr(srv, name):
-		return getattr(srv, name)
-	return fallback
-
-
 async def broadcast_state(include_library=False):
 	"""Envía por WebSocket el diff de estado a todos los clientes conectados."""
-	srv = sys.modules.get("server")
-	if srv is not None and hasattr(srv, "broadcast_state") and srv.broadcast_state != broadcast_state:
-		res = srv.broadcast_state(include_library=include_library)
-		if asyncio.iscoroutine(res):
-			await res
-		return
 	state = get_state()
 	if not state:
 		return
@@ -207,6 +186,16 @@ class APIState:
 		self.dj_countdown_task = None  # Task del countdown de 10s del DJ (cancelable)
 		self.mpv_visible = True
 
+		# Repositorios y Servicios delegados
+		self.favorites_repo = FavoritesRepository()
+		self.history_repo = HistoryRepository()
+		self.urllogs_repo = UrlLogsRepository()
+		self.track_repo = TrackRepository()
+		self.library_service = LibraryService(track_repo=self.track_repo)
+		self.weather_location = DEFAULT_WEATHER_LOCATION
+		self.radio_service = RadioService(weather_location=self.weather_location)
+		self.ytdlp_service = YtDlpService()
+
 		self.favorites = self._load_favs_from_db()
 
 		# Modo Radio
@@ -221,7 +210,6 @@ class APIState:
 		self.radio_archive_max_files = 60
 		self.radio_pregeneration_task: asyncio.Task | None = None
 		self.pregenerated_radio_announcement: dict | None = None
-		self.weather_location = DEFAULT_WEATHER_LOCATION
 
 		# Estado de red del servidor y navegador
 		self.open_browser = True
@@ -275,8 +263,8 @@ class APIState:
 			"dj_next_track": clean_dj_next,
 			"duration": self.duration,
 			"favorites": active_favs,
-			"has_edge_tts": bool(_srv("HAS_EDGE_TTS", HAS_EDGE_TTS)),
-			"has_ffmpeg": bool(_srv("is_mood_available", is_mood_available)()),
+			"has_edge_tts": bool(self.radio_service.is_available if hasattr(self, "radio_service") else HAS_EDGE_TTS),
+			"has_ffmpeg": bool(is_mood_available()),
 			"history": list(self.history),
 			"is_scanning": self.is_scanning,
 			"scan_status": {
@@ -361,10 +349,7 @@ class APIState:
 
 	def _load_favs_from_db(self):
 		try:
-			with sqlite3.connect(_get_active_db_path()) as conn:
-				c = conn.cursor()
-				c.execute("SELECT track_id FROM favorites")
-				return [row[0] for row in c.fetchall()]
+			return self.favorites_repo.list_all()
 		except Exception as e:
 			logger.error(f"Error cargando favoritos de la DB: {e}")
 			return []
@@ -404,16 +389,8 @@ class APIState:
 		if not str_path.startswith(("http://", "https://")):
 			track_id = self.path_to_id.get(str_path, str_path)
 			now = time.time()
-
 			try:
-				with sqlite3.connect(_get_active_db_path()) as conn:
-					# Agregamos la reproducción actual
-					conn.execute(
-						"INSERT INTO play_history (track_id, played_at) VALUES (?, ?)",
-						(track_id, now),
-					)
-					conn.commit()
-
+				self.history_repo.add_play(track_id, now)
 				logger.debug(f"Tema completado, sumando +1 al top: {str_path}")
 			except Exception as e:
 				logger.error(f"Error guardando stat en DB: {e}")
@@ -428,59 +405,14 @@ class APIState:
 			title = meta.get("title", meta.get("display_title"))
 			artist = meta.get("artist", meta.get("display_artist"))
 			played_at = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-
-			with sqlite3.connect(_get_active_db_path()) as conn:
-				# Borramos si existía antes para no duplicar y que vuelva a aparecer arriba
-				conn.execute("DELETE FROM url_logs WHERE url = ?", (url,))
-
-				# Insertamos la entrada fresca
-				conn.execute(
-					"INSERT INTO url_logs (url, title, artist, played_at) VALUES (?, ?, ?, ?)",
-					(url, title, artist, played_at),
-				)
-
-				# Mantenemos el log cortito (ej: máximo 200 links) para que no sea infinito
-				# conn.execute("""
-				# 	DELETE FROM url_logs
-				# 	WHERE id NOT IN (
-				# 		SELECT id FROM url_logs ORDER BY id DESC LIMIT 200
-				# 	)
-				# """)
-				conn.commit()
+			self.urllogs_repo.add_url(url, title, artist, played_at)
 		except Exception as e:
 			logger.error(f"Error guardando el log de URLs en DB: {e}")
 
 	def recalculate_mood_scores(self):
-		"""Recalcula el mood_score normalizado para todos los temas en tracks_cache."""
-
-		def _normalize(val, values):
-			if val <= 0 or not values:
-				return 0.5
-			lo, hi = min(values), max(values)
-			if hi - lo < 1e-9:
-				return 0.5
-			return (val - lo) / (hi - lo)
-
-		tracks = self.tracks_cache
-		if not tracks:
-			return
-
-		valid_bpms = [t.get("bpm", -1.0) for t in tracks if t.get("bpm", -1.0) > 0]
-		valid_energies = [t.get("energy", -1.0) for t in tracks if t.get("energy", -1.0) > 0]
-		valid_centroids = [t.get("spectral_centroid", -1.0) for t in tracks if t.get("spectral_centroid", -1.0) > 0]
-
-		for t in tracks:
-			b = t.get("bpm", -1.0)
-			e = t.get("energy", -1.0)
-			c = t.get("spectral_centroid", -1.0)
-
-			if b <= 0:
-				t["mood_score"] = 0.0
-			else:
-				nb = _normalize(b, valid_bpms)
-				ne = _normalize(e, valid_energies)
-				nc = _normalize(c, valid_centroids)
-				t["mood_score"] = round(0.5 * nb + 0.35 * ne + 0.15 * nc, 4)
+		"""Recalcula el mood_score normalizado para todos los temas en tracks_cache delegando en LibraryService."""
+		if self.tracks_cache:
+			self.library_service.recalculate_mood(self.tracks_cache)
 
 	def scan_directory(
 		self,
@@ -489,295 +421,14 @@ class APIState:
 		max_workers: int = 16,
 		extract_fingerprint: bool | None = None,
 	):
-		if extract_fingerprint is None:
-			extract_fingerprint = extract_mood
-
-		logger.info(f"Pegando una ojeada por estas carpetas: {target_dirs}")
-		extensions = [
-			"*.flac",
-			"*.m4a",
-			"*.mp3",
-			"*.ogg",
-			"*.wav",
-			"*.mp4",
-			"*.mkv",
-			"*.avi",
-			"*.webm",
-		]
-		raw_files = []
-
-		self.scan_phase = "discovering"
-		self.scan_current = 0
-		self.scan_total = 0
-		self.scan_message = "Buscando archivos de audio..."
-
-		for target_dir in target_dirs:
-			if not target_dir:
-				continue
-
-			music_dir = Path(target_dir).expanduser()
-			if not music_dir.exists():
-				logger.warning(f"Che, este lugar está más pelado que la nada misma: {music_dir}")
-				continue
-
-			for ext in extensions:
-				raw_files.extend(list(music_dir.rglob(ext)))
-
-		logger.info(f"Encontré {len(raw_files)} archivos en total. Revisando cuáles son nuevos o cambiaron...")
-		self.scan_phase = "metadata"
-		self.scan_total = len(raw_files)
-		self.scan_current = 0
-		self.scan_message = f"Encontré {len(raw_files)} archivos en total. Revisando cuáles son nuevos o cambiaron..."
-
-		raw_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
-
-		has_ffmpeg = is_mood_available()
-		has_fpcalc = bool(shutil.which("fpcalc"))
-
-		# --- CARGAMOS LA CACHÉ DE LA DB AL PRINCIPIO ---
-		db_cache = {}
-		try:
-			with sqlite3.connect(_get_active_db_path()) as conn:
-				c = conn.cursor()
-				c.execute(
-					"SELECT path, mtime, file_size, track_id, title, album, artist, duration_str, bpm, energy, spectral_centroid, fingerprint FROM tracks"
-				)
-				for row in c.fetchall():
-					(
-						db_path,
-						db_mtime,
-						db_size,
-						db_tid,
-						db_title,
-						db_album,
-						db_artist,
-						db_dur,
-						db_bpm,
-						db_energy,
-						db_centroid,
-						db_fingerprint,
-					) = row
-					db_cache[db_path] = {
-						"mtime": db_mtime,
-						"file_size": db_size,
-						"track_hash": db_tid,
-						"title": db_title,
-						"album": db_album,
-						"artist": db_artist,
-						"duration_str": db_dur,
-						"bpm": db_bpm if db_bpm is not None else 0.0,
-						"energy": db_energy if db_energy is not None else 0.0,
-						"spectral_centroid": (db_centroid if db_centroid is not None else 0.0),
-						"fingerprint": db_fingerprint,
-					}
-		except Exception as e:
-			logger.warning(f"No pude cargar la caché de la DB (capaz está vacía): {e}")
-
-		self.id_to_current_path.clear()
-		self.path_to_id.clear()
-		new_cache = {}
-		tracks_to_insert = []
-		seen_track_ids = set()
-		new_tracks_for_reconciliation = []
-
-		cache_hits = {}
-		miss_files = []
-
-		for f in raw_files:
-			file_str = str(f)
-			try:
-				stat = f.stat()
-				current_mtime = stat.st_mtime
-				current_size = stat.st_size
-			except OSError:
-				continue
-
-			# 1. Miramos si está en memoria (escaneo en caliente)
-			if (
-				file_str in self.track_cache_by_path
-				and self.track_cache_by_path[file_str]["mtime"] == current_mtime
-				and (
-					self.track_cache_by_path[file_str]["data"].get("bpm", 0.0) != 0.0
-					or not has_ffmpeg
-					or not extract_mood
-				)
-			):
-				td = self.track_cache_by_path[file_str]["data"]
-				th = td.get("track_hash")
-				cache_hits[file_str] = (current_mtime, td, th)
-
-			# 2. Miramos si está intacto en la DB (arranque de servidor)
-			elif (
-				file_str in db_cache
-				and db_cache[file_str]["mtime"] == current_mtime
-				and db_cache[file_str]["file_size"] == current_size
-				and (db_cache[file_str].get("bpm", 0.0) != 0.0 or not has_ffmpeg or not extract_mood)
-				and (db_cache[file_str].get("fingerprint") is not None or not has_fpcalc or not extract_fingerprint)
-			):
-				cached = db_cache[file_str]
-				th = cached["track_hash"]
-				td = {
-					"path": file_str,
-					"display_title": cached["title"],
-					"display_artist": cached["artist"],
-					"album": cached["album"],
-					"duration_str": cached["duration_str"],
-					"search_string": f"{cached['artist']} {cached['title']}".lower(),
-					"title": cached["title"],
-					"artist": cached["artist"],
-					"track_hash": th,
-					"bpm": cached["bpm"],
-					"energy": cached["energy"],
-					"spectral_centroid": cached["spectral_centroid"],
-					"fingerprint": cached.get("fingerprint"),
-				}
-				cache_hits[file_str] = (current_mtime, td, th)
-			else:
-				miss_files.append((f, current_mtime, current_size))
-
-		# 3. Procesamos los archivos sin caché en PARALELO
-		miss_results = {}
-		if miss_files:
-
-			def _process_single_file(item):
-				target_f, mtime, size = item
-				track_obj = Track(target_f, extract_mood=extract_mood, extract_fingerprint=extract_fingerprint)
-				track_dict = track_obj.to_dict()
-				track_hash = track_obj.track_hash
-				db_tuple = (
-					track_hash,
-					str(target_f),
-					track_dict["title"],
-					track_dict.get("album", "Desconocido"),
-					track_dict["artist"],
-					track_dict["duration_str"],
-					mtime,
-					size,
-					track_dict.get("bpm", 0.0),
-					track_dict.get("energy", 0.0),
-					track_dict.get("spectral_centroid", 0.0),
-					track_obj.fingerprint,
-				)
-				return (str(target_f), mtime, track_dict, track_hash, db_tuple, track_obj.fingerprint)
-
-			worker_count = min(max_workers, (os.cpu_count() or 4) * 2)
-			with concurrent.futures.ThreadPoolExecutor(max_workers=worker_count) as executor:
-				futures = {executor.submit(_process_single_file, item): item for item in miss_files}
-				for processed_count, future in enumerate(concurrent.futures.as_completed(futures), 1):
-					res = future.result()
-					if res:
-						f_str, mtime, t_dict, t_hash, db_tup, fp = res
-						miss_results[f_str] = (mtime, t_dict, t_hash, db_tup, fp)
-					self.scan_current = len(cache_hits) + processed_count
-					if processed_count % 50 == 0:
-						logger.info(
-							f"Ya procesé la data de {processed_count}/{len(miss_files)} joyitas nuevas/modificadas..."
-						)
-						gc.collect()
-
-		# Armamos la lista ordenada de tracks conservando el orden de raw_files
-		tracks = []
-		for f in raw_files:
-			file_str = str(f)
-			if file_str in cache_hits:
-				current_mtime, track_dict, track_hash = cache_hits[file_str]
-				seen_track_ids.add(track_hash)
-				new_cache[file_str] = {"mtime": current_mtime, "data": track_dict}
-				tracks.append(track_dict)
-				self.id_to_current_path[track_hash] = file_str
-				self.path_to_id[file_str] = track_hash
-			elif file_str in miss_results:
-				current_mtime, track_dict, track_hash, db_tuple, fp = miss_results[file_str]
-				tracks_to_insert.append(db_tuple)
-				seen_track_ids.add(track_hash)
-				if fp:
-					new_tracks_for_reconciliation.append(track_dict)
-				new_cache[file_str] = {"mtime": current_mtime, "data": track_dict}
-				tracks.append(track_dict)
-				self.id_to_current_path[track_hash] = file_str
-				self.path_to_id[file_str] = track_hash
-
-		# --- RECONCILIACIÓN DE HUELLAS ACÚSTICAS ---
-		# Si un archivo se reemplazó (ej. MP3 a FLAC) o se le metió una tapa (cambió tamaño),
-		# su viejo "track_hash" va a faltar y va a haber uno nuevo para la misma canción.
-		missing_db_tracks = [t for t in db_cache.values() if t["track_hash"] not in seen_track_ids]
-		if missing_db_tracks and new_tracks_for_reconciliation:
-			logger.info(
-				f"🔎 Reconciliando {len(new_tracks_for_reconciliation)} temas nuevos con {len(missing_db_tracks)} temas desaparecidos..."
-			)
-
-			for new_t in new_tracks_for_reconciliation:
-				new_fp = parse_fp(new_t.get("fingerprint"))
-				if not new_fp:
-					continue
-
-				best_match = None
-				best_sim = 0.0
-
-				for miss_t in missing_db_tracks:
-					miss_fp = parse_fp(miss_t.get("fingerprint"))
-					if not miss_fp:
-						continue
-
-					sim = compare_fps(new_fp, miss_fp)
-					if sim > best_sim:
-						best_sim = sim
-						best_match = miss_t
-
-				# Si hay similitud acústica del 85% o más, asumimos que es exactamente la misma canción
-				if best_sim > 0.85:
-					old_id = best_match["track_hash"]
-					new_id = new_t["track_hash"]
-					logger.info(
-						f"✨ ¡Migración detectada! '{new_t['display_title']}' reemplaza a '{best_match['title']}' (Similitud: {best_sim:.2%}) -> Conservando favoritos e historial."
-					)
-
-					new_t["track_hash"] = old_id
-
-					for trk in tracks:
-						if trk["path"] == new_t["path"]:
-							trk["track_hash"] = old_id
-							break
-
-					for idx, ins_tuple in enumerate(tracks_to_insert):
-						if ins_tuple[1] == new_t["path"]:
-							l = list(ins_tuple)
-							l[0] = old_id
-							tracks_to_insert[idx] = tuple(l)
-							break
-
-					self.id_to_current_path[old_id] = new_t["path"]
-					self.path_to_id[new_t["path"]] = old_id
-					if new_id in self.id_to_current_path:
-						del self.id_to_current_path[new_id]
-
-					seen_track_ids.add(old_id)
-					missing_db_tracks.remove(best_match)
-
-		self.tracks_cache = tracks
-		self.recalculate_mood_scores()
-		self.track_cache_by_path = new_cache
-
-		if tracks_to_insert:
-			try:
-				with sqlite3.connect(_get_active_db_path()) as conn:
-					conn.executemany(
-						"""
-						INSERT OR REPLACE INTO tracks (track_id, path, title, album, artist, duration_str, mtime, file_size, bpm, energy, spectral_centroid, fingerprint)
-						VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-					""",
-						tracks_to_insert,
-					)
-					conn.commit()
-					logger.info(f"Guardados {len(tracks_to_insert)} metadatos frescos en la base de datos.")
-			except Exception as e:
-				logger.error(f"Error guardando tracks en la DB: {e}")
-
-		self.scan_current = len(tracks)
-		self.scan_total = len(tracks)
-		self.scan_message = "¡Listo el escaneo, maestro!"
-		logger.info("¡Listo el escaneo, maestro!")
-		return tracks
+		"""Escanea directorios delegando en LibraryService."""
+		return self.library_service.scan_directory(
+			target_dirs,
+			extract_mood=extract_mood,
+			max_workers=max_workers,
+			extract_fingerprint=extract_fingerprint,
+			state=self,
+		)
 
 	def start_background_mood_analysis(self):
 		"""Lanza la tarea en segundo plano para analizar BPM y fingerprints sin bloquear."""
@@ -791,230 +442,21 @@ class APIState:
 			return None
 
 	async def run_background_mood_analysis(self):
-		"""Worker que procesa de forma asíncrona BPM/mood y huella acústica en lotes pequeños."""
-		finder = _srv("find_binary", find_binary)
-		ffmpeg_bin = finder("ffmpeg")
-		has_fpcalc = shutil.which("fpcalc") is not None
-
-		if not ffmpeg_bin and not has_fpcalc:
-			logger.info("Sin FFmpeg ni fpcalc, salteando análisis acústico de fondo.")
-			self.is_analyzing_mood = False
-			self.scan_phase = "idle"
-			return
-
-		pending_tracks = []
-		for t in self.tracks_cache:
-			need_mood = bool(ffmpeg_bin and t.get("bpm", 0.0) == 0.0)
-			need_fp = bool(has_fpcalc and not t.get("fingerprint"))
-			if need_mood or need_fp:
-				pending_tracks.append((t, need_mood, need_fp))
-
-		if not pending_tracks:
-			self.is_analyzing_mood = False
-			self.scan_phase = "idle"
-			return
-
-		self.is_analyzing_mood = True
-		self.scan_phase = "mood"
-		self.scan_total = len(pending_tracks)
-		self.scan_current = 0
-		self.scan_message = f"Sintonizando la vibra de los temas (0/{len(pending_tracks)})..."
-		try:
-			await broadcast_state()
-		except Exception:
-			pass
-
-		logger.info(f"Comenzando análisis acústico en segundo plano para {len(pending_tracks)} temas...")
-
-		def _process_mood_item(item):
-			t_dict, need_mood, need_fp = item
-			path_str = t_dict["path"]
-			bpm = t_dict.get("bpm", 0.0)
-			energy = t_dict.get("energy", 0.0)
-			centroid = t_dict.get("spectral_centroid", 0.0)
-			fp = t_dict.get("fingerprint")
-
-			if need_mood:
-				tag_bpm = None
-				try:
-					audio = MutagenFile(path_str, easy=True) or MutagenFile(path_str)
-					if audio and getattr(audio, "tags", None):
-						tags = {k.lower(): v for k, v in audio.tags.items()}
-						for k in ["tbpm", "bpm", "tempo", "tmpo"]:
-							if k in tags:
-								val = tags[k]
-								val_str = val[0] if isinstance(val, list) else str(val)
-								clean_num = re.search(r"[-+]?\d*\.?\d+", str(val_str))
-								if clean_num and float(clean_num.group(0)) > 0:
-									tag_bpm = round(float(clean_num.group(0)), 1)
-									break
-				except Exception:
-					pass
-
-				extractor = _srv("extract_audio_features_ffmpeg", extract_audio_features_ffmpeg)
-				b, e, c = extractor(path_str, ffmpeg_bin)
-				if b < 0.0:
-					bpm, energy, centroid = -1.0, -1.0, -1.0
-				else:
-					bpm = tag_bpm if tag_bpm is not None else b
-					energy = e
-					centroid = c
-
-			if need_fp and shutil.which("fpcalc"):
-				try:
-					finder = _srv("find_binary", find_binary)
-					fpcalc_bin = finder("fpcalc") or "fpcalc"
-					proc = subprocess.run(
-						[fpcalc_bin, "-raw", "-length", "60", path_str],
-						capture_output=True,
-						text=True,
-						timeout=10,
-						check=False,
-					)
-					for line in proc.stdout.splitlines():
-						if line.startswith("FINGERPRINT="):
-							fp = line.split("=", 1)[1]
-							break
-				except Exception as e:
-					logger.debug(f"Pifió fpcalc en background para {path_str}: {e}")
-
-			return t_dict["track_hash"], path_str, bpm, energy, centroid, fp
-
-		batch_size = 25
-		max_workers = min(4, os.cpu_count() or 2)
-
-		try:
-			for i in range(0, len(pending_tracks), batch_size):
-				batch = pending_tracks[i : i + batch_size]
-				loop = asyncio.get_running_loop()
-
-				with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
-					batch_results = await loop.run_in_executor(
-						pool,
-						lambda b: [_process_mood_item(item) for item in b],
-						batch,
-					)
-
-				# Actualizamos en SQLite el lote
-				try:
-					with sqlite3.connect(_get_active_db_path()) as conn:
-						conn.executemany(
-							"UPDATE tracks SET bpm=?, energy=?, spectral_centroid=?, fingerprint=? WHERE track_id=?",
-							[(r[2], r[3], r[4], r[5], r[0]) for r in batch_results],
-						)
-						conn.commit()
-				except Exception as e:
-					logger.error(f"Error actualizando mood en DB: {e}")
-
-				# Actualizamos en memoria
-				res_map = {r[0]: r for r in batch_results}
-				for t in self.tracks_cache:
-					tid = t.get("track_hash")
-					if tid in res_map:
-						_, p, b, e, c, fp = res_map[tid]
-						t["bpm"] = b
-						t["energy"] = e
-						t["spectral_centroid"] = c
-						t["fingerprint"] = fp
-						if p in self.track_cache_by_path:
-							self.track_cache_by_path[p]["data"].update(
-								{
-									"bpm": b,
-									"energy": e,
-									"spectral_centroid": c,
-									"fingerprint": fp,
-								}
-							)
-
-				self.scan_current = min(self.scan_total, i + len(batch))
-				self.scan_message = f"Sintonizando la vibra ({self.scan_current}/{self.scan_total})..."
-				self.recalculate_mood_scores()
-				try:
-					await broadcast_state()
-				except Exception:
-					pass
-				gc.collect()
-
-		except asyncio.CancelledError:
-			logger.info("Análisis de mood en background cancelado por nueva solicitud.")
-			raise
-		finally:
-			self.is_analyzing_mood = False
-			self.scan_phase = "idle"
-			self.scan_message = ""
-			try:
-				await broadcast_state(include_library=True)
-			except Exception:
-				pass
-			logger.info("Análisis acústico en segundo plano finalizado.")
+		"""Worker que procesa de forma asíncrona BPM/mood y huella acústica delegando en LibraryService."""
+		return await self.library_service.run_background_mood_analysis(state=self)
 
 	async def fetch_yt_dlp_metadata(self, url):
-		"""Obtiene asincrónicamente la data de yt-dlp y avisa a los clientes"""
+		"""Obtiene asincrónicamente la data de yt-dlp y avisa a los clientes delegando en YtDlpService."""
 		if url in self.url_metadata:
 			return
 
-		finder = _srv("find_binary", find_binary)
-		ytdlp_bin = finder("yt-dlp")
-		if not ytdlp_bin:
-			try:
-				import ytdlp_installer
-
-				try:
-					from scripts import ytdlp_installer
-				except ImportError:
-					import ytdlp_installer
-
-				logger.info("yt-dlp no encontrado para procesar link de YouTube. Intentando instalar...")
-				installed = await asyncio.to_thread(ytdlp_installer.ensure_ytdlp)
-				if installed:
-					ytdlp_bin = installed
-			except Exception as e:
-				logger.error(f"No se pudo instalar yt-dlp en tiempo de ejecución: {e}")
-
-		if not ytdlp_bin:
-			ytdlp_bin = "yt-dlp"
-
-		try:
-			logger.info(f"Che yt-dlp, averiguate la data de este link: {url}")
-			proc = await asyncio.create_subprocess_exec(
-				ytdlp_bin,
-				"--dump-json",
-				"--no-warnings",
-				"--no-playlist",
-				url,
-				stdout=asyncio.subprocess.PIPE,
-				stderr=asyncio.subprocess.DEVNULL,
-				env=get_clean_env(),
-			)
-			stdout, _ = await proc.communicate()
-
-			if stdout:
-				data = json.loads(stdout.decode("utf-8"))
-				title = data.get("title", "Título Misterioso")
-				artist = data.get("uploader", "Artista NN")
-				duration = data.get("duration", 0)
-
-				mins = int(duration // 60) if duration else 0
-				secs = int(duration % 60) if duration else 0
-
-				self.url_metadata[url] = {
-					"path": url,
-					"display_title": title,
-					"display_artist": artist,
-					"album": "Internet",
-					"duration_str": f"{mins}:{secs:02d}",
-					"search_string": f"{artist} {title}".lower(),
-					"title": title,
-					"artist": artist,
-				}
-
-				self.id_to_current_path[url] = url
-				self.path_to_id[url] = url
-
-				logger.info(f"Data fresquita conseguida: {artist} - {title}")
-				await broadcast_state()
-		except Exception as e:
-			logger.error(f"Pifió yt-dlp sacando la info de {url}, se empacó: {e}")
+		meta = await self.ytdlp_service.fetch_metadata(url)
+		if meta:
+			self.url_metadata[url] = meta
+			self.id_to_current_path[url] = url
+			self.path_to_id[url] = url
+			logger.info(f"Data fresquita conseguida: {meta.get('artist')} - {meta.get('title')}")
+			await broadcast_state()
 
 	# Los handlers de eventos actualizan el estado, que los clientes reciben en su próxima sincronización
 	async def handle_song_ended(self, reason: str = "eof", file_error: str | None = None):
@@ -1181,35 +623,9 @@ class APIState:
 			self._start_radio_pregeneration(current_track_path=str_path, track_duration=track_duration)
 
 	def _prune_radio_archive(self, max_files: int | None = None) -> int:
-		"""Elimina los guiones históricos más antiguos por encima del límite configurado y limpia cualquier MP3 residual."""
+		"""Elimina guiones históricos viejos delegando en RadioService."""
 		limit = max_files if max_files is not None else self.radio_archive_max_files
-		if limit <= 0:
-			return 0
-		try:
-			if not self.radio_archive_dir.is_dir():
-				return 0
-			# Limpiar cualquier MP3 residual en el directorio temporal de archivo
-			for mp3 in self.radio_archive_dir.glob("radio_*.mp3"):
-				try:
-					mp3.unlink(missing_ok=True)
-				except Exception:
-					pass
-
-			# Ordenar por mtime ascendente (los más antiguos primero)
-			txt_files = sorted(
-				self.radio_archive_dir.glob("radio_*.txt"),
-				key=lambda p: (p.stat().st_mtime, p.name),
-			)
-			pruned = 0
-			if len(txt_files) > limit:
-				to_remove = txt_files[: len(txt_files) - limit]
-				for txt in to_remove:
-					txt.unlink(missing_ok=True)
-					pruned += 1
-			return pruned
-		except Exception as e:
-			logger.debug(f"Error podando archivo histórico de locuciones: {e}")
-			return 0
+		return self.radio_service.prune_radio_archive(self.radio_archive_dir, max_files=limit)
 
 	def _archive_radio_announcement(
 		self,
@@ -1217,34 +633,13 @@ class APIState:
 		script_text: str = "",
 		display_title: str = "",
 	) -> Path | None:
-		"""
-		Guarda el guion .txt en el directorio de archivo histórico con marca temporal.
-		No almacena archivos MP3 en /tmp ya que los segmentos de audio se encuentran
-		persistidos en la base de datos SQLite (tts_cache).
-		"""
-		try:
-			self.radio_archive_dir.mkdir(parents=True, exist_ok=True)
-
-			now = datetime.now(UTC).astimezone()
-			ts_str = now.strftime("%Y-%m-%d_%H-%M-%S")
-			dest_txt = self.radio_archive_dir / f"radio_{ts_str}.txt"
-
-			# Si ya existiera en el mismo segundo, añadir sufijo con microsegundos
-			if dest_txt.exists():
-				dest_txt = self.radio_archive_dir / f"radio_{ts_str}_{now.microsecond:06d}.txt"
-
-			header = f"Título: {display_title}\nFecha: {now.isoformat()}\n\n" if display_title else ""
-			dest_txt.write_text(f"{header}{script_text.strip()}\n", encoding="utf-8")
-
-			logger.debug(f"📻 Guion radial archivado en: {dest_txt.name}")
-
-			# Poda de retención
-			self._prune_radio_archive()
-
-			return dest_txt
-		except Exception as e:
-			logger.debug(f"No se pudo archivar el guion radial: {e}")
-			return None
+		"""Guarda el guion .txt delegando en RadioService."""
+		return self.radio_service.archive_radio_announcement(
+			archive_dir=self.radio_archive_dir,
+			script_text=script_text,
+			display_title=display_title,
+			max_files=self.radio_archive_max_files,
+		)
 
 	def _cancel_radio_pregeneration(self):
 		"""Cancela cualquier pregeneración en curso de la locución radial y limpia archivos parciales."""
@@ -1267,8 +662,8 @@ class APIState:
 		Genera la pista de voz limpia y masterizada para poder superponer la cortina musical
 		en caliente sobre la canción que efectivamente toque al finalizar.
 		"""
-		has_edge = _srv("HAS_EDGE_TTS", HAS_EDGE_TTS)
-		create_ann_fn = _srv("create_radio_announcement", create_radio_announcement)
+		has_edge = getattr(radio_service_mod, "HAS_EDGE_TTS", False)
+		create_ann_fn = getattr(radio_service_mod, "create_radio_announcement", None)
 		if not self.radio_mode_enabled or not has_edge or create_ann_fn is None:
 			return
 
@@ -1279,7 +674,6 @@ class APIState:
 		self._cancel_radio_pregeneration()
 
 		async def _do_pregeneration():
-			from datetime import datetime
 
 			now = datetime.now(UTC).astimezone()
 			finish_dt = now + timedelta(seconds=max(0.0, track_duration)) if track_duration > 0 else now
@@ -1376,8 +770,8 @@ class APIState:
 			self.pause_after_path = None
 
 		# Modo Radio: Intervención de locución cada 2 o 3 canciones durante transiciones naturales
-		has_edge = _srv("HAS_EDGE_TTS", HAS_EDGE_TTS)
-		create_ann_fn = _srv("create_radio_announcement", create_radio_announcement)
+		has_edge = getattr(radio_service_mod, "HAS_EDGE_TTS", False)
+		create_ann_fn = getattr(radio_service_mod, "create_radio_announcement", None)
 		has_next_track = bool(self.queue or (self.dj_carpincho_enabled and self.tracks_cache))
 		if (
 			not skipped_by_user
@@ -1391,8 +785,8 @@ class APIState:
 			self.radio_track_counter += 1
 			if self.radio_track_counter >= self.radio_tracks_until_next:
 				# Preguntamos si hay internet puntualmente antes de activar la síntesis radial
-				chk_internet = _srv("check_internet_async", check_internet_async)
-				if not await chk_internet(timeout=0.8):
+				check_net_fn = getattr(radio_service_mod, "check_internet_async", check_internet_async)
+				if not await check_net_fn(timeout=0.8):
 					self.radio_track_counter = 0
 					self.radio_tracks_until_next = random.randint(2, 3)
 					logger.warning(
@@ -1424,57 +818,14 @@ class APIState:
 							bg_offset = total_dur * 0.4
 
 					async def _apply_hot_mix_to_announcement(voice_file: Path, out_file: Path, title: str) -> bool:
-						"""Superpone la cortina musical en caliente sobre la voz usando la pista que efectivamente suena después."""
-						mixed_ok = False
-						mix_fn = _srv("mix_announcement_with_bg_track", mix_announcement_with_bg_track)
-						embed_fn = _srv("embed_cover_art_in_mp3", embed_cover_art_in_mp3)
-						if next_track_path and Path(next_track_path).is_file() and mix_fn is not None:
-							try:
-								mixed = await asyncio.to_thread(
-									mix_fn,
-									voice_file,
-									out_file,
-									next_track_path,
-									bg_offset,
-									0.1,
-									10.0,
-								)
-								if mixed:
-									if embed_fn is not None:
-										get_cov = _srv("get_carpincho_cover_path", get_carpincho_cover_path)
-										cover_p = get_cov() if get_cov else None
-										await asyncio.to_thread(
-											embed_fn,
-											out_file,
-											cover_p,
-											title,
-											"Carpincho Locutor 🎙️",
-											"La Rockola del Carpincho",
-										)
-									mixed_ok = True
-							except Exception as mix_err:
-								logger.debug(f"Fallo en mezcla en caliente con '{next_track_path}': {mix_err}")
-
-						# Copiar archivos de subtítulos sincronizados si existen
-						for ext in (".lrc", ".srt"):
-							sub_src = voice_file.with_suffix(ext)
-							sub_dst = out_file.with_suffix(ext)
-							if sub_src.is_file():
-								try:
-									shutil.copyfile(sub_src, sub_dst)
-								except Exception as copy_sub_err:
-									logger.debug(f"Error copiando subtítulo {sub_src} a {sub_dst}: {copy_sub_err}")
-
-						if not mixed_ok:
-							# Fallback seguro si no hay pista de fondo o falló la mezcla en caliente
-							try:
-								shutil.copyfile(voice_file, out_file)
-							except Exception as copy_err:
-								logger.error(
-									f"Error copiando archivo de locución {voice_file} a {out_file}: {copy_err}"
-								)
-								return False
-						return True
+						"""Superpone la cortina musical delegando en RadioService."""
+						return await self.radio_service.apply_hot_mix_to_announcement(
+							voice_file=voice_file,
+							out_file=out_file,
+							title=title,
+							next_track_path=next_track_path,
+							bg_offset=bg_offset,
+						)
 
 					# 1. Comprobar si ya está lista la pregeneración de fondo (0 ms de latencia)
 					if self.pregenerated_radio_announcement:
@@ -1712,22 +1063,8 @@ class APIState:
 		two_months_ago = now - (30 * 24 * 3600 * 2)
 
 		try:
-			with sqlite3.connect(_get_active_db_path()) as conn:
-				c = conn.cursor()
-				# SQL hace todo el trabajo pesado: cuenta y ordena los más escuchados
-				c.execute(
-					"""
-					SELECT track_id, COUNT(*) as count
-					FROM play_history
-					WHERE played_at >= ?
-					  AND (track_id NOT LIKE '%radio_announcement.mp3%' OR track_id IN (SELECT track_id FROM tracks))
-					GROUP BY track_id
-					ORDER BY count DESC
-					LIMIT 50
-				""",
-					(two_months_ago,),
-				)
-				results = c.fetchall()
+			rows = self.history_repo.get_top_played(limit=50, since=two_months_ago)
+			results = [(r["track_id"], r["count"]) for r in rows]
 		except Exception as e:
 			logger.error(f"Error calculando el top played: {e}")
 			return []

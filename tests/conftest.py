@@ -38,11 +38,17 @@ def mock_mpv():
 
 
 @pytest.fixture
-def clean_state(temp_db, mock_mpv):
+def clean_state(temp_db, mock_mpv, monkeypatch):
 	"""Provides a fresh, isolated APIState instance."""
+	from app.core.dependencies import get_state, set_global_state
+
 	state = server.APIState()
 	state.mpv = mock_mpv
-	return state
+	orig_state = get_state()
+	set_global_state(state)
+	monkeypatch.setattr(server, "state", state, raising=False)
+	yield state
+	set_global_state(orig_state)
 
 
 @pytest.fixture
@@ -52,13 +58,17 @@ def test_db(temp_db):
 
 
 @pytest.fixture
-def clean_manager():
+def clean_manager(monkeypatch):
 	"""Provides a fresh ConnectionManager instance."""
+	from app.core.dependencies import get_manager, set_global_manager
+
 	mgr = server.ConnectionManager()
+	orig_mgr = get_manager()
+	set_global_manager(mgr)
+	monkeypatch.setattr(server, "manager", mgr, raising=False)
 	yield mgr
 	mgr.local_player_ws = None
-	if hasattr(server, "manager") and server.manager is not None:
-		server.manager.local_player_ws = None
+	set_global_manager(orig_mgr)
 
 
 @pytest.fixture

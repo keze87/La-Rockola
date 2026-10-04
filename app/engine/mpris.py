@@ -77,14 +77,6 @@ if not DBUS_AVAILABLE:
 			self.name = name
 
 
-def _srv(name: str, fallback: Any = None) -> Any:
-	"""Resuelve símbolos dinámicos desde server.py para soportar monkeypatching en tests."""
-	srv = sys.modules.get("server")
-	if srv is not None and hasattr(srv, name):
-		return getattr(srv, name)
-	return fallback
-
-
 b = s = d = x = o = str
 
 
@@ -95,14 +87,9 @@ def build_mpris_metadata(track_or_state: Any, server_url: str = "", variant_cls:
 	"""
 	v_cls = variant_cls or Variant
 
-	cover_art_finder = _srv("get_cover_art_uri", None)
-	if cover_art_finder is None:
-		try:
-			from app.services.library import get_cover_art_uri
+	import app.services.library as lib_service
 
-			cover_art_finder = get_cover_art_uri
-		except ImportError:
-			cover_art_finder = lambda p: None
+	cover_art_finder = getattr(lib_service, "get_cover_art_uri", lambda p: None)
 
 	# 1. Si es un diccionario con datos directos de pista
 	if isinstance(track_or_state, dict):
@@ -250,26 +237,12 @@ class MPRISPlayer(ServiceInterface):
 		if self.command_handler:
 			asyncio.create_task(self.command_handler(cmd, **kwargs))
 			return
-		srv = sys.modules.get("server")
-		handler = None
-		if srv is not None and hasattr(srv, "handle_command"):
-			handler = srv.handle_command
-		if handler is None:
-			try:
-				from app.api.v1.playback import handle_command_endpoint
+		import app.api.v1.playback as playback_mod
+		from app.api.schemas import CommandRequest
 
-				handler = handle_command_endpoint
-			except ImportError:
-				pass
-
-		if handler is not None:
-			cmd_req_cls = getattr(srv, "CommandRequest", None)
-			if cmd_req_cls is None:
-				from app.api.schemas import CommandRequest
-
-				cmd_req_cls = CommandRequest
-			req = cmd_req_cls(cmd=cmd, **kwargs)
-			asyncio.create_task(handler(req))
+		handler = getattr(playback_mod, "handle_command_endpoint", None) or playback_mod.handle_command
+		req = CommandRequest(cmd=cmd, **kwargs)
+		asyncio.create_task(handler(req))
 
 	@method()
 	def Next(self):

@@ -81,10 +81,10 @@ async def test_play_next_increments_counter_and_triggers_radio():
 		state.current_track = path
 
 	with (
-		patch("server.HAS_EDGE_TTS", True),
-		patch("server.create_radio_announcement", mock_create),
+		patch("app.services.radio.HAS_EDGE_TTS", True),
+		patch("app.services.radio.create_radio_announcement", mock_create),
 		patch.object(state, "play_track", side_effect=fake_play_track) as mock_play,
-		patch("server.broadcast_state", AsyncMock()),
+		patch("app.engine.state.broadcast_state", AsyncMock()),
 	):
 		await state.play_next(skipped_by_user=False)
 
@@ -117,7 +117,7 @@ async def test_radio_announcement_finished_does_not_enter_history():
 
 	with (
 		patch.object(state, "play_track", AsyncMock()) as mock_play,
-		patch("server.broadcast_state", AsyncMock()),
+		patch("app.engine.state.broadcast_state", AsyncMock()),
 	):
 		# Announcement finishes naturally
 		await state.play_next(skipped_by_user=False)
@@ -139,7 +139,7 @@ async def test_skip_during_radio_announcement():
 
 	with (
 		patch.object(state, "play_track", AsyncMock()) as mock_play,
-		patch("server.broadcast_state", AsyncMock()),
+		patch("app.engine.state.broadcast_state", AsyncMock()),
 	):
 		# User presses skip
 		await state.play_next(skipped_by_user=True)
@@ -204,10 +204,10 @@ async def test_radio_announcement_failure_logs_reason(caplog):
 	mock_create = AsyncMock(return_value=(False, "", "Fallo simulado de conexión"))
 
 	with (
-		patch("server.HAS_EDGE_TTS", True),
-		patch("server.create_radio_announcement", mock_create),
+		patch("app.services.radio.HAS_EDGE_TTS", True),
+		patch("app.services.radio.create_radio_announcement", mock_create),
 		patch.object(state, "play_track", AsyncMock()) as mock_play,
-		patch("server.broadcast_state", AsyncMock()),
+		patch("app.engine.state.broadcast_state", AsyncMock()),
 		caplog.at_level(logging.WARNING),
 	):
 		await state.play_next(skipped_by_user=False)
@@ -234,10 +234,10 @@ async def test_toggle_queue_initial_playback_does_not_trigger_radio():
 	mock_create = AsyncMock()
 
 	with (
-		patch("server.HAS_EDGE_TTS", True),
-		patch("server.create_radio_announcement", mock_create),
+		patch("app.services.radio.HAS_EDGE_TTS", True),
+		patch("app.services.radio.create_radio_announcement", mock_create),
 		patch.object(state, "play_track", AsyncMock()) as mock_play,
-		patch("server.broadcast_state", AsyncMock()),
+		patch("app.engine.state.broadcast_state", AsyncMock()),
 	):
 		await state.toggle_queue("/music/song1.mp3")
 
@@ -275,11 +275,11 @@ async def test_play_next_skips_radio_locution_when_no_internet():
 	mock_create = AsyncMock()
 
 	with (
-		patch("server.HAS_EDGE_TTS", True),
-		patch("server.create_radio_announcement", mock_create),
-		patch("server.check_internet_async", AsyncMock(return_value=False)),
+		patch("app.services.radio.HAS_EDGE_TTS", True),
+		patch("app.services.radio.create_radio_announcement", mock_create),
+		patch("app.services.radio.check_internet_async", AsyncMock(return_value=False)),
 		patch.object(state, "play_track", AsyncMock()) as mock_play,
-		patch("server.broadcast_state", AsyncMock()),
+		patch("app.engine.state.broadcast_state", AsyncMock()),
 	):
 		await state.play_next(skipped_by_user=False)
 
@@ -306,11 +306,11 @@ async def test_play_next_passes_configured_weather_location():
 	mock_create = AsyncMock(return_value=(True, "Carpincho Locutor", "Locución"))
 
 	with (
-		patch("server.HAS_EDGE_TTS", True),
-		patch("server.create_radio_announcement", mock_create),
-		patch("server.check_internet_async", AsyncMock(return_value=True)),
+		patch("app.services.radio.HAS_EDGE_TTS", True),
+		patch("app.services.radio.create_radio_announcement", mock_create),
+		patch("app.services.radio.check_internet_async", AsyncMock(return_value=True)),
 		patch.object(state, "play_track", AsyncMock()),
-		patch("server.broadcast_state", AsyncMock()),
+		patch("app.engine.state.broadcast_state", AsyncMock()),
 	):
 		await state.play_next(skipped_by_user=False)
 
@@ -334,9 +334,9 @@ async def test_radio_pregeneration_starts_at_song_start(tmp_path):
 	mock_create = AsyncMock(return_value=(True, "Carpincho Pregenerado", "Discurso anticipado"))
 
 	with (
-		patch("server.HAS_EDGE_TTS", True),
-		patch("server.create_radio_announcement", mock_create),
-		patch("server.broadcast_state", AsyncMock()),
+		patch("app.services.radio.HAS_EDGE_TTS", True),
+		patch("app.services.radio.create_radio_announcement", mock_create),
+		patch("app.engine.state.broadcast_state", AsyncMock()),
 	):
 		await state.play_track("/music/current_song.mp3")
 
@@ -373,10 +373,10 @@ async def test_play_next_uses_pregenerated_announcement(tmp_path):
 		state.current_track = path
 
 	with (
-		patch("server.HAS_EDGE_TTS", True),
-		patch("server.create_radio_announcement", mock_create_live),
+		patch("app.services.radio.HAS_EDGE_TTS", True),
+		patch("app.services.radio.create_radio_announcement", mock_create_live),
 		patch.object(state, "play_track", side_effect=fake_play_track),
-		patch("server.broadcast_state", AsyncMock()),
+		patch("app.engine.state.broadcast_state", AsyncMock()),
 	):
 		await state.play_next(skipped_by_user=False)
 
@@ -416,11 +416,11 @@ async def test_hot_bg_track_mixing_on_queue_change(tmp_path):
 		state.current_track = path
 
 	with (
-		patch("server.HAS_EDGE_TTS", True),
-		patch("server.mix_announcement_with_bg_track", mock_mix),
-		patch("server.embed_cover_art_in_mp3", mock_embed),
+		patch("app.services.radio.HAS_EDGE_TTS", True),
+		patch("app.services.radio.mix_announcement_with_bg_track", mock_mix),
+		patch("app.services.radio.embed_cover_art_in_mp3", mock_embed),
 		patch.object(state, "play_track", side_effect=fake_play_track),
-		patch("server.broadcast_state", AsyncMock()),
+		patch("app.engine.state.broadcast_state", AsyncMock()),
 	):
 		await state.play_next(skipped_by_user=False)
 
@@ -467,11 +467,11 @@ async def test_pregenerated_announcement_copies_subtitles_to_radio_announcement(
 	mock_mix = MagicMock(return_value=True)
 
 	with (
-		patch("server.HAS_EDGE_TTS", True),
-		patch("server.mix_announcement_with_bg_track", mock_mix),
-		patch("server.embed_cover_art_in_mp3", MagicMock()),
+		patch("app.services.radio.HAS_EDGE_TTS", True),
+		patch("app.services.radio.mix_announcement_with_bg_track", mock_mix),
+		patch("app.services.radio.embed_cover_art_in_mp3", MagicMock()),
 		patch.object(state, "play_track", AsyncMock()),
-		patch("server.broadcast_state", AsyncMock()),
+		patch("app.engine.state.broadcast_state", AsyncMock()),
 	):
 		await state.play_next(skipped_by_user=False)
 
@@ -510,10 +510,10 @@ async def test_pregenerated_announcement_expires_after_15_minutes(tmp_path):
 		state.current_track = path
 
 	with (
-		patch("server.HAS_EDGE_TTS", True),
-		patch("server.create_radio_announcement", mock_create_live),
+		patch("app.services.radio.HAS_EDGE_TTS", True),
+		patch("app.services.radio.create_radio_announcement", mock_create_live),
 		patch.object(state, "play_track", side_effect=fake_play_track),
-		patch("server.broadcast_state", AsyncMock()),
+		patch("app.engine.state.broadcast_state", AsyncMock()),
 	):
 		await state.play_next(skipped_by_user=False)
 
@@ -573,10 +573,10 @@ async def test_pregenerated_corrupt_file_rejected_falls_back_to_live(tmp_path):
 		state.current_track = path
 
 	with (
-		patch("server.HAS_EDGE_TTS", True),
-		patch("server.create_radio_announcement", mock_create_live),
+		patch("app.services.radio.HAS_EDGE_TTS", True),
+		patch("app.services.radio.create_radio_announcement", mock_create_live),
 		patch.object(state, "play_track", side_effect=fake_play_track),
-		patch("server.broadcast_state", AsyncMock()),
+		patch("app.engine.state.broadcast_state", AsyncMock()),
 	):
 		await state.play_next(skipped_by_user=False)
 
@@ -675,10 +675,10 @@ async def test_play_next_archives_announcement_and_script(tmp_path):
 		state.current_track = path
 
 	with (
-		patch("server.HAS_EDGE_TTS", True),
-		patch("server.create_radio_announcement", mock_create),
+		patch("app.services.radio.HAS_EDGE_TTS", True),
+		patch("app.services.radio.create_radio_announcement", mock_create),
 		patch.object(state, "play_track", side_effect=fake_play_track),
-		patch("server.broadcast_state", AsyncMock()),
+		patch("app.engine.state.broadcast_state", AsyncMock()),
 	):
 		await state.play_next(skipped_by_user=False)
 

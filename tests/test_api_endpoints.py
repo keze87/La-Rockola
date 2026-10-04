@@ -300,7 +300,7 @@ async def test_serve_cover_flac_and_id3_extraction(tmp_path, clean_state, monkey
 	mock_audio = MagicMock()
 	mock_audio.pictures = [mock_pic]
 
-	with patch("server.MutagenFile", return_value=mock_audio):
+	with patch("app.api.v1.media.MutagenFile", return_value=mock_audio):
 		res = await server.serve_cover(path=str(dummy_path))
 		assert res.status_code == 200
 		assert res.media_type == "image/jpeg"

@@ -294,7 +294,9 @@ def test_check_dependencies_frozen_message(monkeypatch, capsys):
 		"find_spec",
 		lambda m: None if m in ("dbus_next",) else MagicMock(),
 	)
-	monkeypatch.setattr(server, "find_binary", lambda name: None if name == "ffmpeg" else "/usr/bin/mpv")
+	find_fn = lambda name: None if name == "ffmpeg" else "/usr/bin/mpv"
+	monkeypatch.setattr(server, "find_binary", find_fn)
+	monkeypatch.setattr("app.engine.audio_analysis.find_binary", find_fn)
 
 	server.check_dependencies(force=True)
 	captured = capsys.readouterr()

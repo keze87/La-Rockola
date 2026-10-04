@@ -26,9 +26,9 @@ def test_get_full_state_dict_includes_weather_location():
 async def test_set_weather_location_command(tmp_path):
 	dummy_config_file = tmp_path / "rockola_config.json"
 	with (
-		patch("server.get_config_path", return_value=dummy_config_file),
+		patch("app.core.config.get_config_path", return_value=dummy_config_file),
 		patch("scripts.radio_announcer.reset_weather_cache") as mock_reset_cache,
-		patch("server.broadcast_state", new_callable=AsyncMock) as mock_broadcast,
+		patch("app.engine.state.broadcast_state", new_callable=AsyncMock) as mock_broadcast,
 	):
 		req = CommandRequest(cmd="set_weather_location", location="-34.6037,-58.3816")
 		res = await handle_command(req)

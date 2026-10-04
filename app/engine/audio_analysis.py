@@ -17,14 +17,6 @@ from typing import Any
 logger = logging.getLogger("RockolaCarpincho")
 
 
-def _srv(name: str, fallback: Any = None) -> Any:
-	"""Resuelve símbolos dinámicos desde server.py para soportar monkeypatching en tests."""
-	srv = sys.modules.get("server")
-	if srv is not None and hasattr(srv, name):
-		return getattr(srv, name)
-	return fallback
-
-
 try:
 	from scripts.binary_utils import ensure_display_env, get_clean_env
 except ImportError:
@@ -41,25 +33,25 @@ except ImportError:
 
 def find_binary(bin_name: str) -> str | None:
 	"""Busca un binario en rutas prioritarias locales, datos de usuario o en el PATH del sistema."""
+	from app.core.config import get_carpincho_data_dir
+
 	is_win = sys.platform == "win32" or os.name == "nt"
 	base = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parents[2]
 	exts = [".exe", ""] if is_win else [""]
 
 	py_bin_dir = Path(sys.prefix) / ("Scripts" if is_win else "bin")
 	dirs: list[Path] = [base, base / "bin", base / "mpv", base / bin_name, py_bin_dir]
-	srv = sys.modules.get("server")
-	data_dir = getattr(srv, "DATA_DIR", None) if srv else None
-	if data_dir and isinstance(data_dir, Path):
-		dirs.extend(
-			[
-				data_dir,
-				data_dir / "bin",
-				data_dir / "mpv",
-				data_dir / bin_name,
-				data_dir.parent / "mpv",
-				data_dir.parent / bin_name,
-			]
-		)
+	data_dir = get_carpincho_data_dir()
+	dirs.extend(
+		[
+			data_dir,
+			data_dir / "bin",
+			data_dir / "mpv",
+			data_dir / bin_name,
+			data_dir.parent / "mpv",
+			data_dir.parent / bin_name,
+		]
+	)
 
 	# 1. Buscar en directorios locales prioritarios de la aplicación
 	for d in dirs:
@@ -68,17 +60,23 @@ def find_binary(bin_name: str) -> str | None:
 			if cand.is_file():
 				return str(cand)
 
+	def _safe_which(cmd: str) -> str | None:
+		try:
+			return shutil.which(cmd)
+		except Exception:
+			return None
+
 	# 2. Buscar en PATH estándar
-	found = shutil.which(bin_name)
+	found = _safe_which(bin_name)
 	if not found and is_win and not bin_name.lower().endswith(".exe"):
-		found = shutil.which(f"{bin_name}.exe")
+		found = _safe_which(f"{bin_name}.exe")
 	if found:
 		return found
 
 	# 3. Si buscamos yt-dlp, verificar si está en la misma carpeta que mpv
 	if bin_name == "yt-dlp":
 		try:
-			mpv_found = shutil.which("mpv") or (shutil.which("mpv.exe") if is_win else None)
+			mpv_found = _safe_which("mpv") or (_safe_which("mpv.exe") if is_win else None)
 			if mpv_found:
 				mpv_dir = Path(mpv_found).parent
 				for ext in exts:
@@ -141,8 +139,7 @@ def find_binary(bin_name: str) -> str | None:
 
 def is_mood_available() -> bool:
 	"""Determina si la capacidad de análisis acústico (FFmpeg) está disponible."""
-	finder = _srv("find_binary", find_binary)
-	return finder("ffmpeg") is not None
+	return find_binary("ffmpeg") is not None
 
 
 def extract_audio_features_ffmpeg(path: str | Path, ffmpeg_bin: str = "ffmpeg") -> tuple[float, float, float]:
@@ -152,8 +149,7 @@ def extract_audio_features_ffmpeg(path: str | Path, ffmpeg_bin: str = "ffmpeg") 
 	Devuelve (bpm, energy, centroid). Si falla, retorna (-1.0, -1.0, -1.0).
 	"""
 	try:
-		finder = _srv("find_binary", find_binary)
-		bin_path = finder(ffmpeg_bin) or ffmpeg_bin
+		bin_path = find_binary(ffmpeg_bin) or ffmpeg_bin
 		clean_env = get_clean_env()
 		cmd = [
 			bin_path,

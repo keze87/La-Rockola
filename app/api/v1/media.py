@@ -8,9 +8,7 @@ import hashlib
 import io
 import logging
 import os
-import sys
 from pathlib import Path
-from typing import Any
 
 from fastapi import APIRouter, Query, Request, Response
 from fastapi.responses import FileResponse
@@ -20,14 +18,6 @@ from app.core.dependencies import get_state
 
 logger = logging.getLogger("RockolaCarpincho")
 router = APIRouter(tags=["Media"])
-
-
-def _srv(name: str, fallback: Any = None) -> Any:
-	"""Resuelve símbolos dinámicos desde server.py para soportar monkeypatching en tests."""
-	srv = sys.modules.get("server")
-	if srv is not None and hasattr(srv, name):
-		return getattr(srv, name)
-	return fallback
 
 
 HAS_PIL = False
@@ -131,8 +121,7 @@ async def serve_cover(
 				mime_type = c_mime
 
 		if not cover_data:
-			mutagen_cls = _srv("MutagenFile", MutagenFile)
-			audio = mutagen_cls(path)
+			audio = MutagenFile(path)
 			if not audio:
 				_COVER_MEM_CACHE[cache_key] = (mtime, file_size, None, "image/jpeg", etag)
 				return Response(status_code=404, headers=cache_headers)

@@ -244,6 +244,7 @@ def test_check_dependencies_installs_ffmpeg_on_windows(monkeypatch, tmp_path):
 		return None
 
 	monkeypatch.setattr(server, "find_binary", fake_find)
+	monkeypatch.setattr("app.engine.audio_analysis.find_binary", fake_find)
 	monkeypatch.setattr("server.importlib.util.find_spec", lambda mod: True)
 
 	with (

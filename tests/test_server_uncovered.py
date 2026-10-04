@@ -42,9 +42,9 @@ def test_enable_system_site_packages():
 
 def test_is_mood_available_with_ffmpeg():
 	"""Verify is_mood_available checks for ffmpeg binary."""
-	with patch("server.find_binary", return_value="/usr/bin/ffmpeg"):
+	with patch("app.engine.audio_analysis.find_binary", return_value="/usr/bin/ffmpeg"):
 		assert server.is_mood_available() is True
-	with patch("server.find_binary", return_value=None):
+	with patch("app.engine.audio_analysis.find_binary", return_value=None):
 		assert server.is_mood_available() is False
 
 
@@ -70,7 +70,7 @@ def test_check_python_packages():
 	"""Verify _check_python_packages detects missing required and optional packages."""
 	with patch("importlib.util.find_spec") as mock_find:
 		mock_find.return_value = None
-		with patch("server.find_binary", return_value=None):
+		with patch("app.engine.audio_analysis.find_binary", return_value=None):
 			missing_req, missing_opt = server._check_python_packages(is_frozen=False, force=True)
 			req_names = [m[0] for m in missing_req]
 			assert "fastapi" in req_names
@@ -80,14 +80,14 @@ def test_check_python_packages():
 
 def test_check_mpv_portable():
 	"""Verify _check_mpv behaves correctly when portable and mpv is missing/installed."""
-	with patch("server.find_binary", return_value=None):
+	with patch("app.engine.audio_analysis.find_binary", return_value=None):
 		with patch.object(scripts.mpv_installer, "install_mpv", return_value=True):
-			with patch("server.find_binary", side_effect=[None, "/path/to/mpv"]):
+			with patch("app.engine.audio_analysis.find_binary", side_effect=[None, "/path/to/mpv"]):
 				result = server._check_mpv(is_win=True, is_mac=False, is_frozen=True)
 				assert result is None
 
 		with patch.object(scripts.mpv_installer, "install_mpv", side_effect=RuntimeError("Download error")):
-			with patch("server.find_binary", return_value=None):
+			with patch("app.engine.audio_analysis.find_binary", return_value=None):
 				result = server._check_mpv(is_win=True, is_mac=False, is_frozen=True)
 				assert result is not None
 				assert result[0] == "mpv"
@@ -96,14 +96,14 @@ def test_check_mpv_portable():
 
 def test_check_ytdlp_portable():
 	"""Verify _check_ytdlp behaves correctly when missing and installs or fails."""
-	with patch("server.find_binary", return_value=None):
+	with patch("app.engine.audio_analysis.find_binary", return_value=None):
 		with patch.object(scripts.ytdlp_installer, "install_ytdlp", return_value=True):
-			with patch("server.find_binary", side_effect=[None, "/path/to/yt-dlp"]):
+			with patch("app.engine.audio_analysis.find_binary", side_effect=[None, "/path/to/yt-dlp"]):
 				result = server._check_ytdlp(is_win=False, is_mac=False, is_frozen=True)
 				assert result is None
 
 		with patch.object(scripts.ytdlp_installer, "install_ytdlp", side_effect=RuntimeError("Network error")):
-			with patch("server.find_binary", return_value=None):
+			with patch("app.engine.audio_analysis.find_binary", return_value=None):
 				result = server._check_ytdlp(is_win=False, is_mac=False, is_frozen=False)
 				assert result is not None
 				assert result[0] == "yt-dlp"
@@ -111,22 +111,22 @@ def test_check_ytdlp_portable():
 
 def test_check_portable_dependency_generic():
 	"""Verify _check_portable_dependency directly handles present, installed, and error states."""
-	with patch("server.find_binary", return_value="/usr/bin/tool"):
+	with patch("app.engine.audio_analysis.find_binary", return_value="/usr/bin/tool"):
 		res = server._check_portable_dependency("tool", None, "install", "ok", "fix", True)
 		assert res is None
 
 	fake_mod = MagicMock()
 	fake_mod.install.return_value = True
-	with patch("server.find_binary", side_effect=[None, "/path/installed"]):
+	with patch("app.engine.audio_analysis.find_binary", side_effect=[None, "/path/installed"]):
 		res = server._check_portable_dependency("tool", fake_mod, "install", "ok", "fix", True)
 		assert res is None
 
 
 def test_check_dependencies_exit():
 	"""Verify check_dependencies halts execution when required dependencies are missing."""
-	with patch("server._check_python_packages", return_value=([("fastapi", "pip install fastapi")], [])):
-		with patch("server._check_mpv", return_value=None):
-			with patch("server._check_ytdlp", return_value=None):
+	with patch("app.cli.entrypoint._check_python_packages", return_value=([("fastapi", "pip install fastapi")], [])):
+		with patch("app.cli.entrypoint._check_mpv", return_value=None):
+			with patch("app.cli.entrypoint._check_ytdlp", return_value=None):
 				with pytest.raises(SystemExit) as exc_info:
 					server.check_dependencies(force=True)
 				assert exc_info.value.code == 1
@@ -262,11 +262,11 @@ def test_select_folder_linux(tmp_path):
 def test_select_folder_dialog_dispatch(tmp_path):
 	"""Verify select_folder_dialog delegates by platform."""
 	with patch("sys.platform", "darwin"):
-		with patch("server._select_folder_macos", return_value=str(tmp_path)):
+		with patch("app.cli.wizard._select_folder_macos", return_value=str(tmp_path)):
 			assert server.select_folder_dialog() == str(tmp_path)
 
 	with patch("sys.platform", "linux"):
-		with patch("server._select_folder_linux", return_value=str(tmp_path)):
+		with patch("app.cli.wizard._select_folder_linux", return_value=str(tmp_path)):
 			assert server.select_folder_dialog() == str(tmp_path)
 
 
@@ -353,7 +353,7 @@ def test_extract_cover_art_file(tmp_path):
 	mock_pic.data = b"JPEG_IMAGE_DATA_123"
 	mock_audio.pictures = [mock_pic]
 
-	with patch("server.MutagenFile", return_value=mock_audio):
+	with patch("app.services.library.MutagenFile", return_value=mock_audio):
 		audio_file = tmp_path / "song.flac"
 		audio_file.write_bytes(b"FLAC_DATA")
 		cover_res = server.get_cover_art_uri(str(audio_file))
@@ -488,7 +488,7 @@ async def test_serve_favicon_etag_and_caching(tmp_path):
 	fav_file = tmp_path / "favicon.png"
 	fav_file.write_bytes(b"PNG_DATA")
 
-	with patch.object(server, "dist_dir", tmp_path):
+	with patch("app.main.get_dist_dirs", return_value=(tmp_path, tmp_path, tmp_path)):
 		# Normal 200 response
 		res200 = await server.serve_favicon(None)
 		assert res200.status_code == 200
@@ -551,7 +551,7 @@ async def test_serve_cover_variations(tmp_path):
 	mock_audio.pictures = []
 
 	server._COVER_MEM_CACHE.clear()
-	with patch("server.MutagenFile", return_value=mock_audio):
+	with patch("app.api.v1.media.MutagenFile", return_value=mock_audio):
 		res = await server.serve_cover(path=str(song_file), request=None)
 		assert res.status_code == 200
 		assert res.body == b"\xff\xd8\xffJPEG"
@@ -567,7 +567,7 @@ async def test_serve_cover_variations(tmp_path):
 	mock_audio_covr.pictures = []
 	server._COVER_MEM_CACHE.clear()
 
-	with patch("server.MutagenFile", return_value=mock_audio_covr):
+	with patch("app.api.v1.media.MutagenFile", return_value=mock_audio_covr):
 		res_covr = await server.serve_cover(path=str(song_file), request=None)
 		assert res_covr.status_code == 200
 		assert res_covr.headers["content-type"] == "image/png"
@@ -594,7 +594,7 @@ async def test_serve_cover_resizing(tmp_path):
 	mock_audio.pictures = []
 
 	server._COVER_MEM_CACHE.clear()
-	with patch("server.MutagenFile", return_value=mock_audio):
+	with patch("app.api.v1.media.MutagenFile", return_value=mock_audio):
 		# 1. Request resized cover (256px)
 		res_256 = await server.serve_cover(path=str(song_file), size=256, request=None)
 		assert res_256.status_code == 200

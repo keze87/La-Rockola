@@ -78,10 +78,6 @@ def get_config_path(custom_path: str | Path | None = None) -> Path:
 	"""Devuelve la ruta absoluta al archivo de configuración."""
 	if custom_path:
 		return Path(custom_path).expanduser().resolve()
-	srv = sys.modules.get("server")
-	data_dir = getattr(srv, "DATA_DIR", None) if srv else None
-	if data_dir and isinstance(data_dir, Path):
-		return data_dir / "rockola_config.json"
 	return get_carpincho_data_dir() / "rockola_config.json"
 
 

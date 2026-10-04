@@ -8,13 +8,13 @@ import asyncio
 import json
 import logging
 import random
-import sys
 from typing import Any
 
 from fastapi import APIRouter
 
+import app.core.config as config_mod
+import app.engine.state as state_mod
 from app.api.schemas import CommandRequest
-from app.core.config import get_config_path, load_config, save_config
 from app.core.dependencies import get_manager, get_state
 from app.db.repositories import FavoritesRepository
 
@@ -22,12 +22,23 @@ logger = logging.getLogger("RockolaCarpincho")
 router = APIRouter(tags=["Playback"])
 
 
-def _srv(name: str, fallback: Any = None) -> Any:
-	"""Resuelve símbolos dinámicos desde server.py para soportar monkeypatching en tests."""
-	srv = sys.modules.get("server")
-	if srv is not None and hasattr(srv, name):
-		return getattr(srv, name)
-	return fallback
+def _get_broadcast_fn(state: Any) -> Any:
+	"""Obtiene la función de broadcast respetando mocks en state, módulo actual o state_mod."""
+	if state and hasattr(state, "broadcast_state"):
+		return state.broadcast_state
+	local_bc = globals().get("broadcast_state")
+	if hasattr(local_bc, "called") or hasattr(local_bc, "assert_called"):
+		return local_bc
+	return getattr(state_mod, "broadcast_state", local_bc)
+
+
+async def _dispatch_broadcast(state: Any) -> None:
+	"""Ejecuta broadcast_state si está disponible y maneja corrutinas."""
+	bc = _get_broadcast_fn(state)
+	if bc:
+		res = bc()
+		if asyncio.iscoroutine(res):
+			await res
 
 
 @router.post("/command")
@@ -129,13 +140,13 @@ async def handle_command_endpoint(req: CommandRequest) -> dict[str, Any]:
 			if track_id in state.favorites:
 				state.favorites.remove(track_id)
 				try:
-					repo.remove(track_id)
+					await asyncio.to_thread(repo.remove, track_id)
 				except Exception as e:
 					logger.error(f"Error guardando favorito: {e}")
 			else:
 				state.favorites.append(track_id)
 				try:
-					repo.add(track_id)
+					await asyncio.to_thread(repo.add, track_id)
 				except Exception as e:
 					logger.error(f"Error guardando favorito: {e}")
 	elif cmd == "toggle_dj_carpincho":
@@ -161,10 +172,10 @@ async def handle_command_endpoint(req: CommandRequest) -> dict[str, Any]:
 		if req.location and isinstance(req.location, str):
 			new_loc = req.location.strip()
 			state.weather_location = new_loc
-			cfg_path = _srv("get_config_path", get_config_path)()
-			cfg = _srv("load_config", load_config)(cfg_path)
+			cfg_path = config_mod.get_config_path()
+			cfg = config_mod.load_config(cfg_path)
 			cfg["weather_location"] = new_loc
-			_srv("save_config", save_config)(cfg_path, cfg)
+			config_mod.save_config(cfg_path, cfg)
 			try:
 				from scripts.radio_announcer import reset_weather_cache
 			except ImportError:
@@ -178,8 +189,10 @@ async def handle_command_endpoint(req: CommandRequest) -> dict[str, Any]:
 			reset_weather_cache()
 			logger.info(f"Ubicación del clima actualizada a: {state.weather_location}")
 	elif cmd == "pause_after":
-		if req.path is not None:
-			state.pause_after_path = req.path if state.pause_after_path != req.path else None
+		if req.path is None or state.pause_after_path == req.path:
+			state.pause_after_path = None
+		else:
+			state.pause_after_path = req.path
 	elif cmd == "remove_queue_item":
 		if req.index is not None and 0 <= req.index < len(state.queue):
 			state.queue.pop(req.index)
@@ -302,10 +315,7 @@ async def handle_command_endpoint(req: CommandRequest) -> dict[str, Any]:
 					state.queue = playlist[history_boundary:]
 					state._pick_dj_next()
 
-	bc = _srv("broadcast_state", getattr(state, "broadcast_state", None))
-	if bc:
-		await bc()
-
+	await _dispatch_broadcast(state)
 	return {"status": "ok"}
 
 
@@ -319,9 +329,7 @@ async def mpv_hide() -> dict[str, str]:
 	if state.mpv and state.mpv.is_running:
 		logger.info("Reiniciando MPV para ocultar la ventana...")
 		await state.mpv.start(is_restart=True, state_ref=state)
-	bc = _srv("broadcast_state", getattr(state, "broadcast_state", None))
-	if bc:
-		await bc()
+	await _dispatch_broadcast(state)
 	return {"status": "ok"}
 
 
@@ -335,9 +343,7 @@ async def mpv_show() -> dict[str, str]:
 	if state.mpv and state.mpv.is_running:
 		logger.info("Reiniciando MPV para mostrar la ventana...")
 		await state.mpv.start(is_restart=True, state_ref=state)
-	bc = _srv("broadcast_state", getattr(state, "broadcast_state", None))
-	if bc:
-		await bc()
+	await _dispatch_broadcast(state)
 	return {"status": "ok"}
 
 

@@ -26,14 +26,6 @@ logger = logging.getLogger("RockolaCarpincho")
 _dependencies_checked = False
 
 
-def _srv(name: str, fallback: Any = None) -> Any:
-	"""Resuelve símbolos dinámicos desde server.py para soportar monkeypatching en tests."""
-	srv = sys.modules.get("server")
-	if srv is not None and hasattr(srv, name):
-		return getattr(srv, name)
-	return fallback
-
-
 def get_local_ip() -> str:
 	"""Obtiene la dirección IP local de la máquina en la red LAN."""
 	s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -75,7 +67,7 @@ def get_url_subpath(url: str | None) -> str:
 
 def get_server_urls(host: str, port: int, custom_url: str | None = None) -> dict[str, Any]:
 	"""Calcula las URLs disponibles para acceder a La Rockola."""
-	local_ip = _srv("get_local_ip", get_local_ip)()
+	local_ip = globals().get("get_local_ip", get_local_ip)()
 	loopback_url = f"http://localhost:{port}"
 	norm_custom = normalize_url(custom_url)
 
@@ -106,7 +98,7 @@ def open_browser_url(url: str, delay: float = 0.0) -> None:
 	"""Abre la URL en el navegador nativo según la plataforma."""
 	from app.engine.audio_analysis import get_clean_env
 
-	clean_env = _srv("get_clean_env", get_clean_env)()
+	clean_env = get_clean_env()
 	if sys.platform == "win32":
 		try:
 			os.startfile(url)
@@ -145,7 +137,7 @@ def print_startup_banner(
 	log_level: str | None = None,
 ) -> None:
 	"""Imprime el banner de bienvenida criollo en la consola."""
-	urls = _srv("get_server_urls", get_server_urls)(host, port, custom_url=custom_url)
+	urls = get_server_urls(host, port, custom_url=custom_url)
 	local_url = urls["local_url"]
 	network_url = urls["network_url"]
 	resolved_dir = str(Path(music_dir or "~/Music").expanduser().resolve())
@@ -205,8 +197,7 @@ def _check_python_packages(is_frozen: bool, force: bool = False) -> tuple[list[t
 		if importlib.util.find_spec(mod) is None:
 			missing_req.append((mod, f"pip install {mod}"))
 
-	fn_mood = _srv("is_mood_available", is_mood_available)
-	has_ffmpeg = fn_mood()
+	has_ffmpeg = is_mood_available()
 	if not has_ffmpeg:
 		fix = (
 			"no incluido en la versión portable (instalá 'ffmpeg' en tu sistema para análisis de mood/BPM)"
@@ -228,9 +219,9 @@ def _check_python_packages(is_frozen: bool, force: bool = False) -> tuple[list[t
 
 def _check_mpv(is_win: bool, is_mac: bool, is_frozen: bool) -> tuple[str, str] | None:
 	"""Verifica la presencia de MPV, gestionando instalación o actualizaciones automáticas."""
-	from app.engine.audio_analysis import find_binary
+	from app.engine import audio_analysis
 
-	finder = _srv("find_binary", find_binary)
+	finder = audio_analysis.find_binary
 	mpv_bin = finder("mpv")
 	is_portable = is_win or is_mac or is_frozen
 
@@ -283,17 +274,16 @@ def _check_portable_dependency(
 	is_portable: bool,
 ) -> tuple[str, str] | None:
 	"""Función compartida para verificación e instalación automática de binarios externos."""
-	from app.engine.audio_analysis import find_binary
+	from app.engine import audio_analysis
 
-	finder = _srv("find_binary", find_binary)
-	if finder(bin_name) is not None:
+	if audio_analysis.find_binary(bin_name) is not None:
 		return None
 
 	if is_portable and installer_mod is not None:
 		try:
 			install_fn = getattr(installer_mod, install_func_name)
 			installed = install_fn(force=False, log_fn=lambda m: print(f"  {m}", file=sys.stderr))
-			if installed and finder(bin_name):
+			if installed and audio_analysis.find_binary(bin_name):
 				print(success_msg, file=sys.stderr)
 				return None
 		except Exception as e:
@@ -317,8 +307,7 @@ def _check_ytdlp(is_win: bool, is_mac: bool, is_frozen: bool) -> tuple[str, str]
 		if is_win
 		else "pip install yt-dlp (para reproducir temas de YouTube/Internet)"
 	)
-	fn_chk_dep = _srv("_check_portable_dependency", _check_portable_dependency)
-	return fn_chk_dep(
+	return _check_portable_dependency(
 		bin_name="yt-dlp",
 		installer_mod=ytdlp_installer,
 		install_func_name="install_ytdlp",
@@ -343,8 +332,7 @@ def _check_ffmpeg(is_win: bool, is_mac: bool, is_frozen: bool) -> tuple[str, str
 		if is_win
 		else ("brew install ffmpeg" if is_mac else "sudo apt install ffmpeg (para análisis de mood/BPM)")
 	)
-	fn_chk_dep = _srv("_check_portable_dependency", _check_portable_dependency)
-	return fn_chk_dep(
+	return _check_portable_dependency(
 		bin_name="ffmpeg",
 		installer_mod=ffmpeg_installer,
 		install_func_name="install_ffmpeg",
@@ -369,8 +357,7 @@ def _check_fpcalc(is_win: bool, is_mac: bool, is_frozen: bool) -> tuple[str, str
 		if is_win
 		else ("brew install chromaprint" if is_mac else "sudo apt install libchromaprint-tools")
 	)
-	fn_chk_dep = _srv("_check_portable_dependency", _check_portable_dependency)
-	return fn_chk_dep(
+	return _check_portable_dependency(
 		bin_name="fpcalc",
 		installer_mod=fpcalc_installer,
 		install_func_name="install_fpcalc",
@@ -383,46 +370,34 @@ def _check_fpcalc(is_win: bool, is_mac: bool, is_frozen: bool) -> tuple[str, str
 def check_dependencies(force: bool = False) -> None:
 	"""Verifica dependencias mínimas requeridas por el sistema."""
 	global _dependencies_checked
-	srv = sys.modules.get("server")
-	if srv is not None and hasattr(srv, "_dependencies_checked"):
-		if srv._dependencies_checked and not force:
-			return
-		srv._dependencies_checked = True
-	else:
-		if _dependencies_checked and not force:
-			return
-		_dependencies_checked = True
+	if _dependencies_checked and not force:
+		return
+	_dependencies_checked = True
 
 	if any(arg in sys.argv for arg in ("-h", "--help")):
 		return
-
-	fn_chk_pkg = _srv("_check_python_packages", _check_python_packages)
-	fn_chk_mpv = _srv("_check_mpv", _check_mpv)
-	fn_chk_yt = _srv("_check_ytdlp", _check_ytdlp)
-	fn_chk_ff = _srv("_check_ffmpeg", _check_ffmpeg)
-	fn_chk_fp = _srv("_check_fpcalc", _check_fpcalc)
 
 	is_win = sys.platform == "win32" or os.name == "nt"
 	is_mac = sys.platform == "darwin"
 	is_frozen = getattr(sys, "frozen", False)
 
-	missing_req_py, missing_opt_py = fn_chk_pkg(is_frozen=is_frozen, force=force)
+	missing_req_py, missing_opt_py = _check_python_packages(is_frozen=is_frozen, force=force)
 	missing_req_sys = []
 	missing_opt_sys = []
 
-	mpv_res = fn_chk_mpv(is_win=is_win, is_mac=is_mac, is_frozen=is_frozen)
+	mpv_res = _check_mpv(is_win=is_win, is_mac=is_mac, is_frozen=is_frozen)
 	if mpv_res:
 		missing_req_sys.append(mpv_res)
 
-	yt_res = fn_chk_yt(is_win=is_win, is_mac=is_mac, is_frozen=is_frozen)
+	yt_res = _check_ytdlp(is_win=is_win, is_mac=is_mac, is_frozen=is_frozen)
 	if yt_res:
 		missing_opt_sys.append(yt_res)
 
-	ff_res = fn_chk_ff(is_win=is_win, is_mac=is_mac, is_frozen=is_frozen)
+	ff_res = _check_ffmpeg(is_win=is_win, is_mac=is_mac, is_frozen=is_frozen)
 	if ff_res and not any(m[0] == "ffmpeg" for m in missing_opt_py):
 		missing_opt_sys.append(ff_res)
 
-	fp_res = fn_chk_fp(is_win=is_win, is_mac=is_mac, is_frozen=is_frozen)
+	fp_res = _check_fpcalc(is_win=is_win, is_mac=is_mac, is_frozen=is_frozen)
 	if fp_res:
 		missing_opt_sys.append(fp_res)
 

@@ -18,14 +18,6 @@ from app.engine.audio_analysis import find_binary, get_clean_env
 logger = logging.getLogger("RockolaCarpincho")
 
 
-def _srv(name: str, fallback: Any = None) -> Any:
-	"""Resuelve símbolos dinámicos desde server.py para soportar monkeypatching en tests."""
-	srv = sys.modules.get("server")
-	if srv is not None and hasattr(srv, name):
-		return getattr(srv, name)
-	return fallback
-
-
 def ensure_display_env(env: dict[str, str]) -> None:
 	"""Asegura variables mínimas de display para que MPV no falle en sesiones gráficas."""
 	if sys.platform != "win32":
@@ -120,10 +112,10 @@ class AsyncMpvController:
 		async with self._start_lock:
 			await self.stop()
 
-			clean_env_fn = _srv("get_clean_env", get_clean_env)
-			ensure_disp_fn = _srv("ensure_display_env", ensure_display_env)
-			env = clean_env_fn()
-			ensure_disp_fn(env)
+			env_fn = globals().get("get_clean_env", get_clean_env)
+			env = env_fn()
+			ensurer_fn = globals().get("ensure_display_env", ensure_display_env)
+			ensurer_fn(env)
 
 			if self.socket_path is None:
 				if self.is_windows:
@@ -147,10 +139,8 @@ class AsyncMpvController:
 			if state_ref and hasattr(state_ref, "mpv_visible"):
 				show_window = state_ref.mpv_visible
 
-			srv_logger = _srv("logger", logger)
-			is_debug = srv_logger.isEnabledFor(logging.DEBUG)
-			finder = _srv("find_binary", find_binary)
-			mpv_bin = finder("mpv") or "mpv"
+			is_debug = logger.isEnabledFor(logging.DEBUG)
+			mpv_bin = find_binary("mpv") or "mpv"
 
 			mpv_args = [mpv_bin, "--idle"]
 			if not is_debug:
@@ -185,7 +175,7 @@ class AsyncMpvController:
 			else:
 				mpv_args.extend(["--vo=null", "--no-audio-display", "--force-window=no"])
 
-			ytdlp_bin = finder("yt-dlp")
+			ytdlp_bin = find_binary("yt-dlp")
 			if ytdlp_bin:
 				mpv_args.append(f"--script-opts-append=ytdl_hook-ytdl_path={ytdlp_bin}")
 
@@ -284,8 +274,26 @@ class AsyncMpvController:
 			except Exception as e:
 				logger.debug(f"Pifió algo leyendo la pipa en Windows: {e}")
 
-		aio = _srv("asyncio", asyncio)
-		await aio.to_thread(read_pipe)
+		try:
+			await asyncio.to_thread(read_pipe)
+		finally:
+			self.reader = None
+			if self.writer:
+				try:
+					self.writer.close()
+				except Exception:
+					pass
+				self.writer = None
+			if "track_stopped" in self.callbacks:
+				cb = self.callbacks["track_stopped"]
+				res = cb()
+				if asyncio.iscoroutine(res):
+					await res
+			elif "song_ended" in self.callbacks:
+				cb = self.callbacks["song_ended"]
+				res = cb()
+				if asyncio.iscoroutine(res):
+					await res
 
 	async def _read_ipc_events(self) -> None:
 		while self.reader:
@@ -348,7 +356,6 @@ class AsyncMpvController:
 		cmd_bytes = (cmd_payload + "\n").encode("utf-8")
 
 		try:
-			aio = _srv("asyncio", asyncio)
 			if self.is_windows:
 
 				def write_pipe():
@@ -356,7 +363,7 @@ class AsyncMpvController:
 						pipe.write(cmd_bytes)
 						pipe.flush()
 
-				await aio.to_thread(write_pipe)
+				await asyncio.to_thread(write_pipe)
 			else:
 				if not self.writer:
 					await self.start()
@@ -374,7 +381,7 @@ class AsyncMpvController:
 							pipe.write(cmd_bytes)
 							pipe.flush()
 
-					await aio.to_thread(write_pipe_retry)
+					await asyncio.to_thread(write_pipe_retry)
 				else:
 					if self.writer:
 						self.writer.write(cmd_bytes)

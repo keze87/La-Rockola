@@ -18,7 +18,7 @@ async def test_handle_song_ended_advances_queue(clean_state, clean_manager, monk
 
 	with (
 		patch.object(state, "_register_play_stat") as mock_reg,
-		patch("server.broadcast_state", new_callable=AsyncMock),
+		patch("app.engine.state.broadcast_state", new_callable=AsyncMock),
 	):
 		await state.handle_song_ended()
 		mock_reg.assert_called_once_with("/m/song1.mp3")
@@ -60,7 +60,7 @@ async def test_handle_track_stopped_debounce(clean_state, clean_manager, monkeyp
 	state.current_track = "/m/song1.mp3"
 	state.last_track_change = time.time()  # Just changed
 
-	with patch("server.broadcast_state", new_callable=AsyncMock) as mock_broadcast:
+	with patch("app.engine.state.broadcast_state", new_callable=AsyncMock) as mock_broadcast:
 		# Within 1.5s: ignored
 		await state.handle_track_stopped()
 		mock_broadcast.assert_not_called()
@@ -78,7 +78,7 @@ async def test_handle_volume_and_pause_updates(clean_state):
 	"""Test handle_volume_update and handle_pause_update broadcast state."""
 	state = clean_state
 
-	with patch("server.broadcast_state", new_callable=AsyncMock) as mock_broadcast:
+	with patch("app.engine.state.broadcast_state", new_callable=AsyncMock) as mock_broadcast:
 		await state.handle_volume_update(85)
 		assert state.volume == 85
 

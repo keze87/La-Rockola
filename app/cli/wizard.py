@@ -18,14 +18,6 @@ from app.engine.audio_analysis import get_clean_env
 logger = logging.getLogger("RockolaCarpincho")
 
 
-def _srv(name: str, fallback: Any = None) -> Any:
-	"""Resuelve símbolos dinámicos desde server.py para soportar monkeypatching en tests."""
-	srv = sys.modules.get("server")
-	if srv is not None and hasattr(srv, name):
-		return getattr(srv, name)
-	return fallback
-
-
 def _parse_selected_dir(raw_out: str | None) -> str | None:
 	"""Limpia y valida la salida devuelta por selectores de carpetas nativos."""
 	if not raw_out:
@@ -113,7 +105,7 @@ def _select_folder_macos(title: str, initial_dir: str | None = None) -> str | No
 	try:
 		safe_title = title.replace('"', '\\"')
 		script = f'POSIX path of (choose folder with prompt "{safe_title}")'
-		clean_env = _srv("get_clean_env", get_clean_env)()
+		clean_env = get_clean_env()
 		res = subprocess.run(
 			["osascript", "-e", script],
 			env=clean_env,
@@ -130,7 +122,7 @@ def _select_folder_macos(title: str, initial_dir: str | None = None) -> str | No
 
 def _select_folder_linux(title: str, initial_dir: str | None = None) -> str | None:
 	"""Abre el diálogo de carpetas en Linux mediante zenity, kdialog o yad."""
-	clean_env = _srv("get_clean_env", get_clean_env)()
+	clean_env = get_clean_env()
 	start = str(Path(initial_dir).resolve()) if initial_dir and Path(initial_dir).is_dir() else str(Path.home())
 
 	if shutil.which("zenity"):
@@ -170,27 +162,26 @@ def _select_folder_linux(title: str, initial_dir: str | None = None) -> str | No
 
 def select_folder_dialog(title: str = "Seleccioná la carpeta de música", initial_dir: str | None = None) -> str | None:
 	"""Abre un diálogo gráfico nativo según el sistema operativo."""
+	ps_fn = globals().get("_select_folder_powershell", _select_folder_powershell)
+	tk_fn = globals().get("_select_folder_tkinter", _select_folder_tkinter)
+	mac_fn = globals().get("_select_folder_macos", _select_folder_macos)
+	linux_fn = globals().get("_select_folder_linux", _select_folder_linux)
+
 	if sys.platform == "win32":
-		fn_ps = _srv("_select_folder_powershell", _select_folder_powershell)
-		fn_tk = _srv("_select_folder_tkinter", _select_folder_tkinter)
-		res = fn_ps(title, initial_dir)
+		res = ps_fn(title, initial_dir)
 		if res:
 			return res
-		return fn_tk(title, initial_dir)
+		return tk_fn(title, initial_dir)
 	elif sys.platform == "darwin":
-		fn_mac = _srv("_select_folder_macos", _select_folder_macos)
-		fn_tk = _srv("_select_folder_tkinter", _select_folder_tkinter)
-		res = fn_mac(title, initial_dir)
+		res = mac_fn(title, initial_dir)
 		if res:
 			return res
-		return fn_tk(title, initial_dir)
+		return tk_fn(title, initial_dir)
 	else:
-		fn_lin = _srv("_select_folder_linux", _select_folder_linux)
-		fn_tk = _srv("_select_folder_tkinter", _select_folder_tkinter)
-		res = fn_lin(title, initial_dir)
+		res = linux_fn(title, initial_dir)
 		if res:
 			return res
-		return fn_tk(title, initial_dir)
+		return tk_fn(title, initial_dir)
 
 
 def setup_readline_completion() -> None:
@@ -261,9 +252,14 @@ def select_folder_terminal(initial_dir: str | None = None) -> str | None:
 			print("⚠️  Opción no válida. Ingresá un número de la lista o [0] para confirmar.")
 
 
-def run_interactive_wizard(config_path: Path, current_config: dict[str, Any] | None = None) -> dict[str, Any]:
+def run_interactive_wizard(
+	config_path: Path,
+	current_config: dict[str, Any] | None = None,
+	select_folder_fn: Any = None,
+) -> dict[str, Any]:
 	"""Asistente interactivo en consola para la primera ejecución."""
 	setup_readline_completion()
+	folder_dialog = select_folder_fn or select_folder_dialog
 	cfg = {**DEFAULT_CONFIG, **(current_config or load_config(config_path))}
 
 	print("\n" + "=" * 62)
@@ -289,8 +285,7 @@ def run_interactive_wizard(config_path: Path, current_config: dict[str, Any] | N
 
 		if choice == "" or choice == "1" or choice.lower() in ("b", "e", "examinar", "browse", "selector"):
 			print("⏳ Abriendo selector de carpetas...")
-			fn_dialog = _srv("select_folder_dialog", select_folder_dialog)
-			selected = fn_dialog(
+			selected = folder_dialog(
 				title="Seleccioná la carpeta principal de música",
 				initial_dir=default_resolved if Path(default_resolved).is_dir() else None,
 			)

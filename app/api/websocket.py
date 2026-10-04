@@ -7,7 +7,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import sys
 from typing import Any
 
 from starlette.websockets import WebSocket
@@ -62,8 +61,6 @@ class ConnectionManager:
 
 	async def broadcast(self, message: dict[str, Any] | str) -> None:
 		"""Emite un mensaje a todos los clientes conectados de manera concurrente y segura."""
-		srv = sys.modules.get("server")
-		srv_logger = getattr(srv, "logger", logger) if srv else logger
 
 		if isinstance(message, dict):
 			log_msg = message.copy()
@@ -97,7 +94,7 @@ class ConnectionManager:
 					formatted_log = highlight_json(log_msg)
 				except Exception:
 					formatted_log = json.dumps(log_msg)
-				srv_logger.debug(f"AVISANDO A LA MUCHACHADA:\n{formatted_log}")
+				logger.debug(f"AVISANDO A LA MUCHACHADA:\n{formatted_log}")
 
 		for connection in self.active_connections.copy():
 			try:

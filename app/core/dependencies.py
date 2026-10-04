@@ -17,20 +17,15 @@ def set_global_state(state: Any) -> None:
 	"""Asigna el estado global del reproductor para inyección en FastAPI."""
 	global _global_state
 	_global_state = state
-	import sys
-
-	srv = sys.modules.get("server")
-	if srv is not None and hasattr(srv, "state"):
-		srv.state = state
 
 
 def get_state() -> Any:
 	"""Retorna la instancia activa del estado de la aplicación."""
-	import sys
+	global _global_state
+	if _global_state is None:
+		from app.engine.state import APIState
 
-	srv = sys.modules.get("server")
-	if srv is not None and hasattr(srv, "state"):
-		return srv.state
+		_global_state = APIState()
 	return _global_state
 
 
@@ -49,20 +44,15 @@ def set_global_manager(manager: Any) -> None:
 	"""Asigna el ConnectionManager activo de WebSockets."""
 	global _global_manager
 	_global_manager = manager
-	import sys
-
-	srv = sys.modules.get("server")
-	if srv is not None and hasattr(srv, "manager"):
-		srv.manager = manager
 
 
 def get_manager() -> Any:
-	"""Retorna el ConnectionManager activo."""
-	import sys
+	"""Retorna el ConnectionManager activo, instanciándolo como singleton si no existe."""
+	global _global_manager
+	if _global_manager is None:
+		from app.api.websocket import ConnectionManager
 
-	srv = sys.modules.get("server")
-	if srv is not None and hasattr(srv, "manager"):
-		return srv.manager
+		_global_manager = ConnectionManager()
 	return _global_manager
 
 
@@ -70,20 +60,14 @@ def set_db_path(db_path: Any) -> None:
 	"""Asigna la ruta de la base de datos activa."""
 	global _global_db_path
 	_global_db_path = db_path
-	import sys
-
-	srv = sys.modules.get("server")
-	if srv is not None and hasattr(srv, "DB_PATH"):
-		srv.DB_PATH = str(db_path) if db_path else None
 
 
 def get_db_path() -> Any:
-	"""Retorna la ruta de la base de datos activa, priorizando monkeypatch en server.DB_PATH."""
-	import sys
+	"""Retorna la ruta de la base de datos activa."""
+	if _global_db_path is None:
+		from app.core.config import get_carpincho_data_dir
 
-	srv = sys.modules.get("server")
-	if srv is not None and hasattr(srv, "DB_PATH") and srv.DB_PATH is not None:
-		return srv.DB_PATH
+		return get_carpincho_data_dir() / "rockola.db"
 	return _global_db_path
 
 

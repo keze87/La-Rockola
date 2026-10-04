@@ -4,6 +4,8 @@ Esquemas Pydantic V2 para validación exhaustiva de payloads HTTP y eventos WebS
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -76,34 +78,35 @@ class WebSocketMessage(BaseModel):
 class LocalPlayerClaim(WebSocketMessage):
 	"""Solicitud del cliente web para convertirse en el reproductor de audio local."""
 
-	type: str = "local_player_claim"
+	type: Literal["local_player_claim"] = "local_player_claim"
 
 
 class LocalPlayerClaimResult(WebSocketMessage):
 	"""Respuesta del servidor a la solicitud de reproductor local."""
 
-	type: str = "local_player_claim_result"
+	type: Literal["local_player_claim_result"] = "local_player_claim_result"
 	ok: bool = True
 
 
 class LocalPlayerRelease(WebSocketMessage):
 	"""Notificación del cliente liberando el rol de reproductor local."""
 
-	type: str = "local_player_release"
+	type: Literal["local_player_release"] = "local_player_release"
 
 
 class LocalPlayerUpdate(WebSocketMessage):
 	"""Reporte periódico de posición y estado emitido por el reproductor local."""
 
-	type: str = "local_player_update"
+	type: Literal["local_player_update"] = "local_player_update"
 	time_pos: float | None = None
 	duration: float | None = None
 	paused: bool | None = None
+	song_ended: bool | None = None
 
 
 class LocalPlayerSeek(WebSocketMessage):
 	"""Notificación enviada por el servidor al reproductor local para ejecutar un seek remoto."""
 
-	type: str = "local_player_seek"
-	time_pos: float
-	relative: bool = False
+	type: Literal["local_player_seek"] = "local_player_seek"
+	mode: str = Field(..., description="'relative' o 'absolute'")
+	amount: float = Field(..., description="Segundos a desplazar o posición absoluta")

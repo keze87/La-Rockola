@@ -18,9 +18,17 @@ api_v1_router.include_router(library_router)
 api_v1_router.include_router(media_router)
 api_v1_router.include_router(system_router)
 
-# Router raíz legacy para compatibilidad con el frontend y scripts que llaman a la raíz
+# Router raíz legacy para compatibilidad con el frontend y scripts que llaman a la raíz o a /api
 legacy_router = APIRouter()
 legacy_router.include_router(playback_router)
 legacy_router.include_router(library_router)
 legacy_router.include_router(media_router)
 legacy_router.include_router(system_router)
+
+# Rutas prefijadas con /api (compatibilidad con endpoints del frontend /api/*)
+api_legacy_router = APIRouter(prefix="/api")
+api_legacy_router.include_router(playback_router)
+api_legacy_router.include_router(library_router)
+api_legacy_router.include_router(media_router)
+api_legacy_router.include_router(system_router)
+legacy_router.include_router(api_legacy_router)

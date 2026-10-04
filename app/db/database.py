@@ -9,7 +9,6 @@ import asyncio
 import logging
 import os
 import sqlite3
-import sys
 import time
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -22,22 +21,20 @@ logger = logging.getLogger("RockolaCarpincho")
 
 
 def get_default_db_path() -> Path:
-	"""Determina la ruta por defecto a rockola.db, respetando monkeypatch en server.DB_PATH."""
-	srv = sys.modules.get("server")
-	if srv is not None and hasattr(srv, "DB_PATH"):
-		return Path(srv.DB_PATH)
-	return get_carpincho_data_dir() / "rockola.db"
+	"""Determina la ruta por defecto a rockola.db."""
+	from app.core.dependencies import get_db_path
+
+	return Path(get_db_path())
 
 
-DB_PATH = get_default_db_path()
+DB_PATH = get_carpincho_data_dir() / "rockola.db"
 
 
 def init_db(db_path: Path | str | None = None) -> None:
 	"""Inicializa la base de datos y aplica migraciones pendientes."""
 	from app.db.migrations import apply_migrations
 
-	srv = sys.modules.get("server")
-	path = Path(db_path) if db_path else (getattr(srv, "DB_PATH", DB_PATH) if srv else DB_PATH)
+	path = Path(db_path) if db_path else get_default_db_path()
 	apply_migrations(path)
 
 	# Saneamiento de locuciones radiales en historial (evitando borrar pistas legítimas de la biblioteca)
@@ -137,9 +134,7 @@ async def async_execute_write(
 
 def backup_db(db_path: Path | str | None = None, data_dir: Path | str | None = None) -> Path | None:
 	"""Genera un backup atómico de la base de datos manteniendo las últimas 8 semanas."""
-	srv = sys.modules.get("server")
-	default_p = getattr(srv, "DB_PATH", DB_PATH) if srv else DB_PATH
-	source_path = Path(db_path) if db_path else Path(default_p)
+	source_path = Path(db_path) if db_path else get_default_db_path()
 	base_dir = Path(data_dir) if data_dir else source_path.parent
 
 	if not source_path.exists():

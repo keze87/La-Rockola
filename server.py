@@ -57,10 +57,12 @@ from app.cli.wizard import (
 	_select_folder_macos,
 	_select_folder_powershell,
 	_select_folder_tkinter,
-	run_interactive_wizard,
 	select_folder_dialog,
 	select_folder_terminal,
 	setup_readline_completion,
+)
+from app.cli.wizard import (
+	run_interactive_wizard as _app_run_interactive_wizard,
 )
 
 # 1. Configuración y logging
@@ -68,13 +70,15 @@ from app.core.config import (
 	DEFAULT_CONFIG,
 	Settings,
 	get_carpincho_data_dir,
-	get_config_path,
 	get_local_ip,
 	get_server_urls,
 	get_url_subpath,
 	load_config,
 	normalize_url,
 	save_config,
+)
+from app.core.config import (
+	get_config_path as _app_get_config_path,
 )
 from app.core.dependencies import get_manager, get_mpv, get_settings, get_state
 from app.core.logging import configure_logging, highlight_json, logger, truncate_text
@@ -87,10 +91,23 @@ from app.db.database import (
 	execute_query,
 	execute_write,
 	get_db_connection,
-	init_db,
 )
 
+
+def init_db(db_path: Path | str | None = None) -> None:
+	"""Inicializa la base de datos sincronizando DB_PATH con el sistema de dependencias."""
+	from app.core.dependencies import set_db_path
+	from app.db import database as _db_mod
+
+	target = db_path or globals().get("DB_PATH") or _db_mod.DB_PATH
+	if target:
+		set_db_path(target)
+	_db_mod.init_db(target)
+
+
 # 3. Motor de audio y MPRIS
+from fastapi.responses import FileResponse
+
 from app.engine.audio_analysis import (
 	compare_fps,
 	extract_audio_features_ffmpeg,
@@ -124,9 +141,11 @@ from app.main import (
 	create_app,
 	lifespan,
 	serve_favicon,
-	serve_index,
 	state,
 	websocket_endpoint,
+)
+from app.main import (
+	serve_index as _app_serve_index,
 )
 
 # 4. Servicios: biblioteca, radio y ytdlp
@@ -159,10 +178,40 @@ frontend_dir = Path(__file__).resolve().parent
 dist_dir = frontend_dir / "dist"
 
 
+def run_interactive_wizard(
+	config_path: Path, current_config: dict[str, Any] | None = None, select_folder_fn: Any = None
+) -> dict[str, Any]:
+	"""Fachada de compatibilidad para ejecutar el wizard CLI considerando select_folder_dialog parcheado."""
+	fn = select_folder_fn or globals().get("select_folder_dialog", select_folder_dialog)
+	return _app_run_interactive_wizard(config_path, current_config=current_config, select_folder_fn=fn)
+
+
+def get_config_path(custom_path: str | Path | None = None) -> Path:
+	"""Fachada de compatibilidad que respeta monkeypatching de server.DATA_DIR en tests."""
+	if custom_path:
+		return _app_get_config_path(custom_path)
+	data_dir = globals().get("DATA_DIR")
+	if data_dir is not None:
+		return Path(data_dir) / "rockola_config.json"
+	return _app_get_config_path()
+
+
+async def serve_index():
+	"""Fachada de compatibilidad para serve_index respetando monkeypatching de server.dist_dir."""
+	custom_dist = globals().get("dist_dir")
+	if custom_dist is not None:
+		html_path = Path(custom_dist) / "index.html"
+		if not html_path.exists():
+			return {"error": f"Falta el archivo {html_path}, se me cayó el mate encima"}
+		return FileResponse(html_path)
+	return await _app_serve_index()
+
+
 def is_mood_available() -> bool:
 	"""Determina si la capacidad de análisis acústico (FFmpeg) está disponible."""
-	finder = globals().get("find_binary", find_binary)
-	return finder("ffmpeg") is not None
+	import app.engine.audio_analysis as aa
+
+	return aa.find_binary("ffmpeg") is not None
 
 
 def enable_system_site_packages() -> None:

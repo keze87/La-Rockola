@@ -188,7 +188,7 @@ def test_scan_directory_reanalyzes_untested_bpm(clean_state, temp_db, tmp_path):
 		self.fingerprint = "1001,1002,1003,1004,1005,1006,1007,1008,1009,1010,1011"
 
 	with (
-		patch("server.find_binary", return_value=None),
+		patch("app.engine.audio_analysis.find_binary", return_value=None),
 		patch.object(server.Track, "_extract_mood", mock_mood_untested),
 		patch.object(server.Track, "_extract_fingerprint", mock_fp),
 	):
@@ -211,7 +211,7 @@ def test_scan_directory_reanalyzes_untested_bpm(clean_state, temp_db, tmp_path):
 		mood_called = True
 
 	with (
-		patch("server.find_binary", return_value=None),
+		patch("app.engine.audio_analysis.find_binary", return_value=None),
 		patch.object(server.Track, "_extract_mood", mock_mood_should_not_run),
 		patch.object(server.Track, "_extract_fingerprint", mock_fp),
 	):
@@ -227,7 +227,7 @@ def test_scan_directory_reanalyzes_untested_bpm(clean_state, temp_db, tmp_path):
 		self.spectral_centroid = 2200.0
 
 	with (
-		patch("server.find_binary", return_value="/usr/bin/ffmpeg"),
+		patch("app.engine.audio_analysis.find_binary", return_value="/usr/bin/ffmpeg"),
 		patch.object(server.Track, "_extract_mood", mock_mood_success),
 		patch.object(server.Track, "_extract_fingerprint", mock_fp),
 	):
@@ -267,7 +267,7 @@ def test_scan_directory_skips_failed_mood(clean_state, temp_db, tmp_path):
 		self.fingerprint = "1001,1002,1003,1004,1005,1006,1007,1008,1009,1010,1011"
 
 	with (
-		patch("server.find_binary", return_value="/usr/bin/ffmpeg"),
+		patch("app.engine.audio_analysis.find_binary", return_value="/usr/bin/ffmpeg"),
 		patch.object(server.Track, "_extract_mood", mock_mood_error),
 		patch.object(server.Track, "_extract_fingerprint", mock_fp),
 	):
@@ -290,7 +290,7 @@ def test_scan_directory_skips_failed_mood(clean_state, temp_db, tmp_path):
 		mood_retested = True
 
 	with (
-		patch("server.find_binary", return_value="/usr/bin/ffmpeg"),
+		patch("app.engine.audio_analysis.find_binary", return_value="/usr/bin/ffmpeg"),
 		patch.object(server.Track, "_extract_mood", mock_mood_unexpected),
 		patch.object(server.Track, "_extract_fingerprint", mock_fp),
 	):
@@ -313,7 +313,7 @@ def test_track_explicit_methods(tmp_path):
 	assert t.fingerprint is None
 
 	# Explicit analyze_mood
-	with patch("server.extract_audio_features_ffmpeg", return_value=(128.0, 0.7, 1800.0)):
+	with patch("app.engine.audio_analysis.extract_audio_features_ffmpeg", return_value=(128.0, 0.7, 1800.0)):
 		t.analyze_mood(ffmpeg_bin="/usr/bin/ffmpeg")
 		assert t.bpm == 128.0
 		assert t.energy == 0.7
@@ -419,8 +419,8 @@ async def test_background_mood_analysis(clean_state, temp_db, tmp_path):
 		return (130.0, 0.6, 2000.0)
 
 	with (
-		patch("server.find_binary", return_value="/usr/bin/ffmpeg"),
-		patch("server.extract_audio_features_ffmpeg", side_effect=mock_extract_audio),
+		patch("app.engine.audio_analysis.find_binary", return_value="/usr/bin/ffmpeg"),
+		patch("app.engine.audio_analysis.extract_audio_features_ffmpeg", side_effect=mock_extract_audio),
 		patch("shutil.which", return_value=None),  # No fpcalc in this test
 	):
 		await state.run_background_mood_analysis()
@@ -450,7 +450,7 @@ async def test_scan_library_resets_is_scanning_on_error(clean_state, tmp_path):
 	"""Test that scan_library resets is_scanning to False and scan_phase to idle even if scan_directory fails."""
 	with (
 		patch.object(server.state, "scan_directory", side_effect=RuntimeError("Disk failure")),
-		patch("server.broadcast_state", return_value=None),
+		patch("app.engine.state.broadcast_state", return_value=None),
 	):
 		with pytest.raises(RuntimeError):
 			await server.scan_library(str(tmp_path))
@@ -491,7 +491,7 @@ def test_scan_directory_without_fpcalc_uses_cache(clean_state, temp_db, tmp_path
 
 	with (
 		patch("shutil.which", return_value=None),  # fpcalc is not installed
-		patch("server.is_mood_available", return_value=True),
+		patch("app.engine.audio_analysis.is_mood_available", return_value=True),
 		patch.object(server.Track, "__init__", mock_track_init),
 	):
 		tracks = state.scan_directory([str(music_dir)], extract_mood=True)
@@ -518,10 +518,10 @@ async def test_background_mood_broadcasts_library(clean_state, tmp_path):
 		broadcast_calls.append(kwargs)
 
 	with (
-		patch("server.find_binary", return_value="/usr/bin/ffmpeg"),
-		patch("server.extract_audio_features_ffmpeg", return_value=(120.0, 0.5, 1500.0)),
+		patch("app.engine.audio_analysis.find_binary", return_value="/usr/bin/ffmpeg"),
+		patch("app.engine.audio_analysis.extract_audio_features_ffmpeg", return_value=(120.0, 0.5, 1500.0)),
 		patch("shutil.which", return_value=None),
-		patch("server.broadcast_state", side_effect=mock_broadcast),
+		patch("app.engine.state.broadcast_state", side_effect=mock_broadcast),
 	):
 		await state.run_background_mood_analysis()
 

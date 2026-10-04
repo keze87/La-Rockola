@@ -168,7 +168,7 @@ async def test_mpv_start_passes_clean_env():
 		patch("asyncio.open_unix_connection", return_value=(mock_reader, mock_writer), create=True),
 		patch("os.path.exists", return_value=True),
 		patch.object(mpv, "_send", new_callable=AsyncMock),
-		patch("server.get_clean_env", return_value={"MOCK_CLEAN_ENV": "1"}) as mock_clean,
+		patch("app.engine.mpv_controller.get_clean_env", return_value={"MOCK_CLEAN_ENV": "1"}) as mock_clean,
 	):
 		await mpv.start()
 		mock_clean.assert_called()
@@ -259,8 +259,8 @@ async def test_mpv_start_display_args_with_display(monkeypatch):
 		patch("asyncio.open_unix_connection", return_value=(mock_reader, mock_writer), create=True),
 		patch("os.path.exists", return_value=True),
 		patch.object(mpv, "_send", new_callable=AsyncMock),
-		patch("server.get_clean_env", return_value=clean_env),
-		patch("server.ensure_display_env"),
+		patch("app.engine.mpv_controller.get_clean_env", return_value=clean_env),
+		patch("app.engine.mpv_controller.ensure_display_env"),
 	):
 		await mpv.start()
 		args = mock_exec.call_args[0]
@@ -290,8 +290,8 @@ async def test_mpv_start_display_args_headless(monkeypatch):
 		patch("asyncio.open_unix_connection", return_value=(mock_reader, mock_writer), create=True),
 		patch("os.path.exists", return_value=True),
 		patch.object(mpv, "_send", new_callable=AsyncMock),
-		patch("server.get_clean_env", return_value=clean_env),
-		patch("server.ensure_display_env"),
+		patch("app.engine.mpv_controller.get_clean_env", return_value=clean_env),
+		patch("app.engine.mpv_controller.ensure_display_env"),
 	):
 		await mpv.start()
 		args = mock_exec.call_args[0]

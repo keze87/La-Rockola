@@ -592,7 +592,7 @@ async def test_command_dj_toggles_and_pause_after(clean_state):
 @pytest.mark.asyncio
 async def test_command_unknown_or_malformed(clean_state):
 	"""Test unknown or unhandled cmd values return ok without mutating state."""
-	with patch("server.broadcast_state", new_callable=AsyncMock) as mock_broadcast:
+	with patch("app.api.v1.playback.broadcast_state", new_callable=AsyncMock) as mock_broadcast:
 		res = await server.handle_command(server.CommandRequest(cmd="unknown_invalid_command_xyz"))
 		assert res == {"status": "ok"}
 		mock_broadcast.assert_called_once()

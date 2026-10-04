@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from app.db.database import execute_query, execute_write
+from app.db.database import execute_query, execute_write, get_db_connection
 
 
 class TrackRepository:
@@ -84,6 +84,43 @@ class TrackRepository:
 		sql = "SELECT * FROM tracks ORDER BY artist ASC, title ASC"
 		return execute_query(sql, (), self.db_path)
 
+	def list_for_scan_cache(self) -> list[dict[str, Any]]:
+		"""Obtiene los campos necesarios para verificar la caché de escaneo."""
+		sql = "SELECT path, mtime, file_size, track_id, title, album, artist, duration_str, bpm, energy, spectral_centroid, fingerprint FROM tracks"
+		return execute_query(sql, (), self.db_path)
+
+	def save_many(self, tracks: list[tuple[Any, ...]]) -> int:
+		"""Inserta o actualiza un lote de pistas en una sola transacción."""
+		sql = """
+			INSERT OR REPLACE INTO tracks
+			(track_id, path, title, album, artist, duration_str, mtime, file_size, bpm, energy, spectral_centroid, fingerprint)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		"""
+		with get_db_connection(self.db_path) as conn:
+			cursor = conn.cursor()
+			cursor.execute("BEGIN IMMEDIATE;")
+			try:
+				cursor.executemany(sql, tracks)
+				conn.execute("COMMIT;")
+				return cursor.rowcount
+			except Exception:
+				conn.execute("ROLLBACK;")
+				raise
+
+	def update_mood_batch(self, batch: list[tuple[Any, ...]]) -> int:
+		"""Actualiza bpm, energy, spectral_centroid y fingerprint para un lote de pistas."""
+		sql = "UPDATE tracks SET bpm=?, energy=?, spectral_centroid=?, fingerprint=? WHERE track_id=?"
+		with get_db_connection(self.db_path) as conn:
+			cursor = conn.cursor()
+			cursor.execute("BEGIN IMMEDIATE;")
+			try:
+				cursor.executemany(sql, batch)
+				conn.execute("COMMIT;")
+				return cursor.rowcount
+			except Exception:
+				conn.execute("ROLLBACK;")
+				raise
+
 
 class FavoritesRepository:
 	"""Gestión de temas favoritos."""
@@ -131,16 +168,29 @@ class HistoryRepository:
 		sql = "SELECT * FROM play_history ORDER BY id DESC LIMIT ?"
 		return execute_query(sql, (limit,), self.db_path)
 
-	def get_top_played(self, limit: int = 20) -> list[dict[str, Any]]:
+	def get_top_played(self, limit: int = 20, since: float | None = None) -> list[dict[str, Any]]:
 		"""Calcula los temas más reproducidos agrupados por track_id."""
-		sql = """
-			SELECT track_id, COUNT(*) as count
-			FROM play_history
-			GROUP BY track_id
-			ORDER BY count DESC
-			LIMIT ?
-		"""
-		return execute_query(sql, (limit,), self.db_path)
+		if since is not None:
+			sql = """
+				SELECT track_id, COUNT(*) as count
+				FROM play_history
+				WHERE played_at >= ?
+				  AND (track_id NOT LIKE '%radio_announcement.mp3%' OR track_id IN (SELECT track_id FROM tracks))
+				GROUP BY track_id
+				ORDER BY count DESC
+				LIMIT ?
+			"""
+			return execute_query(sql, (since, limit), self.db_path)
+		else:
+			sql = """
+				SELECT track_id, COUNT(*) as count
+				FROM play_history
+				WHERE (track_id NOT LIKE '%radio_announcement.mp3%' OR track_id IN (SELECT track_id FROM tracks))
+				GROUP BY track_id
+				ORDER BY count DESC
+				LIMIT ?
+			"""
+			return execute_query(sql, (limit,), self.db_path)
 
 	def purge_radio_announcements(self) -> int:
 		"""Limpia entradas espurias de locución radial en el historial."""
@@ -165,9 +215,11 @@ class UrlLogsRepository:
 		artist: str | None = None,
 		played_at: str | None = None,
 	) -> None:
-		"""Registra una URL remota reproducida."""
+		"""Registra una URL remota reproducida, limpiando registros previos duplicados."""
+		ts = played_at or time.strftime("%Y-%m-%d %H:%M:%S")
+		execute_write("DELETE FROM url_logs WHERE url = ?", (url,), self.db_path)
 		sql = "INSERT INTO url_logs (url, title, artist, played_at) VALUES (?, ?, ?, ?)"
-		execute_write(sql, (url, title, artist, played_at or time.strftime("%Y-%m-%d %H:%M:%S")), self.db_path)
+		execute_write(sql, (url, title, artist, ts), self.db_path)
 
 	def get_recent(self, limit: int = 50) -> list[dict[str, Any]]:
 		"""Retorna el historial de URLs remotas reproducidas."""

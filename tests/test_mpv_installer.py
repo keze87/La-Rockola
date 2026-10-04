@@ -224,6 +224,7 @@ def test_server_check_dependencies_triggers_mpv_install(monkeypatch, tmp_path):
 		return None
 
 	monkeypatch.setattr(server, "find_binary", fake_find)
+	monkeypatch.setattr("app.engine.audio_analysis.find_binary", fake_find)
 	monkeypatch.setattr("server.importlib.util.find_spec", lambda mod: True)
 
 	with (
@@ -368,11 +369,9 @@ def test_server_check_dependencies_triggers_mpv_update(monkeypatch, tmp_path):
 	fake_mpv = managed_dir / "mpv.exe"
 	fake_mpv.touch()
 
-	monkeypatch.setattr(
-		server,
-		"find_binary",
-		lambda b: str(fake_mpv) if b == "mpv" else (str(tmp_path / "yt-dlp.exe") if b == "yt-dlp" else None),
-	)
+	find_fn = lambda b: str(fake_mpv) if b == "mpv" else (str(tmp_path / "yt-dlp.exe") if b == "yt-dlp" else None)
+	monkeypatch.setattr(server, "find_binary", find_fn)
+	monkeypatch.setattr("app.engine.audio_analysis.find_binary", find_fn)
 	monkeypatch.setattr("server.importlib.util.find_spec", lambda mod: True)
 
 	with (

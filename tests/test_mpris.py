@@ -98,7 +98,7 @@ async def test_mpris_player_control_methods(clean_state):
 	state = clean_state
 	player = server.MPRISPlayer(state)
 
-	with patch("server.handle_command", new_callable=AsyncMock) as mock_cmd:
+	with patch("app.api.v1.playback.handle_command_endpoint", new_callable=AsyncMock) as mock_cmd:
 		# Next & Previous
 		player.Next()
 		player.Previous()
@@ -137,7 +137,7 @@ def test_build_mpris_metadata_local_track_with_cache_and_cover(clean_state):
 		}
 	]
 
-	with patch("server.get_cover_art_uri", return_value="file:///tmp/cover.jpg"):
+	with patch("app.services.library.get_cover_art_uri", return_value="file:///tmp/cover.jpg"):
 		meta = server.build_mpris_metadata(clean_state)
 
 		assert meta["mpris:trackid"].value == "/org/mpris/MediaPlayer2/TrackList/Track0"

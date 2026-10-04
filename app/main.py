@@ -13,14 +13,20 @@ import sys
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Annotated
 
 from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import Field, TypeAdapter, ValidationError
 
 from app.api.middleware import SubpathMiddleware
+from app.api.schemas import (
+	LocalPlayerClaim,
+	LocalPlayerRelease,
+	LocalPlayerUpdate,
+)
 from app.api.v1.router import api_v1_router, legacy_router
 from app.api.websocket import ConnectionManager
 from app.core.config import get_carpincho_data_dir
@@ -37,14 +43,11 @@ from app.engine.state import APIState, broadcast_state
 
 logger = logging.getLogger("RockolaCarpincho")
 
-
-def _srv(name: str, fallback: Any = None) -> Any:
-	"""Resuelve símbolos dinámicos desde server.py para soportar monkeypatching en tests."""
-	srv = sys.modules.get("server")
-	if srv is not None and hasattr(srv, name):
-		return getattr(srv, name)
-	return fallback
-
+WSIncomingMessage = Annotated[
+	LocalPlayerClaim | LocalPlayerRelease | LocalPlayerUpdate,
+	Field(discriminator="type"),
+]
+ws_adapter = TypeAdapter(WSIncomingMessage)
 
 state = get_state()
 if state is None:
@@ -70,8 +73,6 @@ def get_dist_dirs() -> tuple[Path, Path, Path]:
 		frontend_dir = root_dir
 		dist_dir = frontend_dir / "dist"
 
-	dist_dir = Path(_srv("dist_dir", dist_dir))
-	frontend_dir = Path(_srv("frontend_dir", frontend_dir))
 	assets_dir = dist_dir / "assets"
 	return frontend_dir, dist_dir, assets_dir
 
@@ -89,7 +90,7 @@ async def lifespan(app: FastAPI):
 	except Exception as e:
 		logger.error(f"Error preparando base de datos en arranque: {e}")
 
-	state = _srv("state", get_state())
+	state = get_state()
 	if state and hasattr(state, "mpv") and state.mpv and hasattr(state.mpv, "start"):
 		try:
 			logger.info("Iniciando motor de reproducción MPV...")
@@ -99,9 +100,8 @@ async def lifespan(app: FastAPI):
 		except Exception as e:
 			logger.warning(f"No se pudo arrancar MPV en el inicio: {e}")
 
-	scan_fn = _srv("scan_library", None)
-	if scan_fn is not None:
-		asyncio.create_task(scan_fn())
+	if state and hasattr(state, "scan_library"):
+		asyncio.create_task(state.scan_library())
 
 	# Abrir navegador automáticamente si está configurado (y no estamos corriendo tests)
 	async def _bg_open_browser(target_url: str, port: int, host: str):
@@ -115,22 +115,20 @@ async def lifespan(app: FastAPI):
 						break
 
 			logger.info(f"🌐 Abriendo La Rockola en tu navegador: {target_url}")
-			open_fn = _srv("open_browser_url", None)
-			if open_fn is None:
-				from app.cli.entrypoint import open_browser_url
+			import app.cli.entrypoint as entrypoint_mod
 
-				open_fn = open_browser_url
-			await asyncio.to_thread(open_fn, target_url)
+			open_fn = getattr(entrypoint_mod, "open_browser_url", None)
+			if open_fn:
+				await asyncio.to_thread(open_fn, target_url)
 		except Exception as e:
 			logger.debug(f"Aviso al abrir el navegador automáticamente: {e}")
 
-	curr_state = _srv("state", state)
-	if getattr(curr_state, "open_browser", False) and "PYTEST_CURRENT_TEST" not in os.environ:
+	if getattr(state, "open_browser", False) and "PYTEST_CURRENT_TEST" not in os.environ:
 		asyncio.create_task(
 			_bg_open_browser(
-				getattr(curr_state, "server_url", "http://localhost:1729"),
-				getattr(curr_state, "server_port", 1729),
-				getattr(curr_state, "server_host", "0.0.0.0"),
+				getattr(state, "server_url", "http://localhost:1729"),
+				getattr(state, "server_port", 1729),
+				getattr(state, "server_host", "0.0.0.0"),
 			)
 		)
 
@@ -230,8 +228,8 @@ def create_app() -> FastAPI:
 
 
 async def websocket_endpoint(websocket: WebSocket):
-	mgr = _srv("manager", get_manager())
-	state = _srv("state", get_state())
+	mgr = get_manager()
+	state = get_state()
 	client_host = getattr(websocket.client, "host", "desconocido") if websocket.client else "desconocido"
 	if mgr:
 		await mgr.connect(websocket)
@@ -249,29 +247,28 @@ async def websocket_endpoint(websocket: WebSocket):
 		while True:
 			raw = await websocket.receive_text()
 			try:
-				msg = json.loads(raw)
-			except json.JSONDecodeError:
+				msg = ws_adapter.validate_json(raw)
+			except ValidationError:
 				continue
 
-			mgr = _srv("manager", get_manager())
-			state = _srv("state", get_state())
-			msg_type = msg.get("type")
-			if msg_type == "local_player_claim":
+			mgr = get_manager()
+			state = get_state()
+			if isinstance(msg, LocalPlayerClaim):
 				ok = mgr.claim_local_player(websocket) if mgr else False
 				await websocket.send_json({"type": "local_player_claim_result", "ok": ok})
 				if ok and state and hasattr(state, "mpv") and state.mpv:
 					logger.info(f"Cliente registrado como reproductor local ({client_host}).")
 					await state.mpv._send('{"command": ["set_property", "mute", true]}')
-			elif msg_type == "local_player_release":
+			elif isinstance(msg, LocalPlayerRelease):
 				if mgr and mgr.release_local_player(websocket) and state and hasattr(state, "mpv") and state.mpv:
 					logger.info("Restaurando mute de MPV...")
 					await state.mpv._send(
 						json.dumps({"command": ["set_property", "mute", getattr(state, "server_muted", False)]})
 					)
-			elif msg_type == "local_player_update" and mgr and mgr.local_player_ws is websocket:
+			elif isinstance(msg, LocalPlayerUpdate) and mgr and mgr.local_player_ws is websocket:
 				changed = False
-				if "time_pos" in msg and state:
-					new_pos = msg["time_pos"] or 0
+				if msg.time_pos is not None and state:
+					new_pos = msg.time_pos or 0
 					should_seek, new_drift = ConnectionManager.arbitrate_seek_drift(
 						getattr(state, "time_pos", 0), new_pos, getattr(state, "last_seek_drift", None)
 					)
@@ -284,15 +281,15 @@ async def websocket_endpoint(websocket: WebSocket):
 						state.last_time_broadcast = now
 						changed = True
 
-				if "duration" in msg and state and msg["duration"] != getattr(state, "duration", 0):
-					state.duration = msg["duration"] or 0
+				if msg.duration is not None and state and msg.duration != getattr(state, "duration", 0):
+					state.duration = msg.duration or 0
 					changed = True
 
-				if "paused" in msg and state and msg["paused"] != getattr(state, "mpv_paused", False):
-					state.mpv_paused = msg["paused"]
+				if msg.paused is not None and state and msg.paused != getattr(state, "mpv_paused", False):
+					state.mpv_paused = msg.paused
 					changed = True
 
-				if msg.get("song_ended") and state and hasattr(state, "play_next"):
+				if msg.song_ended and state and hasattr(state, "play_next"):
 					is_radio = getattr(state, "is_playing_radio_announcement", False) or (
 						state.is_radio_announcement(state.current_track)
 						if hasattr(state, "is_radio_announcement")
@@ -301,22 +298,16 @@ async def websocket_endpoint(websocket: WebSocket):
 					if state.current_track and not is_radio and hasattr(state, "_register_play_stat"):
 						state._register_play_stat(state.current_track)
 					await state.play_next(skipped_by_user=False)
-					bc = _srv("broadcast_state", broadcast_state)
-					res = bc()
-					if asyncio.iscoroutine(res):
-						await res
+					await broadcast_state()
 					continue
 
 				if changed and state:
-					bc = _srv("broadcast_state", broadcast_state)
-					res = bc()
-					if asyncio.iscoroutine(res):
-						await res
+					await broadcast_state()
 	except WebSocketDisconnect:
 		logger.info(f"Cliente desconectado: {client_host}")
 	finally:
-		curr_mgr = _srv("manager", get_manager())
-		curr_state = _srv("state", get_state())
+		curr_mgr = get_manager()
+		curr_state = get_state()
 		if curr_mgr and curr_mgr.disconnect(websocket) and curr_state and hasattr(curr_state, "mpv") and curr_state.mpv:
 			try:
 				await curr_state.mpv._send(

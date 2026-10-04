@@ -148,7 +148,7 @@ async def test_fetch_yt_dlp_metadata_invokes_ensure_ytdlp(tmp_path):
 
 	# find_binary returns None first
 	with (
-		patch("server.find_binary", return_value=None),
+		patch("app.engine.audio_analysis.find_binary", return_value=None),
 		patch("scripts.ytdlp_installer.ensure_ytdlp", return_value=fake_bin) as mock_ensure,
 		patch("asyncio.create_subprocess_exec") as mock_exec,
 	):
@@ -179,6 +179,7 @@ def test_check_dependencies_installs_ytdlp_on_windows(monkeypatch, tmp_path):
 		return None
 
 	monkeypatch.setattr(server, "find_binary", fake_find)
+	monkeypatch.setattr("app.engine.audio_analysis.find_binary", fake_find)
 	monkeypatch.setattr("server.importlib.util.find_spec", lambda mod: True)
 
 	with patch("scripts.ytdlp_installer.install_ytdlp", return_value=fake_bin) as mock_install:

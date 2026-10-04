@@ -60,7 +60,7 @@ def test_track_class_metadata_extraction(tmp_path):
 	}
 
 	with (
-		patch("server.MutagenFile", return_value=mock_audio),
+		patch("app.services.library.MutagenFile", return_value=mock_audio),
 		patch.object(server.Track, "_extract_fingerprint", return_value=None),
 		patch.object(server.Track, "_extract_mood", return_value=None),
 	):
@@ -83,7 +83,7 @@ def test_track_class_fallback_filename(tmp_path):
 	test_file.write_bytes(b"TEST_AUDIO_CONTENT")
 
 	with (
-		patch("server.MutagenFile", return_value=None),
+		patch("app.services.library.MutagenFile", return_value=None),
 		patch.object(server.Track, "_extract_fingerprint", return_value=None),
 		patch.object(server.Track, "_extract_mood", return_value=None),
 	):
@@ -122,10 +122,10 @@ def test_compare_fps():
 
 def test_is_mood_available():
 	"""Test is_mood_available detects presence of ffmpeg binary."""
-	with patch("server.find_binary", return_value="/usr/bin/ffmpeg"):
+	with patch("app.engine.audio_analysis.find_binary", return_value="/usr/bin/ffmpeg"):
 		assert server.is_mood_available() is True
 
-	with patch("server.find_binary", return_value=None):
+	with patch("app.engine.audio_analysis.find_binary", return_value=None):
 		assert server.is_mood_available() is False
 
 
@@ -197,10 +197,10 @@ def test_track_mood_ffmpeg_success(tmp_path):
 	test_file.write_bytes(b"dummy")
 
 	with (
-		patch("server.MutagenFile", return_value=None),
+		patch("app.services.library.MutagenFile", return_value=None),
 		patch.object(server.Track, "_extract_fingerprint", return_value=None),
-		patch("server.find_binary", return_value="/usr/bin/ffmpeg"),
-		patch("server.extract_audio_features_ffmpeg", return_value=(128.0, 0.65, 1850.0)),
+		patch("app.engine.audio_analysis.find_binary", return_value="/usr/bin/ffmpeg"),
+		patch("app.engine.audio_analysis.extract_audio_features_ffmpeg", return_value=(128.0, 0.65, 1850.0)),
 	):
 		track = server.Track(test_file)
 		assert track.bpm == 128.0
@@ -218,10 +218,10 @@ def test_track_mood_tag_priority_over_ffmpeg(tmp_path):
 	mock_audio.tags = {"TBPM": ["140"]}
 
 	with (
-		patch("server.MutagenFile", return_value=mock_audio),
+		patch("app.services.library.MutagenFile", return_value=mock_audio),
 		patch.object(server.Track, "_extract_fingerprint", return_value=None),
-		patch("server.find_binary", return_value="/usr/bin/ffmpeg"),
-		patch("server.extract_audio_features_ffmpeg", return_value=(138.5, 0.72, 2100.0)),
+		patch("app.engine.audio_analysis.find_binary", return_value="/usr/bin/ffmpeg"),
+		patch("app.engine.audio_analysis.extract_audio_features_ffmpeg", return_value=(138.5, 0.72, 2100.0)),
 	):
 		track = server.Track(test_file)
 		assert track.bpm == 140.0
@@ -239,9 +239,9 @@ def test_track_mood_tags_fallback_without_ffmpeg(tmp_path):
 	mock_audio.tags = {"bpm": ["125.5"]}
 
 	with (
-		patch("server.MutagenFile", return_value=mock_audio),
+		patch("app.services.library.MutagenFile", return_value=mock_audio),
 		patch.object(server.Track, "_extract_fingerprint", return_value=None),
-		patch("server.find_binary", return_value=None),
+		patch("app.engine.audio_analysis.find_binary", return_value=None),
 	):
 		track = server.Track(test_file)
 		assert track.bpm == 125.5
@@ -255,9 +255,9 @@ def test_track_mood_clean_degradation(tmp_path):
 	test_file.write_bytes(b"dummy")
 
 	with (
-		patch("server.MutagenFile", return_value=None),
+		patch("app.services.library.MutagenFile", return_value=None),
 		patch.object(server.Track, "_extract_fingerprint", return_value=None),
-		patch("server.find_binary", return_value=None),
+		patch("app.engine.audio_analysis.find_binary", return_value=None),
 	):
 		track = server.Track(test_file)
 		assert track.bpm == 0.0
@@ -271,10 +271,10 @@ def test_track_mood_ffmpeg_error(tmp_path):
 	test_file.write_bytes(b"dummy")
 
 	with (
-		patch("server.MutagenFile", return_value=None),
+		patch("app.services.library.MutagenFile", return_value=None),
 		patch.object(server.Track, "_extract_fingerprint", return_value=None),
-		patch("server.find_binary", return_value="/usr/bin/ffmpeg"),
-		patch("server.extract_audio_features_ffmpeg", return_value=(-1.0, -1.0, -1.0)),
+		patch("app.engine.audio_analysis.find_binary", return_value="/usr/bin/ffmpeg"),
+		patch("app.engine.audio_analysis.extract_audio_features_ffmpeg", return_value=(-1.0, -1.0, -1.0)),
 	):
 		track = server.Track(test_file)
 		assert track.bpm == -1.0
