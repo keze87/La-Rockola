@@ -139,7 +139,6 @@
 				lat.value = parseFloat(pos.coords.latitude.toFixed(4));
 				lng.value = parseFloat(pos.coords.longitude.toFixed(4));
 				updateMarkerPosition();
-				showToast('¡Ubicación detectada al toque!', 'success');
 			},
 			(err) => {
 				isLocating.value = false;
@@ -208,7 +207,7 @@
 <template>
 	<div
 		v-if="isOpen"
-		class="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
+		class="fixed inset-0 z-90 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="weather-modal-title"
@@ -237,8 +236,7 @@
 			<!-- Body -->
 			<div class="flex-1 space-y-4 overflow-y-auto p-6">
 				<p class="text-carpincho-muted text-xs">
-					Hacé click en el mapa, arrastrá el carpincho 🧉 o usá la detección automática. El locutor mencionará
-					el barrio o localidad más cercana con acento radial criollo.
+					Hacé click en el mapa, arrastrá el carpincho 🧉 o usá la detección automática.
 				</p>
 
 				<!-- Map container -->

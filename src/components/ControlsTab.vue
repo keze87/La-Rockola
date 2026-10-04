@@ -217,30 +217,13 @@
 			@update:model-value="toggleRadioMode"
 		/>
 
-		<!-- Configuración de Ubicación del Clima -->
-		<div
-			v-if="hasEdgeTts"
-			class="bg-carpincho-panel border-carpincho-warning mx-auto mb-8 flex w-full max-w-lg items-center justify-between rounded-xl border-l-4 p-4 shadow-md transition-all"
-		>
-			<div class="text-left">
-				<div class="text-carpincho-text flex items-center gap-2 font-bold">
-					<i class="material-icons text-carpincho-warning">wb_sunny</i>
-					Clima radial
-				</div>
-				<div class="text-carpincho-muted text-xs">
-					{{ weatherLocation ? `Ubicación: ${weatherLocation}` : 'Sin configurar' }}
-				</div>
-			</div>
-			<PillButton
-				icon="map"
-				color-class="bg-neutral-800 hover:bg-neutral-700 text-xs px-4 py-2"
-				@click="isWeatherModalOpen = true"
-			>
-				Cambiar mapa
+		<!-- Action Buttons -->
+		<div v-if="hasEdgeTts" class="mb-4 flex flex-wrap justify-center gap-3">
+			<PillButton icon="map" color-class="bg-neutral-800 hover:bg-neutral-700" @click="isWeatherModalOpen = true">
+				{{ weatherLocation ? `Ubicación del Clima: ${weatherLocation}` : 'Configurar ubicación' }}
 			</PillButton>
 		</div>
 
-		<!-- Action Buttons -->
 		<div class="mb-4 flex flex-wrap justify-center gap-3">
 			<PillButton icon="stop" color-class="bg-red-700 hover:bg-red-600" @click="stop">Cortala de una</PillButton>
 
