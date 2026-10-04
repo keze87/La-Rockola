@@ -795,6 +795,17 @@ def init_db():
 					  title TEXT,
 					  artist TEXT,
 					  played_at TEXT)""")
+
+		# Saneamiento de locuciones radiales en historial (evitando borrar pistas legítimas de la biblioteca)
+		try:
+			c.execute("""
+				DELETE FROM play_history
+				WHERE track_id LIKE '%radio_announcement.mp3%'
+				  AND track_id NOT IN (SELECT track_id FROM tracks)
+			""")
+		except Exception as e:
+			logger.debug(f"No se pudo purgar la locución radial de play_history: {e}")
+
 		conn.commit()
 
 
@@ -2751,8 +2762,32 @@ class APIState:
 			logger.error(f"Error cargando favoritos de la DB: {e}")
 			return []
 
+	def is_radio_announcement(self, path: str | Path | None) -> bool:
+		"""
+		Verifica si un path corresponde a la locución radial sintética generada por la aplicación.
+		Si la ruta está registrada en la biblioteca del usuario (path_to_id), se trata de una pista legítima.
+		"""
+		if not path:
+			return False
+		str_path = str(path)
+		if str_path in self.path_to_id:
+			return False
+		try:
+			announcement_p = getattr(self, "radio_announcement_path", None)
+			if announcement_p and Path(str_path).resolve() == Path(announcement_p).resolve():
+				return True
+			p = Path(str_path)
+			if p.name == "radio_announcement.mp3" and p.parent.resolve() == Path(tempfile.gettempdir()).resolve():
+				return True
+		except Exception:
+			pass
+		return False
+
 	def _register_play_stat(self, path):
 		str_path = str(path)
+		if getattr(self, "is_playing_radio_announcement", False) or self.is_radio_announcement(str_path):
+			return
+
 		if not str_path.startswith(("http://", "https://")):
 			track_id = self.path_to_id.get(str_path, str_path)
 			now = time.time()
@@ -3378,7 +3413,10 @@ class APIState:
 
 		self.processing_eof = True
 		try:
-			if self.current_track and reason != "error":
+			is_radio = getattr(self, "is_playing_radio_announcement", False) or self.is_radio_announcement(
+				self.current_track
+			)
+			if self.current_track and reason != "error" and not is_radio:
 				self._register_play_stat(self.current_track)
 			await self.play_next(skipped_by_user=False)
 			await broadcast_state()
@@ -4060,6 +4098,7 @@ class APIState:
 					SELECT track_id, COUNT(*) as count
 					FROM play_history
 					WHERE played_at >= ?
+					  AND (track_id NOT LIKE '%radio_announcement.mp3%' OR track_id IN (SELECT track_id FROM tracks))
 					GROUP BY track_id
 					ORDER BY count DESC
 					LIMIT 50
@@ -4077,6 +4116,9 @@ class APIState:
 				current_path = track_id
 			else:
 				current_path = self.id_to_current_path.get(track_id)
+
+			if current_path and self.is_radio_announcement(current_path):
+				continue
 
 			if current_path and os.path.exists(current_path):
 				top_played.append({"path": current_path, "count": count})
@@ -5050,7 +5092,10 @@ async def websocket_endpoint(websocket: WebSocket):
 				if msg.get("song_ended"):
 					# La canción terminó en el browser — avanzamos la fila igual que cuando termina en MPV
 					logger.info("El reproductor local avisó que terminó la canción. Avanzando fila...")
-					if state.current_track:
+					is_radio = getattr(state, "is_playing_radio_announcement", False) or state.is_radio_announcement(
+						state.current_track
+					)
+					if state.current_track and not is_radio:
 						state._register_play_stat(state.current_track)
 					await state.play_next(skipped_by_user=False)
 					await broadcast_state()

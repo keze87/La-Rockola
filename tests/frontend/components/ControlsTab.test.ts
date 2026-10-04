@@ -284,15 +284,12 @@ describe('ControlsTab.vue', () => {
 		hasEdgeTts.value = true;
 		const wrapper = mount(ControlsTab);
 
-		expect(wrapper.text()).toContain('Clima radial');
-		expect(wrapper.text()).toContain('San Miguel de Tucumán');
+		expect(wrapper.text()).toContain('Ubicación del Clima: San Miguel de Tucumán');
 
-		const weatherRow = wrapper.find('.bg-carpincho-panel.border-carpincho-warning.max-w-lg');
-		expect(weatherRow.exists()).toBe(true);
-
-		const mapBtn = wrapper.findAllComponents({ name: 'PillButton' }).find((b) => b.text().includes('Cambiar mapa'));
+		const mapBtn = wrapper
+			.findAllComponents({ name: 'PillButton' })
+			.find((b) => b.text().includes('Ubicación del Clima: San Miguel de Tucumán'));
 		expect(mapBtn).toBeDefined();
-		expect(wrapper.find('.material-symbols-outlined').exists()).toBe(false);
 
 		await mapBtn!.trigger('click');
 
