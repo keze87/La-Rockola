@@ -4649,7 +4649,7 @@ async def serve_lrc(path: str = Query(...)):
 	)
 
 
-@app.get("/api/weather/preview")
+@app.api_route("/api/weather/preview", methods=["GET", "HEAD"])
 async def preview_weather(location: str = Query(...)):
 	"""Consulta wttr.in para una ubicación dada y devuelve el área resuelta y la frase de prueba."""
 	from scripts.radio_announcer import (

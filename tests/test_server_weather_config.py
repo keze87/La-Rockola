@@ -71,3 +71,24 @@ async def test_weather_preview_endpoint():
 			assert body["temp_c"] == 22
 			assert "phrase" in body
 			assert "Constitución" in body["phrase"]
+
+
+@pytest.mark.asyncio
+async def test_preview_weather_supports_head_request():
+	fake_wttr_data = {
+		"current_condition": [{"temp_C": "22"}],
+		"nearest_area": [{"areaName": [{"value": "Constitución"}]}],
+		"weather": [
+			{
+				"mintempC": "15",
+				"maxtempC": "25",
+				"hourly": [{"weatherDesc": [{"value": "Soleado"}]}],
+			}
+		],
+	}
+
+	with patch("scripts.radio_announcer.fetch_weather_json", return_value=fake_wttr_data):
+		transport = ASGITransport(app=app)
+		async with AsyncClient(transport=transport, base_url="http://test") as client:
+			resp = await client.head("/api/weather/preview?location=-34.6037,-58.3816")
+			assert resp.status_code == 200

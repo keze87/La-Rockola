@@ -4,6 +4,7 @@
 	import { weatherLocation } from '../composables/player/state';
 	import { usePlaybackControls } from '../composables/usePlaybackControls';
 	import { useToasts } from '../composables/player/useToasts';
+	import { apiUrl } from '../composables/useApi';
 	import PillButton from './ui/PillButton.vue';
 
 	const props = defineProps<{
@@ -32,15 +33,14 @@
 	let marker: LeafletMarker | null = null;
 
 	const presets = [
+		{ name: 'Bariloche', lat: -41.1335, lng: -71.3103 },
 		{ name: 'Buenos Aires', lat: -34.6037, lng: -58.3816 },
 		{ name: 'Córdoba', lat: -31.4201, lng: -64.1888 },
-		{ name: 'Rosario', lat: -32.9468, lng: -60.6393 },
-		{ name: 'Tucumán', lat: -26.8241, lng: -65.2226 },
 		{ name: 'Mendoza', lat: -32.8895, lng: -68.8458 },
-		{ name: 'Mar del Plata', lat: -38.0055, lng: -57.5562 },
-		{ name: 'Bariloche', lat: -41.1335, lng: -71.3103 },
+		{ name: 'Rosario', lat: -32.9468, lng: -60.6393 },
+		{ name: 'Salta', lat: -24.7821, lng: -65.4232 },
+		{ name: 'Tucumán', lat: -26.8241, lng: -65.2226 },
 		{ name: 'Ushuaia', lat: -54.8019, lng: -68.303 },
-		{ name: 'Montevideo', lat: -34.9011, lng: -56.1645 },
 	];
 
 	function parseLocationString(loc: string) {
@@ -155,7 +155,7 @@
 		isPreviewing.value = true;
 		previewData.value = null;
 		try {
-			const res = await fetch(`/api/weather/preview?location=${encodeURIComponent(coords)}`);
+			const res = await fetch(apiUrl(`/api/weather/preview?location=${encodeURIComponent(coords)}`));
 			const data = await res.json();
 			if (data.ok) {
 				previewData.value = {

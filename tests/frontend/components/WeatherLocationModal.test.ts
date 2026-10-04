@@ -81,6 +81,27 @@ describe('WeatherLocationModal.vue', () => {
 		expect(wrapper.text()).toContain('Mirá cómo está el tiempo en Constitución');
 	});
 
+	it('uses apiUrl to request preview respecting subpath mount', async () => {
+		const originalLocation = window.location;
+		// @ts-expect-error mocking window.location
+		delete window.location;
+		window.location = { ...originalLocation, pathname: '/rockola/' } as any;
+
+		try {
+			const wrapper = mount(WeatherLocationModal, {
+				props: { isOpen: true },
+			});
+
+			const previewBtn = wrapper.findAll('button').find((b) => b.text().includes('Probar reporte'));
+			await previewBtn?.trigger('click');
+			await flushPromises();
+
+			expect(fetchMock).toHaveBeenCalledWith(expect.stringMatching(/^\/rockola\/api\/weather\/preview/));
+		} finally {
+			window.location = originalLocation;
+		}
+	});
+
 	it('saves the selected coordinates via command and emits close', async () => {
 		const wrapper = mount(WeatherLocationModal, {
 			props: { isOpen: true },
