@@ -130,7 +130,7 @@ export function useKeyboardShortcuts() {
 			player.toggleFavorite(currentPath);
 			player.haptic();
 
-			// Show the toast based on what the new state will be
+			// Mostramos la notificación según el nuevo estado
 			if (!wasFavorite) player.showToast('Agregado a favoritos', 'success');
 			else player.showToast('Quitado de favoritos', 'error');
 		}

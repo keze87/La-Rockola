@@ -216,7 +216,7 @@
 		<div
 			class="border-carpincho-border bg-carpincho-panel text-carpincho-text relative flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl border shadow-2xl"
 		>
-			<!-- Header -->
+			<!-- Encabezado -->
 			<div class="border-carpincho-border flex items-center justify-between border-b px-6 py-4">
 				<div class="flex items-center gap-2">
 					<i class="material-icons text-carpincho-warning text-2xl">wb_sunny</i>
@@ -233,19 +233,19 @@
 				</button>
 			</div>
 
-			<!-- Body -->
+			<!-- Cuerpo -->
 			<div class="flex-1 space-y-4 overflow-y-auto p-6">
 				<p class="text-carpincho-muted text-xs">
 					Hacé click en el mapa, arrastrá el carpincho 🧉 o usá la detección automática.
 				</p>
 
-				<!-- Map container -->
+				<!-- Contenedor del mapa -->
 				<div
 					ref="mapContainer"
 					class="border-carpincho-border bg-carpincho-bg relative h-64 w-full overflow-hidden rounded-xl border shadow-inner"
 				></div>
 
-				<!-- Coords & Geolocation -->
+				<!-- Coordenadas y geolocalización -->
 				<div class="flex flex-wrap items-center justify-between gap-3">
 					<div class="flex items-center gap-2 text-sm">
 						<label class="text-carpincho-muted text-xs font-semibold">Coords:</label>
@@ -278,7 +278,7 @@
 					</button>
 				</div>
 
-				<!-- City Presets -->
+				<!-- Ciudades sugeridas -->
 				<div>
 					<span class="text-carpincho-muted mb-1.5 block text-xs font-semibold">Ciudades sugeridas:</span>
 					<div class="flex flex-wrap gap-1.5">
@@ -294,7 +294,7 @@
 					</div>
 				</div>
 
-				<!-- Preview Box -->
+				<!-- Cuadro de vista previa -->
 				<div
 					v-if="previewData"
 					class="border-carpincho-border bg-carpincho-bg/80 rounded-xl border p-3.5 text-sm"
@@ -309,7 +309,7 @@
 				</div>
 			</div>
 
-			<!-- Footer -->
+			<!-- Pie de modal -->
 			<div class="border-carpincho-border flex items-center justify-between border-t px-6 py-4">
 				<PillButton
 					icon="sync"

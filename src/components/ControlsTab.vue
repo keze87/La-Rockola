@@ -100,7 +100,7 @@
 		return window.location.href;
 	});
 
-	// --- Toggles ---
+	// --- Interruptores ---
 	function toggleDjCarpincho() {
 		toggleDjCmd(!djCarpinchoEnabled.value);
 		haptic();
@@ -121,7 +121,7 @@
 
 <template>
 	<section id="controls-tab" class="tab-content bg-carpincho-bg h-full overflow-y-auto px-6 pt-6">
-		<!-- Volume Slider -->
+		<!-- Control deslizante de volumen -->
 		<div class="text-carpincho-warning bg-carpincho-panel mb-8 flex items-center rounded-xl p-4 shadow">
 			<i
 				class="material-icons mr-3 cursor-pointer transition-colors hover:text-white"
@@ -154,7 +154,7 @@
 			</div>
 		</div>
 
-		<!-- Sorters -->
+		<!-- Opciones de ordenamiento -->
 		<div class="text-carpincho-secondary mb-4 text-center text-sm font-bold tracking-wider uppercase">
 			<i class="material-icons mr-1 align-middle">sort</i>
 			Acomodando la gilada
@@ -174,13 +174,13 @@
 			<PillButton icon="shuffle" @click="sortLibrary('shuffle', false)">Mezcladito (A lo loco)</PillButton>
 		</div>
 
-		<!-- The Toggles -->
+		<!-- Interruptores de opciones -->
 		<div class="text-carpincho-secondary mb-4 text-center text-sm font-bold tracking-wider uppercase">
 			<i class="material-icons mr-1 align-middle">celebration</i>
 			La Joda
 		</div>
 
-		<!-- Local Listen Toggle -->
+		<!-- Interruptor para escuchar en el cliente -->
 		<ToggleRow
 			v-model="listenLocally"
 			icon="headphones"
@@ -217,7 +217,7 @@
 			@update:model-value="toggleRadioMode"
 		/>
 
-		<!-- Action Buttons -->
+		<!-- Botones de acción -->
 		<div v-if="hasEdgeTts" class="mb-4 flex flex-wrap justify-center gap-3">
 			<PillButton icon="map" color-class="bg-neutral-800 hover:bg-neutral-700" @click="isWeatherModalOpen = true">
 				{{ weatherLocation ? `Ubicación del Clima: ${weatherLocation}` : 'Configurar ubicación' }}
@@ -278,16 +278,16 @@
 			</PillButton>
 		</div>
 
-		<!-- QR Code -->
+		<!-- Código QR -->
 		<div class="text-carpincho-secondary mb-4 text-center text-sm font-bold tracking-wider uppercase">
 			<i class="material-icons mr-1 align-middle">qr_code_2</i>
 			Sumate a la joda
 		</div>
 
 		<div class="flex flex-col items-center pb-20">
-			<!-- Note the 'relative' class added here to contain the absolute image -->
+			<!-- Clase 'relative' agregada para contener la imagen absoluta -->
 			<div class="relative flex items-center justify-center rounded-xl bg-white p-4 shadow-lg">
-				<!-- The Vue QR Component with your exact colors -->
+				<!-- Componente QR con los colores de la aplicación -->
 				<QRCode :value="currentUrl" :size="200" level="H" foreground="#2b2622" background="#ffffff" />
 
 				<!-- La impronta del carpincho -->

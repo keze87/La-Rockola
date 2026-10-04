@@ -1,8 +1,8 @@
 import type { ApiResponse, CommandName, CommandPayloads, Track } from '../types';
 
 /**
- * Returns the subpath the app is mounted under, or an empty string if at the root.
- * Examples:
+ * Devuelve la subruta bajo la cual está montada la app, o un string vacío si está en la raíz.
+ * Ejemplos:
  *   http://example.com/           -> ""
  *   http://example.com/rockola/   -> "/rockola"
  *   http://example.com/rockola    -> "/rockola"
@@ -14,9 +14,9 @@ export function getBasePath(): string {
 }
 
 /**
- * Resolves an API or static path relative to the app base path.
- * Examples:
- *   apiUrl('/command') -> "/command" (root) or "/rockola/command" (subpath)
+ * Resuelve una ruta de API o estática relativa a la ruta base de la app.
+ * Ejemplos:
+ *   apiUrl('/command') -> "/command" (raíz) o "/rockola/command" (subruta)
  */
 export function apiUrl(endpoint: string): string {
 	const base = getBasePath();
@@ -25,7 +25,7 @@ export function apiUrl(endpoint: string): string {
 }
 
 /**
- * Constructs the WebSocket URL using current host, protocol (ws/wss), and base path.
+ * Construye la URL del WebSocket usando el host actual, protocolo (ws/wss) y ruta base.
  */
 export function getWsUrl(endpoint = '/ws'): string {
 	const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -55,11 +55,11 @@ export function useApi() {
 	}
 
 	return {
-		// Enforces that 'payload' precisely matches the requirements of 'cmd'
+		// Asegura que 'payload' coincida estrictamente con los requerimientos del 'cmd'
 		command: <C extends CommandName>(cmd: C, payload?: CommandPayloads[C]) =>
 			post('/command', { cmd, ...(payload || {}) }),
 
-		// Explicitly tells TS that the 'data' property holds an array of Tracks
+		// Le indica a TypeScript que la propiedad 'data' contiene un arreglo de pistas
 		getLibrary: () => get<Track[]>('/library'),
 		hideMpv: () => post('/mpv/hide'),
 		scanLibrary: () => get<Track[]>('/scan'),

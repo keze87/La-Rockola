@@ -71,7 +71,7 @@ export function useSocket() {
 				try {
 					const data = JSON.parse(event.data);
 
-					// Local player logic events
+					// Eventos de lógica del reproductor local
 					if (data.type === 'local_player_seek') {
 						// Otro cliente mandó un seek — lo aplicamos al <audio> local
 						applyRemoteSeek(data);
@@ -127,8 +127,8 @@ export function useSocket() {
 							timePos.value = state.time_pos;
 							if (!listenLocally.value) {
 								if (pendingSeekTime.value !== null) {
-									// A seek is in flight — ignore server ticks until the
-									// broadcast time lines up with what we asked for.
+									// Hay un salto (seek) en curso: ignoramos ticks del server hasta que
+									// el tiempo emitido se alinee con lo que pedimos.
 									const drift = Math.abs(state.time_pos - pendingSeekTime.value);
 									if (drift <= 0.5) {
 										pendingSeekTime.value = null;

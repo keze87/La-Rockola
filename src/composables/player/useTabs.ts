@@ -9,13 +9,13 @@ export function useTabs() {
 			nextTick(() => {
 				const el = document.getElementById('current-queue-row');
 
-				// 'auto' scrolls instantly without the smooth animation
+				// 'auto' scrollea al instante sin animación suave
 				if (el) el.scrollIntoView({ behavior: 'auto', block: 'center' });
 			});
 		} else if (tabId === 'controls') {
 			nextTick(() => {
 				const el = document.getElementById('controls-tab');
-				// Instantly reset the scroll position
+				// Reiniciamos al instante la posición del scroll
 				if (el) el.scrollTop = 0;
 			});
 		}

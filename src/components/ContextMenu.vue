@@ -30,12 +30,11 @@
 		toggleFavorite,
 	} = usePlayer();
 
-	// Whether the focus ring should be shown. We can't rely on CSS
-	// `:focus-visible` alone: opening the menu always focuses the first item
-	// programmatically (so keyboard users can drive it at all), and some
-	// browsers treat that as focus-visible-worthy even when the menu was
-	// opened with a mouse/touch. Tracking real keyup navigation ourselves
-	// keeps the ring tied to actually navigating by keyboard.
+	// Si mostramos o no el anillo de foco. No nos alcanza con `:focus-visible`
+	// de CSS: abrir el menú siempre le clava el foco al primer elemento por código
+	// (para que los que usan teclado puedan navegarlo de una), y algunos navegadores
+	// lo toman como foco visible aunque lo hayas abierto con el mouse o touch.
+	// Llevar nosotros mismos la cuenta del teclado asegura que solo se marque si navegan con teclas.
 	const keyboardNav = ref(false);
 
 	watch(
@@ -56,9 +55,9 @@
 		haptic();
 	}
 
-	// Arrow keys move focus between items, Escape closes and returns focus to
-	// the row that opened the menu, and Tab is trapped inside the menu while
-	// it's open - without this the menu can only be driven with a mouse/touch.
+	// Las flechas mueven el foco entre ítems, Escape cierra y devuelve el foco a
+	// la fila que abrió el menú, y Tab queda atrapado adentro mientras esté abierto
+	// (sin esto el menú solo se podría manejar con mouse o touch).
 	function ctxMenuKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') {
 			e.preventDefault();
@@ -95,7 +94,7 @@
 		}
 	}
 
-	// --- Shared Actions ---
+	// --- Acciones Compartidas ---
 	async function ctxPlayNow() {
 		const track = ctxMenu.track;
 
@@ -143,7 +142,7 @@
 		haptic();
 	}
 
-	// --- Library Source Actions ---
+	// --- Acciones desde la Librería ---
 	async function ctxPlayNext() {
 		const track = ctxMenu.track;
 
@@ -180,7 +179,7 @@
 		haptic();
 	}
 
-	// --- Queue Source Actions ---
+	// --- Acciones desde la Fila ---
 	async function ctxPlayNextQueue() {
 		const index = ctxMenu.index;
 		closeCtxMenu();
@@ -211,7 +210,7 @@
 		}
 	}
 
-	// --- History Source Actions ---
+	// --- Acciones desde el Historial ---
 	async function ctxHistoryPlayAgain() {
 		const track = ctxMenu.track;
 
@@ -241,7 +240,7 @@
 		}
 	}
 
-	// --- Current Source Actions ---
+	// --- Acciones del Tema en Reproducción ---
 	async function ctxTogglePause() {
 		closeCtxMenu();
 		await pause();
@@ -284,7 +283,7 @@
 				🦦 {{ ctxMenu.track?.title || ctxMenu.track?.display_title }}
 			</div>
 
-			<!-- LIBRARY ACTIONS -->
+			<!-- ACCIONES DE LIBRERÍA -->
 			<template v-if="ctxMenu.source === 'library'">
 				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxPlayNext">
 					<i class="material-icons">queue_play_next</i>
@@ -314,7 +313,7 @@
 				</button>
 			</template>
 
-			<!-- CURRENT ACTIONS -->
+			<!-- ACCIONES DEL TEMA ACTUAL -->
 			<template v-if="ctxMenu.source === 'current'">
 				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxTogglePause">
 					<i class="material-icons">{{ isPaused ? 'play_arrow' : 'pause' }}</i>
@@ -344,7 +343,7 @@
 				</button>
 			</template>
 
-			<!-- QUEUE ACTIONS -->
+			<!-- ACCIONES DE LA FILA -->
 			<template v-if="ctxMenu.source === 'queue'">
 				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxPlayNextQueue">
 					<i class="material-icons">vertical_align_top</i>
@@ -374,7 +373,7 @@
 				</button>
 			</template>
 
-			<!-- HISTORY ACTIONS -->
+			<!-- ACCIONES DEL HISTORIAL -->
 			<template v-if="ctxMenu.source === 'history'">
 				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxHistoryPlayAgain">
 					<i class="material-icons">add_circle_outline</i>

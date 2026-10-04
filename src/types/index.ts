@@ -52,7 +52,7 @@ export interface PlayerState {
 export interface ApiResponse<T = unknown> {
 	status: string;
 	data?: T;
-	[key: string]: unknown; // Allows flexibility for arbitrary server flags if needed
+	[key: string]: unknown; // Permite flexibilidad para flags adicionales del servidor si hiciera falta
 }
 
 export interface CommandPayloads {

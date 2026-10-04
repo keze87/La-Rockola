@@ -4,14 +4,12 @@ import { toast } from 'vue-sonner';
 type ToastMessage = string | { prefix?: string; highlight: string; suffix?: string };
 type ToastType = 'info' | 'success' | 'warning' | 'error';
 
-// `msg` is either a plain string, or `{ prefix, highlight, suffix }` when a
-// track title needs to be shown in bold. For the latter we hand vue-sonner
-// a tiny Vue component built with h() instead of an HTML string — h()
-// treats `highlight` as a text node (auto-escaped, just like `{{ }}` in a
-// template), so a track title full of angle brackets can never be
-// interpreted as markup. Track titles can come from untrusted sources
-// (pasted URLs, file metadata), so this can't be a string-concat + v-html
-// like the old implementation was.
+// `msg` es un string común o `{ prefix, highlight, suffix }` cuando el título
+// del tema tiene que verse en negrita. En este último caso le pasamos a vue-sonner
+// un mini componente Vue armado con h() en lugar de un string HTML: h()
+// trata `highlight` como nodo de texto (escapado automático como `{{ }}` en templates),
+// evitando inyección de markup si el título contiene caracteres raros. Al provenir
+// de fuentes externas (URLs pegadas, metadatos de archivos), no podemos concatenar strings con v-html.
 function toastContent(msg: ToastMessage): string | VNode {
 	if (typeof msg === 'string') return msg;
 

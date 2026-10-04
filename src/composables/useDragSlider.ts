@@ -14,7 +14,7 @@ export function useDragSlider(options: DragSliderOptions) {
 	const isDragging = ref(false);
 	const dragValue = ref(0);
 
-	// When dragging, show the immediate drag position. Otherwise, show the actual source value.
+	// Al arrastrar mostramos la posición inmediata del arrastre. Si no, el valor real de origen.
 	const displayValue = computed(() => (isDragging.value ? dragValue.value : getValue()));
 
 	const progressPercent = computed(() => {
@@ -33,7 +33,7 @@ export function useDragSlider(options: DragSliderOptions) {
 		const el = e.currentTarget as HTMLElement;
 		const rect = el.getBoundingClientRect();
 
-		// Supports native Pointer Events, falling back to Touch/Mouse if needed
+		// Soporta Pointer Events nativos, con fallback a Touch/Mouse si hace falta
 		let clientX = 0;
 
 		if ('touches' in e && (e as TouchEvent).touches.length > 0) {
@@ -45,7 +45,7 @@ export function useDragSlider(options: DragSliderOptions) {
 		}
 
 		let clickX = clientX - rect.left;
-		clickX = Math.max(0, Math.min(clickX, rect.width)); // Clamp between 0 and width
+		clickX = Math.max(0, Math.min(clickX, rect.width)); // Limitamos entre 0 y el ancho
 		return (clickX / rect.width) * maximum;
 	}
 

@@ -25,7 +25,7 @@
 		}
 	);
 
-	// Getter form so a changing `path` or `sizePx` prop keeps recomputing
+	// Forma de getter para que se recalcule si cambia la prop `path` o `sizePx`
 	const { coverUrl, onCoverError } = useCover(() => props.path, {
 		size: () => props.sizePx,
 	});

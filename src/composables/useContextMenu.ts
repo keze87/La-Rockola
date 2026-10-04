@@ -20,12 +20,12 @@ const ctxMenu = reactive<CtxMenuState>({
 	index: null,
 });
 
-// The element that opened the menu (a table row, typically), so we can
-// return keyboard focus to it once the menu closes. Module-level like
-// ctxMenu itself, since there's only ever one menu instance in the app.
+// El elemento que abrió el menú (típicamente una fila), para poder
+// devolverle el foco del teclado al cerrarse. A nivel de módulo como ctxMenu,
+// ya que solo existe una instancia del menú en toda la app.
 let triggerEl: HTMLElement | null = null;
 
-// Touch state stored outside the composable so it persists accurately
+// Estado táctil guardado fuera del composable para persistir correctamente
 let ctxLongPressTimer: ReturnType<typeof setTimeout> | null = null;
 let touchStartX = 0;
 let touchStartY = 0;
@@ -40,21 +40,20 @@ export function useContextMenu() {
 		source = 'library',
 		index: number | null = null
 	) {
-		// Only valid for handlers invoked synchronously (e.g. a real
-		// `contextmenu` event) — for the touch long-press path this is
-		// captured earlier by onCtxTouchStart, since `currentTarget` is
-		// already null by the time its setTimeout fires.
+		// Solo válido para manejadores invocados de forma sincrónica (un evento `contextmenu` real);
+		// para pulsación larga táctil esto se captura antes en onCtxTouchStart,
+		// ya que `currentTarget` queda en null cuando se dispara el setTimeout.
 		if (event.currentTarget) triggerEl = event.currentTarget as HTMLElement;
 
 		ctxMenu.track = track;
 		ctxMenu.source = source;
 		ctxMenu.index = index;
 
-		// 1. Extract raw coordinates
+		// 1. Extraemos las coordenadas crudas
 		const clientX = 'touches' in event ? (event.touches[0]?.clientX ?? 0) : event.clientX;
 		const clientY = 'touches' in event ? (event.touches[0]?.clientY ?? 0) : event.clientY;
 
-		// 2. Pre-seed the coordinates to prevent the top-left flash
+		// 2. Precargamos coordenadas para evitar el parpadeo en la esquina superior izquierda
 		ctxMenu.x = clientX;
 		ctxMenu.y = clientY;
 		ctxMenu.visible = true;
@@ -86,7 +85,7 @@ export function useContextMenu() {
 				ctxMenu.y = y;
 			});
 
-			// Move keyboard focus into the menu so it's usable without a mouse
+			// Movemos el foco del teclado al menú para que sea usable sin mouse
 			(menuElement.querySelector('[role="menuitem"]') as HTMLElement)?.focus();
 		});
 	}
@@ -94,7 +93,7 @@ export function useContextMenu() {
 	function closeCtxMenu() {
 		ctxMenu.visible = false;
 
-		// Return focus to whatever opened the menu, if it's still around
+		// Devolvemos el foco al elemento que abrió el menú, si todavía existe
 		if (triggerEl && document.contains(triggerEl) && typeof triggerEl.focus === 'function') {
 			triggerEl.focus();
 		}
@@ -102,9 +101,8 @@ export function useContextMenu() {
 	}
 
 	function onCtxTouchStart(e: TouchEvent, track: Track, source = 'library', index: number | null = null) {
-		// Capture now, synchronously — `e.currentTarget` is nulled out by the
-		// browser once the touchstart event finishes dispatching, so it would
-		// already be gone by the time the setTimeout below fires.
+		// Capturamos de forma sincrónica ahora: el navegador limpia `e.currentTarget`
+		// apenas termina el evento touchstart, por lo que ya no estaría cuando corra el setTimeout.
 		const el = e.currentTarget as HTMLElement;
 
 		touchStartX = e.touches[0].screenX;
@@ -117,7 +115,7 @@ export function useContextMenu() {
 			if (window.navigator.vibrate) window.navigator.vibrate([10, 30, 20]);
 
 			triggerEl = el;
-			openCtxMenu(e, track, source, index); // Pass the original event to openCtxMenu
+			openCtxMenu(e, track, source, index); // Le pasamos el evento original a openCtxMenu
 		}, 500);
 	}
 
@@ -127,7 +125,7 @@ export function useContextMenu() {
 		const diffX = Math.abs(e.touches[0].screenX - touchStartX);
 		const diffY = Math.abs(e.touches[0].screenY - touchStartY);
 
-		// Cancel the long press if the finger moves more than 10px
+		// Cancelamos la pulsación larga si el dedo se mueve más de 10px
 		if (diffX > 10 || diffY > 10) {
 			clearTimeout(ctxLongPressTimer);
 			ctxLongPressTimer = null;
@@ -140,7 +138,7 @@ export function useContextMenu() {
 			ctxLongPressTimer = null;
 		}
 
-		// If the context menu opened, prevent the subsequent click event
+		// Si se abrió el menú contextual, evitamos el evento click posterior
 		if (ctxLongPressFired && e && typeof e.preventDefault === 'function') {
 			e.preventDefault();
 		}
@@ -150,17 +148,15 @@ export function useContextMenu() {
 }
 
 /**
- * Ready-to-spread event bindings (`v-on="bindings"`) for a single track row:
- * right-click opens the context menu, and a touch long-press does the same.
+ * Bindings de eventos listos para propagar (`v-on="bindings"`) en una fila de tema:
+ * click derecho abre el menú contextual, y la pulsación larga táctil hace lo mismo.
  *
- * Accepts refs, getters, or plain values for track/source/index and resolves
- * them at event time (not at setup time), so it stays correct even when the
- * row is reused for different data (e.g. a `:key`-stable row in a v-for that
- * gets fresh props on every websocket update).
+ * Acepta refs, getters o valores planos para track/source/index y los resuelve
+ * en el momento del evento (no en setup), manteniéndose consistente incluso si
+ * la fila se reutiliza para otros datos (ej. fila con `:key` estable en un v-for).
  *
- * Pass `{ touch: false }` when the caller needs to own touch handling itself
- * (e.g. the queue list's swipe-to-delete gesture), leaving only the
- * right-click binding in place.
+ * Pasá `{ touch: false }` cuando el llamador maneje sus propios eventos táctiles
+ * (ej. el swipe para borrar en la fila de reproducción), dejando solo el click derecho.
  */
 export function useContextMenuBindings(
 	track: MaybeRefOrGetter<Track>,

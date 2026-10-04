@@ -4,13 +4,12 @@
 	import FavoritableCover from './FavoritableCover.vue';
 	import type { Track } from '../../types';
 
-	// A div/grid-based sibling of TrackRow, used only by LibraryTab's
-	// virtualized list: vueuse's `useVirtualList` renders its visible slice as
-	// plain block children of a wrapper `<div>`, and a `<div>` can't legally
-	// live inside a `<table>` (the browser hoists it back out), so this row
-	// can't be a `<tr>`/`<td>` like TrackRow. Column widths below are matched
-	// by eye to the old `<table>` layout — nudge the grid-cols classes here
-	// (and ROW_HEIGHT in LibraryTab.vue) if they drift from the real render.
+	// Variante basada en div/grid hermana de TrackRow, usada exclusivamente por la lista
+	// virtualizada de LibraryTab: `useVirtualList` de vueuse renderiza los elementos visibles como
+	// hijos directos en un wrapper `<div>`, y un `<div>` no puede convivir legalmente
+	// adentro de una `<table>` (el navegador lo saca para afuera), por lo que esta fila
+	// no puede ser `<tr>`/`<td>` como TrackRow. Los anchos de columna de abajo están ajustados
+	// a ojo con el layout de tabla anterior; ajustar las clases grid-cols acá si cambian.
 	const props = defineProps<{
 		track: Track;
 		isCurrent: boolean;
@@ -26,9 +25,9 @@
 		(e: 'click', track: Track): void;
 	}>();
 
-	// Getter form (not `props.track` by value) so this keeps tracking the
-	// current prop when a `:key`-stable row is reused for fresh track data
-	// (e.g. after a websocket state_update replaces the library array).
+	// Forma de getter (no `props.track` por valor) para seguir el rastro de la prop
+	// actual cuando una fila reutiliza su `:key` para nuevos datos de tema
+	// (por ejemplo tras una actualización por websocket que reemplace la lista).
 	const { displayArtist, displayTitle, durationStr, toggleFavorite } = useTrack(() => props.track);
 
 	const bindings = useContextMenuBindings(
@@ -49,7 +48,7 @@
 		<div class="relative flex items-center justify-center p-2">
 			<FavoritableCover :track="track" />
 
-			<!-- Now-playing indicator, overlaid on the cover -->
+			<!-- Indicador de tema sonando, superpuesto a la portada -->
 			<div
 				v-if="isCurrent"
 				class="bg-carpincho-panel absolute flex h-7 w-7 cursor-pointer items-center justify-center rounded-full shadow"
@@ -62,7 +61,7 @@
 				</div>
 			</div>
 
-			<!-- Queue order, overlaid on the cover -->
+			<!-- Posición en la fila, superpuesta a la portada -->
 			<span
 				v-else-if="queuePosition !== -1"
 				class="bg-carpincho-panel text-carpincho-warning absolute flex h-7 w-7 cursor-pointer items-center justify-center rounded-full text-base font-bold shadow"

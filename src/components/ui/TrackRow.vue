@@ -11,10 +11,10 @@
 				track: Track | string;
 				contextSource?: string;
 				index?: number | null;
-				// Queue rows own their long-press-vs-swipe-to-delete touch logic
-				// themselves, so they set this to skip the default touch bindings.
+				// Las filas de la fila manejan su propia lógica de pulsación larga vs swipe para borrar,
+				// por lo que activan esto para saltear los bindings táctiles por defecto.
 				contextMenuOnly?: boolean;
-				// Explicitly declare the camelCased data attributes for vue-tsc
+				// Declaramos explícitamente los atributos data en camelCase para vue-tsc
 				dataHistoryPath?: string;
 				dataHistoryIndex?: number;
 				dataQueueIndex?: number;
@@ -40,9 +40,9 @@
 		(e: 'click', track: Track | string): void;
 	}>();
 
-	// Getter form (not `props.track` by value) so this keeps tracking the
-	// current prop when a `:key`-stable row is reused for fresh track data
-	// (e.g. after a websocket state_update replaces the library array).
+	// Forma de getter (no `props.track` por valor) para seguir el rastro de la prop
+	// actual cuando una fila reutiliza su `:key` para nuevos datos de tema
+	// (por ejemplo tras una actualización por websocket que reemplace la lista).
 	const { displayArtist, displayTitle, durationStr, isPaused, isPlaying, trackInfo } = useTrack(() => props.track);
 
 	const bindings = useContextMenuBindings(
@@ -68,7 +68,7 @@
 		v-on="bindings"
 		@click="emit('click', track)"
 	>
-		<!-- Prefix Slot: Used for handles, Top rankings, or EQ animations -->
+		<!-- Slot de prefijo: Para selectores de arrastre, rankings del Top o animación del ecualizador -->
 		<div class="flex items-center justify-center p-2 text-center">
 			<slot name="prefix">
 				<div v-if="isPlaying" class="flex items-center justify-center">
@@ -81,7 +81,7 @@
 			</slot>
 		</div>
 
-		<!-- Main Track Info -->
+		<!-- Información principal del tema -->
 		<div class="flex items-center justify-start gap-3 overflow-hidden p-4 font-medium">
 			<slot name="cover">
 				<FavoritableCover :track="track" class="hidden sm:block" />
@@ -90,17 +90,17 @@
 			<slot name="title-extra" />
 		</div>
 
-		<!-- Artist -->
+		<!-- Artista -->
 		<div class="text-carpincho-muted truncate p-4">
 			{{ displayArtist }}
 		</div>
 
-		<!-- Suffix Slot: Used for Queue delete buttons -->
+		<!-- Slot de sufijo: Usado para botones de borrar en la fila -->
 		<div v-if="$slots.suffix" class="flex justify-end p-4">
 			<slot name="suffix"></slot>
 		</div>
 
-		<!-- Duration -->
+		<!-- Duración -->
 		<div v-else class="text-carpincho-muted hidden p-4 text-right sm:block">
 			{{ durationStr }}
 		</div>

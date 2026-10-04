@@ -3,10 +3,10 @@ import { useDragSlider } from './useDragSlider';
 
 export function useSliderFactory() {
 	/**
-	 * @param {Ref|Number|Function} source - The reactive value for the slider's current position
-	 * @param {Ref|Number|Function} max - The reactive value for the slider's maximum limit
-	 * @param {Function} onUpdate - Fires continuously while dragging
-	 * @param {Function} onCommit - Fires once when the user releases the slider
+	 * @param {Ref|Number|Function} source - Valor reactivo para la posición actual del control deslizante
+	 * @param {Ref|Number|Function} max - Valor reactivo para el límite máximo del control
+	 * @param {Function} onUpdate - Se dispara de forma continua mientras se arrastra
+	 * @param {Function} onCommit - Se dispara una sola vez cuando el usuario suelta el control
 	 */
 	function createSlider(
 		source: MaybeRefOrGetter<number>,
@@ -15,11 +15,11 @@ export function useSliderFactory() {
 		onCommit?: (val: number) => void
 	) {
 		return useDragSlider({
-			// toValue automatically unwraps refs or executes getter functions
+			// toValue desenvuelve refs automáticamente o ejecuta funciones getter
 			max: () => toValue(max),
 			getValue: () => toValue(source),
 			onUpdate,
-			onCommit: onCommit || onUpdate, // Fallback to onUpdate if no distinct commit is needed
+			onCommit: onCommit || onUpdate, // Fallback a onUpdate si no se requiere un commit diferenciado
 		});
 	}
 

@@ -36,7 +36,7 @@
 
 	const { createSlider } = useSliderFactory();
 
-	// 1. Seek Slider
+	// 1. Barra de progreso (Seek)
 	const {
 		displayValue: dragTimePos,
 		progressPercent,
@@ -99,10 +99,10 @@
 		setVolume();
 	}
 
-	// Pass the global player instance to our lyrics composable to sync localTimePos
+	// Le pasamos la instancia global del reproductor al composable de letras para sincronizar localTimePos
 	const { currentLyricLine, loadLyrics } = useLyrics(player);
 
-	// --- Computed Properties for Template Cleanliness ---
+	// --- Propiedades computadas para simplificar el template ---
 	const coverSource = computed(() => {
 		if (currentTrackPath.value) return currentTrackPath.value;
 		if (djCarpinchoEnabled.value && djNextTrack.value?.path) return djNextTrack.value.path;
@@ -147,7 +147,7 @@
 	const playPauseIcon = computed(() => (isPlaying.value ? 'pause' : 'play_arrow'));
 	const muteIcon = computed(() => (serverMuted.value || volume.value == 0 ? 'volume_off' : 'volume_down'));
 
-	// Timer Button Logic
+	// Lógica del botón de temporizador / pausa programada
 	const isTimerActive = computed(() => pauseAfterPath.value === currentTrackPath.value && currentTrackPath.value);
 	const timerClass = computed(() => [
 		'p-2 transition active:scale-90 z-20',
@@ -158,7 +158,7 @@
 	const timerTitle = computed(() => (isTimerActive.value ? 'Cancelar pausa al terminar' : 'Frenar tras este tema'));
 
 	watch(currentTrackPath, (newPath) => {
-		loadLyrics(newPath); // Fetch and parse lyrics on track change
+		loadLyrics(newPath); // Traer y parsear letras al cambiar de tema
 	});
 
 	function formatTime(sec: number) {
@@ -171,7 +171,7 @@
 		return `${m}:${s}`;
 	}
 
-	// --- Action Handlers ---
+	// --- Manejadores de acciones ---
 	function closeFogon() {
 		isFogonMode.value = false;
 		haptic();
@@ -215,10 +215,10 @@
 			class="fixed inset-0 z-[10000] flex flex-col items-center justify-center bg-black bg-cover bg-center p-6 text-white"
 			:style="fogonBgStyle"
 		>
-			<!-- Background Overlay -->
+			<!-- Capa de fondo oscurecida -->
 			<div class="pointer-events-none absolute inset-0 bg-black/80 backdrop-blur-xl" />
 
-			<!-- Volume Popup Overlay Layer -->
+			<!-- Capa para cerrar el popup de volumen al tocar afuera -->
 			<div v-if="showFogonVolume" class="fixed inset-0 z-10" @click="showFogonVolume = false" />
 
 			<div class="relative z-20 flex w-full max-w-md flex-col items-center text-center">
@@ -230,7 +230,7 @@
 					<i class="material-icons !text-4xl">keyboard_arrow_down</i>
 				</button>
 
-				<!-- Album Art -->
+				<!-- Tapa del disco -->
 				<div
 					class="bg-carpincho-bg mb-8 flex h-64 w-64 items-center justify-center overflow-hidden rounded-2xl shadow-[0_10px_50px_rgba(0,0,0,0.8)] md:h-80 md:w-80"
 				>
@@ -247,7 +247,7 @@
 					<i v-else class="material-icons text-carpincho-warning !text-[8rem]">album</i>
 				</div>
 
-				<!-- Track Info -->
+				<!-- Info del tema -->
 				<h1 class="mb-2 w-full truncate px-4 text-3xl font-bold">
 					<span
 						v-if="currentTrackInfo.isComing"
@@ -261,7 +261,7 @@
 					{{ currentTrackInfo.artist }}
 				</h2>
 
-				<!-- Custom Seek Bar -->
+				<!-- Barra de progreso personalizada -->
 				<div
 					v-show="currentTrackPath"
 					class="text-carpincho-secondary mt-6 flex w-full items-center gap-4 px-6 text-xs font-medium select-none"
@@ -290,7 +290,7 @@
 					<span class="w-10 shrink-0">{{ formattedDuration }}</span>
 				</div>
 
-				<!-- Controls -->
+				<!-- Controles de reproducción -->
 				<div class="relative z-30 mt-8 flex w-full items-center justify-center gap-4 px-4 sm:gap-6">
 					<button
 						aria-label="Ajustar volumen"
@@ -324,13 +324,13 @@
 						<i class="material-icons !text-4xl sm:!text-5xl">skip_next</i>
 					</button>
 
-					<!-- Timer / Pause After Toggle -->
+					<!-- Botón para frenar después de este tema -->
 					<button :class="timerClass" :title="timerTitle" :aria-label="timerTitle" @click="handleTimerToggle">
 						<i class="material-icons !text-3xl">timer</i>
 					</button>
 				</div>
 
-				<!-- Custom Volume Bar -->
+				<!-- Barra de volumen personalizada -->
 				<div
 					v-if="showFogonVolume"
 					class="relative z-30 mt-8 flex w-full items-center gap-4 px-8 text-gray-300 opacity-80 transition select-none hover:opacity-100"
@@ -348,7 +348,7 @@
 					<i class="material-icons text-sm" aria-hidden="true">volume_up</i>
 				</div>
 
-				<!-- Lyrics -->
+				<!-- Letras en tiempo real -->
 				<div class="mt-2 flex h-[6rem] w-full items-center justify-center overflow-hidden px-8">
 					<transition name="lyric" mode="out-in">
 						<p

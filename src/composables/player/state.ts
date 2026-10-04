@@ -2,23 +2,23 @@ import { useUrlSearchParams } from '@vueuse/core';
 import { ref, computed } from 'vue';
 import type { ScanStatus, Track } from '../../types';
 
-// Central reactive state for the player, shared across every composable in
-// this folder. This file holds no business logic — just the raw refs and
-// the handful of values purely derived from them (isPlaying, volIcon). Each
-// sibling composable owns the *behavior* for one slice of this state; this
-// keeps that behavior easy to find instead of buried in one giant file.
+// Estado reactivo central del reproductor, compartido entre todos los composables
+// de esta carpeta. Este archivo no tiene lógica de negocio: solo las refs crudas y
+// los valores directamente derivados (isPlaying, volIcon). Cada composable hermano
+// maneja el *comportamiento* de una parte de este estado para mantener la lógica
+// modular en vez de sepultada en un archivo gigante.
 
-// Navigation
+// Navegación
 export const activeTab = ref<string>('library');
 
-// Now playing / transport
+// Reproducción actual / transporte
 export const currentTrackPath = ref<string | null>(null);
 export const historyState = ref<string[]>([]);
 export const isPaused = ref<boolean>(false);
 export const pauseAfterPath = ref<string | null>(null);
 export const topPlayedState = ref<Track[]>([]);
 
-// Library
+// Biblioteca
 export const currentTracks = ref<Track[]>([]);
 export const favorites = ref<string[]>([]);
 export const isScanning = ref<boolean>(false);
@@ -35,49 +35,48 @@ export const originalTracks = ref<Track[]>([]);
 export const trackMap = ref<Record<string, Track>>({});
 export const urlMetadata = ref<Record<string, Track>>({});
 
-// Queue
+// Fila de reproducción
 export const queueState = ref<string[]>([]);
 
-// Reactive URL search params (history mode), synced automatically both ways —
-// used by useLibrary's sortLibrary for the `vibra` shuffle-seed param instead
-// of each caller building its own URLSearchParams + history.pushState. Called
-// once here, at module scope, rather than per-component.
+// Parámetros de búsqueda reactivos en la URL (modo history), sincronizados en ambas direcciones.
+// Los usa `sortLibrary` en useLibrary para el parámetro `vibra` (semilla de mezcla) en lugar
+// de armar URLSearchParams + history.pushState en cada llamada. Se ejecuta acá a nivel de módulo.
 export const urlParams = useUrlSearchParams<{ vibra?: string }>('history');
 
-// Auto-DJ (mirrored from the server — no client-side logic lives here)
+// Auto-DJ (espejado desde el servidor; acá no hay lógica de cliente)
 export const djCarpinchoEnabled = ref<boolean>(false);
 export const djNextTrack = ref<Track | null>(null);
 export const djSafeModeEnabled = ref<boolean>(false);
 
-// Radio Mode (locutor con hora y fortunas entre temas)
+// Modo Radio (locutor con hora y fortunas entre temas)
 export const radioModeEnabled = ref<boolean>(false);
 export const isSynthesizingRadio = ref<boolean>(false);
 export const isPlayingRadioAnnouncement = ref<boolean>(false);
 export const weatherLocation = ref<string>('San Miguel de Tucumán');
 
-// Local audio playback & Media Session
+// Reproducción de audio local y Media Session
 export const duration = ref<number>(0);
 export const pendingSeekTime = ref<number | null>(null);
 export const isDraggingSeek = ref<boolean>(false);
 export const listenLocally = ref<boolean>(false);
-export const localPlayerRef = ref<HTMLAudioElement | null>(null); // bound to the <audio> element in App.vue
+export const localPlayerRef = ref<HTMLAudioElement | null>(null); // vinculado al elemento <audio> en App.vue
 export const localTimePos = ref<number>(0);
 export const serverMuted = ref<boolean>(false);
 export const timePos = ref<number>(0);
 export const volume = ref<number>(100);
 
-// MPV window visibility
+// Visibilidad de la ventana de MPV
 export const mpvVisible = ref<boolean>(true);
 
 // Modo Fogón
 export const isFogonMode = ref<boolean>(false);
 export const showFogonVolume = ref<boolean>(false);
 
-// Server Network & URLs
+// Red y URLs del servidor
 export const serverUrl = ref<string | null>(null);
 export const localIp = ref<string | null>(null);
 
-// Server Capabilities
+// Capacidades del servidor
 export const hasEdgeTts = ref<boolean>(false);
 export const hasFfmpeg = ref<boolean>(false);
 
@@ -89,14 +88,12 @@ export const volIcon = computed(() => {
 	return 'surround_sound';
 });
 
-// --- Raw WebSocket transport pointer ---
-// A couple of composables (useSocket, useLocalPlayback) need to push
-// messages straight over the socket, outside of the request/response
-// `sendCmd` (HTTP) flow. Kept here rather than inside useSocket.js so
-// useLocalPlayback doesn't need to import useSocket just to send a
-// `local_player_update` message — which would risk a circular import,
-// since useSocket needs to import useLocalPlayback the other way for
-// `local_player_seek` / `local_player_claim_result` handling.
+// --- Puntero de transporte WebSocket crudo ---
+// Un par de composables (useSocket, useLocalPlayback) necesitan mandar
+// mensajes directos por el socket, por fuera del flujo petición/respuesta
+// `sendCmd` (HTTP). Se guarda acá en vez de adentro de useSocket para que
+// useLocalPlayback no tenga que importar useSocket solo para mandar
+// `local_player_update` (evitando dependencias circulares).
 let wsSend: ((data: string) => void) | null = null;
 
 export function setWsSend(sendFn: (data: string) => void) {

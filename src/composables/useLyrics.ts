@@ -14,7 +14,7 @@ export function useLyrics(player: { localTimePos: Ref<number> }) {
 
 		const activeLine = ' ';
 		for (let i = lyrics.value.length - 1; i >= 0; i--) {
-			// Syncs against the player's localTimePos
+			// Sincroniza contra el localTimePos del reproductor
 			if (player.localTimePos.value >= lyrics.value[i].time) {
 				return lyrics.value[i].text;
 			}
@@ -23,7 +23,7 @@ export function useLyrics(player: { localTimePos: Ref<number> }) {
 	});
 
 	async function loadLyrics(path: string | null) {
-		lyrics.value = []; // Clear immediately on track change
+		lyrics.value = []; // Limpiamos al toque al cambiar de tema
 		if (!path || path.startsWith('http')) return;
 
 		try {
@@ -64,7 +64,7 @@ export function useLyrics(player: { localTimePos: Ref<number> }) {
 			}
 		});
 
-		// Chronological sorting
+		// Orden cronológico
 		parsed.sort((a, b) => a.time - b.time);
 
 		const finalParsed: LyricLine[] = [];
@@ -81,11 +81,11 @@ export function useLyrics(player: { localTimePos: Ref<number> }) {
 				}
 
 				if (nextValidTime !== null) {
-					// If the instrumental gap is 2 seconds or more, keep blank space
+					// Si el bache instrumental dura 2 segundos o más, dejamos espacio en blanco
 					if (nextValidTime - current.time >= 2) {
 						finalParsed.push(current);
 					} else if (nextValidTime - current.time >= 1) {
-						// If the gap is between 1s and 2s, insert the carpincho emoji
+						// Si el bache dura entre 1s y 2s, metemos el emoji de carpincho
 						current.text = '🦦';
 						finalParsed.push(current);
 					}

@@ -23,15 +23,15 @@ import {
 	volume,
 } from './state';
 
-// Generates a morse code audio blob that plays "CARPINCHO" faintly in the background. This is used as a placeholder when the user is listening remotely, so that the <audio> element is active and can be controlled by the OS media session, but no actual music is played.
+// Genera un blob de audio en código morse que suena "CARPINCHO" muy bajito de fondo. Se usa como marcador de posición cuando el usuario escucha de forma remota, para que el elemento <audio> quede activo y pueda ser controlado por la Media Session del sistema operativo sin reproducir la música real acá.
 function createFaintNoiseBlob(): Blob {
-	const sampleRate = 44100; // CD quality
-	const unit = 0.2; // 200 ms per unit
-	const amplitude = 10; // Max amplitude for 16-bit PCM
-	const message = 'CARPINCHO'; // Morse code message to encode
-	const frequency = 440; // A4 tone
+	const sampleRate = 44100; // Calidad de CD
+	const unit = 0.2; // 200 ms por unidad
+	const amplitude = 10; // Amplitud máxima para PCM de 16 bits
+	const message = 'CARPINCHO'; // Mensaje en código morse a codificar
+	const frequency = 440; // Tono La 4 (440Hz)
 
-	// Morse dictionary
+	// Diccionario morse
 	const morse: Record<string, string> = {
 		A: '.-',
 		B: '-...',
@@ -61,14 +61,14 @@ function createFaintNoiseBlob(): Blob {
 		Z: '--..',
 	};
 
-	// Convert message to Morse
+	// Pasamos el mensaje a morse
 	const sequence = message
 		.toUpperCase()
 		.split('')
 		.map((ch) => morse[ch] || '')
 		.join(' ');
 
-	// Build audio samples
+	// Construimos las muestras de audio
 	const samples: number[] = [];
 	const addTone = (units: number) => {
 		for (let i = 0; i < units * unit * sampleRate; i++) {
@@ -94,7 +94,7 @@ function createFaintNoiseBlob(): Blob {
 		}
 	}
 
-	// WAV header
+	// Cabecera WAV
 	const buffer = new ArrayBuffer(44 + samples.length * 2);
 	const view = new DataView(buffer);
 	const writeString = (offset: number, str: string) => {
@@ -103,7 +103,7 @@ function createFaintNoiseBlob(): Blob {
 		}
 	};
 
-	// WAV header
+	// Cabecera WAV
 	writeString(0, 'RIFF');
 	view.setUint32(4, 36 + samples.length * 2, true);
 	writeString(8, 'WAVE');
@@ -118,7 +118,7 @@ function createFaintNoiseBlob(): Blob {
 	writeString(36, 'data');
 	view.setUint32(40, samples.length * 2, true);
 
-	// Write samples
+	// Escribimos las muestras
 	samples.forEach((s, i) => view.setInt16(44 + i * 2, s, true));
 
 	return new Blob([view], { type: 'audio/wav' });
@@ -126,18 +126,16 @@ function createFaintNoiseBlob(): Blob {
 
 let silentBlobUrl = '';
 
-// --- Internals shared with useSocket ---
+// --- Métodos internos compartidos con useSocket ---
 export function _sendLocalPlayerUpdate(payload: Record<string, unknown>) {
 	sendRaw({ type: 'local_player_update', ...payload });
 }
 
-// Set once, inside useLocalPlayback()'s singleton setup below — reactive
-// currentTime/duration/ended wired to the <audio> element, replacing the old
-// manual onloadedmetadata/ontimeupdate/onended assignment in _startLocalPlayer.
-// Play/pause stay imperative (lp.play()/lp.pause()) rather than going through
-// mediaControls.playing: that ref only calls play() when its *value* flips,
-// so setting it to `true` again while already `true` (the common case when
-// advancing to the next track mid-playback) would silently no-op.
+// Se define una sola vez en la inicialización singleton de useLocalPlayback():
+// vincula currentTime/duration/ended de forma reactiva al elemento <audio>,
+// reemplazando las asignaciones manuales en _startLocalPlayer. Play/pause se
+// mantienen imperativos (lp.play()/lp.pause()) porque la ref de vueuse solo llama
+// a play() si su valor cambia, fallando silenciosamente si ya estaba en `true`.
 let mediaControls: ReturnType<typeof useMediaControls> | undefined;
 
 export const isChangingTrack = ref<boolean>(false);
@@ -214,7 +212,7 @@ export function playWhenBuffered(lp: HTMLAudioElement, minBufferSeconds = 6, max
 		checkBuffer();
 	};
 
-	// Fallback safety timeout: never stall indefinitely if the connection is slow
+	// Timeout de seguridad: nunca congelarse indefinidamente si la conexión es lenta
 	const timeout = setTimeout(() => {
 		doPlay();
 	}, maxWaitMs);
@@ -230,7 +228,7 @@ export function playWhenBuffered(lp: HTMLAudioElement, minBufferSeconds = 6, max
 	lp.addEventListener('canplaythrough', onCanPlayThrough);
 	lp.addEventListener('loadedmetadata', onLoadedMetadata);
 
-	// Check immediately if already buffered from cache
+	// Verificamos al toque si ya está en buffer desde la caché
 	checkBuffer();
 }
 
@@ -268,8 +266,8 @@ export function _stopLocalPlayer() {
 	lp.load();
 }
 
-// Applies a seek that another connected client requested, to our own
-// local <audio> element — used by useSocket's `local_player_seek` handler.
+// Aplica un seek solicitado por otro cliente conectado sobre nuestro propio
+// elemento <audio> local; utilizado por el manejador `local_player_seek` de useSocket.
 export function applyRemoteSeek(data: { mode: string; amount: number }) {
 	const lp = localPlayerRef.value;
 
@@ -296,13 +294,13 @@ export function useLocalPlayback() {
 	if (!initialized) {
 		initialized = true;
 
-		// Instantiate the 100s faint noise blob URL immediately
+		// Instanciamos de inmediato la URL del blob con el audio bajito de 100s
 		silentBlobUrl = URL.createObjectURL(createFaintNoiseBlob());
 
 		mediaControls = useMediaControls(localPlayerRef);
 		const { currentTime, duration: elementDuration, ended } = mediaControls;
 
-		// Sync volume and mute state to the local <audio> element
+		// Sincronizamos volumen y muteo con el elemento <audio> local
 		watch(
 			[localPlayerRef, volume, serverMuted],
 			([lp, newVol, newMuted]) => {
@@ -313,7 +311,7 @@ export function useLocalPlayback() {
 			{ immediate: true }
 		);
 
-		// 1. Report duration (ONLY if listening locally so we don't broadcast the blob's 100s duration)
+		// 1. Notificar duración (SOLO si escuchamos localmente, para no transmitir los 100s del blob)
 		watch(elementDuration, (d) => {
 			if (listenLocally.value && d > 0) {
 				duration.value = d;
@@ -321,7 +319,7 @@ export function useLocalPlayback() {
 			}
 		});
 
-		// 2. Throttle time updates back to server (ONLY if listening locally)
+		// 2. Controlar la frecuencia (throttle) de actualización de tiempo al servidor (SOLO si escuchamos localmente)
 		let lastSent = 0;
 		watch(currentTime, (t) => {
 			if (listenLocally.value) {
@@ -335,14 +333,14 @@ export function useLocalPlayback() {
 			}
 		});
 
-		// 3. Notify server when track ends (ONLY if listening locally)
+		// 3. Avisar al servidor cuando termina la canción (SOLO si escuchamos localmente)
 		watch(ended, (isEnded) => {
 			if (listenLocally.value && isEnded && !isChangingTrack.value) {
 				_sendLocalPlayerUpdate({ song_ended: true });
 			}
 		});
 
-		// Clear transition flag when audio starts playing or encounters error
+		// Limpiar flag de transición cuando el audio arranca o da error
 		useEventListener(localPlayerRef, 'playing', () => {
 			clearTrackChanging();
 		});
@@ -350,7 +348,7 @@ export function useLocalPlayback() {
 			clearTrackChanging();
 		});
 
-		// 4. Handle OS Audio Focus Loss (e.g. another app starts playing or incoming call)
+		// 4. Manejar pérdida de foco de audio del SO (ej. llamada entrante u otra app)
 		useEventListener(localPlayerRef, 'pause', () => {
 			const lp = localPlayerRef.value;
 			if (
@@ -361,12 +359,12 @@ export function useLocalPlayback() {
 				!lp.ended &&
 				(lp.duration ? lp.currentTime < lp.duration - 0.5 : true)
 			) {
-				// Browser paused HTML5 audio due to lost focus -> sync state with server
+				// El navegador pausó el audio por pérdida de foco -> sincronizamos estado con el server
 				_sendLocalPlayerUpdate({ paused: true });
 			}
 		});
 
-		// 5. Document Title Management
+		// 5. Gestión del título del documento
 		const title = useTitle('La Rockola del Carpincho 🪗');
 
 		watchEffect(() => {
@@ -378,7 +376,7 @@ export function useLocalPlayback() {
 			}
 		});
 
-		// 6. MediaSession Metadata & Active Playback State (ALWAYS ACTIVE)
+		// 6. Metadatos de MediaSession y estado de reproducción activo (SIEMPRE ACTIVO)
 		watchEffect(() => {
 			if (!('mediaSession' in navigator)) return;
 
@@ -402,7 +400,7 @@ export function useLocalPlayback() {
 			}
 		});
 
-		// 7. MediaSession Position State (Lockscreen Seekbar Sync) (ALWAYS ACTIVE)
+		// 7. Posición en MediaSession (Sincronización con barra de pantalla de bloqueo) (SIEMPRE ACTIVO)
 		watch([localTimePos, duration, isPaused], () => {
 			if (!('mediaSession' in navigator) || !navigator.mediaSession.setPositionState) return;
 
@@ -414,17 +412,17 @@ export function useLocalPlayback() {
 						position: Math.min(Math.max(0, localTimePos.value), duration.value),
 					});
 				} catch {
-					// Ignore transient state errors during track switching
+					// Ignoramos errores transitorios al cambiar de tema
 				}
 			}
 		});
 
-		// 8. MediaSession Action Handlers (Setup & Clean Teardown) (ALWAYS ACTIVE)
+		// 8. Manejadores de acciones de MediaSession (Configuración y limpieza) (SIEMPRE ACTIVO)
 		watchEffect(() => {
 			if (!('mediaSession' in navigator)) return;
 
 			if (currentTrackPath.value) {
-				// EXPLICIT ACTION HANDLERS: Do not toggle blindly!
+				// MANEJADORES EXPLÍCITOS: ¡No alternar a ciegas!
 				navigator.mediaSession.setActionHandler('play', () => {
 					if (isPaused.value) pause();
 				});
@@ -454,10 +452,10 @@ export function useLocalPlayback() {
 						}
 					});
 				} catch {
-					// seekto not supported in all browsers
+					// seekto no está soportado en todos los navegadores
 				}
 			} else {
-				// RELEASE MEDIA CONTROLS TO OS WHEN NO TRACK IS LOADED
+				// LIBERAR CONTROLES MULTIMEDIA AL SO CUANDO NO HAY TEMA CARGADO
 				navigator.mediaSession.setActionHandler('play', null);
 				navigator.mediaSession.setActionHandler('pause', null);
 				navigator.mediaSession.setActionHandler('previoustrack', null);
@@ -467,19 +465,19 @@ export function useLocalPlayback() {
 				try {
 					navigator.mediaSession.setActionHandler('seekto', null);
 				} catch {
-					// seekto not supported in all browsers
+					// seekto no está soportado en todos los navegadores
 				}
 			}
 		});
 
-		// 9. Smooth Local Time Progression Timer
+		// 9. Temporizador para progresión suave del tiempo local
 		setInterval(() => {
 			if (isPlaying.value && !isPaused.value && !isDraggingSeek.value && duration.value > 0) {
 				localTimePos.value = Math.min(localTimePos.value + 0.25, duration.value);
 			}
 		}, 250);
 
-		// 10. Playback & Track Change Reactive Watchers
+		// 10. Watchers reactivos para cambio de tema y reproducción
 		watch(currentTrackPath, (newPath, oldPath) => {
 			if (oldPath && oldPath === pauseAfterPath.value) pauseAfterPath.value = null;
 
@@ -492,7 +490,7 @@ export function useLocalPlayback() {
 				if (newPath && !newPath.startsWith('http')) _startLocalPlayer(newPath);
 				else _stopLocalPlayer();
 			} else {
-				// Remote Mode: Play the faint noise loop from RAM
+				// Modo Remoto: Reproducir el loop de audio bajito desde memoria RAM
 				if (newPath) {
 					if (!lp.src.startsWith('blob:')) lp.src = silentBlobUrl;
 					lp.loop = true;
@@ -536,7 +534,7 @@ export function useLocalPlayback() {
 			}
 		});
 
-		// 11. Audio Autoplay Unlocker (The Synchronous Resumer)
+		// 11. Desbloqueador de reproducción automática (activación sincrónica)
 		let audioUnlocked = false;
 		const unlockAudio = () => {
 			if (listenLocally.value) return;
@@ -544,25 +542,25 @@ export function useLocalPlayback() {
 			const lp = localPlayerRef.value;
 			if (!lp) return;
 
-			// CRUCIAL: Mobile browsers require playsinline to maintain background audio context
+			// FUNDAMENTAL: Los navegadores móviles requieren playsinline para mantener el audio en segundo plano
 			lp.setAttribute('playsinline', '');
 			lp.setAttribute('webkit-playsinline', '');
 
-			// Ensure we use the Blob URL if remote
+			// Nos aseguramos de usar la URL del Blob si estamos en modo remoto
 			if (!lp.src || (!lp.src.startsWith('blob:') && silentBlobUrl.startsWith('blob:'))) {
 				markTrackChanging();
 				lp.src = silentBlobUrl;
 				lp.loop = true;
 			}
 
-			// If the server says we should be playing, enforce it synchronously on tap
+			// Si el server dice que debe sonar, lo forzamos de forma sincrónica con el toque
 			if (!isPaused.value && currentTrackPath.value) {
 				if (lp.paused) {
 					lp.play().catch(() => {});
 				}
 				audioUnlocked = true;
 			}
-			// If it's the very first tap and we are paused, "bless" the audio tag
+			// Si es el primer toque y estamos en pausa, "bendecimos" la etiqueta de audio para habilitarla
 			else if (!audioUnlocked) {
 				const playPromise = lp.play();
 				if (playPromise !== undefined) {
@@ -579,11 +577,11 @@ export function useLocalPlayback() {
 		useEventListener(document, 'click', unlockAudio, { capture: true });
 		useEventListener(document, 'touchend', unlockAudio, { capture: true });
 
-		// 12. Smart Next-Track Pre-caching into browser cache
+		// 12. Precaché inteligente del próximo tema en la caché del navegador
 		function prefetchNextTrack(path: string | null | undefined) {
 			if (!path || path.startsWith('http')) return;
 			const url = apiUrl('/stream?path=' + encodeURIComponent(path));
-			// Preload the first 4MB of the upcoming track so it's warm in cache
+			// Precarga los primeros 4MB del tema que se viene para que esté listo en caché
 			fetch(url, { headers: { Range: 'bytes=0-4194303' } }).catch(() => {});
 		}
 
@@ -606,7 +604,7 @@ export function useLocalPlayback() {
 			{ deep: true }
 		);
 
-		// 13. Anti-stutter re-buffering (if network dips mid-song)
+		// 13. Re-búfer anti-cortes (si hay bajón de red en medio del tema)
 		useEventListener(localPlayerRef, 'waiting', () => {
 			const lp = localPlayerRef.value;
 			if (listenLocally.value && !isPaused.value && !isChangingTrack.value && lp && !lp.ended) {

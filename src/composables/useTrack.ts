@@ -6,19 +6,19 @@ import type { Track } from '../types';
 export function useTrack(trackOrPath: MaybeRefOrGetter<Track | string>) {
 	const player = usePlayer();
 
-	// Normalize input to a reactive path
+	// Normalizamos la entrada a un path reactivo
 	const path = computed(() => {
 		const t = toValue(trackOrPath);
 		return typeof t === 'string' ? t : (t?.path ?? '');
 	});
 
-	// Reactive metadata lookup
+	// Búsqueda reactiva de metadatos
 	const info = computed(() => player.getTrackInfo(path.value));
 
-	// Inject the cover composable
+	// Inyectamos el composable de portada
 	const { coverUrl, onCoverError } = useCover(path);
 
-	// Compute track states relative to global player state
+	// Calculamos el estado del tema relativo al estado global del reproductor
 	const isFavorite = computed(() => player.favorites.value.includes(path.value));
 	const isNext = computed(() => player.queueState.value[0] === path.value);
 	const isPaused = computed(() => player.isPaused.value);

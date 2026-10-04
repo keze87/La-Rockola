@@ -1,11 +1,11 @@
 import { createApp } from 'vue';
 
-// Import global styles (Tailwind v4 configuration and custom CSS)
+// Importamos los estilos globales (configuración de Tailwind v4 y CSS personalizado)
 import './style.css';
 
-// Import the root component that holds your layout and tabs
+// Componente raíz que maneja el layout y las pestañas
 import App from './App.vue';
 
-// Create and mount the Vue application
+// Creamos y montamos la aplicación de Vue
 const app = createApp(App);
 app.mount('#app');

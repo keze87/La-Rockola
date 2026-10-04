@@ -5,7 +5,7 @@
 	import { usePlayer } from '../composables/usePlayer';
 	import LibraryRow from './ui/LibraryRow.vue';
 
-	// Pull data from the global store
+	// Traemos los datos del store global
 	const {
 		currentTrackPath,
 		currentTracks,
@@ -19,14 +19,14 @@
 		scanStatus,
 	} = usePlayer();
 
-	// Local state for this tab only
+	// Estado local exclusivo de esta pestaña
 	const showFavoritesOnly = ref(false);
 
-	// Initialize Fuse.js (re-computed if library updates entirely)
+	// Inicializamos Fuse.js (se recalcula si la biblioteca cambia por completo)
 	const fuse = computed(() => {
 		return new Fuse(currentTracks.value, {
 			keys: ['title', 'artist', 'display_title', 'display_artist'],
-			threshold: 0.3, // 0.0 is exact match, 1.0 is match anything
+			threshold: 0.3, // 0.0 es coincidencia exacta, 1.0 coincide con cualquier cosa
 			ignoreLocation: true,
 		});
 	});
@@ -40,18 +40,18 @@
 
 		if (!searchQuery.value) return tracks;
 
-		// Delegate to Fuse.js for typo tolerance and relevance ranking
+		// Delegamos en Fuse.js para tolerar errores de tipeo y ordenar por relevancia
 		return fuse.value.search(searchQuery.value).map((result) => result.item);
 	});
 
-	// Setup Virtualization
+	// Configuración de la lista virtualizada
 	const {
 		list: virtualTracks,
 		containerProps,
 		wrapperProps,
 		scrollTo,
 	} = useVirtualList(filteredTracks, {
-		itemHeight: 72, // Must match the fixed h-[72px] class in LibraryRow.vue
+		itemHeight: 72, // Debe coincidir con la clase fija h-[72px] en LibraryRow.vue
 		overscan: 15,
 	});
 
@@ -73,9 +73,9 @@
 </script>
 
 <template>
-	<!-- Virtual List Scroll Container -->
+	<!-- Contenedor con scroll para la lista virtualizada -->
 	<section v-bind="containerProps" class="tab-content bg-carpincho-bg relative h-full overflow-y-auto">
-		<!-- Tab Sticky Header (Search & Controls) -->
+		<!-- Encabezado fijo con buscador y filtros -->
 		<div class="bg-carpincho-bg sticky top-0 z-20 flex items-center gap-2 px-4 py-3 shadow-md">
 			<button
 				class="hover:text-carpincho-warning flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-800 text-white shadow transition active:scale-90"
@@ -121,7 +121,7 @@
 			</div>
 		</div>
 
-		<!-- Scan Status Banner -->
+		<!-- Banner de estado del escaneo -->
 		<div
 			v-if="isScanning || scanStatus?.is_analyzing_mood"
 			class="bg-carpincho-panel border-carpincho-border text-carpincho-text flex items-center justify-between border-b px-4 py-2.5 text-xs font-semibold shadow-inner"
@@ -145,7 +145,7 @@
 			</div>
 		</div>
 
-		<!-- Table Header (CSS Grid Equivalent) -->
+		<!-- Encabezado de la tabla (con CSS Grid) -->
 		<div
 			class="bg-carpincho-panel text-carpincho-primary border-carpincho-border grid grid-cols-[5rem_minmax(0,1fr)_minmax(0,1fr)] items-center border-b shadow-sm sm:grid-cols-[5rem_minmax(0,1fr)_minmax(0,1fr)_5.5rem]"
 		>
@@ -155,7 +155,7 @@
 			<div class="hidden p-3 text-right font-bold sm:block">Duración</div>
 		</div>
 
-		<!-- Virtualized Track Rows -->
+		<!-- Filas virtualizadas de canciones -->
 		<div v-bind="wrapperProps" class="w-full">
 			<LibraryRow
 				v-for="item in virtualTracks"
@@ -167,7 +167,7 @@
 				@click="handleLibraryClick(item.data)"
 			/>
 
-			<!-- Empty State -->
+			<!-- Estado vacío cuando no hay resultados -->
 			<div v-if="filteredTracks.length === 0" class="text-carpincho-primary p-8 text-center italic">
 				<template v-if="isScanning">
 					🧉 Chusmeando la biblioteca por primera vez... Aguantá que ya asoman los temazos.

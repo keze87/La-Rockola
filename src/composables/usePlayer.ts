@@ -46,12 +46,12 @@ import { useSocket } from './player/useSocket';
 import { useTabs } from './player/useTabs';
 import { useToasts } from './player/useToasts';
 
-// The single public entry point for player state/behavior, used throughout
-// the app exactly as before (`const { ... } = usePlayer()`). Internally
-// it's now just a composition root: each concern (transport, library,
-// queue, local playback, toasts, ...) lives in its own file under
-// ./player/, and this function wires them together and re-exports the
-// same flat API so no consuming component needs to change.
+// Punto de entrada público único para el estado y comportamiento del reproductor,
+// usado en toda la app exactamente como siempre (`const { ... } = usePlayer()`).
+// Internamente actúa como composition root: cada responsabilidad (transporte, librería,
+// fila, reproducción local, notificaciones, etc.) vive en su propio archivo dentro de
+// ./player/, y esta función las ensambla y reexporta con la misma API plana para no
+// romper ningún componente consumidor.
 export function usePlayer() {
 	const { _sendLocalPlayerUpdate, setVolume } = useLocalPlayback();
 	const { connectWebSocket } = useSocket();

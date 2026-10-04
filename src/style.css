@@ -41,7 +41,7 @@
 	}
 }
 
-/* Tab content scroll areas need padding for the floating player */
+/* Las áreas de scroll de pestañas precisan padding para el reproductor flotante */
 .tab-content {
 	position: absolute;
 	top: 0;
@@ -52,7 +52,7 @@
 	padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px)) !important;
 }
 
-/* Add the tab-fade transition utilities at the bottom */
+/* Utilidades para la transición fade entre pestañas */
 .tab-fade-enter-active,
 .tab-fade-leave-active {
 	transition:
@@ -70,7 +70,7 @@
 	transform: translateY(-10px);
 }
 
-/* Floating player bar */
+/* Barra del reproductor flotante */
 .floating-player {
 	position: fixed;
 	z-index: 50;
@@ -79,7 +79,7 @@
 	right: max(15px, env(safe-area-inset-right, 0px));
 }
 
-/* Equalizer animation for the currently-playing row */
+/* Animación de ecualizador para la fila en reproducción */
 .equalizer {
 	display: inline-flex;
 	align-items: flex-end;
@@ -126,7 +126,7 @@
 	}
 }
 
-/* Position the toaster stack right above the floating player */
+/* Apilamos las notificaciones justo arriba del reproductor flotante */
 [data-sonner-toaster] {
 	bottom: calc(100px + env(safe-area-inset-bottom, 0px)) !important;
 }
@@ -155,7 +155,7 @@ body {
 	padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px)) !important;
 }
 
-/* Hide scrollbars for PC */
+/* Ocultar scrollbars en escritorio */
 ::-webkit-scrollbar {
 	width: 6px;
 }
@@ -206,7 +206,7 @@ td {
 	transform: translateX(-30px);
 }
 
-/* Ensure leaving items don't snap the layout instantly */
+/* Evitamos que los elementos al salir rompan el layout de golpe */
 .list-leave-active {
 	position: absolute;
 	width: 100%;

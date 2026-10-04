@@ -5,7 +5,7 @@
 	import { usePlayer } from '../composables/usePlayer';
 	import TrackRow from './ui/TrackRow.vue';
 
-	// Extracted layout and structural classes
+	// Clases de estructura y maquetado extraídas
 	const trackGridClass =
 		'grid grid-cols-[6.5rem_minmax(0,1fr)_minmax(0,1fr)] sm:grid-cols-[9rem_minmax(0,1fr)_minmax(0,1fr)_5.5rem]';
 	const btnBaseClass = 'flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full transition';
@@ -39,9 +39,9 @@
 	const newUrl = ref('');
 	const swipeOffsets = ref(new Map<number, number>());
 
-	// Queue rows need both long-press (open context menu) AND horizontal swipe
-	// (delete / move-to-first), so they get their own handler instead of the
-	// shared onCtxTouchStart/onCtxTouchEnd (which only knows about long-press).
+	// Las filas de la fila necesitan tanto presión larga (abrir menú contextual) COMO deslizamiento horizontal
+	// (borrar / mandar al principio), por lo que tienen su propio manejador en lugar del
+	// compartido onCtxTouchStart/onCtxTouchEnd (que solo maneja pulsación larga).
 	let touchStartX = 0;
 	let queueLongPressTimer: ReturnType<typeof setTimeout> | null = null;
 	let queueLongPressFired = false;
@@ -62,7 +62,7 @@
 			clearTimeout(queueLongPressTimer);
 		}
 		const diff = e.touches[0].screenX - touchStartX;
-		// Only allow left/right swipes within bounds
+		// Solo permitimos deslizamientos dentro de los límites
 		if (diff < 100 && diff > -100) {
 			swipeOffsets.value.set(index, diff);
 		}
@@ -79,13 +79,13 @@
 
 		if (diff > 80) {
 			haptic(true);
-			removeQueueItemCmd(index); // Vue's TransitionGroup handles the animation automatically!
+			removeQueueItemCmd(index); // ¡El TransitionGroup de Vue se encarga de la animación automáticamente!
 		} else if (diff < -80) {
 			haptic();
 			moveQueueItem(index, 'first');
 		}
 
-		// Reset the offset reactively
+		// Reiniciamos el desplazamiento de forma reactiva
 		swipeOffsets.value.delete(index);
 	}
 
@@ -122,7 +122,7 @@
 		}
 	}
 
-	// --- Unified Queue Computation ---
+	// --- Cálculo de la lista unificada ---
 	interface UnifiedTrackItem {
 		id: string;
 		path: string;
@@ -180,7 +180,7 @@
 		}
 	}
 
-	// --- Drag & Drop Handlers ---
+	// --- Manejadores de arrastrar y soltar (Drag & Drop) ---
 	const dragFromIndex = ref<number | null>(null);
 
 	function dragStart(e: DragEvent, index: number) {
@@ -256,7 +256,7 @@
 
 <template>
 	<section class="tab-content bg-carpincho-bg h-full overflow-y-auto">
-		<!-- URL Adder -->
+		<!-- Agregador de URLs -->
 		<div class="bg-carpincho-bg sticky top-0 z-10 flex items-center gap-2 px-4 py-3 shadow-md">
 			<i class="material-icons text-carpincho-success shrink-0">link</i>
 			<input
@@ -270,7 +270,7 @@
 			</button>
 		</div>
 
-		<!-- Grid Header -->
+		<!-- Encabezado de la grilla -->
 		<div
 			:class="[
 				'bg-carpincho-panel text-carpincho-primary border-carpincho-border items-center border-b shadow-sm',
@@ -284,7 +284,7 @@
 		</div>
 
 		<div class="overflow-hidden">
-			<!-- Unified Single List of Tracks -->
+			<!-- Lista única unificada de temas -->
 			<TransitionGroup name="list" tag="div" class="relative w-full">
 				<TrackRow
 					v-for="item in unifiedQueue"
@@ -330,14 +330,14 @@
 							: undefined
 					"
 				>
-					<!-- Prefix Slot: Actions / Equalizer / History Checkmark -->
+					<!-- Slot de prefijo: Acciones / Ecualizador / Tilde de historial -->
 					<template #prefix>
-						<!-- History Icon -->
+						<!-- Ícono de historial -->
 						<template v-if="item.status === 'history'">
 							<i class="material-icons text-carpincho-success text-sm">check</i>
 						</template>
 
-						<!-- Current Playing Equalizer & Pause-After Button -->
+						<!-- Ecualizador de reproducción actual y botón de pausa programada -->
 						<template v-else-if="item.status === 'current'">
 							<div class="flex items-center justify-center gap-1" @click.stop>
 								<div :class="['equalizer', isPaused ? 'paused' : '']">
@@ -369,7 +369,7 @@
 							</div>
 						</template>
 
-						<!-- Queue Actions Column -->
+						<!-- Columna de acciones de la fila -->
 						<template v-else-if="item.status === 'queue' && item.queueIndex !== undefined">
 							<div class="flex items-center justify-center gap-1" @click.stop>
 								<button
@@ -410,7 +410,7 @@
 						</template>
 					</template>
 
-					<!-- Track Info: Pause-After Indicator -->
+					<!-- Info del tema: Indicador de pausa programada -->
 					<template #title-extra>
 						<i
 							v-if="item.path === pauseAfterPath"
@@ -486,7 +486,7 @@
 		touch-action: manipulation;
 	}
 
-	/* Visual feedback when queue item is deleted */
+	/* Respuesta visual cuando se elimina un ítem de la fila */
 	@keyframes delete-flash {
 		0% {
 			background-color: transparent;

@@ -95,7 +95,7 @@ export function useLibrary() {
 				urlParams.vibra = seed.toString();
 			}
 
-			// Mulberry32 PRNG for a reproducible shuffle
+			// Generador pseudoaleatorio Mulberry32 para un orden aleatorio reproducible
 			let a = seed;
 			const randomFunc = () => {
 				let t = (a += 0x6d2b79f5);

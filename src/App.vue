@@ -8,7 +8,7 @@
 	import { usePlayer } from './composables/usePlayer';
 	import { useSliderFactory } from './composables/useSliderFactory';
 
-	// Import your isolated components
+	// Componentes aislados de la interfaz
 	import ContextMenu from './components/ContextMenu.vue';
 	import ControlsTab from './components/ControlsTab.vue';
 	import FloatingPlayer from './components/FloatingPlayer.vue';
@@ -80,7 +80,7 @@
 		{ immediate: true }
 	);
 
-	// Keyboard shortcuts (space, arrows, f, l, t, n, p, m, esc...) – wire it up
+	// Conectamos los atajos de teclado (espacio, flechas, f, l, t, n, p, m, esc...)
 	useKeyboardShortcuts();
 
 	const tabs = [
@@ -142,10 +142,10 @@
 	<!-- MODO FOGÓN -->
 	<FogonMode />
 
-	<!-- CONTEXT MENU (global, shared across tabs) -->
+	<!-- MENÚ CONTEXTUAL (global, compartido entre pestañas) -->
 	<ContextMenu />
 
-	<!-- HEADER NAV -->
+	<!-- BARRA SUPERIOR DE NAVEGACIÓN -->
 	<nav
 		class="bg-carpincho-panel border-carpincho-primary shrink-0 cursor-pointer overflow-hidden border-b px-5 pt-[max(10px,env(safe-area-inset-top))] pb-2"
 		@click="
@@ -242,8 +242,8 @@
 		</div>
 	</div>
 
-	<!-- TABS CONTENT -->
-	<!-- Note: We use v-show to keep the components alive in the DOM so scroll position and local state (like search queries) aren't lost when switching tabs -->
+	<!-- CONTENIDO DE PESTAÑAS -->
+	<!-- Ojo: Usamos v-show para mantener los componentes vivos en el DOM y no perder la posición de scroll ni el estado local al cambiar de pestaña -->
 	<div class="relative min-h-0 w-full flex-1 overflow-hidden">
 		<Transition name="tab-fade">
 			<LibraryTab v-show="activeTab === 'library'" />

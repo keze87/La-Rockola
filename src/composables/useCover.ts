@@ -2,9 +2,9 @@ import { ref, computed, toValue, type MaybeRefOrGetter } from 'vue';
 import { apiUrl } from './useApi';
 import type { Track } from '../types';
 
-// Shared global caches across the entire app
+// Cachés globales compartidas en toda la app
 const brokenCoversCache = ref<Set<string>>(new Set());
-const coverBlobCache = new Map<string, string>(); // Stores object URLs for successfully fetched covers
+const coverBlobCache = new Map<string, string>(); // Guarda URLs de objeto para las portadas descargadas con éxito
 
 export interface UseCoverOptions {
 	size?: MaybeRefOrGetter<number | null | undefined>;
@@ -23,7 +23,7 @@ export function useCover(trackOrPath: MaybeRefOrGetter<Track | string | null>, o
 
 		if (brokenCoversCache.value.has(currentPath)) return null;
 
-		// Return memoized blob URL if already cached locally
+		// Devolvemos la URL del blob en memoria si ya fue cacheada localmente
 		if (coverBlobCache.has(currentPath)) {
 			return coverBlobCache.get(currentPath);
 		}
@@ -40,7 +40,7 @@ export function useCover(trackOrPath: MaybeRefOrGetter<Track | string | null>, o
 	function onCoverError() {
 		if (path.value) {
 			brokenCoversCache.value.add(path.value);
-			coverBlobCache.delete(path.value); // Clean up if it failed
+			coverBlobCache.delete(path.value); // Limpiamos si falló
 		}
 	}
 
