@@ -1502,9 +1502,9 @@ def truncate_text(text: str, max_len: int) -> str:
 
 
 def highlight_json(json_data):
-	"""Formats and applies ANSI syntax highlighting to a JSON string or dict."""
+	"""Da formato y aplica resaltado de sintaxis ANSI a un string o dict de JSON."""
 
-	# Parse to ensure valid JSON and apply standard indentation
+	# Parseamos para asegurar JSON válido y aplicar sangría estándar
 	if isinstance(json_data, str):
 		try:
 			parsed = json.loads(json_data)
@@ -1515,42 +1515,42 @@ def highlight_json(json_data):
 
 	formatted_json = json.dumps(parsed, indent=2, ensure_ascii=False)
 
-	# ANSI color codes for the terminal
+	# Códigos de color ANSI para la terminal
 	colors = {
-		"key": "\033[94m",  # Blue
-		"string": "\033[92m",  # Green
-		"number": "\033[93m",  # Yellow
+		"key": "\033[94m",  # Azul
+		"string": "\033[92m",  # Verde
+		"number": "\033[93m",  # Amarillo
 		"boolean": "\033[95m",  # Magenta
-		"null": "\033[91m",  # Red
-		"reset": "\033[0m",  # Reset to default
+		"null": "\033[91m",  # Rojo
+		"reset": "\033[0m",  # Volver al color por defecto
 	}
 
-	# Regex pattern to identify distinct JSON data types
-	# Group 1: Keys (string followed by a colon)
-	# Group 2: String values
-	# Group 3: Numbers (integers, floats, scientific notation)
-	# Group 4: Booleans (true/false)
-	# Group 5: Null
+	# Patrón regex para identificar los distintos tipos de datos JSON
+	# Grupo 1: Claves (string seguido de dos puntos)
+	# Grupo 2: Valores string
+	# Grupo 3: Números (enteros, flotantes, notación científica)
+	# Grupo 4: Booleanos (true/false)
+	# Grupo 5: Null
 	pattern = r'("(?:\\.|[^"\\])*"\s*:)|("(?:\\.|[^"\\])*")|(\b-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b)|(\btrue\b|\bfalse\b)|(\bnull\b)'
 
 	def replacer(match):
-		if match.group(1):  # Key
+		if match.group(1):  # Clave
 			key_str = match.group(1)
 			colon_idx = key_str.rfind(":")
-			# Color the key, but leave the colon default
+			# Colorea la clave, pero deja los dos puntos con el color por defecto
 			return colors["key"] + key_str[:colon_idx] + colors["reset"] + key_str[colon_idx:]
-		elif match.group(2):  # String value
+		elif match.group(2):  # Valor string
 			return colors["string"] + match.group(2) + colors["reset"]
-		elif match.group(3):  # Number
+		elif match.group(3):  # Número
 			return colors["number"] + match.group(3) + colors["reset"]
-		elif match.group(4):  # Boolean
+		elif match.group(4):  # Booleano
 			return colors["boolean"] + match.group(4) + colors["reset"]
 		elif match.group(5):  # Null
 			return colors["null"] + match.group(5) + colors["reset"]
 
 		return match.group(0)
 
-	# Apply the regex substitution
+	# Aplicamos el reemplazo por regex
 	return re.sub(pattern, replacer, formatted_json)
 
 
@@ -1884,7 +1884,7 @@ class AsyncMpvController:
 		self.writer = None
 		self.is_windows = sys.platform == "win32"
 		self.has_display = True
-		self.callbacks = callbacks  # Dict mapping event names to async handlers
+		self.callbacks = callbacks  # Diccionario que mapea nombres de eventos con handlers asíncronos
 		self._start_lock = asyncio.Lock()
 
 	@property
@@ -1936,13 +1936,13 @@ class AsyncMpvController:
 				return
 
 		async with self._start_lock:
-			# Cleanup any zombie process if it exists
+			# Limpiamos cualquier proceso zombi si quedó dando vueltas
 			await self.stop()
 
 			env = get_clean_env()
 			ensure_display_env(env)
 
-			# 1. Handle OS-Specific IPC Socket Paths
+			# 1. Resolver las rutas del socket IPC según el sistema operativo
 			if self.is_windows:
 				self.socket_path = rf"\\.\pipe\mpv_server_{id(self)}"
 			else:
@@ -2059,7 +2059,7 @@ class AsyncMpvController:
 				await self._check_and_raise_mpv_error()
 
 				if self.is_windows:
-					# Named pipes appear instantly in the OS namespace if MPV created it successfully
+					# Los named pipes aparecen al toque en el namespace del SO si MPV arrancó joya
 					if await asyncio.to_thread(self._check_windows_pipe):
 						break
 				elif os.path.exists(self.socket_path):
@@ -2077,7 +2077,7 @@ class AsyncMpvController:
 			if self.process and self.process.stderr:
 				asyncio.create_task(self._drain_stderr())
 
-			# 2. Handle OS-Specific Socket Connections
+			# 2. Conectar al socket según el sistema operativo
 			if self.is_windows:
 				logger.info("Conectados al Named Pipe de Windows (pipa lista).")
 				asyncio.create_task(self._read_ipc_events_windows())
@@ -2089,7 +2089,7 @@ class AsyncMpvController:
 			if (
 				not self.is_windows
 			):  # En Unix mandamos la suscripción por acá porque la conexión es única y no se cierra.
-				# Request MPV to broadcast volume and pause changes
+				# Le pedimos a MPV que nos chifle los cambios de volumen, pausa y posición
 				await self._send(json.dumps({"command": ["observe_property", 1, "volume"]}))
 				await self._send(json.dumps({"command": ["observe_property", 2, "pause"]}))
 				await self._send(json.dumps({"command": ["observe_property", 3, "time-pos"]}))
@@ -2127,9 +2127,9 @@ class AsyncMpvController:
 			pass
 
 	async def _read_ipc_events_windows(self):
-		"""Threaded reader for Windows Named Pipes to prevent blocking."""
+		"""Lector en hilo secundario para los Named Pipes de Windows para no clavar el event loop."""
 
-		# BUGFIX: Grab the main event loop BEFORE entering the thread!
+		# FIX: Agarramos el loop principal ANTES de entrar al hilo secundario
 		main_loop = asyncio.get_running_loop()
 
 		def read_pipe():
@@ -2148,7 +2148,7 @@ class AsyncMpvController:
 						line = pipe.readline()
 						if not line:
 							break
-						# BUGFIX: Use the captured main_loop instead of get_running_loop()
+						# FIX: Usamos el main_loop capturado en vez de get_running_loop()
 						asyncio.run_coroutine_threadsafe(self._process_event_line(line), main_loop)
 			except Exception as e:
 				logger.debug(f"Pifió algo leyendo la pipa en Windows: {e}")
@@ -2180,7 +2180,7 @@ class AsyncMpvController:
 			if logger.isEnabledFor(logging.DEBUG) and event_name:
 				logger.debug(f"[MPV event] {event_data}")
 
-			# Handle Track End
+			# Manejar fin de pista
 			if event_name == "end-file":
 				reason = event_data.get("reason")
 				file_error = event_data.get("file_error")
@@ -2220,7 +2220,7 @@ class AsyncMpvController:
 
 		try:
 			if self.is_windows:
-				# Direct file write for Windows Named Pipes
+				# Escritura directa a archivo para los Named Pipes de Windows
 				def write_pipe():
 					with open(self.socket_path, "r+b") as pipe:
 						pipe.write(cmd_bytes)
@@ -2255,7 +2255,7 @@ class AsyncMpvController:
 				logger.error(f"Pifió fiero. No quiso agarrar viaje ni reiniciando: {retry_e}")
 
 
-# --- DBUS / MPRIS Classes ---
+# --- Clases DBUS / MPRIS ---
 b = s = d = x = o = str
 
 
@@ -2421,7 +2421,7 @@ class MPRISPlayer(ServiceInterface):
 		return True
 
 
-# --- Websocket Connection Manager ---
+# --- Gestor de conexiones WebSocket ---
 class ConnectionManager:
 	def __init__(self):
 		self.active_connections: list[WebSocket] = []
@@ -2561,7 +2561,7 @@ def get_track_duration_seconds(path: str | Path | None, tracks_cache: list[dict]
 	return 0.0
 
 
-# --- App State & Server Logic ---
+# --- Estado de la app y lógica del servidor ---
 class APIState:
 	def __init__(self, initial_dir=None, secondary_dir=None):
 		self.current_track = None
@@ -2572,7 +2572,7 @@ class APIState:
 		self.initial_dir = initial_dir
 		self.is_scanning = False
 		self.is_analyzing_mood = False
-		self.scan_phase = "idle"  # "idle", "discovering", "metadata", "mood"
+		self.scan_phase = "idle"  # Estados: "idle", "discovering", "metadata", "mood"
 		self.scan_current = 0
 		self.scan_total = 0
 		self.scan_message = ""
@@ -2585,13 +2585,13 @@ class APIState:
 		self.queue = []
 		self.secondary_dir = secondary_dir
 
-		# Track state
+		# Estado de reproducción
 		self.time_pos = 0
 		self.duration = 0
 		self.last_time_broadcast = 0
 		self.last_seek_drift: float | None = None  # Última deriva con la que sincronizamos MPV
 
-		# Files
+		# Archivos y caché
 		self.track_cache_by_path = {}
 		self.tracks_cache = []
 
@@ -2604,7 +2604,7 @@ class APIState:
 
 		self.favorites = self._load_favs_from_db()
 
-		# Radio Mode
+		# Modo Radio
 		self.radio_mode_enabled = True
 		self.radio_track_counter = 0
 		self.radio_tracks_until_next = random.randint(1, 2)
@@ -2618,7 +2618,7 @@ class APIState:
 		self.pregenerated_radio_announcement: dict | None = None
 		self.weather_location = DEFAULT_WEATHER_LOCATION
 
-		# Server network & browser state
+		# Estado de red del servidor y navegador
 		self.open_browser = True
 		self.server_host = "0.0.0.0"
 		self.server_port = 1729
@@ -3407,7 +3407,7 @@ class APIState:
 		except Exception as e:
 			logger.error(f"Pifió yt-dlp sacando la info de {url}, se empacó: {e}")
 
-	# Event handlers update the state, which clients will see on their next poll
+	# Los handlers de eventos actualizan el estado, que los clientes reciben en su próxima sincronización
 	async def handle_song_ended(self, reason: str = "eof", file_error: str | None = None):
 		# Si hay un reproductor local activo, ÉL es quien manda el evento de canción terminada.
 		# Ignoramos el EOF de MPV para no avanzar la cola dos veces.
@@ -4040,7 +4040,7 @@ class APIState:
 				self.current_track = None
 			await self.play_track(prev_path)
 		elif self.current_track:
-			# Restart the current track from the beginning if there's no history
+			# Reiniciamos el tema actual desde el comienzo si no hay historial previo
 			await self.play_track(self.current_track)
 
 	def _pick_dj_next(self):
@@ -4074,7 +4074,7 @@ class APIState:
 
 	async def jump(self, target_type, index):
 		if target_type == "queue":
-			# Fast-forward to a queued track
+			# Avanzamos rápido hasta un tema que está en la fila
 			skipped = self.queue[:index]
 			if self.current_track:
 				self.history.append(self.current_track)
@@ -4083,7 +4083,7 @@ class APIState:
 			self.queue = self.queue[index:]
 			await self.play_next(skipped_by_user=True)
 		elif target_type == "history":
-			# Rewind to a historical track
+			# Rebobinamos hasta un tema del historial
 			rewound = self.history[index + 1 :]
 			if self.current_track:
 				rewound.append(self.current_track)
@@ -4134,7 +4134,7 @@ class APIState:
 		return top_played
 
 
-# --- FastAPI Setup ---
+# --- Configuración de FastAPI ---
 state = APIState()
 
 
@@ -4287,23 +4287,23 @@ def build_frontend():
 		npm_cmd = "npm.cmd" if os.name == "nt" else "npm"
 
 		try:
-			# 1. Check for node_modules and install dependencies if missing
+			# 1. Verificar si existe node_modules e instalar dependencias si faltan
 			if not (frontend_dir / "node_modules").exists():
 				print("📦 Instalando dependencias del front (npm install)...")
 				subprocess.run([npm_cmd, "install"], cwd=str(frontend_dir), check=True)
 
-			# 2. Run the build process
+			# 2. Ejecutar el proceso de compilación (build)
 			print("🛠️ Ejecutando 'npm run build' en La Rockola del Carpincho...")
 			subprocess.run([npm_cmd, "run", "build"], cwd=str(frontend_dir), check=True)
 			print("✨ Build completado con éxito. ¡Todo piola!")
 
 		except subprocess.CalledProcessError as e:
-			# If npm install or npm run build fails (returns non-zero exit code)
+			# Si falló npm install o npm run build (código de salida distinto de cero)
 			print(f"❌ Error fatal armando el frontend: {e}", file=sys.stderr)
 			print("🛑 La Rockola no puede arrancar a medias. Revisá los errores de Node y volvé.", file=sys.stderr)
 			sys.exit(1)
 		except FileNotFoundError:
-			# If npm is not installed on the system at all
+			# Si npm directamente no está instalado en el sistema
 			print("❌ Error: No se encontró 'npm'. ¿Está instalado Node.js en este equipo?", file=sys.stderr)
 			sys.exit(1)
 	else:
@@ -4405,10 +4405,10 @@ async def mpv_show():
 	return {"status": "ok"}
 
 
-# --- API Routes ---
+# --- Rutas de la API ---
 @app.get("/library")
 async def get_library():
-	"""Returns the already cached library without triggering a new disk scan."""
+	"""Devuelve la librería ya cacheada sin disparar un nuevo escaneo de disco."""
 	while state.is_scanning:
 		await asyncio.sleep(0.5)
 
@@ -4656,14 +4656,14 @@ async def stream_audio(path: str = Query(...)):
 	return FileResponse(
 		path,
 		headers={
-			# Allow clients (like browsers or audio players) to request partial content.
-			# This is essential for streaming audio and resuming playback.
+			# Permitir a los clientes (browsers o reproductores) pedir contenido parcial (streaming).
+			# Esto es clave para reproducir audio fluido y saltar en la línea de tiempo.
 			"Accept-Ranges": "bytes",
-			# Cache-Control directives:
-			# "public" → allows caching by browsers and CDNs.
-			# "max-age=86400" → cache the audio file for 1 day (86400 seconds).
-			# "stale-while-revalidate=172800" → if the cache is stale, clients can
-			# still serve it for up to 2 days (172800 seconds) while revalidating in the background.
+			# Directivas de Cache-Control:
+			# "public" → habilita el cacheo en navegadores y proxies intermedios.
+			# "max-age=86400" → cachea el archivo de audio por 1 día (86400 segundos).
+			# "stale-while-revalidate=172800" → si el caché vence, el cliente puede
+			# seguir sirviéndolo hasta 2 días mientras revalida en segundo plano.
 			"Cache-Control": "public, max-age=86400, stale-while-revalidate=172800",
 		},
 	)
@@ -4835,7 +4835,7 @@ async def handle_command(req: CommandRequest):
 			else:
 				cmd_payload = json.dumps({"command": ["seek", req.amount, "absolute"]})
 				await state.mpv._send(cmd_payload)
-				# Eagerly update state so the immediate broadcast is accurate
+				# Actualizamos el estado al toque para que el broadcast inmediato sea bien preciso
 				state.time_pos = req.amount
 	elif cmd == "toggle_favorite":
 		if req.path:
@@ -5012,12 +5012,12 @@ async def handle_command(req: CommandRequest):
 					state.queue = playlist[history_boundary:]
 					state._pick_dj_next()
 
-	# Notify clients of state change
+	# Notificamos a los clientes el cambio de estado
 	await broadcast_state()
 	return {"status": "ok"}
 
 
-# --- Websocket Endpoint ---
+# --- Endpoint de WebSocket ---
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
 	client_host = websocket.client.host if websocket.client else "un fantasma"
@@ -5025,7 +5025,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
 	await manager.connect(websocket)
 	try:
-		# Send initial state immediately (full state needed for fresh clients), including the library
+		# Mandamos el estado inicial al toque (los clientes nuevos necesitan todo el estado fresco)
 		full_state = state.get_full_state_dict(include_library=False)
 		full_state["type"] = "state_update"
 		await websocket.send_json(full_state)
