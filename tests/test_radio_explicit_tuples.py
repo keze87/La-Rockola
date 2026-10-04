@@ -22,7 +22,7 @@ from scripts.radio_banks import (
 
 
 def test_radio_phrase_model_and_banks_are_explicit_tuples():
-	"""Ensures RadioPhrase is a 2-tuple (duple) and CARPINCHO_PHRASES contains all phrases explicitly tagged."""
+	"""Garantiza que RadioPhrase sea una 2-tupla (dupla) y que CARPINCHO_PHRASES contenga frases etiquetadas explícitamente."""
 	sample = RadioPhrase("Vendo tele 4k", "aviso")
 	assert isinstance(sample, tuple)
 	assert len(sample) == 2
@@ -32,14 +32,14 @@ def test_radio_phrase_model_and_banks_are_explicit_tuples():
 	assert sample.text == "Vendo tele 4k"
 	assert sample.category == "aviso"
 
-	# CARPINCHO_PHRASES must contain explicit RadioPhrase tuples
+	# CARPINCHO_PHRASES debe contener tuplas RadioPhrase explícitas
 	assert isinstance(CARPINCHO_PHRASES, list)
 	assert len(CARPINCHO_PHRASES) > 0
 	for item in CARPINCHO_PHRASES:
 		assert isinstance(item, RadioPhrase)
 		assert item.category in {"fortuna", "aviso", "alerta_criolla", "oyentes"}
 
-	# Every category must be correctly populated from source banks
+	# Cada categoría debe estar correctamente poblada a partir de los bancos fuente
 	fortuna_texts = {p.text for p in CARPINCHO_PHRASES if p.category == "fortuna"}
 	aviso_texts = {p.text for p in CARPINCHO_PHRASES if p.category == "aviso"}
 	alerta_texts = {p.text for p in CARPINCHO_PHRASES if p.category == "alerta_criolla"}
@@ -54,22 +54,22 @@ def test_radio_phrase_model_and_banks_are_explicit_tuples():
 	for o in DEDICATORIAS_OYENTES:
 		assert o in oyentes_texts
 
-	# O(1) dictionary mapping exists
+	# Mapeo de diccionario O(1) directo
 	assert isinstance(PHRASE_TO_CATEGORY, dict)
 	assert len(PHRASE_TO_CATEGORY) == len(CARPINCHO_PHRASES)
 
 
 def test_resolve_segment_category_with_explicit_duples():
-	"""Ensures resolve_segment_category respects explicit duples directly without regex or heuristic inspection."""
-	# Arbitrary text that looks like a quote but is tagged as an ad
+	"""Garantiza que resolve_segment_category respete las duplas explícitas directamente sin regex ni heurísticas."""
+	# Texto arbitrario con pinta de cita pero categorizado como aviso comercial
 	ad_duple = RadioPhrase("Sócrates decía: compren en el almacén de Don Tito.", "aviso")
 	assert resolve_segment_category(ad_duple) == "aviso"
 
-	# Standard tuple (duple) format
+	# Formato de tupla (dupla) estándar
 	raw_duple = ("Atención vecinos: jejenes en el muelle.", "alerta_criolla")
 	assert resolve_segment_category(raw_duple) == "alerta_criolla"
 
-	# Known bank phrase passed as plain string resolves via O(1) dictionary mapping
+	# Frase conocida del banco pasada como string plano se resuelve vía diccionario O(1)
 	known_ad = CARPINCHO_ADS[0]
 	assert resolve_segment_category(known_ad) == "aviso"
 	assert PHRASE_TO_CATEGORY[known_ad] == "aviso"
@@ -80,7 +80,7 @@ def test_resolve_segment_category_with_explicit_duples():
 
 
 def test_build_radio_dialogue_plan_accepts_explicit_duple():
-	"""Ensures build_radio_dialogue_plan consumes an explicit RadioPhrase/tuple without string distortion."""
+	"""Garantiza que build_radio_dialogue_plan consuma una RadioPhrase/tupla explícita sin distorsión de strings."""
 	phrase_duple = RadioPhrase(
 		"Gomería El Chiche: emparchamos desde gomones hasta cámaras de tractor.",
 		"aviso",
@@ -90,7 +90,7 @@ def test_build_radio_dialogue_plan_accepts_explicit_duple():
 		intro="Arranca La Rockola.",
 		hora_seg="Las tres",
 		minuto_seg="de la tarde",
-		lead_in=None,  # Should auto-select matching lead_in_aviso
+		lead_in=None,  # Selecciona automáticamente lead_in_aviso
 		fortuna=phrase_duple,
 		outro="¡Que suene la música!",
 		host_voice="es-AR-TomasNeural",
@@ -99,36 +99,36 @@ def test_build_radio_dialogue_plan_accepts_explicit_duple():
 		dialogue_mode=True,
 	)
 
-	# The spoken text in the plan must be the clean text string, not the tuple repr
+	# El texto hablado en el plan debe ser texto limpio, no la representación de la tupla
 	fortuna_segment = next(t for t in plan if t[2] == "fortuna")
 	assert "RadioPhrase" not in fortuna_segment[0]
 	assert "Gomería El Chiche" in fortuna_segment[0]
 
-	# Lead-in segment should be from the aviso bank
+	# El segmento de lead-in debe provenir del banco de avisos
 	lead_in_segment = next(t for t in plan if t[2] == "lead_in")
 	assert any(lead_in_segment[0].startswith(l[:15]) for l in LEAD_INS_AVISOS)
 
-	# Reaction segment should be from the aviso bank
+	# El segmento de reacción debe provenir del banco de avisos
 	reaction_segment = next(t for t in plan if t[2] == "reaccion")
 	assert any(reaction_segment[0].startswith(r[:15]) for r in REACCIONES_AVISOS)
 
 
 def test_weighted_choice_and_recency_with_explicit_duples():
-	"""Ensures recency tracking and weighted choice work natively with explicit duples."""
+	"""Garantiza que el tracking de recencia y la ponderación funcionen nativamente con duplas explícitas."""
 	reset_radio_memory_state()
 
 	sample_duple = RadioPhrase("Llega mensajito de los isleños del arroyo.", "oyentes")
 	now_ts = 5000.0
 
-	# Record played using duple
+	# Registrar reproducción usando dupla
 	record_phrase_played(sample_duple, timestamp=now_ts)
 
-	# Should be retrievable by duple or by string text
+	# Debe poder consultarse tanto por dupla como por string de texto
 	assert get_phrase_last_played(sample_duple) == now_ts
 	assert get_phrase_last_played(sample_duple.text, category="oyentes") == now_ts
 	assert get_phrase_last_played(sample_duple.text, category="lead_in_oyentes") is None
 
-	# weighted_choice_by_recency with candidate duples
+	# weighted_choice_by_recency con duplas candidatas
 	candidates = [
 		RadioPhrase("Frase 1", "fortuna"),
 		RadioPhrase("Frase 2", "fortuna"),

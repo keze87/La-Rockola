@@ -22,7 +22,7 @@ def test_register_play_stat_ignores_radio_announcement(clean_db):
 	test_state = APIState()
 	announcement_path = test_state.radio_announcement_path
 
-	# Direct registration attempts on the temp announcement path should be ignored
+	# Los intentos de registrar reproducciones en la ruta temporal de locución deben ser ignorados
 	test_state._register_play_stat(announcement_path)
 
 	with sqlite3.connect(server.DB_PATH) as conn:
@@ -36,11 +36,11 @@ def test_legitimate_library_track_named_radio_announcement_is_tracked(clean_db, 
 	user_track.write_bytes(b"user music file")
 	str_user_track = str(user_track)
 
-	# Registered in user library
+	# Registrada en la biblioteca del usuario
 	test_state.path_to_id[str_user_track] = "track_hash_123"
 	test_state.id_to_current_path["track_hash_123"] = str_user_track
 
-	# Legitimate track must be recorded in play history
+	# La pista legítima del usuario debe registrarse en el historial de reproducción
 	test_state._register_play_stat(str_user_track)
 
 	with sqlite3.connect(server.DB_PATH) as conn:
@@ -57,7 +57,7 @@ def test_register_play_stat_ignores_when_flag_active(clean_db):
 	test_state = APIState()
 	test_state.is_playing_radio_announcement = True
 
-	# Even if path is unusual, flag prevents tracking
+	# Aunque la ruta sea inusual, la bandera activa evita registrar estadísticas
 	test_state._register_play_stat("/tmp/custom_announcement.wav")
 
 	with sqlite3.connect(server.DB_PATH) as conn:
@@ -94,7 +94,7 @@ def test_get_top_played_excludes_radio_announcement(clean_db, tmp_path):
 
 	now = time.time()
 	with sqlite3.connect(server.DB_PATH) as conn:
-		# Insert rows for both announcement and real song
+		# Insertar filas tanto para la locución como para la canción real
 		conn.execute(
 			"INSERT INTO play_history (track_id, played_at) VALUES (?, ?)",
 			(str(announcement_path), now),
@@ -117,7 +117,7 @@ def test_get_top_played_excludes_radio_announcement(clean_db, tmp_path):
 
 
 def test_init_db_cleans_legacy_radio_announcements(clean_db):
-	# Insert legacy row into database
+	# Insertar fila legacy en la base de datos
 	with sqlite3.connect(server.DB_PATH) as conn:
 		conn.execute(
 			"INSERT INTO play_history (track_id, played_at) VALUES (?, ?)",
@@ -125,7 +125,7 @@ def test_init_db_cleans_legacy_radio_announcements(clean_db):
 		)
 		conn.commit()
 
-	# Re-run init_db
+	# Re-ejecutar init_db
 	server.init_db()
 
 	with sqlite3.connect(server.DB_PATH) as conn:
@@ -138,7 +138,7 @@ def test_init_db_cleans_legacy_radio_announcements(clean_db):
 
 @pytest.mark.asyncio
 async def test_cover_endpoint_does_not_hijack_user_song_named_radio_announcement(tmp_path):
-	"""Ensures /cover does not serve the Carpincho mascot for a legitimate user song."""
+	"""Garantiza que /cover no sirva la mascota del Carpincho para una canción legítima del usuario."""
 	user_track = tmp_path / "radio_announcement.mp3"
 	user_track.write_bytes(b"USER_AUDIO")
 	str_track = str(user_track)
@@ -146,21 +146,21 @@ async def test_cover_endpoint_does_not_hijack_user_song_named_radio_announcement
 	server.state.path_to_id[str_track] = "hash_radio_song"
 	server.state.id_to_current_path["hash_radio_song"] = str_track
 
-	# When calling serve_cover for this user track with no embedded art, it should 404 instead of serving carpincho icon
+	# Al solicitar cover para esta pista de usuario sin arte incrustado, debe responder 404 en vez del ícono del carpincho
 	res = await server.serve_cover(path=str_track)
-	assert res.status_code == 404, "serve_cover hijacked legitimate user track to carpincho mascot"
+	assert res.status_code == 404, "serve_cover secuestró una pista legítima del usuario con la mascota del carpincho"
 
 
 @pytest.mark.asyncio
 async def test_stream_endpoint_rejects_unscanned_file_named_radio_announcement(tmp_path):
-	"""Ensures /stream does not allow arbitrary filesystem files just because they are named radio_announcement.mp3."""
+	"""Garantiza que /stream no permita archivos arbitrarios del sistema solo porque se llamen radio_announcement.mp3."""
 	arbitrary_file = tmp_path / "radio_announcement.mp3"
 	arbitrary_file.write_bytes(b"SECRET_DATA")
 	str_file = str(arbitrary_file)
 
-	# Not in user library, and not the server's temp announcement path
+	# No está en la biblioteca del usuario ni coincide con la ruta temporal de la locución del servidor
 	if str_file in server.state.path_to_id:
 		del server.state.path_to_id[str_file]
 
 	res = await server.stream_audio(path=str_file)
-	assert res.status_code == 404, "stream_audio allowed unauthorized file solely based on file name"
+	assert res.status_code == 404, "stream_audio permitió un archivo no autorizado basado únicamente en el nombre"
