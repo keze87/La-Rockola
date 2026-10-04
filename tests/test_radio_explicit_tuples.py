@@ -47,9 +47,9 @@ def test_radio_phrase_model_and_banks_are_explicit_tuples():
 
 	for s in CARPINCHO_SABIDURIA:
 		assert s in fortuna_texts
-	for a in CARPINCHO_ADS + AVISOS_PARROQUIALES_Y_EXTRAVIOS + TRANSITO_FLUVIAL_Y_CAMINOS:
+	for a in CARPINCHO_ADS + AVISOS_PARROQUIALES_Y_EXTRAVIOS:
 		assert a in aviso_texts
-	for al in ALERTAS_INCOMODIDAD_CRIOLLA:
+	for al in ALERTAS_INCOMODIDAD_CRIOLLA + TRANSITO_FLUVIAL_Y_CAMINOS:
 		assert al in alerta_texts
 	for o in DEDICATORIAS_OYENTES:
 		assert o in oyentes_texts

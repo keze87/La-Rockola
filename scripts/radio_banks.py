@@ -349,7 +349,7 @@ DEDICATORIAS_OYENTES: list[str] = [
 CARPINCHO_SABIDURIA: list[str] = list(CARPINCHO_FORTUNES)
 
 CARPINCHO_ADS.extend(AVISOS_PARROQUIALES_Y_EXTRAVIOS)
-CARPINCHO_ADS.extend(TRANSITO_FLUVIAL_Y_CAMINOS)
+CARPINCHO_FORTUNES.extend(TRANSITO_FLUVIAL_Y_CAMINOS)
 CARPINCHO_FORTUNES.extend(ALERTAS_INCOMODIDAD_CRIOLLA)
 CARPINCHO_FORTUNES.extend(DEDICATORIAS_OYENTES)
 CARPINCHO_FORTUNES.extend(CARPINCHO_ADS)
@@ -358,6 +358,7 @@ CARPINCHO_FORTUNES.extend(CARPINCHO_ADS)
 CARPINCHO_PHRASES: list[RadioPhrase] = [
 	*(RadioPhrase(t, "fortuna") for t in CARPINCHO_SABIDURIA),
 	*(RadioPhrase(t, "alerta_criolla") for t in ALERTAS_INCOMODIDAD_CRIOLLA),
+	*(RadioPhrase(t, "alerta_criolla") for t in TRANSITO_FLUVIAL_Y_CAMINOS),
 	*(RadioPhrase(t, "oyentes") for t in DEDICATORIAS_OYENTES),
 	*(RadioPhrase(t, "aviso") for t in CARPINCHO_ADS),
 ]
@@ -454,11 +455,13 @@ LEAD_INS_OYENTES: list[str] = [
 ]
 
 LEAD_INS_ALERTAS: list[str] = [
-	"Alerta especial de incomodidad criolla en el dial:",
 	"Reporte urgente desde la costa; ojo al piojo:",
-	"Atención navegantes y vecinos del humedal con este parte:",
-	"Aviso meteorológico no oficial de los bañados:",
-	"Pará la oreja que se picó el ambiente en la ribera:",
+	"Nos llega este parte especial desde las islas:",
+	"Corresponsalía fluvial nos manda este flash, escuchá:",
+	"Así están las cosas río abajo, nos cuentan desde la otra orilla:",
+	"Cable urgente que nos tira la gente del litoral:",
+	"Parte que nos acerca la posta del bañado, allá lejos:",
+	"Reporte que nos envían desde los canales de navegación ribereños:",
 ]
 
 LEAD_INS_BY_CATEGORY: dict[str, list[str]] = {
@@ -1299,12 +1302,15 @@ REACCIONES_OYENTES: list[str] = [
 ]
 
 REACCIONES_ALERTAS: list[str] = [
-	"¡Qué lo tiró, che! A prender el espiral y cerrar las ventanas.",
-	"¡Mamita querida, qué plaga brava! A refugiarse en la cueva.",
-	"¡A ponerle el pecho con un buen tereré y paciencia de carpincho!",
-	"¡Cosas de nuestra tierra querida, a no aflojarle!",
+	"¡Qué lo tiró, che! Prendan el espiral y cierren las ventanas.",
+	"¡Mamita querida, qué plaga brava! Vayan a refugiarse en la cueva.",
 	"¡Terrible situación! Aguanten los trapos que ya va a pasar.",
-	"¡Paciencia criolla que después de la siesta afloja!",
+	"¡Uy, qué quilombo allá en las islas, eh!",
+	"¡Fuerza a los que andan cruzando ese paso ahora mismo!",
+	"¡Qué panorama bravo por allá; un abrazo grande a los isleños!",
+	"Que se cuiden los que están en la zona, nosotros les mandamos un abrazo desde la cabina.",
+	"¡Mamita querida lo que les toca pasar allá lejos! A tener paciencia y cuidarse.",
+	"Mucha fuerza para la gente de la costa que le está haciendo frente a la correntada.",
 ]
 
 REACCIONES_BY_CATEGORY: dict[str, list[str]] = {
@@ -2314,21 +2320,12 @@ def resolve_segment_category(text: str | tuple[str, str] | RadioPhrase) -> str:
 			"Aviso parroquial",
 			"Se busca ",
 			"Atención vecinos",
-			"Lancha colectiva",
-			"Balsa ",
-			"Corte de ruta",
-			"Alerta de tránsito",
-			"Tránsito ",
-			"Camino ",
-			"Reporte de caminos",
 			"Solidaridad ",
 			"Objeto perdido",
 			"Objeto hallado",
 			"Extravío ",
 			"Pérdida ",
 			"Urgente del pueblo",
-			"Demoras en ",
-			"Estado de caminos",
 		)
 	):
 		return "aviso"
@@ -2353,7 +2350,7 @@ def resolve_segment_category(text: str | tuple[str, str] | RadioPhrase) -> str:
 	):
 		return "oyentes"
 
-	# 5. Alertas criollas satíricas (frases multipalabra específicas para no colisionar con citas o refranes)
+	# 5. Alertas criollas y tránsito fluvial (partes y cables remotos del delta, islas y litoral)
 	if any(
 		text_clean.startswith(p)
 		for p in (
@@ -2361,6 +2358,15 @@ def resolve_segment_category(text: str | tuple[str, str] | RadioPhrase) -> str:
 			"Alerta de jejenes",
 			"Alerta por viento zonda",
 			"Alerta meteorológico de los bañados",
+			"Lancha colectiva",
+			"Balsa ",
+			"Corte de ruta",
+			"Alerta de tránsito",
+			"Tránsito ",
+			"Camino ",
+			"Reporte de caminos",
+			"Demoras en ",
+			"Estado de caminos",
 		)
 	) or any(
 		k in text_lower
@@ -2376,6 +2382,16 @@ def resolve_segment_category(text: str | tuple[str, str] | RadioPhrase) -> str:
 			"plaga de",
 			"calor de siesta",
 			"asfalto parece goma",
+			"tránsito fluvial",
+			"lancha colectiva",
+			"balsa maroma",
+			"puente viejo",
+			"terraplén",
+			"camino de ripio",
+			"banco de arena",
+			"barro greda",
+			"camino isleño",
+			"alerta para boteros",
 		)
 	):
 		return "alerta_criolla"
@@ -2396,14 +2412,6 @@ def resolve_segment_category(text: str | tuple[str, str] | RadioPhrase) -> str:
 			"gratificaré",
 			"buena recompensa",
 			"recompensa a quien",
-			"lancha colectiva",
-			"tránsito fluvial",
-			"puente viejo",
-			"terraplén",
-			"camino de ripio",
-			"balsa maroma",
-			"banco de arena",
-			"barro greda",
 		)
 	):
 		return "aviso"

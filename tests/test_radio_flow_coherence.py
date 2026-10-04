@@ -8,13 +8,16 @@ from scripts.radio_announcer import (
 	resolve_segment_category,
 )
 from scripts.radio_banks import (
+	ALERTAS_INCOMODIDAD_CRIOLLA,
 	CARPINCHO_ADS,
 	DEDICATORIAS_OYENTES,
 	LEAD_INS_ALERTAS,
 	LEAD_INS_AVISOS,
 	LEAD_INS_OYENTES,
+	REACCIONES_ALERTAS,
 	REACCIONES_AVISOS,
 	REACCIONES_OYENTES,
+	TRANSITO_FLUVIAL_Y_CAMINOS,
 )
 
 
@@ -28,7 +31,9 @@ def test_resolve_segment_category_identifies_all_types():
 	assert resolve_segment_category(CARPINCHO_ADS[0]) == "aviso"
 	assert resolve_segment_category("Gomería El Chiche: emparchamos desde gomones hasta cámaras de tractor.") == "aviso"
 	assert resolve_segment_category("Aviso parroquial: Se extravió una reposera de caño cerca del sauce.") == "aviso"
-	assert resolve_segment_category("Lancha colectiva con 30 minutos de demora por camalotes.") == "aviso"
+
+	# Alertas criollas y tránsito fluvial remoto
+	assert resolve_segment_category("Lancha colectiva con 30 minutos de demora por camalotes.") == "alerta_criolla"
 
 	# Mensajes y dedicatorias de oyentes
 	assert resolve_segment_category(DEDICATORIAS_OYENTES[0]) == "oyentes"
@@ -226,4 +231,91 @@ def test_build_radio_dialogue_plan_default_lead_in_is_none():
 	lead_in_segment = next(t for t in plan if t[2] == "lead_in")
 	assert any(lead in lead_in_segment[0] for lead in LEAD_INS_AVISOS), (
 		f"Lead-in inesperado para aviso sin pasar lead_in explícito: {lead_in_segment[0]}"
+	)
+
+
+def test_alertas_and_transito_fluvial_no_local_deictics():
+	"""Garantiza que ni los lead-ins, ni las reacciones, ni los partes fluviales contengan deícticos de primera persona local."""
+	import re
+
+	patrones_prohibidos = [
+		r"\bacá\b",
+		r"\baquí\b",
+		r"\bnuestra zona\b",
+		r"\bnuestro pago\b",
+		r"\bnuestra tierra\b",
+	]
+
+	bancos_a_revisar = {
+		"LEAD_INS_ALERTAS": LEAD_INS_ALERTAS,
+		"REACCIONES_ALERTAS": REACCIONES_ALERTAS,
+		"TRANSITO_FLUVIAL_Y_CAMINOS": TRANSITO_FLUVIAL_Y_CAMINOS,
+		"ALERTAS_INCOMODIDAD_CRIOLLA": ALERTAS_INCOMODIDAD_CRIOLLA,
+	}
+
+	for nombre_banco, frases in bancos_a_revisar.items():
+		for frase in frases:
+			for patron in patrones_prohibidos:
+				assert not re.search(patron, frase, re.IGNORECASE), (
+					f"Deíctico prohibido '{patron}' encontrado en {nombre_banco}: '{frase}'"
+				)
+
+
+def test_lead_ins_alertas_remote_correspondent_markers():
+	"""Garantiza que cada lead-in de alertas contenga al menos un marcador de procedencia remota / corresponsal."""
+	marcadores_esperados = (
+		"desde",
+		"nos llega",
+		"nos cuentan",
+		"allá",
+		"río abajo",
+		"nos tira",
+		"corresponsalía",
+		"otra orilla",
+		"cable urgente",
+		"nos acerca",
+		"nos envían",
+	)
+
+	for lead_in in LEAD_INS_ALERTAS:
+		lead_lower = lead_in.lower()
+		assert any(m in lead_lower for m in marcadores_esperados), (
+			f"El lead-in '{lead_in}' no incluye ningún marcador de corresponsal remoto ({marcadores_esperados})"
+		)
+
+
+def test_fluvial_traffic_uses_remote_alert_pool_in_dialogue_plan():
+	"""Verifica que el tránsito fluvial se clasifique como alerta_criolla y seleccione lead-in y reacción del pool remoto."""
+	frase_fluvial = TRANSITO_FLUVIAL_Y_CAMINOS[0]
+	categoria = resolve_segment_category(frase_fluvial)
+	assert categoria == "alerta_criolla", (
+		f"El tránsito fluvial debe clasificarse como 'alerta_criolla', se obtuvo: '{categoria}'"
+	)
+
+	plan = build_radio_dialogue_plan(
+		intro="Arranca La Rockola.",
+		hora_seg="Las tres",
+		minuto_seg="de la tarde",
+		fortuna=frase_fluvial,
+		outro="¡Que suene la música!",
+		host_voice="es-AR-TomasNeural",
+		cohost_voice="es-AR-ElenaNeural",
+	)
+
+	lead_in_text = next(t[0] for t in plan if t[2] == "lead_in")
+	reaccion_text = next(t[0] for t in plan if t[2] == "reaccion")
+
+	# Debe pertenecer al pool remoto de alertas, nunca al de avisos comerciales
+	assert any(l in lead_in_text for l in LEAD_INS_ALERTAS), (
+		f"Lead-in no pertenece a LEAD_INS_ALERTAS: '{lead_in_text}'"
+	)
+	assert not any(l in lead_in_text for l in LEAD_INS_AVISOS), (
+		f"Lead-in pertenece indebidamente a LEAD_INS_AVISOS: '{lead_in_text}'"
+	)
+
+	assert any(r in reaccion_text for r in REACCIONES_ALERTAS), (
+		f"Reacción no pertenece a REACCIONES_ALERTAS: '{reaccion_text}'"
+	)
+	assert not any(r in reaccion_text for r in REACCIONES_AVISOS), (
+		f"Reacción pertenece indebidamente a REACCIONES_AVISOS: '{reaccion_text}'"
 	)
