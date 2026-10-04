@@ -9,6 +9,13 @@ from __future__ import annotations
 
 import random
 import re
+from typing import NamedTuple
+
+
+class RadioPhrase(NamedTuple):
+	text: str
+	category: str  # "fortuna" | "aviso" | "alerta_criolla" | "oyentes"
+
 
 # ---------------------------------------------------------------------------
 # Locutores y prosodia
@@ -346,6 +353,16 @@ CARPINCHO_ADS.extend(TRANSITO_FLUVIAL_Y_CAMINOS)
 CARPINCHO_FORTUNES.extend(ALERTAS_INCOMODIDAD_CRIOLLA)
 CARPINCHO_FORTUNES.extend(DEDICATORIAS_OYENTES)
 CARPINCHO_FORTUNES.extend(CARPINCHO_ADS)
+
+# Mapeo y colección de duplas explícitas (frase, categoría)
+CARPINCHO_PHRASES: list[RadioPhrase] = [
+	*(RadioPhrase(t, "fortuna") for t in CARPINCHO_SABIDURIA),
+	*(RadioPhrase(t, "alerta_criolla") for t in ALERTAS_INCOMODIDAD_CRIOLLA),
+	*(RadioPhrase(t, "oyentes") for t in DEDICATORIAS_OYENTES),
+	*(RadioPhrase(t, "aviso") for t in CARPINCHO_ADS),
+]
+
+PHRASE_TO_CATEGORY: dict[str, str] = {p.text: p.category for p in CARPINCHO_PHRASES}
 
 # ---------------------------------------------------------------------------
 # Frases de apertura, intro, lead-in y cierre radial
@@ -2257,31 +2274,29 @@ AI_ROBOTIC_PHRASES: list[str] = [
 ]
 
 
-def resolve_segment_category(text: str) -> str:
+def resolve_segment_category(text: str | tuple[str, str] | RadioPhrase) -> str:
 	"""
 	Clasifica el contenido radial en su categoría semántica:
 	- 'oyentes': dedicatorias y pedidos de oyentes por WhatsApp/audio.
 	- 'aviso': tanda publicitaria comercial, avisos parroquiales y tránsito fluvial.
 	- 'alerta_criolla': reportes satíricos de clima extremo, mosquitos y viento norte.
 	- 'fortuna': refranes, proverbios, máximas y reflexiones filosóficas.
+
+	Soporta duplas explícitas (RadioPhrase o tuple) retornando su categoría directamente,
+	y mapeo O(1) vía PHRASE_TO_CATEGORY para frases de los bancos internos.
 	"""
+	if isinstance(text, (tuple, RadioPhrase)):
+		if len(text) >= 2 and text[1]:
+			return str(text[1])
+		text = text[0] if len(text) >= 1 else ""
+
 	if not text or not isinstance(text, str):
 		return "fortuna"
 	text_clean = text.strip()
 
-	# 1. Pertenencia directa a bancos conocidos
-	if text_clean in CARPINCHO_SABIDURIA:
-		return "fortuna"
-	if text_clean in DEDICATORIAS_OYENTES:
-		return "oyentes"
-	if (
-		text_clean in CARPINCHO_ADS
-		or text_clean in AVISOS_PARROQUIALES_Y_EXTRAVIOS
-		or text_clean in TRANSITO_FLUVIAL_Y_CAMINOS
-	):
-		return "aviso"
-	if text_clean in ALERTAS_INCOMODIDAD_CRIOLLA:
-		return "alerta_criolla"
+	# 1. Pertenencia directa a mapeo explícito de bancos
+	if text_clean in PHRASE_TO_CATEGORY:
+		return PHRASE_TO_CATEGORY[text_clean]
 
 	# 2. Citas literarias o filosóficas con atribución de autor (e.g. '— Heráclito', '— Proverbio')
 	if " — " in text_clean or "— " in text_clean or re.search(r"—\s*[A-ZÁÉÍÓÚÑ]", text_clean):

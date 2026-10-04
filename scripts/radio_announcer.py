@@ -72,6 +72,7 @@ try:
 		AVISOS_PARROQUIALES_Y_EXTRAVIOS,
 		CARPINCHO_ADS,
 		CARPINCHO_FORTUNES,
+		CARPINCHO_PHRASES,
 		COMMON_ENGLISH_WORDS,
 		COMMON_SPANISH_VERBS,
 		COMMON_SPANISH_WORDS,
@@ -97,6 +98,7 @@ try:
 		LEAD_INS_OYENTES,
 		MINUTE_SEGMENTS,
 		PASES_A_CLIMA,
+		PHRASE_TO_CATEGORY,
 		PRECIPITATING_CATEGORIES,
 		PROFANITY_PHRASES,
 		PROFANITY_TERMS,
@@ -134,6 +136,7 @@ try:
 		WEATHER_LEAD_INS,
 		WEATHER_RAIN_THRESHOLD,
 		WEATHER_TEMPLATES,
+		RadioPhrase,
 		get_all_weather_desc_phrases,
 		get_lead_ins_for_category,
 		get_reactions_for_category,
@@ -148,6 +151,7 @@ except ImportError:
 		AVISOS_PARROQUIALES_Y_EXTRAVIOS,
 		CARPINCHO_ADS,
 		CARPINCHO_FORTUNES,
+		CARPINCHO_PHRASES,
 		COMMON_ENGLISH_WORDS,
 		COMMON_SPANISH_VERBS,
 		COMMON_SPANISH_WORDS,
@@ -173,6 +177,7 @@ except ImportError:
 		LEAD_INS_OYENTES,
 		MINUTE_SEGMENTS,
 		PASES_A_CLIMA,
+		PHRASE_TO_CATEGORY,
 		PRECIPITATING_CATEGORIES,
 		PROFANITY_PHRASES,
 		PROFANITY_TERMS,
@@ -210,6 +215,7 @@ except ImportError:
 		WEATHER_LEAD_INS,
 		WEATHER_RAIN_THRESHOLD,
 		WEATHER_TEMPLATES,
+		RadioPhrase,
 		get_all_weather_desc_phrases,
 		get_lead_ins_for_category,
 		get_reactions_for_category,
@@ -224,6 +230,7 @@ __all__ = [
 	"AVISOS_PARROQUIALES_Y_EXTRAVIOS",
 	"CARPINCHO_ADS",
 	"CARPINCHO_FORTUNES",
+	"CARPINCHO_PHRASES",
 	"COMMON_ENGLISH_WORDS",
 	"COMMON_SPANISH_VERBS",
 	"COMMON_SPANISH_WORDS",
@@ -249,6 +256,7 @@ __all__ = [
 	"LEAD_INS_OYENTES",
 	"MINUTE_SEGMENTS",
 	"PASES_A_CLIMA",
+	"PHRASE_TO_CATEGORY",
 	"PRECIPITATING_CATEGORIES",
 	"PROFANITY_PHRASES",
 	"PROFANITY_TERMS",
@@ -287,6 +295,7 @@ __all__ = [
 	"WEATHER_RAIN_THRESHOLD",
 	"WEATHER_TEMPLATES",
 	"RadioAnnouncementResult",
+	"RadioPhrase",
 	"assemble_announcement_audio",
 	"build_lrc_content",
 	"build_radio_dialogue_plan",
@@ -900,35 +909,47 @@ def reset_radio_memory_state() -> None:
 	_PHRASE_HISTORY_MEMORY.clear()
 
 
-def _normalize_phrase_key(phrase: str, category: str = "") -> str:
-	cleaned = phrase.strip().strip("\"'«»").rstrip(".!?:;…").lower()
+def _normalize_phrase_key(phrase: str | tuple[str, str] | RadioPhrase, category: str = "") -> str:
+	if isinstance(phrase, (tuple, list)):
+		phrase_text = phrase[0] if len(phrase) > 0 else ""
+		if not category and len(phrase) > 1:
+			category = str(phrase[1])
+	else:
+		phrase_text = str(phrase)
+	cleaned = phrase_text.strip().strip("\"'«»").rstrip(".!?:;…").lower()
 	return f"{category}:{cleaned}" if category else cleaned
 
 
 def get_phrase_last_played(
-	phrase: str,
+	phrase: str | tuple[str, str] | RadioPhrase,
 	category: str = "",
 	db_path: Path | str | None = None,
 ) -> float | None:
 	"""Recupera la marca de tiempo (timestamp) en que una frase fue reproducida por última vez en memoria."""
-	norm_key = _normalize_phrase_key(phrase, category)
+	if isinstance(phrase, (tuple, list)):
+		phrase_text = phrase[0] if len(phrase) > 0 else ""
+		if not category and len(phrase) > 1:
+			category = str(phrase[1])
+	else:
+		phrase_text = str(phrase)
+	norm_key = _normalize_phrase_key(phrase_text, category)
 	val = _PHRASE_HISTORY_MEMORY.get(norm_key)
 	if val is not None:
 		return val
 
 	# Fallbacks entre categorías específicas y genéricas
 	if category.startswith("lead_in_"):
-		val = _PHRASE_HISTORY_MEMORY.get(_normalize_phrase_key(phrase, "lead_in"))
+		val = _PHRASE_HISTORY_MEMORY.get(_normalize_phrase_key(phrase_text, "lead_in"))
 		if val is not None:
 			return val
 	elif category.startswith("reaccion_"):
-		val = _PHRASE_HISTORY_MEMORY.get(_normalize_phrase_key(phrase, "reaccion"))
+		val = _PHRASE_HISTORY_MEMORY.get(_normalize_phrase_key(phrase_text, "reaccion"))
 		if val is not None:
 			return val
 	elif category == "pase":
 		for tpl in PASES_A_CLIMA:
 			for cname in VOICE_NAMES.values():
-				if _normalize_phrase_key(tpl.format(cohost=cname)) == _normalize_phrase_key(phrase):
+				if _normalize_phrase_key(tpl.format(cohost=cname)) == _normalize_phrase_key(phrase_text):
 					val = _PHRASE_HISTORY_MEMORY.get(_normalize_phrase_key(tpl, "pase"))
 					if val is not None:
 						return val
@@ -936,49 +957,55 @@ def get_phrase_last_played(
 
 
 def record_phrase_played(
-	phrase: str,
+	phrase: str | tuple[str, str] | RadioPhrase,
 	category: str = "",
 	timestamp: float | None = None,
 	db_path: Path | str | None = None,
 ) -> None:
 	"""Registra en memoria la reproducción de una frase actualizando su marca de tiempo."""
+	if isinstance(phrase, (tuple, list)):
+		phrase_text = phrase[0] if len(phrase) > 0 else ""
+		if not category and len(phrase) > 1:
+			category = str(phrase[1])
+	else:
+		phrase_text = str(phrase)
 	ts = timestamp if timestamp is not None else time.time()
-	norm_key = _normalize_phrase_key(phrase, category)
+	norm_key = _normalize_phrase_key(phrase_text, category)
 	_PHRASE_HISTORY_MEMORY[norm_key] = ts
 
 	# Mapeo bidireccional entre categorías específicas y genéricas para garantizar consistencia
 	if category == "lead_in" or category.startswith("lead_in_"):
-		_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(phrase, "lead_in")] = ts
+		_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(phrase_text, "lead_in")] = ts
 		for cat_name, cat_list in LEAD_INS_BY_CATEGORY.items():
-			if any(_normalize_phrase_key(phrase) == _normalize_phrase_key(item) for item in cat_list):
-				_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(phrase, f"lead_in_{cat_name}")] = ts
+			if any(_normalize_phrase_key(phrase_text) == _normalize_phrase_key(item) for item in cat_list):
+				_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(phrase_text, f"lead_in_{cat_name}")] = ts
 				break
 	elif category == "reaccion" or category.startswith("reaccion_"):
-		_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(phrase, "reaccion")] = ts
+		_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(phrase_text, "reaccion")] = ts
 		for cat_name, cat_list in REACCIONES_BY_CATEGORY.items():
-			if any(_normalize_phrase_key(phrase) == _normalize_phrase_key(item) for item in cat_list):
-				_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(phrase, f"reaccion_{cat_name}")] = ts
+			if any(_normalize_phrase_key(phrase_text) == _normalize_phrase_key(item) for item in cat_list):
+				_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(phrase_text, f"reaccion_{cat_name}")] = ts
 				break
 		for clim_list in REACCIONES_CLIMA.values():
-			if any(_normalize_phrase_key(phrase) == _normalize_phrase_key(item) for item in clim_list):
-				_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(phrase, "reaccion_clima")] = ts
+			if any(_normalize_phrase_key(phrase_text) == _normalize_phrase_key(item) for item in clim_list):
+				_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(phrase_text, "reaccion_clima")] = ts
 				break
 	elif category == "pase":
 		for tpl in PASES_A_CLIMA:
 			for cname in VOICE_NAMES.values():
-				if _normalize_phrase_key(tpl.format(cohost=cname)) == _normalize_phrase_key(phrase):
+				if _normalize_phrase_key(tpl.format(cohost=cname)) == _normalize_phrase_key(phrase_text):
 					_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(tpl, "pase")] = ts
 					break
 
 
 def weighted_choice_by_recency(
-	candidates: list[str],
+	candidates: list[Any],
 	category: str = "",
 	db_path: Path | str | None = None,
 	current_time: float | None = None,
 	tau: float = 1800.0,
 	min_weight: float = 0.02,
-) -> str:
+) -> Any:
 	"""
 	Selecciona una frase de la lista candidata ponderando por antigüedad de última reproducción.
 	- Frases nunca reproducidas tienen peso máximo (1.0).
@@ -1399,6 +1426,27 @@ def get_bundled_fortune(db_path: Path | str | None = None) -> str | None:
 	return weighted_choice_by_recency(_BUNDLED_FORTUNES_CACHE, category="fortuna_bundled", db_path=db_path)
 
 
+def select_radio_phrase(
+	force_system_fortune: bool | None = None,
+	db_path: Path | str | None = None,
+) -> tuple[RadioPhrase, bool]:
+	"""
+	Selecciona una frase o fortuna radial explícita (RadioPhrase(text, category), es_del_sistema).
+	Por defecto intenta con probabilidad 1/6 consultar una fortuna del sistema si está disponible en español,
+	o recurre al banco curado de frases del proyecto con duplas explícitas y selección ponderada por recencia.
+	"""
+	if force_system_fortune is not False and (force_system_fortune is True or random.random() < 1 / 6):
+		sys_fort = get_system_fortune()
+		if sys_fort and is_spanish_text(sys_fort):
+			return RadioPhrase(sys_fort, "fortuna"), True
+		bundled = get_bundled_fortune(db_path=db_path)
+		if bundled and is_spanish_text(bundled):
+			return RadioPhrase(bundled, "fortuna"), True
+
+	chosen = weighted_choice_by_recency(CARPINCHO_PHRASES, category="fortuna", db_path=db_path)
+	return chosen, False
+
+
 def select_fortune(
 	force_system_fortune: bool | None = None,
 	db_path: Path | str | None = None,
@@ -1408,16 +1456,8 @@ def select_fortune(
 	Por defecto intenta con probabilidad 1/6 consultar una fortuna del sistema si está disponible en español,
 	o recurre al banco curado de frases del proyecto (o frases criollas del carpincho) con selección ponderada por recencia.
 	"""
-	if force_system_fortune is not False and (force_system_fortune is True or random.random() < 1 / 6):
-		sys_fort = get_system_fortune()
-		if sys_fort and is_spanish_text(sys_fort):
-			return sys_fort, True
-		bundled = get_bundled_fortune(db_path=db_path)
-		if bundled and is_spanish_text(bundled):
-			return bundled, True
-
-	chosen = weighted_choice_by_recency(CARPINCHO_FORTUNES, category="fortuna", db_path=db_path)
-	return chosen, False
+	phrase, is_sys = select_radio_phrase(force_system_fortune=force_system_fortune, db_path=db_path)
+	return phrase.text, is_sys
 
 
 def get_radio_fortune(db_path: Path | str | None = None) -> str:
@@ -1482,9 +1522,10 @@ def get_all_fortune_reaction_segments() -> list[str]:
 	return list(REACCIONES_FORTUNA)
 
 
-def format_fortune_for_speech(fortuna: str) -> str:
+def format_fortune_for_speech(fortuna: str | tuple[str, str] | RadioPhrase) -> str:
 	"""Prepara el texto de una fortuna para locución quitando comillas duras y asegurando puntuación terminal."""
-	cleaned = fortuna.strip().strip("\"'«»")
+	raw = fortuna[0] if isinstance(fortuna, (tuple, list)) else str(fortuna)
+	cleaned = raw.strip().strip("\"'«»")
 	if not cleaned.endswith((".", "!", "?", "…")):
 		cleaned = f"{cleaned}."
 	return cleaned
@@ -1528,7 +1569,7 @@ def build_radio_dialogue_plan(
 	hora_seg: str,
 	minuto_seg: str | None,
 	lead_in: str | None,
-	fortuna: str,
+	fortuna: str | tuple[str, str] | RadioPhrase,
 	outro: str,
 	host_voice: str,
 	cohost_voice: str,
@@ -2894,7 +2935,7 @@ async def create_radio_announcement(
 	effective_dt = dt if dt is not None else datetime.now(UTC).astimezone()
 
 	# Selección de fortuna y asignación de roles de cabina (host y cohost distintos)
-	fortuna, is_sys = select_fortune(force_system_fortune, db_path=db_path)
+	fortuna, is_sys = select_radio_phrase(force_system_fortune, db_path=db_path)
 	host_voice, cohost_voice = select_radio_hosts(host_voice=voice, is_system_fortune=is_sys)
 	locutor_nombre = VOICE_NAMES.get(host_voice, DEFAULT_HOST_NAME)
 	cohost_nombre = VOICE_NAMES.get(cohost_voice, DEFAULT_COHOST_DISPLAY_NAME)
