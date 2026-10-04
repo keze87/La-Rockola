@@ -207,3 +207,23 @@ def test_recency_contract_records_specific_categories_matching_weighted_choice()
 	assert react_clima_ts == now_ts, "La reacción climática no se registró con categoría 'reaccion_clima'"
 	react_fortune_ts = get_phrase_last_played(fortune_react, category=f"reaccion_{seg_cat}")
 	assert react_fortune_ts == now_ts, f"La reacción a la fortuna no se registró con categoría 'reaccion_{seg_cat}'"
+
+
+def test_build_radio_dialogue_plan_default_lead_in_is_none():
+	"""Garantiza que lead_in sea opcional en build_radio_dialogue_plan y resuelva automáticamente por categoría."""
+	# Al invocar sin pasar el parámetro lead_in, debe resolver el lead-in correspondiente a la categoría del segmento
+	ad_text = "Gomería El Chiche: emparchamos desde gomones hasta cámaras de tractor."
+	plan = build_radio_dialogue_plan(
+		intro="Arranca La Rockola.",
+		hora_seg="Las tres",
+		minuto_seg="de la tarde",
+		fortuna=ad_text,
+		outro="¡Que suene la música!",
+		host_voice="es-AR-TomasNeural",
+		cohost_voice="es-AR-ElenaNeural",
+	)
+
+	lead_in_segment = next(t for t in plan if t[2] == "lead_in")
+	assert any(lead in lead_in_segment[0] for lead in LEAD_INS_AVISOS), (
+		f"Lead-in inesperado para aviso sin pasar lead_in explícito: {lead_in_segment[0]}"
+	)

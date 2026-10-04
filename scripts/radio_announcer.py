@@ -1568,11 +1568,11 @@ def build_radio_dialogue_plan(
 	intro: str,
 	hora_seg: str,
 	minuto_seg: str | None,
-	lead_in: str | None,
 	fortuna: str | tuple[str, str] | RadioPhrase,
 	outro: str,
 	host_voice: str,
 	cohost_voice: str,
+	lead_in: str | None = None,
 	is_system_fortune: bool = False,
 	weather_text: str | None = None,
 	weather_condition: str | None = None,
@@ -2979,9 +2979,6 @@ async def create_radio_announcement(
 
 	intro = weighted_choice_by_recency(RADIO_INTROS, category="intro", db_path=db_path)
 	hora_seg, minuto_seg, _ = get_modular_time_segments(effective_dt)
-	seg_cat = resolve_segment_category(fortuna)
-	cat_lead_ins = get_lead_ins_for_category(seg_cat)
-	lead_in = weighted_choice_by_recency(cat_lead_ins, category=f"lead_in_{seg_cat}", db_path=db_path)
 	outro = weighted_choice_by_recency(RADIO_OUTROS, category="salida", db_path=db_path)
 
 	is_dialogue = dialogue_mode if dialogue_mode is not None else (random.random() < 0.85)
@@ -2991,7 +2988,6 @@ async def create_radio_announcement(
 		intro=intro,
 		hora_seg=hora_seg,
 		minuto_seg=minuto_seg,
-		lead_in=lead_in,
 		fortuna=fortuna,
 		outro=outro,
 		host_voice=host_voice,
