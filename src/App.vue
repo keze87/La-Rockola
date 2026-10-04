@@ -190,20 +190,7 @@
 		</div>
 	</nav>
 
-	<!-- BARRA DE PROGRESO / SCAN INFERIOR NAV -->
-	<div
-		v-show="isScanning || scanStatus?.is_analyzing_mood"
-		class="bg-carpincho-panel h-1 w-full shrink-0 overflow-hidden"
-	>
-		<div
-			class="bg-carpincho-primary h-full transition-all duration-300 ease-out"
-			:class="{ 'animate-[pulse_1s_ease-in-out_infinite]': !scanStatus?.total }"
-			:style="{
-				width: (scanStatus?.total ? (scanStatus.current / scanStatus.total) * 100 : 33) + '%',
-			}"
-		/>
-	</div>
-
+	<!-- BARRA DE PROGRESO  -->
 	<div
 		v-show="!isScanning && currentTrackPath"
 		class="bg-carpincho-panel group relative flex h-2 w-full shrink-0 cursor-pointer touch-none items-start"
