@@ -1559,10 +1559,12 @@ def get_cover_art_uri(path: str) -> str:
 	if not path or path.startswith("http"):
 		return ""
 	try:
-		if (
-			("state" in globals() and path == getattr(globals()["state"], "radio_announcement_path", None))
-			or Path(path).name == "radio_announcement.mp3"
-		) and get_carpincho_cover_path:
+		is_announcement = (
+			"state" in globals()
+			and hasattr(globals()["state"], "is_radio_announcement")
+			and globals()["state"].is_radio_announcement(path)
+		)
+		if is_announcement and get_carpincho_cover_path:
 			carpincho_p = get_carpincho_cover_path()
 			if carpincho_p and carpincho_p.is_file():
 				return f"file://{carpincho_p.resolve()}"
@@ -2776,8 +2778,14 @@ class APIState:
 			announcement_p = getattr(self, "radio_announcement_path", None)
 			if announcement_p and Path(str_path).resolve() == Path(announcement_p).resolve():
 				return True
+			pregenerated_p = getattr(self, "radio_pregenerated_path", None)
+			if pregenerated_p and Path(str_path).resolve() == Path(pregenerated_p).resolve():
+				return True
 			p = Path(str_path)
-			if p.name == "radio_announcement.mp3" and p.parent.resolve() == Path(tempfile.gettempdir()).resolve():
+			if (
+				p.name in ("radio_announcement.mp3", "radio_pregenerated.mp3")
+				and p.parent.resolve() == Path(tempfile.gettempdir()).resolve()
+			):
 				return True
 		except Exception:
 			pass
@@ -3866,15 +3874,15 @@ class APIState:
 						else:
 							pre_p = Path(pre["path"])
 							if _is_valid_radio_mp3_file(pre_p):
-								await _apply_hot_mix_to_announcement(
+								if await _apply_hot_mix_to_announcement(
 									pre_p, Path(self.radio_announcement_path), pre["display_title"]
-								)
-								ok = True
-								display_title = pre["display_title"]
-								script = pre.get("script", "")
-								logger.info(
-									"⚡ Carpincho Locutor: Transición con locución pregenerada y mezcla de cortina en caliente."
-								)
+								):
+									ok = True
+									display_title = pre["display_title"]
+									script = pre.get("script", "")
+									logger.info(
+										"⚡ Carpincho Locutor: Transición con locución pregenerada y mezcla de cortina en caliente."
+									)
 							else:
 								logger.warning(
 									"📻 Carpincho Locutor: El archivo pregenerado está incompleto o no es un MP3 válido. Descartando..."
@@ -3899,12 +3907,12 @@ class APIState:
 								else:
 									pre_p = Path(pre["path"])
 									if _is_valid_radio_mp3_file(pre_p):
-										await _apply_hot_mix_to_announcement(
+										if await _apply_hot_mix_to_announcement(
 											pre_p, Path(self.radio_announcement_path), pre["display_title"]
-										)
-										ok = True
-										display_title = pre["display_title"]
-										script = pre.get("script", "")
+										):
+											ok = True
+											display_title = pre["display_title"]
+											script = pre.get("script", "")
 									else:
 										logger.warning(
 											"📻 Carpincho Locutor: El archivo pregenerado esperado está incompleto o no es un MP3 válido. Descartando..."
@@ -4525,7 +4533,7 @@ async def serve_cover(path: str = Query(...), size: int | None = None, request: 
 	if not isinstance(size, int) or size <= 0:
 		size = None
 	try:
-		if path == getattr(state, "radio_announcement_path", None) or Path(path).name == "radio_announcement.mp3":
+		if state.is_radio_announcement(path):
 			if get_carpincho_cover_path:
 				carpincho_img = get_carpincho_cover_path()
 				if carpincho_img and carpincho_img.is_file():
@@ -4641,7 +4649,7 @@ async def serve_cover(path: str = Query(...), size: int | None = None, request: 
 async def stream_audio(path: str = Query(...)):
 	"""Endpoint para mandarle la música al navegador del cliente si quiere escuchar ahí."""
 	# Validar que el path exista en nuestra librería para no servir archivos confidenciales
-	is_radio = path == getattr(state, "radio_announcement_path", None) or Path(path).name == "radio_announcement.mp3"
+	is_radio = state.is_radio_announcement(path)
 	if not is_radio and path not in state.path_to_id and not any(t["path"] == path for t in state.tracks_cache):
 		return Response(status_code=404)
 	# FileResponse en Starlette maneja encabezados 'Range' si el browser los pide
@@ -4664,10 +4672,7 @@ async def stream_audio(path: str = Query(...)):
 @app.get("/lrc")
 async def serve_lrc(path: str = Query(...)):
 	"""Sirve el archivo .lrc local si existe junto a la pista original o locución radial."""
-	is_radio = path in (
-		getattr(state, "radio_announcement_path", None),
-		getattr(state, "radio_pregenerated_path", None),
-	)
+	is_radio = state.is_radio_announcement(path)
 	if not is_radio and path not in state.path_to_id and not any(t["path"] == path for t in state.tracks_cache):
 		return Response(status_code=404)
 

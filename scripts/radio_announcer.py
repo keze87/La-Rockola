@@ -900,14 +900,39 @@ def reset_radio_memory_state() -> None:
 	_PHRASE_HISTORY_MEMORY.clear()
 
 
+def _normalize_phrase_key(phrase: str, category: str = "") -> str:
+	cleaned = phrase.strip().strip("\"'«»").rstrip(".!?:;…").lower()
+	return f"{category}:{cleaned}" if category else cleaned
+
+
 def get_phrase_last_played(
 	phrase: str,
 	category: str = "",
 	db_path: Path | str | None = None,
 ) -> float | None:
 	"""Recupera la marca de tiempo (timestamp) en que una frase fue reproducida por última vez en memoria."""
-	norm_key = f"{category}:{phrase.strip().lower()}" if category else phrase.strip().lower()
-	return _PHRASE_HISTORY_MEMORY.get(norm_key)
+	norm_key = _normalize_phrase_key(phrase, category)
+	val = _PHRASE_HISTORY_MEMORY.get(norm_key)
+	if val is not None:
+		return val
+
+	# Fallbacks entre categorías específicas y genéricas
+	if category.startswith("lead_in_"):
+		val = _PHRASE_HISTORY_MEMORY.get(_normalize_phrase_key(phrase, "lead_in"))
+		if val is not None:
+			return val
+	elif category.startswith("reaccion_"):
+		val = _PHRASE_HISTORY_MEMORY.get(_normalize_phrase_key(phrase, "reaccion"))
+		if val is not None:
+			return val
+	elif category == "pase":
+		for tpl in PASES_A_CLIMA:
+			for cname in VOICE_NAMES.values():
+				if _normalize_phrase_key(tpl.format(cohost=cname)) == _normalize_phrase_key(phrase):
+					val = _PHRASE_HISTORY_MEMORY.get(_normalize_phrase_key(tpl, "pase"))
+					if val is not None:
+						return val
+	return None
 
 
 def record_phrase_played(
@@ -917,9 +942,33 @@ def record_phrase_played(
 	db_path: Path | str | None = None,
 ) -> None:
 	"""Registra en memoria la reproducción de una frase actualizando su marca de tiempo."""
-	norm_key = f"{category}:{phrase.strip().lower()}" if category else phrase.strip().lower()
 	ts = timestamp if timestamp is not None else time.time()
+	norm_key = _normalize_phrase_key(phrase, category)
 	_PHRASE_HISTORY_MEMORY[norm_key] = ts
+
+	# Mapeo bidireccional entre categorías específicas y genéricas para garantizar consistencia
+	if category == "lead_in" or category.startswith("lead_in_"):
+		_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(phrase, "lead_in")] = ts
+		for cat_name, cat_list in LEAD_INS_BY_CATEGORY.items():
+			if any(_normalize_phrase_key(phrase) == _normalize_phrase_key(item) for item in cat_list):
+				_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(phrase, f"lead_in_{cat_name}")] = ts
+				break
+	elif category == "reaccion" or category.startswith("reaccion_"):
+		_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(phrase, "reaccion")] = ts
+		for cat_name, cat_list in REACCIONES_BY_CATEGORY.items():
+			if any(_normalize_phrase_key(phrase) == _normalize_phrase_key(item) for item in cat_list):
+				_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(phrase, f"reaccion_{cat_name}")] = ts
+				break
+		for clim_list in REACCIONES_CLIMA.values():
+			if any(_normalize_phrase_key(phrase) == _normalize_phrase_key(item) for item in clim_list):
+				_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(phrase, "reaccion_clima")] = ts
+				break
+	elif category == "pase":
+		for tpl in PASES_A_CLIMA:
+			for cname in VOICE_NAMES.values():
+				if _normalize_phrase_key(tpl.format(cohost=cname)) == _normalize_phrase_key(phrase):
+					_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(tpl, "pase")] = ts
+					break
 
 
 def weighted_choice_by_recency(

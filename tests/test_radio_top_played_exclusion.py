@@ -134,3 +134,33 @@ def test_init_db_cleans_legacy_radio_announcements(clean_db):
 		).fetchone()[0]
 
 	assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_cover_endpoint_does_not_hijack_user_song_named_radio_announcement(tmp_path):
+	"""Ensures /cover does not serve the Carpincho mascot for a legitimate user song."""
+	user_track = tmp_path / "radio_announcement.mp3"
+	user_track.write_bytes(b"USER_AUDIO")
+	str_track = str(user_track)
+
+	server.state.path_to_id[str_track] = "hash_radio_song"
+	server.state.id_to_current_path["hash_radio_song"] = str_track
+
+	# When calling serve_cover for this user track with no embedded art, it should 404 instead of serving carpincho icon
+	res = await server.serve_cover(path=str_track)
+	assert res.status_code == 404, "serve_cover hijacked legitimate user track to carpincho mascot"
+
+
+@pytest.mark.asyncio
+async def test_stream_endpoint_rejects_unscanned_file_named_radio_announcement(tmp_path):
+	"""Ensures /stream does not allow arbitrary filesystem files just because they are named radio_announcement.mp3."""
+	arbitrary_file = tmp_path / "radio_announcement.mp3"
+	arbitrary_file.write_bytes(b"SECRET_DATA")
+	str_file = str(arbitrary_file)
+
+	# Not in user library, and not the server's temp announcement path
+	if str_file in server.state.path_to_id:
+		del server.state.path_to_id[str_file]
+
+	res = await server.stream_audio(path=str_file)
+	assert res.status_code == 404, "stream_audio allowed unauthorized file solely based on file name"

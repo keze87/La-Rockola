@@ -339,11 +339,12 @@ DEDICATORIAS_OYENTES: list[str] = [
 	'Nos escriben los guardavidas del arroyo: "Mirando el agua y cuidando a los bañistas con La Rockola en la caseta. Un saludo para todos los carpinchos que nadan tranquilos".',
 ]
 
+CARPINCHO_SABIDURIA: list[str] = list(CARPINCHO_FORTUNES)
+
 CARPINCHO_ADS.extend(AVISOS_PARROQUIALES_Y_EXTRAVIOS)
 CARPINCHO_ADS.extend(TRANSITO_FLUVIAL_Y_CAMINOS)
 CARPINCHO_FORTUNES.extend(ALERTAS_INCOMODIDAD_CRIOLLA)
 CARPINCHO_FORTUNES.extend(DEDICATORIAS_OYENTES)
-
 CARPINCHO_FORTUNES.extend(CARPINCHO_ADS)
 
 # ---------------------------------------------------------------------------
@@ -2267,38 +2268,93 @@ def resolve_segment_category(text: str) -> str:
 	if not text or not isinstance(text, str):
 		return "fortuna"
 	text_clean = text.strip()
+
+	# 1. Pertenencia directa a bancos conocidos
+	if text_clean in CARPINCHO_SABIDURIA:
+		return "fortuna"
+	if text_clean in DEDICATORIAS_OYENTES:
+		return "oyentes"
+	if (
+		text_clean in CARPINCHO_ADS
+		or text_clean in AVISOS_PARROQUIALES_Y_EXTRAVIOS
+		or text_clean in TRANSITO_FLUVIAL_Y_CAMINOS
+	):
+		return "aviso"
+	if text_clean in ALERTAS_INCOMODIDAD_CRIOLLA:
+		return "alerta_criolla"
+
+	# 2. Citas literarias o filosóficas con atribución de autor (e.g. '— Heráclito', '— Proverbio')
+	if " — " in text_clean or "— " in text_clean or re.search(r"—\s*[A-ZÁÉÍÓÚÑ]", text_clean):
+		return "fortuna"
+
 	text_lower = text_clean.lower()
 
-	# 1. Oyentes (mensajes de WhatsApp, audios, pedidos de temas)
-	if (
-		text_clean in DEDICATORIAS_OYENTES
-		or any(
-			text_clean.startswith(p)
-			for p in ("WhatsApp", "Llega audio", "Mensajito", "Audio de", "Nos escriben", "Llega mensaje")
+	# 3. Prefijos explícitos de avisos comerciales y comunitarios
+	if any(
+		text_clean.startswith(p)
+		for p in (
+			"Espacio publicitario",
+			"Publicidad",
+			"Aviso ",
+			"Aviso parroquial",
+			"Se busca ",
+			"Atención vecinos",
+			"Lancha colectiva",
+			"Balsa ",
+			"Corte de ruta",
+			"Alerta de tránsito",
+			"Tránsito ",
+			"Camino ",
+			"Reporte de caminos",
+			"Solidaridad ",
+			"Objeto perdido",
+			"Objeto hallado",
+			"Extravío ",
+			"Pérdida ",
+			"Urgente del pueblo",
+			"Demoras en ",
+			"Estado de caminos",
 		)
-		or any(
-			k in text_lower
-			for k in (
-				"whatsapp",
-				"audio de",
-				"mandale un abrazo",
-				"pide un chamamé",
-				"piden cumbia",
-				"piden cuarteto",
-				"pedimos cumbia",
-				"pedimos cuarteto",
-				"que suene gilda",
-			)
+	):
+		return "aviso"
+
+	# 4. Dedicatorias y mensajes de oyentes
+	if any(
+		text_clean.startswith(p)
+		for p in ("WhatsApp", "Llega audio", "Mensajito", "Audio de", "Nos escriben", "Llega mensaje")
+	) or any(
+		k in text_lower
+		for k in (
+			"whatsapp",
+			"audio de",
+			"mandale un abrazo",
+			"pide un chamamé",
+			"piden cumbia",
+			"piden cuarteto",
+			"pedimos cumbia",
+			"pedimos cuarteto",
+			"que suene gilda",
 		)
 	):
 		return "oyentes"
 
-	# 2. Alertas criollas (mosquitos, jejenes, clima molesto)
-	if text_clean in ALERTAS_INCOMODIDAD_CRIOLLA or any(
+	# 5. Alertas criollas satíricas (frases multipalabra específicas para no colisionar con citas o refranes)
+	if any(
+		text_clean.startswith(p)
+		for p in (
+			"Reporte especial de mosquitos",
+			"Alerta de jejenes",
+			"Alerta por viento zonda",
+			"Alerta meteorológico de los bañados",
+		)
+	) or any(
 		k in text_lower
 		for k in (
-			"mosquito",
-			"jejenes",
+			"plaga de mosquitos",
+			"nube de mosquitos",
+			"invasión de mosquitos",
+			"ataque de jejenes",
+			"escuadrones de jejenes",
 			"viento zonda",
 			"viento norte",
 			"humedad del 100%",
@@ -2309,57 +2365,30 @@ def resolve_segment_category(text: str) -> str:
 	):
 		return "alerta_criolla"
 
-	# 3. Avisos comerciales, parroquiales, comunitarios y tránsito fluvial
-	if (
-		text_clean in CARPINCHO_ADS
-		or text_clean in AVISOS_PARROQUIALES_Y_EXTRAVIOS
-		or text_clean in TRANSITO_FLUVIAL_Y_CAMINOS
-		or any(
-			text_clean.startswith(p)
-			for p in (
-				"Espacio publicitario",
-				"Publicidad",
-				"Aviso ",
-				"Se busca ",
-				"Atención vecinos",
-				"Lancha colectiva",
-				"Balsa ",
-				"Corte de ruta",
-				"Alerta de tránsito",
-				"Tránsito ",
-				"Camino ",
-				"Reporte de caminos",
-				"Solidaridad ",
-				"Objeto perdido",
-				"Objeto hallado",
-				"Extravío ",
-				"Pérdida ",
-				"Urgente del pueblo",
-				"Demoras en ",
-				"Estado de caminos",
-			)
-		)
-		or any(
-			k in text_lower
-			for k in (
-				"gomería",
-				"ferretería",
-				"emparchamos",
-				"precios populares",
-				"aviso comercial",
-				"aviso parroquial",
-				"se extravió",
-				"se busca",
-				"recompensa",
-				"lancha colectiva",
-				"tránsito fluvial",
-				"puente viejo",
-				"terraplén",
-				"camino de ripio",
-				"balsa maroma",
-				"banco de arena",
-				"barro greda",
-			)
+	# 6. Avisos por palabras clave contextuales no ambiguas
+	if any(
+		k in text_lower
+		for k in (
+			"gomería",
+			"ferretería",
+			"emparchamos",
+			"precios populares",
+			"aviso comercial",
+			"aviso parroquial",
+			"se extravió",
+			"se busca dueño",
+			"se busca paradero",
+			"gratificaré",
+			"buena recompensa",
+			"recompensa a quien",
+			"lancha colectiva",
+			"tránsito fluvial",
+			"puente viejo",
+			"terraplén",
+			"camino de ripio",
+			"balsa maroma",
+			"banco de arena",
+			"barro greda",
 		)
 	):
 		return "aviso"

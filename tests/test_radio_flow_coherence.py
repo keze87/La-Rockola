@@ -137,3 +137,71 @@ def test_generate_modular_radio_script_coherent_lead_in():
 		cat = resolve_segment_category(fortuna)
 		cat_lead_ins = get_lead_ins_for_category(cat)
 		assert lead_in in cat_lead_ins, f"Lead-in '{lead_in}' not in category '{cat}' for fortune '{fortuna}'"
+
+
+def test_philosophical_quotes_and_refranes_not_misclassified():
+	"""Ensures wisdom and quotes with keywords like 'recompensa' or 'mosquito' are not hijacked into ads or alerts."""
+	salk_quote = (
+		"La recompensa del trabajo bien hecho es la oportunidad de hacer más trabajo bien hecho. — Jonas Edward Salk."
+	)
+	assert resolve_segment_category(salk_quote) == "fortuna"
+
+	quevedo_quote = "Dijo la rana al mosquito desde una tinaja: más quiero morir en el vino que vivir en el agua... — Francisco de Quevedo."
+	assert resolve_segment_category(quevedo_quote) == "fortuna"
+
+	refran_mosquito = "Más vale carpincho en laguna que cien mosquitos en la nuca."
+	assert resolve_segment_category(refran_mosquito) == "fortuna"
+
+	# Ads with 'mosquito' or 'jejenes' must remain classified as 'aviso', not 'alerta_criolla'
+	ad_repelente = "Aviso parroquial: Repelente Chau Mosquito. Para que no te piquen las orejas mientras disfrutás de un buen chamamé."
+	assert resolve_segment_category(ad_repelente) == "aviso"
+
+	ad_fumigacion = "Publicidad: Fumigaciones La Garza. Control ecológico de tábanos y jejenes con sapos adiestrados. Eficacia comprobada en todo el humedal."
+	assert resolve_segment_category(ad_fumigacion) == "aviso"
+
+
+def test_recency_contract_records_specific_categories_matching_weighted_choice():
+	"""Ensures recorded phrase history categories match the exact category queried by weighted_choice_by_recency."""
+	from scripts.radio_announcer import (
+		get_phrase_last_played,
+		record_phrase_played,
+		reset_radio_memory_state,
+	)
+
+	reset_radio_memory_state()
+
+	ad_text = "Gomería El Chiche: emparchamos desde gomones hasta cámaras de tractor."
+	seg_cat = resolve_segment_category(ad_text)
+	assert seg_cat == "aviso"
+
+	plan = build_radio_dialogue_plan(
+		intro="Arranca La Rockola.",
+		hora_seg="Las tres",
+		minuto_seg="de la tarde",
+		lead_in="Atención vecinos con este aviso del pueblo:",
+		fortuna=ad_text,
+		outro="¡Que suene la música!",
+		host_voice="es-AR-TomasNeural",
+		cohost_voice="es-AR-ElenaNeural",
+		weather_text="En Tucumán hacen 25 grados.",
+	)
+
+	# Simulate recording as create_radio_announcement does
+	now_ts = 1000.0
+	for seg_text, _v, cat, _c in plan:
+		clean_s = seg_text.strip()
+		if clean_s:
+			record_phrase_played(clean_s, category=cat, timestamp=now_ts)
+
+	# The lead-in query uses f"lead_in_{seg_cat}" (lead_in_aviso)
+	lead_in_ts = get_phrase_last_played("Atención vecinos con este aviso del pueblo:", category=f"lead_in_{seg_cat}")
+	assert lead_in_ts == now_ts, "Lead-in category was not recorded with specific category f'lead_in_{seg_cat}'"
+
+	reactions = [t[0] for t in plan if t[2] == "reaccion"]
+	assert len(reactions) == 2
+	weather_react = reactions[0]
+	fortune_react = reactions[1]
+	react_clima_ts = get_phrase_last_played(weather_react, category="reaccion_clima")
+	assert react_clima_ts == now_ts, "Weather reaction was not recorded with category 'reaccion_clima'"
+	react_fortune_ts = get_phrase_last_played(fortune_react, category=f"reaccion_{seg_cat}")
+	assert react_fortune_ts == now_ts, f"Fortune reaction was not recorded with category 'reaccion_{seg_cat}'"
