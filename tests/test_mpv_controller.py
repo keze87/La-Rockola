@@ -324,6 +324,9 @@ async def test_mpv_process_event_line_end_file_error():
 async def test_handle_song_ended_skips_stats_on_error():
 	"""Verify handle_song_ended skips _register_play_stat when ending with reason=error."""
 	state = server.state
+	if hasattr(server, "manager") and server.manager:
+		server.manager.local_player_ws = None
+	state.is_playing_radio_announcement = False
 	state.current_track = "/music/song.mp3"
 	with (
 		patch.object(state, "_register_play_stat") as mock_stat,

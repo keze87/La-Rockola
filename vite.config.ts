@@ -13,6 +13,7 @@ export default defineConfig({
 	},
 	server: {
 		proxy: {
+			'/api': 'http://localhost:8000',
 			'/command': 'http://localhost:8000',
 			'/cover': 'http://localhost:8000',
 			'/library': 'http://localhost:8000',

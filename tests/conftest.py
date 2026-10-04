@@ -16,10 +16,14 @@ import server
 @pytest.fixture
 def temp_db(tmp_path, monkeypatch):
 	"""Provides an isolated temporary SQLite database for each test."""
+	from app.core.dependencies import set_db_path
+
 	db_file = tmp_path / "test_carpincho.db"
 	monkeypatch.setattr(server, "DB_PATH", db_file)
+	set_db_path(db_file)
 	server.init_db()
-	return db_file
+	yield db_file
+	set_db_path(None)
 
 
 @pytest.fixture
@@ -42,9 +46,41 @@ def clean_state(temp_db, mock_mpv):
 
 
 @pytest.fixture
+def test_db(temp_db):
+	"""Alias de conveniencia para temp_db compatible con la arquitectura modular."""
+	return temp_db
+
+
+@pytest.fixture
 def clean_manager():
 	"""Provides a fresh ConnectionManager instance."""
-	return server.ConnectionManager()
+	mgr = server.ConnectionManager()
+	yield mgr
+	mgr.local_player_ws = None
+	if hasattr(server, "manager") and server.manager is not None:
+		server.manager.local_player_ws = None
+
+
+@pytest.fixture
+def client(clean_state, clean_manager):
+	"""Provee un TestClient de FastAPI aislado con dependencias inyectadas."""
+	from fastapi.testclient import TestClient
+
+	import app.core.dependencies as deps
+	from app.main import create_app
+
+	orig_state = deps.get_state()
+	orig_mgr = deps.get_manager()
+
+	deps.set_global_state(clean_state)
+	deps.set_global_manager(clean_manager)
+	app_instance = create_app()
+	yield TestClient(app_instance)
+
+	deps.set_global_state(orig_state)
+	deps.set_global_manager(orig_mgr)
+	if hasattr(server, "manager") and server.manager is not None:
+		server.manager.local_player_ws = None
 
 
 @pytest.fixture
