@@ -504,6 +504,23 @@ def build_arg_parser() -> argparse.ArgumentParser:
 	return parser
 
 
+def enable_system_site_packages() -> None:
+	"""Permite a entornos virtuales o embebidos acceder a paquetes del sistema si faltan."""
+	if not getattr(sys, "frozen", False):
+		return
+	try:
+		import site
+
+		user_site = site.getusersitepackages()
+		if os.path.exists(user_site) and user_site not in sys.path:
+			sys.path.append(user_site)
+		for sys_site in site.getsitepackages():
+			if os.path.exists(sys_site) and sys_site not in sys.path:
+				sys.path.append(sys_site)
+	except Exception:
+		pass
+
+
 def main() -> None:
 	"""Función principal de arranque para CLI y binarios empaquetados."""
 	import uvicorn
@@ -514,6 +531,7 @@ def main() -> None:
 	from app.main import app
 
 	multiprocessing.freeze_support()
+	enable_system_site_packages()
 	parser = build_arg_parser()
 	args = parser.parse_args()
 

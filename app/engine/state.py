@@ -868,10 +868,12 @@ class APIState:
 								if pause_after:
 									await self.set_pause(True)
 								self._pick_dj_next()
+								await broadcast_state()
 							except asyncio.CancelledError:
 								logger.info("Countdown del DJ cancelado, no se reproduce el tema pre-elegido.")
 								if self.dj_next_track == target_track:
 									self.dj_next_track = None
+								await broadcast_state()
 							finally:
 								self.dj_countdown_task = None
 

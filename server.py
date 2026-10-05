@@ -254,19 +254,9 @@ def is_mood_available() -> bool:
 
 def enable_system_site_packages() -> None:
 	"""Permite a entornos virtuales o embebidos acceder a paquetes del sistema si faltan."""
-	if not getattr(sys, "frozen", False):
-		return
-	try:
-		import site
+	from app.cli.entrypoint import enable_system_site_packages as _app_enable_system_site_packages
 
-		user_site = site.getusersitepackages()
-		if os.path.exists(user_site) and user_site not in sys.path:
-			sys.path.append(user_site)
-		for sys_site in site.getsitepackages():
-			if os.path.exists(sys_site) and sys_site not in sys.path:
-				sys.path.append(sys_site)
-	except Exception:
-		pass
+	_app_enable_system_site_packages()
 
 
 def build_frontend() -> None:
@@ -285,4 +275,5 @@ def build_frontend() -> None:
 
 
 if __name__ == "__main__":
+	enable_system_site_packages()
 	main()
