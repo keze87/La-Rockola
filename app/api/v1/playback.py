@@ -13,32 +13,13 @@ from typing import Any
 from fastapi import APIRouter
 
 import app.core.config as config_mod
-import app.engine.state as state_mod
 from app.api.schemas import CommandRequest
 from app.core.dependencies import get_manager, get_state
 from app.db.repositories import FavoritesRepository
+from app.engine.state import broadcast_state
 
 logger = logging.getLogger("RockolaCarpincho")
 router = APIRouter(tags=["Playback"])
-
-
-def _get_broadcast_fn(state: Any) -> Any:
-	"""Obtiene la función de broadcast respetando mocks en state, módulo actual o state_mod."""
-	if state and hasattr(state, "broadcast_state"):
-		return state.broadcast_state
-	local_bc = globals().get("broadcast_state")
-	if hasattr(local_bc, "called") or hasattr(local_bc, "assert_called"):
-		return local_bc
-	return getattr(state_mod, "broadcast_state", local_bc)
-
-
-async def _dispatch_broadcast(state: Any) -> None:
-	"""Ejecuta broadcast_state si está disponible y maneja corrutinas."""
-	bc = _get_broadcast_fn(state)
-	if bc:
-		res = bc()
-		if asyncio.iscoroutine(res):
-			await res
 
 
 @router.post("/command")
@@ -315,7 +296,7 @@ async def handle_command_endpoint(req: CommandRequest) -> dict[str, Any]:
 					state.queue = playlist[history_boundary:]
 					state._pick_dj_next()
 
-	await _dispatch_broadcast(state)
+	await broadcast_state()
 	return {"status": "ok"}
 
 
@@ -329,7 +310,7 @@ async def mpv_hide() -> dict[str, str]:
 	if state.mpv and state.mpv.is_running:
 		logger.info("Reiniciando MPV para ocultar la ventana...")
 		await state.mpv.start(is_restart=True, state_ref=state)
-	await _dispatch_broadcast(state)
+	await broadcast_state()
 	return {"status": "ok"}
 
 
@@ -343,7 +324,7 @@ async def mpv_show() -> dict[str, str]:
 	if state.mpv and state.mpv.is_running:
 		logger.info("Reiniciando MPV para mostrar la ventana...")
 		await state.mpv.start(is_restart=True, state_ref=state)
-	await _dispatch_broadcast(state)
+	await broadcast_state()
 	return {"status": "ok"}
 
 

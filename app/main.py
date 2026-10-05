@@ -27,6 +27,7 @@ from app.api.schemas import (
 	LocalPlayerRelease,
 	LocalPlayerUpdate,
 )
+from app.api.v1.library import scan_library
 from app.api.v1.router import api_v1_router, legacy_router
 from app.api.websocket import ConnectionManager
 from app.core.config import get_carpincho_data_dir
@@ -100,8 +101,8 @@ async def lifespan(app: FastAPI):
 		except Exception as e:
 			logger.warning(f"No se pudo arrancar MPV en el inicio: {e}")
 
-	if state and hasattr(state, "scan_library"):
-		asyncio.create_task(state.scan_library())
+	# Disparar escaneo de la biblioteca musical en segundo plano
+	asyncio.create_task(scan_library())
 
 	# Abrir navegador automáticamente si está configurado (y no estamos corriendo tests)
 	async def _bg_open_browser(target_url: str, port: int, host: str):

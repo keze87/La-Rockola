@@ -2,6 +2,8 @@
 Servicio de biblioteca musical: escaneo, hashing inteligente y cálculo de mood.
 """
 
+from __future__ import annotations
+
 import asyncio
 import concurrent.futures
 import gc
@@ -11,6 +13,7 @@ import os
 import re
 import shutil
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -546,7 +549,14 @@ class LibraryService:
 		logger.info("¡Listo el escaneo, maestro!")
 		return tracks
 
-	async def run_background_mood_analysis(self, state: Any = None, max_workers: int | None = None) -> None:
+	async def run_background_mood_analysis(
+		self,
+		state: Any = None,
+		max_workers: int | None = None,
+		tracks_to_analyze: list[dict] | None = None,
+		on_progress: Callable[[int, int, str], Any] | None = None,
+		on_finished: Callable[[], Any] | None = None,
+	) -> None:
 		"""Worker que procesa de forma asíncrona BPM/mood y huella acústica en lotes pequeños."""
 		ffmpeg_bin = audio_analysis.find_binary("ffmpeg")
 		has_fpcalc = shutil.which("fpcalc") is not None
@@ -556,20 +566,43 @@ class LibraryService:
 			if state:
 				state.is_analyzing_mood = False
 				state.scan_phase = "idle"
+			if on_finished:
+				res = on_finished()
+				if asyncio.iscoroutine(res):
+					await res
 			return
 
-		tracks_cache = getattr(state, "tracks_cache", []) if state else []
-		pending_tracks = []
-		for t in tracks_cache:
-			need_mood = bool(ffmpeg_bin and t.get("bpm", 0.0) == 0.0)
-			need_fp = bool(has_fpcalc and not t.get("fingerprint"))
-			if need_mood or need_fp:
-				pending_tracks.append((t, need_mood, need_fp))
+		if tracks_to_analyze is not None:
+			pending_tracks = [
+				(t, bool(ffmpeg_bin and t.get("bpm", 0.0) == 0.0), bool(has_fpcalc and not t.get("fingerprint")))
+				for t in tracks_to_analyze
+			]
+		else:
+			tracks_cache = getattr(state, "tracks_cache", []) if state else []
+			pending_tracks = []
+			for t in tracks_cache:
+				need_mood = bool(ffmpeg_bin and t.get("bpm", 0.0) == 0.0)
+				need_fp = bool(has_fpcalc and not t.get("fingerprint"))
+				if need_mood or need_fp:
+					pending_tracks.append((t, need_mood, need_fp))
+
+		async def _notify_progress(cur: int, tot: int, msg: str):
+			if on_progress:
+				try:
+					res = on_progress(cur, tot, msg)
+					if asyncio.iscoroutine(res):
+						await res
+				except Exception as err:
+					logger.debug(f"Aviso en on_progress callback: {err}")
 
 		if not pending_tracks:
 			if state:
 				state.is_analyzing_mood = False
 				state.scan_phase = "idle"
+			if on_finished:
+				res = on_finished()
+				if asyncio.iscoroutine(res):
+					await res
 			return
 
 		if state:
@@ -578,14 +611,7 @@ class LibraryService:
 			state.scan_total = len(pending_tracks)
 			state.scan_current = 0
 			state.scan_message = f"Sintonizando la vibra de los temas (0/{len(pending_tracks)})..."
-			if hasattr(state, "broadcast_state"):
-				try:
-					bc = state.broadcast_state
-					res = bc()
-					if asyncio.iscoroutine(res):
-						await res
-				except Exception:
-					pass
+			await _notify_progress(0, len(pending_tracks), state.scan_message)
 
 		logger.info(f"Comenzando análisis acústico en segundo plano para {len(pending_tracks)} temas...")
 
@@ -685,12 +711,7 @@ class LibraryService:
 					state.scan_current = min(state.scan_total, i + len(batch))
 					state.scan_message = f"Sintonizando la vibra ({state.scan_current}/{state.scan_total})..."
 					calculate_mood_scores(state.tracks_cache)
-					try:
-						from app.engine.state import broadcast_state
-
-						await broadcast_state()
-					except Exception:
-						pass
+					await _notify_progress(state.scan_current, state.scan_total, state.scan_message)
 				gc.collect()
 
 		except asyncio.CancelledError:
@@ -701,12 +722,13 @@ class LibraryService:
 				state.is_analyzing_mood = False
 				state.scan_phase = "idle"
 				state.scan_message = ""
+			if on_finished:
 				try:
-					from app.engine.state import broadcast_state
-
-					await broadcast_state(include_library=True)
-				except Exception:
-					pass
+					res = on_finished()
+					if asyncio.iscoroutine(res):
+						await res
+				except Exception as err:
+					logger.debug(f"Aviso en on_finished callback: {err}")
 
 
 def get_track_duration_seconds(path: str | Path | None, tracks_cache: list[dict] | None = None) -> float:

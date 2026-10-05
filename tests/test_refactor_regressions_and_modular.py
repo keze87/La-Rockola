@@ -85,7 +85,7 @@ def test_local_player_seek_schema():
 
 @pytest.mark.asyncio
 async def test_mpv_windows_ipc_error_handling_resets():
-	"""Verifica que al atrapar error o EOF en _read_ipc_events_windows se limpien sockets y se avise a callbacks."""
+	"""Verifica que al atrapar error o EOF en _read_ipc_events_windows se limpien sockets sin disparar callbacks a ciegas."""
 	from app.engine.mpv_controller import AsyncMpvController
 
 	mock_stop_cb = AsyncMock()
@@ -100,8 +100,9 @@ async def test_mpv_windows_ipc_error_handling_resets():
 
 	assert mpv.reader is None
 	assert mpv.writer is None
-	# Debe haber notificado a callbacks de detención/finalización
-	assert mock_stop_cb.call_count >= 1 or mock_ended_cb.call_count >= 1
+	# No debe haber invocado callbacks a ciegas
+	mock_stop_cb.assert_not_called()
+	mock_ended_cb.assert_not_called()
 
 
 def test_connection_manager_singleton_in_dependencies():

@@ -13,7 +13,6 @@ import os
 import random
 import tempfile
 import time
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -192,8 +191,7 @@ class APIState:
 		self.urllogs_repo = UrlLogsRepository()
 		self.track_repo = TrackRepository()
 		self.library_service = LibraryService(track_repo=self.track_repo)
-		self.weather_location = DEFAULT_WEATHER_LOCATION
-		self.radio_service = RadioService(weather_location=self.weather_location)
+		self.radio_service = RadioService(weather_location=DEFAULT_WEATHER_LOCATION)
 		self.ytdlp_service = YtDlpService()
 
 		self.favorites = self._load_favs_from_db()
@@ -204,12 +202,6 @@ class APIState:
 		self.radio_tracks_until_next = random.randint(1, 2)
 		self.is_playing_radio_announcement = False
 		self.is_synthesizing_radio = False
-		self.radio_announcement_path = str(Path(tempfile.gettempdir()) / "radio_announcement.mp3")
-		self.radio_pregenerated_path = str(Path(tempfile.gettempdir()) / "radio_pregenerated.mp3")
-		self.radio_archive_dir = Path(tempfile.gettempdir()) / "la_rockola_radio_archive"
-		self.radio_archive_max_files = 60
-		self.radio_pregeneration_task: asyncio.Task | None = None
-		self.pregenerated_radio_announcement: dict | None = None
 
 		# Estado de red del servidor y navegador
 		self.open_browser = True
@@ -239,6 +231,62 @@ class APIState:
 				"volume_update": self.handle_volume_update,
 			}
 		)
+
+	@property
+	def radio_pregeneration_task(self) -> asyncio.Task | None:
+		return self.radio_service.pregeneration_task
+
+	@radio_pregeneration_task.setter
+	def radio_pregeneration_task(self, task: asyncio.Task | None) -> None:
+		self.radio_service.pregeneration_task = task
+
+	@property
+	def pregenerated_radio_announcement(self) -> dict | None:
+		return self.radio_service.pregenerated_announcement
+
+	@pregenerated_radio_announcement.setter
+	def pregenerated_radio_announcement(self, val: dict | None) -> None:
+		self.radio_service.pregenerated_announcement = val
+
+	@property
+	def weather_location(self) -> str:
+		return self.radio_service.weather_location
+
+	@weather_location.setter
+	def weather_location(self, val: str) -> None:
+		self.radio_service.weather_location = val
+
+	@property
+	def radio_announcement_path(self) -> str:
+		return str(self.radio_service.announcement_path)
+
+	@radio_announcement_path.setter
+	def radio_announcement_path(self, val: str | Path) -> None:
+		self.radio_service.announcement_path = Path(val)
+
+	@property
+	def radio_pregenerated_path(self) -> str:
+		return str(self.radio_service.pregenerated_path)
+
+	@radio_pregenerated_path.setter
+	def radio_pregenerated_path(self, val: str | Path) -> None:
+		self.radio_service.pregenerated_path = Path(val)
+
+	@property
+	def radio_archive_dir(self) -> Path:
+		return self.radio_service.archive_dir
+
+	@radio_archive_dir.setter
+	def radio_archive_dir(self, val: Path | str) -> None:
+		self.radio_service.archive_dir = Path(val)
+
+	@property
+	def radio_archive_max_files(self) -> int:
+		return self.radio_service.archive_max_files
+
+	@radio_archive_max_files.setter
+	def radio_archive_max_files(self, val: int) -> None:
+		self.radio_service.archive_max_files = val
 
 	def get_full_state_dict(self, include_library=False):
 		"""Genera un diccionario con el estado completo actual (creando copias listas/diccionarios)"""
@@ -443,7 +491,11 @@ class APIState:
 
 	async def run_background_mood_analysis(self):
 		"""Worker que procesa de forma asíncrona BPM/mood y huella acústica delegando en LibraryService."""
-		return await self.library_service.run_background_mood_analysis(state=self)
+		return await self.library_service.run_background_mood_analysis(
+			state=self,
+			on_progress=lambda cur, tot, msg: broadcast_state(),
+			on_finished=lambda: broadcast_state(include_library=True),
+		)
 
 	async def fetch_yt_dlp_metadata(self, url):
 		"""Obtiene asincrónicamente la data de yt-dlp y avisa a los clientes delegando en YtDlpService."""
@@ -642,70 +694,19 @@ class APIState:
 		)
 
 	def _cancel_radio_pregeneration(self):
-		"""Cancela cualquier pregeneración en curso de la locución radial y limpia archivos parciales."""
-		if self.radio_pregeneration_task and not self.radio_pregeneration_task.done():
-			self.radio_pregeneration_task.cancel()
-		self.radio_pregeneration_task = None
-		self.pregenerated_radio_announcement = None
-		if self.radio_pregenerated_path:
-			try:
-				p = Path(self.radio_pregenerated_path)
-				if p.exists():
-					p.unlink(missing_ok=True)
-			except Exception as e:
-				logger.debug(f"Error borrando archivo parcial de pregeneración: {e}")
+		"""Cancela cualquier pregeneración en curso de la locución radial delegando en RadioService."""
+		self.radio_service.cancel_pregeneration()
 
 	def _start_radio_pregeneration(self, current_track_path: str, track_duration: float = 0.0):
-		"""
-		Dispara la síntesis y procesamiento de la locución radial en segundo plano
-		al comienzo de la canción, calculando el cuarto horario estimado en el que terminará el tema.
-		Genera la pista de voz limpia y masterizada para poder superponer la cortina musical
-		en caliente sobre la canción que efectivamente toque al finalizar.
-		"""
-		has_edge = getattr(radio_service_mod, "HAS_EDGE_TTS", False)
-		create_ann_fn = getattr(radio_service_mod, "create_radio_announcement", None)
-		if not self.radio_mode_enabled or not has_edge or create_ann_fn is None:
+		"""Dispara la síntesis y procesamiento de la locución radial en segundo plano delegando en RadioService."""
+		if not self.radio_mode_enabled or not self.radio_service.is_available:
 			return
 
 		# Solo pregenerar si el contador alcanzará el umbral al terminar este tema
 		if (self.radio_track_counter + 1) < self.radio_tracks_until_next:
 			return
 
-		self._cancel_radio_pregeneration()
-
-		async def _do_pregeneration():
-
-			now = datetime.now(UTC).astimezone()
-			finish_dt = now + timedelta(seconds=max(0.0, track_duration)) if track_duration > 0 else now
-
-			try:
-				logger.info("📻 Carpincho Locutor: Iniciando pregeneración anticipada al comienzo de la canción...")
-				res = await create_ann_fn(
-					self.radio_pregenerated_path,
-					dt=finish_dt,
-					bg_track_path=None,
-					weather_location=self.weather_location,
-				)
-				res_ok, res_title, res_script, res_err = _unpack_radio_result(res)
-
-				if res_ok:
-					self.pregenerated_radio_announcement = {
-						"path": self.radio_pregenerated_path,
-						"display_title": res_title,
-						"script": res_script,
-						"created_at": time.time(),
-					}
-					logger.info(
-						"📻 Carpincho Locutor: Pregeneración de voz lista con anticipación para el final del tema."
-					)
-				else:
-					logger.debug(f"Pregeneración radial no completada: {res_err}")
-			except asyncio.CancelledError:
-				logger.debug("Pregeneración radial cancelada.")
-			except Exception as e:
-				logger.debug(f"Excepción en pregeneración radial: {e}")
-
-		self.radio_pregeneration_task = asyncio.create_task(_do_pregeneration())
+		self.radio_service.start_pregeneration(track_duration=track_duration)
 
 	def _select_candidate_dj_track(self, unplayed: list[dict]) -> dict | None:
 		"""Elige una pista de la lista de pendientes según el modo del DJ Carpincho."""
@@ -817,101 +818,15 @@ class APIState:
 						elif total_dur > 0:
 							bg_offset = total_dur * 0.4
 
-					async def _apply_hot_mix_to_announcement(voice_file: Path, out_file: Path, title: str) -> bool:
-						"""Superpone la cortina musical delegando en RadioService."""
-						return await self.radio_service.apply_hot_mix_to_announcement(
-							voice_file=voice_file,
-							out_file=out_file,
-							title=title,
-							next_track_path=next_track_path,
-							bg_offset=bg_offset,
-						)
-
-					# 1. Comprobar si ya está lista la pregeneración de fondo (0 ms de latencia)
-					if self.pregenerated_radio_announcement:
-						pre = self.pregenerated_radio_announcement
-						pre_created_at = pre.get("created_at")
-						pre_age = (time.time() - pre_created_at) if pre_created_at is not None else 0.0
-						if pre_age > RADIO_PREGENERATION_MAX_AGE_SECONDS:
-							logger.info(
-								f"📻 Carpincho Locutor: La locución pregenerada expiró ({pre_age / 60:.1f} min > 15 min tras pausa). Descartando para sintetizar locución fresca..."
-							)
-						else:
-							pre_p = Path(pre["path"])
-							if _is_valid_radio_mp3_file(pre_p):
-								if await _apply_hot_mix_to_announcement(
-									pre_p, Path(self.radio_announcement_path), pre["display_title"]
-								):
-									ok = True
-									display_title = pre["display_title"]
-									script = pre.get("script", "")
-									logger.info(
-										"⚡ Carpincho Locutor: Transición con locución pregenerada y mezcla de cortina en caliente."
-									)
-							else:
-								logger.warning(
-									"📻 Carpincho Locutor: El archivo pregenerado está incompleto o no es un MP3 válido. Descartando..."
-								)
-						self.pregenerated_radio_announcement = None
-
-					# 2. Si la tarea de pregeneración sigue corriendo, esperarla brevemente
-					if not ok and self.radio_pregeneration_task and not self.radio_pregeneration_task.done():
-						try:
-							logger.info("📻 Carpincho Locutor: Esperando finalización de pregeneración en curso...")
-							self.is_synthesizing_radio = True
-							await broadcast_state()
-							await asyncio.wait_for(asyncio.shield(self.radio_pregeneration_task), timeout=3.0)
-							if self.pregenerated_radio_announcement:
-								pre = self.pregenerated_radio_announcement
-								pre_created_at = pre.get("created_at")
-								pre_age = (time.time() - pre_created_at) if pre_created_at is not None else 0.0
-								if pre_age > RADIO_PREGENERATION_MAX_AGE_SECONDS:
-									logger.info(
-										f"📻 Carpincho Locutor: La locución pregenerada expiró ({pre_age / 60:.1f} min > 15 min tras pausa). Descartando..."
-									)
-								else:
-									pre_p = Path(pre["path"])
-									if _is_valid_radio_mp3_file(pre_p):
-										if await _apply_hot_mix_to_announcement(
-											pre_p, Path(self.radio_announcement_path), pre["display_title"]
-										):
-											ok = True
-											display_title = pre["display_title"]
-											script = pre.get("script", "")
-									else:
-										logger.warning(
-											"📻 Carpincho Locutor: El archivo pregenerado esperado está incompleto o no es un MP3 válido. Descartando..."
-										)
-								self.pregenerated_radio_announcement = None
-						except Exception as wait_e:
-							logger.debug(f"Espera de pregeneración agotada o falló: {wait_e}")
-						finally:
-							self.is_synthesizing_radio = False
-
-					# 3. Fallback: síntesis en caliente si no hubo pregeneración
-					if not ok:
-						logger.info(
-							f"🎙️ Carpincho Locutor: turno de locución radial (canción #{self.radio_track_counter}). Sintetizando..."
-						)
-						self.is_synthesizing_radio = True
+					async def _set_synthesizing_radio(is_synth: bool):
+						self.is_synthesizing_radio = is_synth
 						await broadcast_state()
 
-						try:
-							res = await create_ann_fn(
-								self.radio_announcement_path,
-								bg_track_path=next_track_path,
-								bg_offset=bg_offset,
-								bg_volume=0.1,
-								weather_location=self.weather_location,
-							)
-							ok, display_title, script, radio_err = _unpack_radio_result(res)
-						except Exception as e:
-							ok = False
-							display_title = ""
-							script = ""
-							radio_err = f"{type(e).__name__}: {e}"
-						finally:
-							self.is_synthesizing_radio = False
+					ok, display_title, script, radio_err = await self.radio_service.get_or_synthesize(
+						next_track_path=next_track_path,
+						bg_offset=bg_offset,
+						on_synthesis_status=_set_synthesizing_radio,
+					)
 
 					if ok:
 						self.radio_track_counter = 0

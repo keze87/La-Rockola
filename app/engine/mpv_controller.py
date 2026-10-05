@@ -277,6 +277,7 @@ class AsyncMpvController:
 		try:
 			await asyncio.to_thread(read_pipe)
 		finally:
+			logger.debug("El Named Pipe de Windows se cerró.")
 			self.reader = None
 			if self.writer:
 				try:
@@ -284,16 +285,6 @@ class AsyncMpvController:
 				except Exception:
 					pass
 				self.writer = None
-			if "track_stopped" in self.callbacks:
-				cb = self.callbacks["track_stopped"]
-				res = cb()
-				if asyncio.iscoroutine(res):
-					await res
-			elif "song_ended" in self.callbacks:
-				cb = self.callbacks["song_ended"]
-				res = cb()
-				if asyncio.iscoroutine(res):
-					await res
 
 	async def _read_ipc_events(self) -> None:
 		while self.reader:

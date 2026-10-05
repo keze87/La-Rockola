@@ -162,26 +162,21 @@ def _select_folder_linux(title: str, initial_dir: str | None = None) -> str | No
 
 def select_folder_dialog(title: str = "Seleccioná la carpeta de música", initial_dir: str | None = None) -> str | None:
 	"""Abre un diálogo gráfico nativo según el sistema operativo."""
-	ps_fn = globals().get("_select_folder_powershell", _select_folder_powershell)
-	tk_fn = globals().get("_select_folder_tkinter", _select_folder_tkinter)
-	mac_fn = globals().get("_select_folder_macos", _select_folder_macos)
-	linux_fn = globals().get("_select_folder_linux", _select_folder_linux)
-
 	if sys.platform == "win32":
-		res = ps_fn(title, initial_dir)
+		res = _select_folder_powershell(title, initial_dir)
 		if res:
 			return res
-		return tk_fn(title, initial_dir)
+		return _select_folder_tkinter(title, initial_dir)
 	elif sys.platform == "darwin":
-		res = mac_fn(title, initial_dir)
+		res = _select_folder_macos(title, initial_dir)
 		if res:
 			return res
-		return tk_fn(title, initial_dir)
+		return _select_folder_tkinter(title, initial_dir)
 	else:
-		res = linux_fn(title, initial_dir)
+		res = _select_folder_linux(title, initial_dir)
 		if res:
 			return res
-		return tk_fn(title, initial_dir)
+		return _select_folder_tkinter(title, initial_dir)
 
 
 def setup_readline_completion() -> None:

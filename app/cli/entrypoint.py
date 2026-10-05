@@ -67,7 +67,7 @@ def get_url_subpath(url: str | None) -> str:
 
 def get_server_urls(host: str, port: int, custom_url: str | None = None) -> dict[str, Any]:
 	"""Calcula las URLs disponibles para acceder a La Rockola."""
-	local_ip = globals().get("get_local_ip", get_local_ip)()
+	local_ip = get_local_ip()
 	loopback_url = f"http://localhost:{port}"
 	norm_custom = normalize_url(custom_url)
 
