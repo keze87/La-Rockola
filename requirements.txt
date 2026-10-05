@@ -2,6 +2,7 @@ fastapi
 uvicorn
 mutagen
 pydantic
+pydantic-settings
 websockets
 dbus-next; sys_platform == 'linux'
 edge-tts

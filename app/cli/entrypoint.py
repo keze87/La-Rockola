@@ -18,6 +18,7 @@ from app.core.config import (
 	Settings,
 	get_config_path,
 	load_config,
+	save_config,
 	set_settings,
 )
 from app.core.logging import configure_logging
@@ -160,9 +161,10 @@ def _check_python_packages(is_frozen: bool, force: bool = False) -> tuple[list[t
 	missing_req = []
 	missing_opt = []
 
-	for mod in ("fastapi", "uvicorn", "mutagen", "pydantic", "websockets"):
+	for mod in ("fastapi", "uvicorn", "mutagen", "pydantic", "pydantic_settings", "websockets"):
 		if importlib.util.find_spec(mod) is None:
-			missing_req.append((mod, f"pip install {mod}"))
+			pkg_name = "pydantic-settings" if mod == "pydantic_settings" else mod
+			missing_req.append((mod, f"pip install {pkg_name}"))
 
 	has_ffmpeg = is_mood_available()
 	if not has_ffmpeg:
@@ -555,6 +557,10 @@ def main() -> None:
 	)
 	if should_run_wizard:
 		config = run_interactive_wizard(config_path, config)
+	elif not config_exists:
+		# Primer arranque sin asistente interactivo: guardamos la configuración inicial
+		initial_settings = Settings.from_config_file(config_path).merge_cli_args(args)
+		save_config(config_path, initial_settings.model_dump())
 
 	# Cargamos los settings tipados desde el JSON y mergeamos los argumentos de CLI
 	settings = Settings.from_config_file(config_path)

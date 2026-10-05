@@ -214,11 +214,19 @@ async def stream_audio(path: str = Query(..., description="Ruta de la canción a
 @router.get("/lrc")
 async def serve_lrc(path: str = Query(..., description="Ruta de la canción para buscar subtítulos .lrc")) -> Response:
 	"""Sirve la letra sincronizada .lrc si existe junto al archivo original."""
+	state = get_state()
+	is_radio = state.is_radio_announcement(path) if (state and hasattr(state, "is_radio_announcement")) else False
+	path_to_id = getattr(state, "path_to_id", {}) if state else {}
+	tracks_cache = getattr(state, "tracks_cache", []) if state else []
+
+	# Validación de seguridad: solo servimos letras de temas en biblioteca o locuciones oficiales
+	if not is_radio and path not in path_to_id and not any(t.get("path") == path for t in tracks_cache):
+		return Response(status_code=404)
+
 	lrc_path = Path(path).with_suffix(".lrc")
 	if not lrc_path.exists():
-		state = get_state()
-		if state and getattr(state, "is_radio_announcement", None) and state.is_radio_announcement(path):
-			pre_path = getattr(state, "radio_pregenerated_path", None)
+		if is_radio:
+			pre_path = getattr(state, "radio_pregenerated_path", None) if state else None
 			if pre_path:
 				pre_lrc = Path(pre_path).with_suffix(".lrc")
 				if pre_lrc.exists():
@@ -226,8 +234,9 @@ async def serve_lrc(path: str = Query(..., description="Ruta de la canción para
 		if not lrc_path.exists():
 			return Response(status_code=404)
 
+	headers = {"Cache-Control": "no-cache"} if is_radio else {"Cache-Control": "public, max-age=600, must-revalidate"}
 	return FileResponse(
 		lrc_path,
 		media_type="text/plain",
-		headers={"Cache-Control": "public, max-age=600, must-revalidate"},
+		headers=headers,
 	)
