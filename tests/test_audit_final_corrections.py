@@ -166,6 +166,25 @@ async def test_dj_countdown_race_condition_protection():
 	# Como current_track era distinto de None al despertar, play_track NO debe haberse llamado para el tema del DJ
 	state.play_track.assert_not_called()
 	assert state.current_track == "/tmp/manual_track.mp3"
+	# Y la pre-selección del DJ debe haberse limpiado
+	assert state.dj_next_track is None
+
+
+@pytest.mark.asyncio
+async def test_play_next_broadcasts_on_queue_playback():
+	"""Verifica que play_next() emita broadcast_state al reproducir desde la cola."""
+	from app.engine.state import APIState
+
+	state = APIState()
+	state.queue = ["/tmp/q1.mp3"]
+	state.tracks_cache = []
+	state.mpv = MagicMock()
+	state.mpv._send = AsyncMock()
+	state.play_track = AsyncMock()
+
+	with patch("app.engine.state.broadcast_state", new_callable=AsyncMock) as mock_broadcast:
+		await state.play_next()
+		mock_broadcast.assert_awaited()
 
 
 def test_no_duplicate_get_dist_dirs_in_main():

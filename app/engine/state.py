@@ -870,6 +870,9 @@ class APIState:
 								await self.mpv._send(json.dumps({"command": ["set_property", "pause", False]}))
 								async with self._play_next_lock:
 									if self.current_track is not None:
+										if self.dj_next_track == target_track:
+											self.dj_next_track = None
+											await broadcast_state()
 										return
 									self.dj_next_track = None
 									await self.play_track(target_track["path"])
@@ -894,6 +897,7 @@ class APIState:
 						await self.set_pause(True)
 					# Pre-elegimos el siguiente para el front
 					self._pick_dj_next()
+					await broadcast_state()
 					return
 
 				else:
@@ -905,6 +909,7 @@ class APIState:
 				await self.stop_playback()
 
 			self._pick_dj_next()  # Actualiza la preview después de tocar la fila
+			await broadcast_state()
 
 	async def play_prev(self):
 		if self.history:
