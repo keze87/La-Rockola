@@ -141,12 +141,33 @@ from app.main import (
 	create_app,
 	lifespan,
 	serve_favicon,
-	state,
 	websocket_endpoint,
 )
 from app.main import (
 	serve_index as _app_serve_index,
 )
+
+
+class _StateProxy:
+	"""Proxy dinámico para server.state que delega en get_state() de app.core.dependencies."""
+
+	def __getattr__(self, name: str) -> Any:
+		return getattr(get_state(), name)
+
+	def __setattr__(self, name: str, value: Any) -> None:
+		setattr(get_state(), name, value)
+
+	def __delattr__(self, name: str) -> None:
+		try:
+			delattr(get_state(), name)
+		except AttributeError:
+			pass
+
+	def __dir__(self) -> list[str]:
+		return dir(get_state())
+
+
+state = _StateProxy()
 
 # 4. Servicios: biblioteca, radio y ytdlp
 from app.services.library import (

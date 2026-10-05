@@ -146,7 +146,7 @@ manager = _ManagerProxy()
 
 
 class APIState:
-	def __init__(self, initial_dir=None, secondary_dir=None):
+	def __init__(self, initial_dir=None, secondary_dir=None, open_browser: bool = True):
 		self.current_track = None
 		self.dj_carpincho_enabled = False
 		self.dj_safe_mode = False
@@ -204,7 +204,7 @@ class APIState:
 		self.is_synthesizing_radio = False
 
 		# Estado de red del servidor y navegador
-		self.open_browser = True
+		self.open_browser = open_browser
 		self.server_host = "0.0.0.0"
 		self.server_port = 1729
 		self.configured_url = None

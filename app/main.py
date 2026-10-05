@@ -36,11 +36,10 @@ from app.core.dependencies import (
 	get_state,
 	set_db_path,
 	set_global_manager,
-	set_global_state,
 )
 from app.db.database import backup_db, get_default_db_path
 from app.db.migrations import apply_migrations
-from app.engine.state import APIState, broadcast_state
+from app.engine.state import broadcast_state
 
 logger = logging.getLogger("RockolaCarpincho")
 
@@ -49,11 +48,6 @@ WSIncomingMessage = Annotated[
 	Field(discriminator="type"),
 ]
 ws_adapter = TypeAdapter(WSIncomingMessage)
-
-state = get_state()
-if state is None:
-	state = APIState()
-	set_global_state(state)
 
 
 def get_dist_dirs() -> tuple[Path, Path, Path]:
@@ -124,7 +118,7 @@ async def lifespan(app: FastAPI):
 		except Exception as e:
 			logger.debug(f"Aviso al abrir el navegador automáticamente: {e}")
 
-	if getattr(state, "open_browser", False) and "PYTEST_CURRENT_TEST" not in os.environ:
+	if state and state.open_browser and "PYTEST_CURRENT_TEST" not in os.environ:
 		asyncio.create_task(
 			_bg_open_browser(
 				getattr(state, "server_url", "http://localhost:1729"),

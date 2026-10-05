@@ -542,7 +542,9 @@ def main() -> None:
 	import uvicorn
 
 	from app.cli.wizard import run_interactive_wizard
-	from app.main import create_app
+	from app.core.dependencies import set_global_state
+	from app.engine.state import APIState
+	from app.main import app
 
 	multiprocessing.freeze_support()
 	parser = build_arg_parser()
@@ -581,6 +583,24 @@ def main() -> None:
 	)
 	final_open_browser = args.open_browser if args.open_browser is not None else bool(config.get("open_browser", True))
 
+	urls = get_server_urls(final_host, final_port, custom_url=final_url)
+
+	state = APIState(
+		initial_dir=final_dir,
+		secondary_dir=final_dir2,
+		open_browser=final_open_browser,
+	)
+	state.radio_service.weather_location = final_weather
+	state.weather_location = final_weather
+	state.server_host = final_host
+	state.server_port = final_port
+	state.local_ip = urls["local_ip"]
+	state.server_url = urls["local_url"]
+	if final_url:
+		state.configured_url = final_url
+		state.subpath = get_url_subpath(final_url)
+	set_global_state(state)
+
 	print_startup_banner(
 		host=final_host,
 		port=final_port,
@@ -593,7 +613,6 @@ def main() -> None:
 		log_level=final_log_level,
 	)
 
-	app = create_app()
 	uvicorn.run(
 		app,
 		host=final_host,
