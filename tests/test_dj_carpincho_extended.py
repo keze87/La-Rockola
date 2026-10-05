@@ -32,6 +32,8 @@ async def test_dj_carpincho_natural_transition_with_countdown(clean_state):
 
 	with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
 		await state.play_next(skipped_by_user=False)
+		if state.dj_countdown_task:
+			await state.dj_countdown_task
 		mock_sleep.assert_called_once_with(10)
 		assert state.current_track == "/m/2.mp3"
 

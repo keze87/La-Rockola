@@ -586,3 +586,7 @@ def main() -> None:
 		access_log=is_debug,
 		log_level=final_log_level.lower(),
 	)
+
+
+if __name__ == "__main__":
+	main()

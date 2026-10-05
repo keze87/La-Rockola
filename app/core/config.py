@@ -74,6 +74,28 @@ def get_carpincho_data_dir() -> Path:
 	return db_dir
 
 
+def get_dist_dirs() -> tuple[Path, Path, Path]:
+	"""Determina las rutas de frontend, dist y assets según si está empaquetado o en desarrollo."""
+	if getattr(sys, "frozen", False):
+		exe_dir = Path(sys.executable).parent
+		if (exe_dir / "dist").is_dir():
+			dist_dir = exe_dir / "dist"
+			frontend_dir = exe_dir
+		elif hasattr(sys, "_MEIPASS") and (Path(sys._MEIPASS) / "dist").is_dir():
+			dist_dir = Path(sys._MEIPASS) / "dist"
+			frontend_dir = Path(sys._MEIPASS)
+		else:
+			dist_dir = exe_dir / "dist"
+			frontend_dir = exe_dir
+	else:
+		root_dir = Path(__file__).resolve().parents[2]
+		frontend_dir = root_dir
+		dist_dir = frontend_dir / "dist"
+
+	assets_dir = dist_dir / "assets"
+	return frontend_dir, dist_dir, assets_dir
+
+
 def get_config_path(custom_path: str | Path | None = None) -> Path:
 	"""Devuelve la ruta absoluta al archivo de configuración."""
 	if custom_path:

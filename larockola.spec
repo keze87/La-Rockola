@@ -62,8 +62,10 @@ hiddenimports = [
     "app",
     "app.core",
     "app.core.config",
+    "app.core.network",
     "app.core.logging",
     "app.core.dependencies",
+
     "app.db",
     "app.db.database",
     "app.db.migrations",

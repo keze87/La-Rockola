@@ -585,11 +585,16 @@ class APIState:
 		await broadcast_state()
 
 	async def play_track(self, path):
-		# Cancelar el countdown del DJ si el usuario eligió un tema manualmente
+		# Cancelar el countdown del DJ si el usuario eligió un tema manualmente (no si lo dispara el countdown mismo)
 		if self.dj_countdown_task and not self.dj_countdown_task.done():
-			self.dj_countdown_task.cancel()
-			self.dj_countdown_task = None
-			logger.info("Countdown del DJ Carpincho cancelado por nueva acción del usuario.")
+			try:
+				curr_task = asyncio.current_task()
+			except Exception:
+				curr_task = None
+			if curr_task is not self.dj_countdown_task:
+				self.dj_countdown_task.cancel()
+				self.dj_countdown_task = None
+				logger.info("Countdown del DJ Carpincho cancelado por nueva acción del usuario.")
 
 		# Si aún no inicializamos MPRIS, lo registramos al reproducir la primera canción
 		await self.ensure_mpris()
@@ -708,6 +713,9 @@ class APIState:
 		await self.mpv._send(json.dumps({"command": ["set_property", "volume", self.volume]}))
 
 	async def stop_playback(self, reset_ui_state: bool = False):
+		if self.dj_countdown_task and not self.dj_countdown_task.done():
+			self.dj_countdown_task.cancel()
+		self.dj_countdown_task = None
 		self._cancel_radio_pregeneration()
 		self.dj_next_track = None
 		self.current_track = None
@@ -721,17 +729,14 @@ class APIState:
 		await self.mpv._send('{"command": ["set_property", "force-window", "no"]}')
 
 	async def play_next(self, skipped_by_user=False):
-		async with self._play_next_lock:
-			# Si hay un countdown del DJ corriendo en otra task que no sea esta, lo matamos
-			if (
-				self.dj_countdown_task
-				and not self.dj_countdown_task.done()
-				and self.dj_countdown_task != asyncio.current_task()
-			):
-				self.dj_countdown_task.cancel()
-				self.dj_countdown_task = None
+		# Cancelar countdown previo del DJ antes de pedir el lock para evitar contención
+		if self.dj_countdown_task and not self.dj_countdown_task.done():
+			self.dj_countdown_task.cancel()
+		self.dj_countdown_task = None
 
+		async with self._play_next_lock:
 			just_finished = self.current_track
+
 			if self.current_track:
 				if self.current_track == self.radio_announcement_path:
 					# Terminó la locución radial: no va al historial
@@ -852,28 +857,35 @@ class APIState:
 					await broadcast_state()
 
 					if not skipped_by_user and just_finished != self.radio_announcement_path:
-						# Guardamos el countdown como task cancelable
-						self.dj_countdown_task = asyncio.current_task()
-						try:
-							await self.mpv._send(json.dumps({"command": ["set_property", "pause", True]}))
-							await asyncio.sleep(10)  # Pausa de 10 segundos antes de que el DJ arranque
-							await self.mpv._send(json.dumps({"command": ["set_property", "pause", False]}))
-						except asyncio.CancelledError:
-							logger.info("Countdown del DJ cancelado, no se reproduce el tema pre-elegido.")
-							if self.dj_next_track == chosen:
+						# Corremos el countdown en una tarea background para no retener el lock durante los 10 segundos
+						async def _run_dj_countdown(target_track: dict, pause_after: bool):
+							try:
+								await self.mpv._send(json.dumps({"command": ["set_property", "pause", True]}))
+								await asyncio.sleep(10)  # Pausa de 10 segundos antes de que el DJ arranque
+								await self.mpv._send(json.dumps({"command": ["set_property", "pause", False]}))
 								self.dj_next_track = None
-							return
-						finally:
-							self.dj_countdown_task = None
+								await self.play_track(target_track["path"])
+								if pause_after:
+									await self.set_pause(True)
+								self._pick_dj_next()
+							except asyncio.CancelledError:
+								logger.info("Countdown del DJ cancelado, no se reproduce el tema pre-elegido.")
+								if self.dj_next_track == target_track:
+									self.dj_next_track = None
+							finally:
+								self.dj_countdown_task = None
 
-					self.dj_next_track = None  # Ahora sí borramos: el tema está por arrancar
+						self.dj_countdown_task = asyncio.create_task(_run_dj_countdown(chosen, should_pause))
+						return
 
+					self.dj_next_track = None  # Ahora sí borramos: el tema arranca al toque
 					await self.play_track(chosen["path"])
 					if should_pause:
 						await self.set_pause(True)
 					# Pre-elegimos el siguiente para el front
 					self._pick_dj_next()
 					return
+
 				else:
 					logger.info("DJ Carpincho se quedó sin temas nuevos esta sesión.")
 					self.dj_carpincho_enabled = False

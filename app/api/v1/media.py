@@ -8,12 +8,14 @@ import hashlib
 import io
 import logging
 import os
+import sys
 from pathlib import Path
 
 from fastapi import APIRouter, Query, Request, Response
 from fastapi.responses import FileResponse
 from mutagen import File as MutagenFile
 
+from app.core.config import get_dist_dirs
 from app.core.dependencies import get_state
 
 logger = logging.getLogger("RockolaCarpincho")
@@ -96,8 +98,15 @@ async def serve_cover(
 				pass
 
 			# Si falló la carátula de radio_announcer, intentamos con el favicon/arte por defecto
-			root_dir = Path(__file__).resolve().parents[3]
-			for cand in (root_dir / "public" / "favicon.png", root_dir / "dist" / "favicon.png"):
+			frontend_dir, dist_dir, _ = get_dist_dirs()
+			candidates = [
+				dist_dir / "favicon.png",
+				frontend_dir / "public" / "favicon.png",
+			]
+			if hasattr(sys, "_MEIPASS"):
+				candidates.append(Path(sys._MEIPASS) / "public" / "favicon.png")
+
+			for cand in candidates:
 				if cand.is_file():
 					if size and size > 0 and HAS_PIL:
 						c_data, c_mime = _resize_cover(cand.read_bytes(), size)

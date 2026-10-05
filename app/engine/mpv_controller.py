@@ -52,6 +52,7 @@ class AsyncMpvController:
 		if on_process_exit:
 			self.callbacks["process_exit"] = on_process_exit
 
+		self.state_ref: Any = None
 		self._start_lock = asyncio.Lock()
 
 	@property
@@ -136,13 +137,26 @@ class AsyncMpvController:
 			has_display = bool(self.is_windows or env.get("WAYLAND_DISPLAY") or env.get("DISPLAY"))
 			self.has_display = has_display
 
+			if state_ref is not None:
+				self.state_ref = state_ref
+			state = getattr(self, "state_ref", None)
+			if state is None:
+				try:
+					from app.core.dependencies import get_state
+
+					state = get_state()
+					if state is not None:
+						self.state_ref = state
+				except Exception:
+					state = None
+
 			show_window = True
-			if state_ref and hasattr(state_ref, "mpv_visible"):
-				show_window = state_ref.mpv_visible
+			if state and hasattr(state, "mpv_visible"):
+				show_window = state.mpv_visible
 
 			# Si logramos registrar nuestro propio MPRIS en DBus, silenciamos el nativo de MPV.
 			# Si falló (ej. no hay DBus o se rompió), dejamos que MPV use su MPRIS de rescate.
-			own_mpris_active = getattr(state_ref, "mpris_registered", False) if state_ref else False
+			own_mpris_active = getattr(state, "mpris_registered", False) if state else False
 			mpris_opt = "no" if own_mpris_active else "yes"
 			keys_opt = "no" if own_mpris_active else "yes"
 
