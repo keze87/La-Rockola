@@ -247,6 +247,11 @@ class APIState:
 		self.radio_service.pregenerated_path = Path(val)
 
 	@property
+	def has_edge_tts(self) -> bool:
+		"""Indica si el servicio de Edge-TTS para locución radial está disponible."""
+		return bool(self.radio_service.is_available if hasattr(self, "radio_service") else False)
+
+	@property
 	def radio_archive_dir(self) -> Path:
 		return self.radio_service.archive_dir
 
@@ -863,12 +868,15 @@ class APIState:
 								await self.mpv._send(json.dumps({"command": ["set_property", "pause", True]}))
 								await asyncio.sleep(10)  # Pausa de 10 segundos antes de que el DJ arranque
 								await self.mpv._send(json.dumps({"command": ["set_property", "pause", False]}))
-								self.dj_next_track = None
-								await self.play_track(target_track["path"])
-								if pause_after:
-									await self.set_pause(True)
-								self._pick_dj_next()
-								await broadcast_state()
+								async with self._play_next_lock:
+									if self.current_track is not None:
+										return
+									self.dj_next_track = None
+									await self.play_track(target_track["path"])
+									if pause_after:
+										await self.set_pause(True)
+									self._pick_dj_next()
+									await broadcast_state()
 							except asyncio.CancelledError:
 								logger.info("Countdown del DJ cancelado, no se reproduce el tema pre-elegido.")
 								if self.dj_next_track == target_track:

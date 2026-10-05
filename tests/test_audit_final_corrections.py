@@ -106,3 +106,71 @@ async def test_dj_countdown_broadcasts_on_finish_and_cancel():
 
 			# Debe haber emitido broadcast al cancelarse
 			assert mock_broadcast_cancel.await_count >= 2
+
+
+@pytest.mark.asyncio
+async def test_has_edge_tts_property_and_capabilities_endpoint():
+	"""Verifica que APIState exponga has_edge_tts y que /system/capabilities devuelva el valor real."""
+	from app.api.v1.system import get_system_capabilities
+	from app.engine.state import APIState
+
+	state = APIState()
+	assert hasattr(state, "has_edge_tts"), "APIState debe tener la propiedad has_edge_tts"
+
+	# Mockeamos radio_service.is_available como True
+	state.radio_service = MagicMock()
+	state.radio_service.is_available = True
+	assert state.has_edge_tts is True
+
+	with patch("app.api.v1.system.get_state", return_value=state):
+		caps = await get_system_capabilities()
+		assert caps.get("has_edge_tts") is True
+
+	# Mockeamos radio_service.is_available como False
+	state.radio_service.is_available = False
+	assert state.has_edge_tts is False
+
+	with patch("app.api.v1.system.get_state", return_value=state):
+		caps = await get_system_capabilities()
+		assert caps.get("has_edge_tts") is False
+
+
+@pytest.mark.asyncio
+async def test_dj_countdown_race_condition_protection():
+	"""Verifica que si otro tema empezó a reproducirse durante el countdown, _run_dj_countdown no lo pise."""
+	from app.engine.state import APIState
+
+	state = APIState()
+	state.radio_mode_enabled = False
+	state.dj_carpincho_enabled = True
+	state.tracks_cache = [
+		{"path": "/tmp/t1.mp3", "display_title": "T1"},
+		{"path": "/tmp/t2.mp3", "display_title": "T2"},
+	]
+	state.current_track = "/tmp/t1.mp3"
+	state.mpv = MagicMock()
+	state.mpv._send = AsyncMock()
+	state.mpv.is_running = True
+	state.play_track = AsyncMock()
+
+	# Simulamos que durante el sleep de 10s, otra acción asignó un tema
+	async def fake_sleep_with_interruption(seconds):
+		state.current_track = "/tmp/manual_track.mp3"
+
+	with patch("app.engine.state.broadcast_state", new_callable=AsyncMock):
+		with patch("asyncio.sleep", side_effect=fake_sleep_with_interruption):
+			await state.play_next(skipped_by_user=False)
+			assert state.dj_countdown_task is not None
+			await state.dj_countdown_task
+
+	# Como current_track era distinto de None al despertar, play_track NO debe haberse llamado para el tema del DJ
+	state.play_track.assert_not_called()
+	assert state.current_track == "/tmp/manual_track.mp3"
+
+
+def test_no_duplicate_get_dist_dirs_in_main():
+	"""Verifica que app/main.py no redefina 'def get_dist_dirs'."""
+	root_dir = Path(__file__).resolve().parents[1]
+	main_file = root_dir / "app" / "main.py"
+	content = main_file.read_text(encoding="utf-8")
+	assert "def get_dist_dirs" not in content, "app/main.py no debe definir get_dist_dirs redundante"

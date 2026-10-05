@@ -77,5 +77,5 @@ async def get_system_capabilities() -> dict[str, Any]:
 	return {
 		"has_ffmpeg": is_mood_available(),
 		"has_ytdlp": ytdlp_srv.is_available,
-		"has_edge_tts": getattr(state, "has_edge_tts", False) if state else False,
+		"has_edge_tts": bool(state.has_edge_tts if state else False),
 	}
