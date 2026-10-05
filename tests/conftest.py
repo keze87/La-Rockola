@@ -16,13 +16,13 @@ import server
 @pytest.fixture
 def temp_db(tmp_path, monkeypatch):
 	"""Provides an isolated temporary SQLite database for each test."""
+	db_path = tmp_path / "test_rockola.db"
 	from app.core.dependencies import set_db_path
 
-	db_file = tmp_path / "test_carpincho.db"
-	monkeypatch.setattr(server, "DB_PATH", db_file)
-	set_db_path(db_file)
-	server.init_db()
-	yield db_file
+	set_db_path(db_path)
+	monkeypatch.setattr(server, "DB_PATH", db_path, raising=False)
+	server.init_db(db_path)
+	yield db_path
 	set_db_path(None)
 
 
@@ -40,8 +40,9 @@ def mock_mpv():
 @pytest.fixture
 def clean_state(temp_db, mock_mpv, monkeypatch):
 	"""Provides a fresh, isolated APIState instance."""
-	from app.core.dependencies import get_state, set_global_state
+	from app.core.dependencies import get_state, set_db_path, set_global_state
 
+	set_db_path(temp_db)
 	state = server.APIState()
 	state.mpv = mock_mpv
 	orig_state = get_state()

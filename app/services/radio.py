@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import shutil
-import sys
 import tempfile
 import time
 from collections.abc import Callable
@@ -45,7 +44,7 @@ except ImportError:
 			mix_announcement_with_bg_track,
 		)
 	except ImportError:
-		DEFAULT_WEATHER_LOCATION = "Buenos Aires, Argentina"
+		DEFAULT_WEATHER_LOCATION = "San Miguel de Tucumán"
 		HAS_EDGE_TTS = False
 		RadioAnnouncementResult = None
 		create_radio_announcement = None
@@ -70,11 +69,8 @@ RADIO_PREGENERATION_MAX_AGE_SECONDS: float = 15.0 * 60.0  # 15 minutos de caduci
 
 def _is_valid_radio_mp3_file(path: Path | str) -> bool:
 	"""Valida que el archivo de locución exista y su cabecera corresponda a un MP3 válido."""
-	radio_mod = sys.modules[__name__]
-
-	validator = getattr(radio_mod, "is_valid_mp3_file", is_valid_mp3_file)
-	if validator is not None:
-		return validator(path)
+	if is_valid_mp3_file is not None:
+		return is_valid_mp3_file(path)
 	try:
 		p = Path(path)
 		if not p.is_file() or p.stat().st_size < 4:
@@ -110,10 +106,7 @@ class RadioService:
 	@property
 	def is_available(self) -> bool:
 		"""Indica si el sistema de síntesis TTS está operativo evaluando el estado del módulo."""
-		radio_mod = sys.modules[__name__]
-		has_edge = getattr(radio_mod, "HAS_EDGE_TTS", False)
-		create_fn = getattr(radio_mod, "create_radio_announcement", None)
-		return bool(has_edge and create_fn is not None)
+		return bool(HAS_EDGE_TTS and create_radio_announcement is not None)
 
 	def cancel_pregeneration(self) -> None:
 		"""Cancela cualquier pregeneración en curso de la locución radial y limpia archivos parciales."""
@@ -139,13 +132,7 @@ class RadioService:
 		Dispara la síntesis y procesamiento de la locución radial en segundo plano
 		al comienzo de la canción, calculando el cuarto horario estimado en el que terminará el tema.
 		"""
-		radio_mod = sys.modules[__name__]
-
-		if not self.is_available:
-			return
-
-		create_ann_fn = getattr(radio_mod, "create_radio_announcement", None)
-		if create_ann_fn is None:
+		if not self.is_available or create_radio_announcement is None:
 			return
 
 		self.cancel_pregeneration()
@@ -158,7 +145,7 @@ class RadioService:
 
 			try:
 				logger.info("📻 Carpincho Locutor: Iniciando pregeneración anticipada al comienzo de la canción...")
-				res = await create_ann_fn(
+				res = await create_radio_announcement(
 					str(target_path),
 					dt=finish_dt,
 					bg_track_path=None,
@@ -197,10 +184,7 @@ class RadioService:
 		Obtiene la locución pregenerada o realiza síntesis en caliente, aplicando
 		control de caducidad (15 min tras pausa prolongada) y mezcla con cortina.
 		"""
-		radio_mod = sys.modules[__name__]
-
-		create_ann_fn = getattr(radio_mod, "create_radio_announcement", None)
-		if not self.is_available or create_ann_fn is None:
+		if not self.is_available or create_radio_announcement is None:
 			return False, "", "", "Servicio de radio no disponible"
 
 		target_ann_path = Path(announcement_path) if announcement_path else self.announcement_path
@@ -293,7 +277,7 @@ class RadioService:
 					await res_notify
 
 			try:
-				res = await create_ann_fn(
+				res = await create_radio_announcement(
 					str(target_ann_path),
 					bg_track_path=next_track_path,
 					bg_offset=bg_offset,
@@ -321,13 +305,10 @@ class RadioService:
 		location: str | None = None,
 	) -> Any:
 		"""Genera una locución radial mezclada con cortina."""
-		radio_mod = sys.modules[__name__]
-
-		create_fn = getattr(radio_mod, "create_radio_announcement", None)
-		if not self.is_available or create_fn is None:
+		if not self.is_available or create_radio_announcement is None:
 			return None
 		target_loc = location or self.weather_location
-		return await create_fn(
+		return await create_radio_announcement(
 			current_track=current_track,
 			next_track=next_track,
 			location=target_loc,
@@ -342,16 +323,12 @@ class RadioService:
 		bg_offset: float = 0.0,
 	) -> bool:
 		"""Superpone la cortina musical en caliente sobre la voz usando la pista que efectivamente suena después."""
-		radio_mod = sys.modules[__name__]
-
 		mixed_ok = False
-		mixer = getattr(radio_mod, "mix_announcement_with_bg_track", None)
-		embedder = getattr(radio_mod, "embed_cover_art_in_mp3", None)
 
-		if next_track_path and Path(next_track_path).is_file() and mixer is not None:
+		if next_track_path and Path(next_track_path).is_file() and mix_announcement_with_bg_track is not None:
 			try:
 				mixed = await asyncio.to_thread(
-					mixer,
+					mix_announcement_with_bg_track,
 					voice_file,
 					out_file,
 					next_track_path,
@@ -360,11 +337,10 @@ class RadioService:
 					10.0,
 				)
 				if mixed:
-					if embedder is not None:
-						cover_getter = getattr(radio_mod, "get_carpincho_cover_path", None)
-						cover_p = cover_getter() if cover_getter else None
+					if embed_cover_art_in_mp3 is not None:
+						cover_p = get_carpincho_cover_path() if get_carpincho_cover_path is not None else None
 						await asyncio.to_thread(
-							embedder,
+							embed_cover_art_in_mp3,
 							out_file,
 							cover_p,
 							title,

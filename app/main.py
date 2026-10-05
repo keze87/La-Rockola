@@ -140,7 +140,6 @@ async def lifespan(app: FastAPI):
 			res = state.mpv.stop()
 			if asyncio.iscoroutine(res):
 				await res
-	set_db_path(None)
 
 
 async def serve_index():
@@ -232,7 +231,7 @@ async def websocket_endpoint(websocket: WebSocket):
 	# Enviar estado completo inmediatamente
 	if state and hasattr(state, "get_full_state_dict"):
 		try:
-			state_dict = state.get_full_state_dict(include_library=True)
+			state_dict = state.get_full_state_dict(include_library=False)
 			state_dict["type"] = "state_update"
 			await websocket.send_json(state_dict)
 		except Exception as e:

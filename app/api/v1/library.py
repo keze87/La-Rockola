@@ -12,6 +12,7 @@ from typing import Any
 from fastapi import APIRouter
 
 from app.core.dependencies import get_state
+from app.engine.state import broadcast_state
 
 logger = logging.getLogger("RockolaCarpincho")
 router = APIRouter(tags=["Library"])
@@ -59,8 +60,7 @@ async def scan_library(dir: str | None = None, dir2: str | None = None) -> dict[
 	state.scan_total = 0
 	state.scan_message = "Buscando archivos de audio..."
 
-	if hasattr(state, "broadcast_state"):
-		await state.broadcast_state()
+	await broadcast_state()
 
 	try:
 		if hasattr(state, "scan_directory"):
@@ -70,7 +70,8 @@ async def scan_library(dir: str | None = None, dir2: str | None = None) -> dict[
 		state.scan_phase = "idle"
 		state.scan_message = ""
 
-	if hasattr(state, "broadcast_state"):
-		await state.broadcast_state(include_library=True)
+	await broadcast_state(include_library=True)
+	if state and hasattr(state, "start_background_mood_analysis"):
+		state.start_background_mood_analysis()
 
 	return {"status": "ok", "data": getattr(state, "tracks_cache", [])}

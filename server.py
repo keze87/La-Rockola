@@ -131,8 +131,6 @@ from app.engine.mpv_controller import AsyncMpvController
 from app.engine.state import (
 	RADIO_PREGENERATION_MAX_AGE_SECONDS,
 	APIState,
-	_is_valid_radio_mp3_file,
-	_unpack_radio_result,
 	broadcast_state,
 	check_internet_async,
 )
@@ -184,6 +182,8 @@ from app.services.radio import (
 	HAS_EDGE_TTS,
 	RadioAnnouncementResult,
 	RadioService,
+	_is_valid_radio_mp3_file,
+	_unpack_radio_result,
 	create_radio_announcement,
 	embed_cover_art_in_mp3,
 	get_carpincho_cover_path,
@@ -191,7 +191,24 @@ from app.services.radio import (
 )
 from app.services.ytdlp import YtDlpService
 
-manager = ConnectionManager()
+
+class _ManagerProxy:
+	"""Proxy dinámico para server.manager que delega en get_manager()."""
+
+	def __getattr__(self, name: str) -> Any:
+		return getattr(get_manager(), name)
+
+	def __setattr__(self, name: str, value: Any) -> None:
+		setattr(get_manager(), name, value)
+
+	def __delattr__(self, name: str) -> None:
+		try:
+			delattr(get_manager(), name)
+		except AttributeError:
+			pass
+
+
+manager = _ManagerProxy()
 
 # Directorios de datos y frontend para compatibilidad con tests
 DATA_DIR = get_carpincho_data_dir()

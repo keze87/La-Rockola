@@ -75,38 +75,12 @@ from app.services.radio import (
 	DEFAULT_WEATHER_LOCATION,
 	HAS_EDGE_TTS,
 	RadioService,
-	is_valid_mp3_file,
 )
 from app.services.ytdlp import YtDlpService
 
 logger = logging.getLogger("RockolaCarpincho")
 
 RADIO_PREGENERATION_MAX_AGE_SECONDS: float = 15.0 * 60.0  # 15 minutos de caducidad tras pausa prolongada
-
-
-def _is_valid_radio_mp3_file(path: Path | str) -> bool:
-	"""Valida que el archivo de locución exista y su cabecera corresponda a un MP3 válido."""
-	validator = getattr(radio_service_mod, "is_valid_mp3_file", is_valid_mp3_file)
-	if validator is not None:
-		return validator(path)
-	try:
-		p = Path(path)
-		if not p.is_file() or p.stat().st_size < 4:
-			return False
-		with p.open("rb") as f:
-			head = f.read(10)
-		return bool(head.startswith(b"ID3") or (head[0] == 0xFF and (head[1] & 0xE0) == 0xE0))
-	except Exception:
-		return False
-
-
-def _unpack_radio_result(res) -> tuple[bool, str, str, str]:
-	"""Normaliza el resultado devuelto por create_radio_announcement."""
-	ok = res.ok if hasattr(res, "ok") else bool(res[0])
-	title = res.display_title if hasattr(res, "display_title") else str(res[1])
-	script = res.script if hasattr(res, "script") else str(res[2])
-	err = res.error if hasattr(res, "error") else (script if not ok else "")
-	return ok, title, script, err or ""
 
 
 def _get_active_db_path() -> Path | str:
