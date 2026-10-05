@@ -29,7 +29,14 @@ async def preview_weather(location: str = Query(..., description="Ciudad o local
 			fetch_weather_json,
 		)
 	except ImportError:
-		return JSONResponse(status_code=500, content={"ok": False, "error": "Módulo de radio no disponible"})
+		try:
+			from radio_announcer import (
+				build_weather_phrase,
+				extract_location_from_weather_data,
+				fetch_weather_json,
+			)
+		except ImportError:
+			return JSONResponse(status_code=500, content={"ok": False, "error": "Módulo de radio no disponible"})
 
 	loc_clean = location.strip() if location else ""
 	if not loc_clean:

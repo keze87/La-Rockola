@@ -35,7 +35,7 @@ def test_get_local_ip_fallbacks():
 
 def test_get_server_urls():
 	"""Verify get_server_urls computes correct URLs for 0.0.0.0, localhost, and custom host."""
-	with patch("app.cli.entrypoint.get_local_ip", return_value="192.168.1.100"):
+	with patch("app.core.network.get_local_ip", return_value="192.168.1.100"):
 		# Default 0.0.0.0 binding
 		urls_all = server.get_server_urls("0.0.0.0", 1729)
 		assert urls_all["local_ip"] == "192.168.1.100"
@@ -57,7 +57,7 @@ def test_get_server_urls():
 def test_print_startup_banner(capsys, tmp_path):
 	"""Verify print_startup_banner outputs informative help, URLs, and usage tips."""
 	config_file = tmp_path / "rockola_config.json"
-	with patch("app.cli.entrypoint.get_local_ip", return_value="192.168.1.100"):
+	with patch("app.core.network.get_local_ip", return_value="192.168.1.100"):
 		server.print_startup_banner(
 			host="0.0.0.0",
 			port=1729,
@@ -183,8 +183,9 @@ def test_normalize_url_and_subpath():
 
 def test_get_server_urls_with_custom_url():
 	"""Verify get_server_urls prioritizes custom configured URL."""
-	with patch("app.cli.entrypoint.get_local_ip", return_value="192.168.1.100"):
+	with patch("app.core.network.get_local_ip", return_value="192.168.1.100"):
 		urls = server.get_server_urls("0.0.0.0", 1729, custom_url="http://server.local/rockola")
+
 		assert urls["custom_url"] == "http://server.local/rockola"
 		assert urls["local_url"] == "http://server.local/rockola"
 		assert urls["network_url"] == "http://server.local/rockola"

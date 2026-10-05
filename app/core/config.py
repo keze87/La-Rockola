@@ -179,31 +179,9 @@ def set_settings(settings: Settings) -> None:
 	_global_settings = settings
 
 
-def get_local_ip() -> str:
-	from app.cli.entrypoint import get_local_ip as _get_local_ip
-
-	return _get_local_ip()
-
-
-def normalize_url(url: str | None) -> str | None:
-	from app.cli.entrypoint import normalize_url as _normalize_url
-
-	return _normalize_url(url)
-
-
-def get_url_subpath(url: str | None) -> str:
-	from app.cli.entrypoint import get_url_subpath as _get_url_subpath
-
-	return _get_url_subpath(url)
-
-
-def get_server_urls(host: str, port: int, custom_url: str | None = None) -> dict[str, Any]:
-	from app.cli.entrypoint import get_server_urls as _get_server_urls
-
-	return _get_server_urls(host, port, custom_url=custom_url)
-
-
-def open_browser_url(url: str, delay: float = 0.0) -> None:
-	from app.cli.entrypoint import open_browser_url as _open_browser_url
-
-	return _open_browser_url(url, delay=delay)
+from app.core.network import (  # noqa: F401
+	get_local_ip,
+	get_server_urls,
+	get_url_subpath,
+	normalize_url,
+)

@@ -33,6 +33,15 @@ _COVER_MEM_CACHE: dict[str, tuple[int, int, bytes | None, str, str]] = {}
 _MAX_COVER_MEM_CACHE = 1000
 
 
+def _set_cover_cache(key: str, value: tuple[int, int, bytes | None, str, str]) -> None:
+	"""Inserta en el caché de portadas aplicando desalojo FIFO/LRU si se supera el límite."""
+	if key in _COVER_MEM_CACHE:
+		_COVER_MEM_CACHE.pop(key)
+	elif len(_COVER_MEM_CACHE) >= _MAX_COVER_MEM_CACHE:
+		_COVER_MEM_CACHE.pop(next(iter(_COVER_MEM_CACHE)))
+	_COVER_MEM_CACHE[key] = value
+
+
 def _resize_cover(cover_bytes: bytes, max_size: int) -> tuple[bytes, str]:
 	"""Redimensiona la imagen conservando aspect ratio si PIL está disponible."""
 	if not HAS_PIL or not cover_bytes or max_size <= 0:
@@ -86,6 +95,15 @@ async def serve_cover(
 			except Exception:
 				pass
 
+			# Si falló la carátula de radio_announcer, intentamos con el favicon/arte por defecto
+			root_dir = Path(__file__).resolve().parents[3]
+			for cand in (root_dir / "public" / "favicon.png", root_dir / "dist" / "favicon.png"):
+				if cand.is_file():
+					if size and size > 0 and HAS_PIL:
+						c_data, c_mime = _resize_cover(cand.read_bytes(), size)
+						return Response(content=c_data, media_type=c_mime)
+					return FileResponse(cand, media_type="image/png")
+
 		if not os.path.exists(path):
 			return Response(status_code=404)
 
@@ -108,6 +126,8 @@ async def serve_cover(
 		if cache_key in _COVER_MEM_CACHE:
 			c_mtime, c_size, c_data, c_mime, _ = _COVER_MEM_CACHE[cache_key]
 			if c_mtime == mtime and c_size == file_size:
+				# Reubicamos la clave al final para actualizar el orden de acceso LRU
+				_COVER_MEM_CACHE[cache_key] = _COVER_MEM_CACHE.pop(cache_key)
 				if c_data is None:
 					return Response(status_code=404, headers=cache_headers)
 				return Response(content=c_data, media_type=c_mime, headers=cache_headers)
@@ -117,13 +137,14 @@ async def serve_cover(
 		if size and size > 0 and path in _COVER_MEM_CACHE:
 			c_mtime, c_size, c_data, c_mime, _ = _COVER_MEM_CACHE[path]
 			if c_mtime == mtime and c_size == file_size and c_data:
+				_COVER_MEM_CACHE[path] = _COVER_MEM_CACHE.pop(path)
 				cover_data = c_data
 				mime_type = c_mime
 
 		if not cover_data:
 			audio = MutagenFile(path)
 			if not audio:
-				_COVER_MEM_CACHE[cache_key] = (mtime, file_size, None, "image/jpeg", etag)
+				_set_cover_cache(cache_key, (mtime, file_size, None, "image/jpeg", etag))
 				return Response(status_code=404, headers=cache_headers)
 
 			if hasattr(audio, "pictures") and audio.pictures:
@@ -141,18 +162,19 @@ async def serve_cover(
 					mime_type = "image/jpeg" if cover_data.startswith(b"\xff\xd8") else "image/png"
 
 			if not cover_data:
-				_COVER_MEM_CACHE[cache_key] = (mtime, file_size, None, "image/jpeg", etag)
+				_set_cover_cache(cache_key, (mtime, file_size, None, "image/jpeg", etag))
 				return Response(status_code=404, headers=cache_headers)
 
 			# Cache original
-			_COVER_MEM_CACHE[path] = (mtime, file_size, cover_data, mime_type, etag)
+			_set_cover_cache(path, (mtime, file_size, cover_data, mime_type, etag))
 
 		if size and size > 0:
 			resized_data, r_mime = _resize_cover(cover_data, size)
-			_COVER_MEM_CACHE[cache_key] = (mtime, file_size, resized_data, r_mime, etag)
+			_set_cover_cache(cache_key, (mtime, file_size, resized_data, r_mime, etag))
 			return Response(content=resized_data, media_type=r_mime, headers=cache_headers)
 
 		return Response(content=cover_data, media_type=mime_type, headers=cache_headers)
+
 	except Exception as e:
 		logger.debug(f"Error procesando cover para {path}: {e}")
 		return Response(status_code=404)

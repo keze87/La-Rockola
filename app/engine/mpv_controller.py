@@ -11,6 +11,7 @@ import logging
 import os
 import sys
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from app.engine.audio_analysis import find_binary, get_clean_env
@@ -139,6 +140,12 @@ class AsyncMpvController:
 			if state_ref and hasattr(state_ref, "mpv_visible"):
 				show_window = state_ref.mpv_visible
 
+			# Si logramos registrar nuestro propio MPRIS en DBus, silenciamos el nativo de MPV.
+			# Si falló (ej. no hay DBus o se rompió), dejamos que MPV use su MPRIS de rescate.
+			own_mpris_active = getattr(state_ref, "mpris_registered", False) if state_ref else False
+			mpris_opt = "no" if own_mpris_active else "yes"
+			keys_opt = "no" if own_mpris_active else "yes"
+
 			is_debug = logger.isEnabledFor(logging.DEBUG)
 			mpv_bin = find_binary("mpv") or "mpv"
 
@@ -151,6 +158,8 @@ class AsyncMpvController:
 			mpv_args.extend(
 				[
 					"--script-opts=osc-visibility=always,osc-layout=topbar",
+					f"--load-scripts={mpris_opt}",
+					f"--input-media-keys={keys_opt}",
 					"--ytdl-raw-options=no-playlist=",
 					f"--input-ipc-server={self.socket_path}",
 				]
@@ -164,20 +173,35 @@ class AsyncMpvController:
 						"--hwdec=auto",
 						"--no-border",
 						"--ontop",
+						"--sub-color=#FF00FF",
+						"--sub-font-size=100",
+						"--sub-font=Pacifico",
 						"--sub-scale-by-window=no",
 						"--sub-scale-with-window=no",
 					]
 				)
 				if not self.is_windows:
+					# En Linux/Unix, restringimos los contextos GPU a Wayland y X11
+					# y ponemos fallback a null para que si la sesión gráfica falla,
+					# MPV no intente DRM (que requiere permisos especiales de kernel) y no corte la reproducción.
 					mpv_args.extend(["--gpu-context=waylandvk,wayland,x11vk,x11egl,x11", "--vo=gpu-next,gpu,null"])
 				else:
 					mpv_args.append("--vo=gpu-next,gpu,null")
 			else:
+				# Modo headless o ventana oculta: salida de video nula para que los audios con carátula
+				# (como FLAC o MP3) no intenten inicializar video y fallen con error de display.
 				mpv_args.extend(["--vo=null", "--no-audio-display", "--force-window=no"])
 
 			ytdlp_bin = find_binary("yt-dlp")
 			if ytdlp_bin:
 				mpv_args.append(f"--script-opts-append=ytdl_hook-ytdl_path={ytdlp_bin}")
+				ytdlp_dir = str(Path(ytdlp_bin).parent)
+				current_path = env.get("PATH", "")
+				if ytdlp_dir not in current_path.split(os.pathsep):
+					env["PATH"] = f"{ytdlp_dir}{os.pathsep}{current_path}" if current_path else ytdlp_dir
+
+			if not self.is_windows and has_display:
+				mpv_args.extend(["--wayland-app-id=mpvpip", "--x11-name=mpvpip"])
 
 			logger.info("Despertando al carpincho reproductor (MPV)...")
 			try:

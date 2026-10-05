@@ -62,6 +62,20 @@ async def scan_library(dir: str | None = None, dir2: str | None = None) -> dict[
 
 	await broadcast_state()
 
+	stop_ticker = asyncio.Event()
+
+	async def _progress_ticker():
+		while not stop_ticker.is_set():
+			try:
+				await asyncio.sleep(0.4)
+				await broadcast_state()
+			except asyncio.CancelledError:
+				break
+			except Exception:
+				pass
+
+	ticker_task = asyncio.create_task(_progress_ticker())
+
 	try:
 		if hasattr(state, "scan_directory"):
 			state.tracks_cache = await asyncio.to_thread(state.scan_directory, target_dirs, False)
@@ -69,6 +83,12 @@ async def scan_library(dir: str | None = None, dir2: str | None = None) -> dict[
 		state.is_scanning = False
 		state.scan_phase = "idle"
 		state.scan_message = ""
+		stop_ticker.set()
+		ticker_task.cancel()
+		try:
+			await ticker_task
+		except asyncio.CancelledError:
+			pass
 
 	await broadcast_state(include_library=True)
 	if state and hasattr(state, "start_background_mood_analysis"):

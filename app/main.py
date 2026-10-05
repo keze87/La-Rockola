@@ -98,6 +98,23 @@ async def lifespan(app: FastAPI):
 	# Disparar escaneo de la biblioteca musical en segundo plano
 	asyncio.create_task(scan_library())
 
+	# Actualización en segundo plano de yt-dlp para mantener compatibilidad con YouTube
+	async def _bg_update_ytdlp():
+		try:
+			try:
+				from scripts import ytdlp_installer
+			except ImportError:
+				import ytdlp_installer
+
+			await asyncio.to_thread(ytdlp_installer.update_ytdlp)
+		except Exception as e:
+			logger.debug(f"Aviso en actualización de yt-dlp: {e}")
+
+	from app.engine.audio_analysis import find_binary
+
+	if find_binary("yt-dlp"):
+		asyncio.create_task(_bg_update_ytdlp())
+
 	# Abrir navegador automáticamente si está configurado (y no estamos corriendo tests)
 	async def _bg_open_browser(target_url: str, port: int, host: str):
 		try:
@@ -136,10 +153,21 @@ async def lifespan(app: FastAPI):
 				state.mpris_bus.disconnect()
 			except Exception:
 				pass
-		if hasattr(state, "mpv") and state.mpv and hasattr(state.mpv, "stop"):
-			res = state.mpv.stop()
-			if asyncio.iscoroutine(res):
-				await res
+		if hasattr(state, "mpv") and state.mpv:
+			if (
+				hasattr(state.mpv, "socket_path")
+				and state.mpv.socket_path
+				and not getattr(state.mpv, "is_windows", False)
+			):
+				try:
+					if os.path.exists(state.mpv.socket_path):
+						os.remove(state.mpv.socket_path)
+				except OSError:
+					pass
+			if hasattr(state.mpv, "stop"):
+				res = state.mpv.stop()
+				if asyncio.iscoroutine(res):
+					await res
 
 
 async def serve_index():

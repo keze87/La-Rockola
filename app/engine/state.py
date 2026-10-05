@@ -721,170 +721,168 @@ class APIState:
 		await self.mpv._send('{"command": ["set_property", "force-window", "no"]}')
 
 	async def play_next(self, skipped_by_user=False):
-		# Si hay un countdown del DJ corriendo en otra task que no sea esta, lo matamos
-		if (
-			self.dj_countdown_task
-			and not self.dj_countdown_task.done()
-			and self.dj_countdown_task != asyncio.current_task()
-		):
-			self.dj_countdown_task.cancel()
-			self.dj_countdown_task = None
+		async with self._play_next_lock:
+			# Si hay un countdown del DJ corriendo en otra task que no sea esta, lo matamos
+			if (
+				self.dj_countdown_task
+				and not self.dj_countdown_task.done()
+				and self.dj_countdown_task != asyncio.current_task()
+			):
+				self.dj_countdown_task.cancel()
+				self.dj_countdown_task = None
 
-		just_finished = self.current_track
-		if self.current_track:
-			if self.current_track == self.radio_announcement_path:
-				# Terminó la locución radial: no va al historial
-				self.is_playing_radio_announcement = False
-			else:
-				self.history.append(self.current_track)
-			self.current_track = None
-
-		# Verificamos si tocaba pausar después del track que acaba de terminar
-		should_pause = (self.pause_after_path is not None) and (just_finished == self.pause_after_path)
-		if should_pause:
-			self.pause_after_path = None
-
-		# Modo Radio: Intervención de locución cada 2 o 3 canciones durante transiciones naturales
-		has_edge = getattr(radio_service_mod, "HAS_EDGE_TTS", False)
-		create_ann_fn = getattr(radio_service_mod, "create_radio_announcement", None)
-		has_next_track = bool(self.queue or (self.dj_carpincho_enabled and self.tracks_cache))
-		if (
-			not skipped_by_user
-			and self.radio_mode_enabled
-			and has_edge
-			and create_ann_fn is not None
-			and has_next_track
-			and just_finished is not None
-			and just_finished != self.radio_announcement_path
-		):
-			self.radio_track_counter += 1
-			if self.radio_track_counter >= self.radio_tracks_until_next:
-				# Preguntamos si hay internet puntualmente antes de activar la síntesis radial
-				check_net_fn = getattr(radio_service_mod, "check_internet_async", check_internet_async)
-				if not await check_net_fn(timeout=0.8):
-					self.radio_track_counter = 0
-					self.radio_tracks_until_next = random.randint(2, 3)
-					logger.warning(
-						"📻 Carpincho Locutor: no hay conexión a internet disponible. Omitiendo locución radial para no demorar la reproducción."
-					)
+			just_finished = self.current_track
+			if self.current_track:
+				if self.current_track == self.radio_announcement_path:
+					# Terminó la locución radial: no va al historial
+					self.is_playing_radio_announcement = False
 				else:
-					ok = False
-					display_title = ""
-					script = ""
-					radio_err = ""
+					self.history.append(self.current_track)
+				self.current_track = None
 
-					# Averiguamos qué tema viene realmente en este momento para superponerlo como cortina en caliente
-					next_track_path = None
-					if self.queue:
-						next_track_path = self.queue[0]
-					elif self.dj_next_track:
-						next_track_path = self.dj_next_track.get("path")
-					elif self.dj_carpincho_enabled and self.tracks_cache:
-						self._pick_dj_next()
-						if self.dj_next_track:
-							next_track_path = self.dj_next_track.get("path")
+			# Verificamos si tocaba pausar después del track que acaba de terminar
+			should_pause = (self.pause_after_path is not None) and (just_finished == self.pause_after_path)
+			if should_pause:
+				self.pause_after_path = None
 
-					bg_offset = 0.0
-					if next_track_path:
-						total_dur = get_track_duration_seconds(next_track_path, self.tracks_cache)
-						if total_dur > 10.0:
-							bg_offset = total_dur / 2.0  # Desde la mitad de la canción
-						elif total_dur > 0:
-							bg_offset = total_dur * 0.4
-
-					async def _set_synthesizing_radio(is_synth: bool):
-						self.is_synthesizing_radio = is_synth
-						await broadcast_state()
-
-					ok, display_title, script, radio_err = await self.radio_service.get_or_synthesize(
-						next_track_path=next_track_path,
-						bg_offset=bg_offset,
-						on_synthesis_status=_set_synthesizing_radio,
-					)
-
-					if ok:
+			# Modo Radio: Intervención de locución cada 2 o 3 canciones durante transiciones naturales
+			has_next_track = bool(self.queue or (self.dj_carpincho_enabled and self.tracks_cache))
+			if (
+				not skipped_by_user
+				and self.radio_mode_enabled
+				and self.radio_service.is_available
+				and has_next_track
+				and just_finished is not None
+				and just_finished != self.radio_announcement_path
+			):
+				self.radio_track_counter += 1
+				if self.radio_track_counter >= self.radio_tracks_until_next:
+					# Preguntamos si hay internet puntualmente antes de activar la síntesis radial
+					check_net_fn = getattr(radio_service_mod, "check_internet_async", check_internet_async)
+					if not await check_net_fn(timeout=0.8):
 						self.radio_track_counter = 0
 						self.radio_tracks_until_next = random.randint(2, 3)
-						self.is_playing_radio_announcement = True
-						self.url_metadata[self.radio_announcement_path] = {
-							"path": self.radio_announcement_path,
-							"display_title": display_title,
-							"display_artist": "Carpincho Locutor 🎙️",
-							"album": "La Rockola del Carpincho",
-							"duration_str": "0:12",
-						}
-						self._archive_radio_announcement(
-							self.radio_announcement_path,
-							script_text=script,
-							display_title=display_title,
-						)
-						await self.play_track(self.radio_announcement_path)
-						if should_pause:
-							await self.set_pause(True)
-						await broadcast_state()
-						return
-					else:
 						logger.warning(
-							f"🎙️ Carpincho Locutor: No se pudo sintetizar la locución radial ({radio_err}). Pasando al tema siguiente..."
+							"📻 Carpincho Locutor: no hay conexión a internet disponible. Omitiendo locución radial para no demorar la reproducción."
+						)
+					else:
+						ok = False
+						display_title = ""
+						script = ""
+						radio_err = ""
+
+						# Averiguamos qué tema viene realmente en este momento para superponerlo como cortina en caliente
+						next_track_path = None
+						if self.queue:
+							next_track_path = self.queue[0]
+						elif self.dj_next_track:
+							next_track_path = self.dj_next_track.get("path")
+						elif self.dj_carpincho_enabled and self.tracks_cache:
+							self._pick_dj_next()
+							if self.dj_next_track:
+								next_track_path = self.dj_next_track.get("path")
+
+						bg_offset = 0.0
+						if next_track_path:
+							total_dur = get_track_duration_seconds(next_track_path, self.tracks_cache)
+							if total_dur > 10.0:
+								bg_offset = total_dur / 2.0  # Desde la mitad de la canción
+							elif total_dur > 0:
+								bg_offset = total_dur * 0.4
+
+						async def _set_synthesizing_radio(is_synth: bool):
+							self.is_synthesizing_radio = is_synth
+							await broadcast_state()
+
+						ok, display_title, script, radio_err = await self.radio_service.get_or_synthesize(
+							next_track_path=next_track_path,
+							bg_offset=bg_offset,
+							on_synthesis_status=_set_synthesizing_radio,
 						)
 
-		if self.queue:
-			next_path = self.queue.pop(0)
-			self.dj_next_track = None  # Limpiamos (si la fila tenía temas, el DJ no pre-eligió)
-			await self.play_track(next_path)
-			if should_pause:
-				await self.set_pause(True)
-		elif self.dj_carpincho_enabled and self.tracks_cache:
-			# Usamos la pre-elección del DJ si existe; sino elegimos ahora
-			if self.dj_next_track:
-				chosen = self.dj_next_track
-			else:
-				played_paths = set(self.history)
-				unplayed = [t for t in self.tracks_cache if t["path"] not in played_paths]
-				chosen = self._select_candidate_dj_track(unplayed)
+						if ok:
+							self.radio_track_counter = 0
+							self.radio_tracks_until_next = random.randint(2, 3)
+							self.is_playing_radio_announcement = True
+							self.url_metadata[self.radio_announcement_path] = {
+								"path": self.radio_announcement_path,
+								"display_title": display_title,
+								"display_artist": "Carpincho Locutor 🎙️",
+								"album": "La Rockola del Carpincho",
+								"duration_str": "0:12",
+							}
+							self._archive_radio_announcement(
+								self.radio_announcement_path,
+								script_text=script,
+								display_title=display_title,
+							)
+							await self.play_track(self.radio_announcement_path)
+							if should_pause:
+								await self.set_pause(True)
+							await broadcast_state()
+							return
+						else:
+							logger.warning(
+								f"🎙️ Carpincho Locutor: No se pudo sintetizar la locución radial ({radio_err}). Pasando al tema siguiente..."
+							)
 
-			if chosen:
-				logger.info(
-					f"🦦 DJ Carpincho salvó las papas con un clásico: {chosen['display_title']} {'(al toque)' if skipped_by_user or just_finished == self.radio_announcement_path else '(arranca en 10 segundos...)'}"
-				)
-
-				# Durante el countdown mostramos el tema elegido en dj_next_track
-				# para que todos los clientes vean qué viene — lo borramos recién cuando arranca.
-				self.dj_next_track = chosen
-				await broadcast_state()
-
-				if not skipped_by_user and just_finished != self.radio_announcement_path:
-					# Guardamos el countdown como task cancelable
-					self.dj_countdown_task = asyncio.current_task()
-					try:
-						await self.mpv._send(json.dumps({"command": ["set_property", "pause", True]}))
-						await asyncio.sleep(10)  # Pausa de 10 segundos antes de que el DJ arranque
-						await self.mpv._send(json.dumps({"command": ["set_property", "pause", False]}))
-					except asyncio.CancelledError:
-						logger.info("Countdown del DJ cancelado, no se reproduce el tema pre-elegido.")
-						if self.dj_next_track == chosen:
-							self.dj_next_track = None
-						return
-					finally:
-						self.dj_countdown_task = None
-
-				self.dj_next_track = None  # Ahora sí borramos: el tema está por arrancar
-
-				await self.play_track(chosen["path"])
+			if self.queue:
+				next_path = self.queue.pop(0)
+				self.dj_next_track = None  # Limpiamos (si la fila tenía temas, el DJ no pre-elegió)
+				await self.play_track(next_path)
 				if should_pause:
 					await self.set_pause(True)
-				# Pre-elegimos el siguiente para el front
-				self._pick_dj_next()
-				return
-			else:
-				logger.info("DJ Carpincho se quedó sin temas nuevos esta sesión.")
-				self.dj_carpincho_enabled = False
-				await self.stop_playback()
-		else:
-			# Sin fila ni DJ: frena
-			await self.stop_playback()
+			elif self.dj_carpincho_enabled and self.tracks_cache:
+				# Usamos la pre-elección del DJ si existe; sino elegimos ahora
+				if self.dj_next_track:
+					chosen = self.dj_next_track
+				else:
+					played_paths = set(self.history)
+					unplayed = [t for t in self.tracks_cache if t["path"] not in played_paths]
+					chosen = self._select_candidate_dj_track(unplayed)
 
-		self._pick_dj_next()  # Actualiza la preview después de tocar la fila
+				if chosen:
+					logger.info(
+						f"🦦 DJ Carpincho salvó las papas con un clásico: {chosen['display_title']} {'(al toque)' if skipped_by_user or just_finished == self.radio_announcement_path else '(arranca en 10 segundos...)'}"
+					)
+
+					# Durante el countdown mostramos el tema elegido en dj_next_track
+					# para que todos los clientes vean qué viene — lo borramos recién cuando arranca.
+					self.dj_next_track = chosen
+					await broadcast_state()
+
+					if not skipped_by_user and just_finished != self.radio_announcement_path:
+						# Guardamos el countdown como task cancelable
+						self.dj_countdown_task = asyncio.current_task()
+						try:
+							await self.mpv._send(json.dumps({"command": ["set_property", "pause", True]}))
+							await asyncio.sleep(10)  # Pausa de 10 segundos antes de que el DJ arranque
+							await self.mpv._send(json.dumps({"command": ["set_property", "pause", False]}))
+						except asyncio.CancelledError:
+							logger.info("Countdown del DJ cancelado, no se reproduce el tema pre-elegido.")
+							if self.dj_next_track == chosen:
+								self.dj_next_track = None
+							return
+						finally:
+							self.dj_countdown_task = None
+
+					self.dj_next_track = None  # Ahora sí borramos: el tema está por arrancar
+
+					await self.play_track(chosen["path"])
+					if should_pause:
+						await self.set_pause(True)
+					# Pre-elegimos el siguiente para el front
+					self._pick_dj_next()
+					return
+				else:
+					logger.info("DJ Carpincho se quedó sin temas nuevos esta sesión.")
+					self.dj_carpincho_enabled = False
+					await self.stop_playback()
+			else:
+				# Sin fila ni DJ: frena
+				await self.stop_playback()
+
+			self._pick_dj_next()  # Actualiza la preview después de tocar la fila
 
 	async def play_prev(self):
 		if self.history:

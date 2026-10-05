@@ -37,6 +37,10 @@ def init_db(db_path: Path | str | None = None) -> None:
 	path = Path(db_path) if db_path else get_default_db_path()
 	apply_migrations(path)
 
+	with get_db_connection(path) as conn:
+		conn.execute("PRAGMA journal_mode=WAL;")
+		conn.execute("PRAGMA synchronous=NORMAL;")
+
 	# Saneamiento de locuciones radiales en historial (evitando borrar pistas legítimas de la biblioteca)
 	try:
 		execute_write(
@@ -74,9 +78,7 @@ def get_db_connection(db_path: Path | str | None = None) -> Generator[sqlite3.Co
 	)
 	conn.row_factory = sqlite3.Row
 	try:
-		# Activamos WAL (Write-Ahead Logging) y synchronous=NORMAL para máximo rendimiento y seguridad
-		conn.execute("PRAGMA journal_mode=WAL;")
-		conn.execute("PRAGMA synchronous=NORMAL;")
+		# Establecemos timeout para concurrencia; WAL y synchronous se configuran en init_db/migraciones
 		conn.execute("PRAGMA busy_timeout=30000;")
 		yield conn
 	finally:

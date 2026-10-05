@@ -128,6 +128,8 @@ def apply_migrations(db_path: Path | str) -> int:
 	conn = sqlite3.connect(str(path), timeout=30.0)
 	try:
 		conn.execute("PRAGMA journal_mode=WAL;")
+		conn.execute("PRAGMA synchronous=NORMAL;")
+		conn.execute("PRAGMA busy_timeout=30000;")
 		c = conn.cursor()
 		c.execute("""
 			CREATE TABLE IF NOT EXISTS schema_version (

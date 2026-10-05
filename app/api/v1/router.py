@@ -18,9 +18,10 @@ api_v1_router.include_router(library_router)
 api_v1_router.include_router(media_router)
 api_v1_router.include_router(system_router)
 
-# Router legacy: expone endpoints de primer nivel y /api/weather/preview para compatibilidad con el frontend
+# Router legacy: expone endpoints de primer nivel y /api para compatibilidad con el frontend
 legacy_router = APIRouter()
 legacy_router.include_router(playback_router)
 legacy_router.include_router(library_router)
 legacy_router.include_router(media_router)
+legacy_router.include_router(system_router)
 legacy_router.include_router(system_router, prefix="/api")

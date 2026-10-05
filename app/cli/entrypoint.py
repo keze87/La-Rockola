@@ -8,94 +8,41 @@ import argparse
 import logging
 import multiprocessing
 import os
-import re
-import socket
+import shutil
 import subprocess
 import sys
+import webbrowser
 from pathlib import Path
-from typing import Any
 
 from app.core.config import (
-	DEFAULT_WEATHER_LOCATION,
+	Settings,
 	get_config_path,
 	load_config,
+	set_settings,
 )
 from app.core.logging import configure_logging
+from app.core.network import (  # noqa: F401
+	get_local_ip,
+	get_server_urls,
+	get_url_subpath,
+	normalize_url,
+)
 
 logger = logging.getLogger("RockolaCarpincho")
 _dependencies_checked = False
 
+# Aumentamos el límite de descriptores de archivos en sistemas POSIX para soportar colecciones grandes
+try:
+	import resource
 
-def get_local_ip() -> str:
-	"""Obtiene la dirección IP local de la máquina en la red LAN."""
-	s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-	try:
-		s.connect(("8.8.8.8", 80))
-		ip = s.getsockname()[0]
-	except Exception:
-		try:
-			ip = socket.gethostbyname(socket.gethostname())
-		except Exception:
-			ip = "127.0.0.1"
-	finally:
-		s.close()
-	return ip
-
-
-def normalize_url(url: str | None) -> str | None:
-	"""Normaliza una URL asegurando http/https y sin trailing slashes."""
-	if not url:
-		return None
-	url = str(url).strip()
-	if not url:
-		return None
-	if not re.match(r"^https?://", url, re.IGNORECASE):
-		url = f"http://{url}"
-	return url.rstrip("/")
-
-
-def get_url_subpath(url: str | None) -> str:
-	"""Extrae el subpath de una URL (ej: '/rockola')."""
-	norm = normalize_url(url)
-	if not norm:
-		return ""
-	from urllib.parse import urlparse
-
-	path = urlparse(norm).path.rstrip("/")
-	return path if (path.startswith("/") or not path) else f"/{path}"
-
-
-def get_server_urls(host: str, port: int, custom_url: str | None = None) -> dict[str, Any]:
-	"""Calcula las URLs disponibles para acceder a La Rockola."""
-	local_ip = get_local_ip()
-	loopback_url = f"http://localhost:{port}"
-	norm_custom = normalize_url(custom_url)
-
-	if norm_custom:
-		local_url = norm_custom
-		network_url = norm_custom
-	elif host in ("0.0.0.0", ""):
-		display_ip = local_ip if local_ip != "127.0.0.1" else "localhost"
-		local_url = f"http://{display_ip}:{port}"
-		network_url = f"http://{local_ip}:{port}" if local_ip != "127.0.0.1" else None
-	elif host in ("127.0.0.1", "localhost"):
-		local_url = loopback_url
-		network_url = None
-	else:
-		local_url = f"http://{host}:{port}"
-		network_url = f"http://{host}:{port}"
-
-	return {
-		"custom_url": norm_custom,
-		"local_ip": local_ip,
-		"local_url": local_url,
-		"network_url": network_url,
-		"loopback_url": loopback_url,
-	}
+	soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+	resource.setrlimit(resource.RLIMIT_NOFILE, (hard, hard))
+except (ImportError, OSError, ValueError, AttributeError):
+	pass
 
 
 def open_browser_url(url: str, delay: float = 0.0) -> None:
-	"""Abre la URL en el navegador nativo según la plataforma."""
+	"""Abre la URL en el navegador nativo según la plataforma con aislamiento de entorno."""
 	from app.engine.audio_analysis import get_clean_env
 
 	clean_env = get_clean_env()
@@ -107,22 +54,42 @@ def open_browser_url(url: str, delay: float = 0.0) -> None:
 			pass
 	elif sys.platform == "darwin":
 		try:
-			subprocess.Popen(["open", url], env=clean_env)
+			subprocess.Popen(
+				["open", url],
+				env=clean_env,
+				stdout=subprocess.DEVNULL,
+				stderr=subprocess.DEVNULL,
+			)
 			return
 		except Exception:
 			pass
 	else:
-		import shutil
-
 		if shutil.which("xdg-open"):
 			try:
-				subprocess.Popen(["xdg-open", url], env=clean_env)
+				subprocess.Popen(
+					["xdg-open", url],
+					env=clean_env,
+					stdout=subprocess.DEVNULL,
+					stderr=subprocess.DEVNULL,
+				)
 				return
 			except Exception:
 				pass
-	import webbrowser
 
-	webbrowser.open(url)
+	old_env = os.environ.copy()
+	try:
+		clean = get_clean_env()
+		for k in ("LD_LIBRARY_PATH", "LD_PRELOAD", "PYTHONPATH", "PYTHONHOME", "DYLD_LIBRARY_PATH"):
+			if k not in clean and k in os.environ:
+				del os.environ[k]
+			elif k in clean:
+				os.environ[k] = clean[k]
+		webbrowser.open(url)
+	except Exception as e:
+		logger.debug(f"Aviso en webbrowser.open: {e}")
+	finally:
+		os.environ.clear()
+		os.environ.update(old_env)
 
 
 def print_startup_banner(
@@ -571,52 +538,49 @@ def main() -> None:
 	if should_run_wizard:
 		config = run_interactive_wizard(config_path, config)
 
-	final_host = args.host if args.host is not None else config.get("host", "0.0.0.0")
-	final_port = args.port if args.port is not None else config.get("port", 1729)
-	final_dir = args.dir if args.dir is not None else config.get("music_dir")
-	final_dir2 = args.dir2 if args.dir2 is not None else config.get("music_dir2")
-	final_url = args.url if args.url is not None else config.get("url")
-	final_weather = (
-		args.weather_location
-		if args.weather_location is not None
-		else config.get("weather_location", DEFAULT_WEATHER_LOCATION)
-	)
-	final_open_browser = args.open_browser if args.open_browser is not None else bool(config.get("open_browser", True))
+	# Cargamos los settings tipados desde el JSON y mergeamos los argumentos de CLI
+	settings = Settings.from_config_file(config_path)
+	settings = settings.merge_cli_args(args)
+	set_settings(settings)
 
-	urls = get_server_urls(final_host, final_port, custom_url=final_url)
+	final_log_level = settings.log_level.upper()
+	is_debug = settings.debug or final_log_level == "DEBUG"
+	configure_logging(debug=is_debug, level=final_log_level)
+
+	urls = get_server_urls(settings.host, settings.port, custom_url=settings.url)
 
 	state = APIState(
-		initial_dir=final_dir,
-		secondary_dir=final_dir2,
-		open_browser=final_open_browser,
+		initial_dir=settings.music_dir,
+		secondary_dir=settings.music_dir2,
+		open_browser=settings.open_browser,
 	)
-	state.radio_service.weather_location = final_weather
-	state.weather_location = final_weather
-	state.server_host = final_host
-	state.server_port = final_port
+	state.radio_service.weather_location = settings.weather_location
+	state.weather_location = settings.weather_location
+	state.server_host = settings.host
+	state.server_port = settings.port
 	state.local_ip = urls["local_ip"]
 	state.server_url = urls["local_url"]
-	if final_url:
-		state.configured_url = final_url
-		state.subpath = get_url_subpath(final_url)
+	if settings.url:
+		state.configured_url = settings.url
+		state.subpath = get_url_subpath(settings.url)
 	set_global_state(state)
 
 	print_startup_banner(
-		host=final_host,
-		port=final_port,
-		music_dir=final_dir,
-		music_dir2=final_dir2,
-		open_browser=final_open_browser,
+		host=settings.host,
+		port=settings.port,
+		music_dir=settings.music_dir,
+		music_dir2=settings.music_dir2,
+		open_browser=settings.open_browser,
 		config_path=config_path,
-		custom_url=final_url,
-		weather_location=final_weather,
+		custom_url=settings.url,
+		weather_location=settings.weather_location,
 		log_level=final_log_level,
 	)
 
 	uvicorn.run(
 		app,
-		host=final_host,
-		port=final_port,
+		host=settings.host,
+		port=settings.port,
 		proxy_headers=True,
 		forwarded_allow_ips="*",
 		access_log=is_debug,
