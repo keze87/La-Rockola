@@ -506,6 +506,21 @@ def build_arg_parser() -> argparse.ArgumentParser:
 	return parser
 
 
+def configure_console_encoding() -> None:
+	"""Configura UTF-8 en consolas de Windows para que los emojis criollos no pinchen."""
+	if sys.platform == "win32":
+		if hasattr(sys.stdout, "reconfigure"):
+			try:
+				sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+			except Exception:
+				pass
+		if hasattr(sys.stderr, "reconfigure"):
+			try:
+				sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+			except Exception:
+				pass
+
+
 def enable_system_site_packages() -> None:
 	"""Permite a entornos virtuales o embebidos acceder a paquetes del sistema si faltan."""
 	if not getattr(sys, "frozen", False):
@@ -533,6 +548,7 @@ def main() -> None:
 	from app.main import app
 
 	multiprocessing.freeze_support()
+	configure_console_encoding()
 	enable_system_site_packages()
 	parser = build_arg_parser()
 	args = parser.parse_args()

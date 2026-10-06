@@ -47,6 +47,7 @@ from app.cli.entrypoint import (
 	_dependencies_checked,
 	build_arg_parser,
 	check_dependencies,
+	configure_console_encoding,
 	main,
 	open_browser_url,
 	print_startup_banner,
@@ -282,5 +283,6 @@ if not getattr(sys, "frozen", False):
 
 
 if __name__ == "__main__":
+	configure_console_encoding()
 	enable_system_site_packages()
 	main()

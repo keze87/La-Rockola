@@ -24,3 +24,23 @@ def test_build_arg_parser():
 	assert args2.host == "127.0.0.1"
 	assert args2.debug is True
 	assert args2.setup is True
+
+
+def test_configure_console_encoding(monkeypatch):
+	from app.cli.entrypoint import configure_console_encoding
+
+	reconfigured = []
+
+	class DummyStream:
+		def reconfigure(self, **kwargs):
+			reconfigured.append(kwargs)
+
+	dummy = DummyStream()
+	monkeypatch.setattr("sys.platform", "win32")
+	monkeypatch.setattr("sys.stdout", dummy)
+	monkeypatch.setattr("sys.stderr", dummy)
+
+	configure_console_encoding()
+	assert len(reconfigured) == 2
+	assert reconfigured[0]["encoding"] == "utf-8"
+	assert reconfigured[0]["errors"] == "replace"
