@@ -328,7 +328,7 @@ class LibraryService:
 		self,
 		target_dirs: list,
 		extract_mood: bool = True,
-		max_workers: int = 16,
+		max_workers: int | None = None,
 		extract_fingerprint: bool | None = None,
 		state: Any = None,
 	) -> list[dict[str, Any]]:
@@ -482,7 +482,8 @@ class LibraryService:
 				)
 				return (str(target_f), mtime, track_dict, track_hash, db_tuple, track_obj.fingerprint)
 
-			worker_count = min(max_workers, (os.cpu_count() or 4) * 2)
+			# Aprovechamos todos los núcleos del micro por defecto para no dejar ningún hilo colgado
+			worker_count = max_workers if max_workers is not None else max(1, os.cpu_count() or 4)
 			with concurrent.futures.ThreadPoolExecutor(max_workers=worker_count) as executor:
 				futures = {executor.submit(_process_single_file, item): item for item in miss_files}
 				for processed_count, future in enumerate(concurrent.futures.as_completed(futures), 1):
@@ -667,8 +668,9 @@ class LibraryService:
 
 			return t_dict["track_hash"], path_str, bpm, energy, centroid, fp
 
-		batch_size = 25
-		workers = max_workers or min(4, os.cpu_count() or 2)
+		# Aprovechamos todos los núcleos del procesador para la sintonización de fondo
+		workers = max_workers or max(1, os.cpu_count() or 4)
+		batch_size = max(25, workers)
 
 		try:
 			for i in range(0, len(pending_tracks), batch_size):
@@ -676,11 +678,8 @@ class LibraryService:
 				loop = asyncio.get_running_loop()
 
 				with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
-					batch_results = await loop.run_in_executor(
-						pool,
-						lambda b: [_process_mood_item(item) for item in b],
-						batch,
-					)
+					futures = [loop.run_in_executor(pool, _process_mood_item, item) for item in batch]
+					batch_results = await asyncio.gather(*futures)
 
 				try:
 					self.track_repo.update_mood_batch([(r[2], r[3], r[4], r[5], r[0]) for r in batch_results])

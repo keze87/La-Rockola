@@ -1,5 +1,7 @@
+import concurrent.futures
+import os
 import sqlite3
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import server
 
@@ -526,3 +528,91 @@ async def test_background_mood_broadcasts_library(clean_state, tmp_path):
 		await state.run_background_mood_analysis()
 
 	assert any(c.get("include_library") is True for c in broadcast_calls)
+
+
+def test_scan_directory_uses_every_core_by_default(clean_state, tmp_path, monkeypatch):
+	"""Verifica que scan_directory use todos los núcleos lógicos disponibles por defecto sin topear en 16."""
+	music_dir = tmp_path / "Music"
+	music_dir.mkdir()
+	f = music_dir / "test.mp3"
+	f.write_bytes(b"TEST_AUDIO_CONTENT")
+
+	# Simulamos una máquina con 32 núcleos lógicos (como un i9-14900HX)
+	monkeypatch.setattr(os, "cpu_count", lambda: 32)
+
+	used_workers = None
+	original_executor = concurrent.futures.ThreadPoolExecutor
+
+	def mock_executor(*args, **kwargs):
+		nonlocal used_workers
+		used_workers = kwargs.get("max_workers")
+		return original_executor(*args, **kwargs)
+
+	with (
+		patch("concurrent.futures.ThreadPoolExecutor", side_effect=mock_executor),
+		patch("app.services.library.Track.to_dict", return_value={"title": "T", "artist": "A", "duration_str": "1:00"}),
+	):
+		clean_state.scan_directory([str(music_dir)], extract_mood=False)
+
+	# Debe usar los 32 núcleos, no limitarse a 16
+	assert used_workers == 32
+
+
+def test_scan_directory_respects_explicit_max_workers(clean_state, tmp_path, monkeypatch):
+	"""Verifica que scan_directory respete un valor explícito de max_workers si se le pasa."""
+	music_dir = tmp_path / "Music"
+	music_dir.mkdir()
+	f = music_dir / "test.mp3"
+	f.write_bytes(b"TEST_AUDIO_CONTENT")
+
+	monkeypatch.setattr(os, "cpu_count", lambda: 32)
+
+	used_workers = None
+	original_executor = concurrent.futures.ThreadPoolExecutor
+
+	def mock_executor(*args, **kwargs):
+		nonlocal used_workers
+		used_workers = kwargs.get("max_workers")
+		return original_executor(*args, **kwargs)
+
+	with (
+		patch("concurrent.futures.ThreadPoolExecutor", side_effect=mock_executor),
+		patch("app.services.library.Track.to_dict", return_value={"title": "T", "artist": "A", "duration_str": "1:00"}),
+	):
+		clean_state.scan_directory([str(music_dir)], extract_mood=False, max_workers=8)
+
+	assert used_workers == 8
+
+
+@pytest.mark.asyncio
+async def test_background_mood_analysis_uses_every_core_by_default(clean_state, tmp_path, monkeypatch):
+	"""Verifica que run_background_mood_analysis use todos los núcleos lógicos disponibles si no se pasa max_workers."""
+
+	music_dir = tmp_path / "Music"
+	music_dir.mkdir()
+	f = music_dir / "test.mp3"
+	f.write_bytes(b"TEST_AUDIO_CONTENT")
+
+	monkeypatch.setattr(os, "cpu_count", lambda: 32)
+
+	state = clean_state
+	state.tracks_cache = [{"path": str(f), "track_hash": "th1", "bpm": 0.0, "energy": 0.0, "spectral_centroid": 0.0}]
+
+	used_workers = None
+	original_executor = concurrent.futures.ThreadPoolExecutor
+
+	def mock_executor(*args, **kwargs):
+		nonlocal used_workers
+		used_workers = kwargs.get("max_workers")
+		return original_executor(*args, **kwargs)
+
+	with (
+		patch("concurrent.futures.ThreadPoolExecutor", side_effect=mock_executor),
+		patch("app.engine.audio_analysis.find_binary", return_value="/usr/bin/ffmpeg"),
+		patch("app.engine.audio_analysis.extract_audio_features_ffmpeg", return_value=(120.0, 0.5, 1500.0)),
+		patch("shutil.which", return_value=None),
+		patch("app.engine.state.broadcast_state", AsyncMock()),
+	):
+		await state.run_background_mood_analysis()
+
+	assert used_workers == 32

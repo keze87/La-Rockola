@@ -445,7 +445,7 @@ class APIState:
 		self,
 		target_dirs: list,
 		extract_mood: bool = True,
-		max_workers: int = 16,
+		max_workers: int | None = None,
 		extract_fingerprint: bool | None = None,
 	):
 		"""Escanea directorios delegando en LibraryService."""
