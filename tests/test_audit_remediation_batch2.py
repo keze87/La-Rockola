@@ -14,6 +14,16 @@ import pytest
 from fastapi.testclient import TestClient
 
 
+def _create_mock_conn():
+	mock_reader = MagicMock()
+	mock_reader.readline = AsyncMock(return_value=b"")
+	mock_writer = MagicMock()
+	mock_writer.drain = AsyncMock()
+	mock_writer.write = MagicMock()
+	mock_writer.close = MagicMock()
+	return mock_reader, mock_writer
+
+
 @pytest.mark.asyncio
 async def test_mpv_flags_mpris_and_styling(monkeypatch):
 	"""Verifica que AsyncMpvController inyecte los flags de subtítulos, MPRIS y wayland/x11."""
@@ -55,7 +65,7 @@ async def test_mpv_flags_mpris_and_styling(monkeypatch):
 		env_dict = {"DISPLAY": ":0", "PATH": "/usr/bin"}
 		with patch("app.engine.mpv_controller.get_clean_env", return_value=env_dict.copy()):
 			with patch("os.path.exists", return_value=True):
-				with patch("asyncio.open_unix_connection", return_value=(AsyncMock(), AsyncMock())):
+				with patch("asyncio.open_unix_connection", return_value=_create_mock_conn()):
 					await controller.start(state_ref=state_mock)
 
 	# Verificamos flags inyectados
@@ -75,7 +85,7 @@ async def test_mpv_flags_mpris_and_styling(monkeypatch):
 		mock_find_bin.side_effect = _find_bin
 		with patch("app.engine.mpv_controller.get_clean_env", return_value=env_dict.copy()):
 			with patch("os.path.exists", return_value=True):
-				with patch("asyncio.open_unix_connection", return_value=(AsyncMock(), AsyncMock())):
+				with patch("asyncio.open_unix_connection", return_value=_create_mock_conn()):
 					await controller.start(state_ref=state_mock)
 
 	assert "--load-scripts=yes" in captured_args
@@ -109,7 +119,7 @@ async def test_mpv_path_prepended_for_ytdlp(monkeypatch):
 		env_dict = {"PATH": "/usr/bin:/bin"}
 		with patch("app.engine.mpv_controller.get_clean_env", return_value=env_dict):
 			with patch("os.path.exists", return_value=True):
-				with patch("asyncio.open_unix_connection", return_value=(AsyncMock(), AsyncMock())):
+				with patch("asyncio.open_unix_connection", return_value=_create_mock_conn()):
 					await controller.start()
 
 	assert captured_env["PATH"].startswith("/custom/tools")

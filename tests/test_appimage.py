@@ -154,10 +154,21 @@ def test_build_appimage_success(tmp_path, monkeypatch):
 			assert res_path.stat().st_mode & stat.S_IXUSR
 
 
+def test_is_frontend_built(tmp_path, monkeypatch):
+	fake_dist = tmp_path / "dist"
+	monkeypatch.setattr(build_appimage, "DIST_DIR", fake_dist)
+	assert build_appimage.is_frontend_built() is False
+
+	fake_dist.mkdir()
+	(fake_dist / "index.html").touch()
+	assert build_appimage.is_frontend_built() is True
+
+
 def test_build_frontend_skips_when_not_forced(tmp_path, monkeypatch):
 	fake_dist = tmp_path / "dist"
 	fake_dist.mkdir()
 	(fake_dist / "index.html").touch()
+	(fake_dist / "assets").mkdir(exist_ok=True)
 	monkeypatch.setattr(build_appimage, "DIST_DIR", fake_dist)
 
 	with patch("subprocess.run") as mock_run:

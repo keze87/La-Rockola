@@ -85,6 +85,7 @@ async def test_mpv_start_is_restart_behavior():
 	mock_writer = MagicMock()
 	mock_writer.drain = AsyncMock()
 	mock_writer.write = MagicMock()
+	mock_writer.close = MagicMock()
 
 	with (
 		patch("asyncio.create_subprocess_exec") as mock_exec,
@@ -157,11 +158,13 @@ async def test_mpv_start_passes_clean_env():
 	mock_proc = MagicMock()
 	mock_proc.returncode = None
 	mock_proc.stderr = AsyncMock()
+	mock_proc.stderr.readline = AsyncMock(return_value=b"")
 
 	mock_reader = MagicMock()
 	mock_reader.readline = AsyncMock(return_value=b"")
 	mock_writer = MagicMock()
 	mock_writer.drain = AsyncMock()
+	mock_writer.close = MagicMock()
 
 	with (
 		patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec,
@@ -246,11 +249,13 @@ async def test_mpv_start_display_args_with_display(monkeypatch):
 	mock_proc = MagicMock()
 	mock_proc.returncode = None
 	mock_proc.stderr = AsyncMock()
+	mock_proc.stderr.readline = AsyncMock(return_value=b"")
 
 	mock_reader = MagicMock()
 	mock_reader.readline = AsyncMock(return_value=b"")
 	mock_writer = MagicMock()
 	mock_writer.drain = AsyncMock()
+	mock_writer.close = MagicMock()
 
 	clean_env = {"WAYLAND_DISPLAY": "wayland-0", "DISPLAY": ":0"}
 
@@ -277,11 +282,13 @@ async def test_mpv_start_display_args_headless(monkeypatch):
 	mock_proc = MagicMock()
 	mock_proc.returncode = None
 	mock_proc.stderr = AsyncMock()
+	mock_proc.stderr.readline = AsyncMock(return_value=b"")
 
 	mock_reader = MagicMock()
 	mock_reader.readline = AsyncMock(return_value=b"")
 	mock_writer = MagicMock()
 	mock_writer.drain = AsyncMock()
+	mock_writer.close = MagicMock()
 
 	clean_env = {}  # No display variables
 
@@ -362,6 +369,7 @@ async def test_mpv_start_debug_mode_args_and_pipes():
 	mock_reader.readline = AsyncMock(return_value=b"")
 	mock_writer = MagicMock()
 	mock_writer.drain = AsyncMock()
+	mock_writer.close = MagicMock()
 
 	with (
 		patch("server.logger.isEnabledFor", side_effect=lambda lvl: lvl == server.logging.DEBUG),
@@ -392,6 +400,7 @@ async def test_mpv_start_non_debug_mode_args_and_pipes():
 	mock_reader.readline = AsyncMock(return_value=b"")
 	mock_writer = MagicMock()
 	mock_writer.drain = AsyncMock()
+	mock_writer.close = MagicMock()
 
 	with (
 		patch("server.logger.isEnabledFor", return_value=False),

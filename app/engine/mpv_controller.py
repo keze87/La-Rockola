@@ -271,7 +271,7 @@ class AsyncMpvController:
 		try:
 			while self.process and self.process.returncode is None and self.process.stdout:
 				line = await self.process.stdout.readline()
-				if not line:
+				if not line or not isinstance(line, (bytes, bytearray)):
 					break
 				decoded = line.decode("utf-8", errors="replace").rstrip()
 				if decoded:
@@ -283,7 +283,7 @@ class AsyncMpvController:
 		try:
 			while self.process and self.process.returncode is None and self.process.stderr:
 				line = await self.process.stderr.readline()
-				if not line:
+				if not line or not isinstance(line, (bytes, bytearray)):
 					break
 				decoded = line.decode("utf-8", errors="replace").rstrip()
 				if decoded:
@@ -319,7 +319,9 @@ class AsyncMpvController:
 			self.reader = None
 			if self.writer:
 				try:
-					self.writer.close()
+					res = self.writer.close()
+					if asyncio.iscoroutine(res):
+						res.close()
 				except Exception:
 					pass
 				self.writer = None
@@ -338,7 +340,12 @@ class AsyncMpvController:
 		logger.debug("El socket Unix de MPV se cerró.")
 		self.reader = None
 		if self.writer:
-			self.writer.close()
+			try:
+				res = self.writer.close()
+				if asyncio.iscoroutine(res):
+					res.close()
+			except Exception:
+				pass
 			self.writer = None
 
 	async def _process_event_line(self, line: bytes) -> None:

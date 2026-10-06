@@ -263,6 +263,8 @@ def build_frontend() -> None:
 	"""Compila el frontend si no estamos en entorno portable/frozen (compatibilidad tests)."""
 	if getattr(sys, "frozen", False):
 		return
+	if any(arg in sys.argv for arg in ("-h", "--help")):
+		return
 	target_dir = globals().get("frontend_dir", Path(__file__).resolve().parent)
 	pkg = target_dir / "package.json"
 	if not pkg.exists():
@@ -272,6 +274,11 @@ def build_frontend() -> None:
 	if not node_modules.exists():
 		subprocess.run([npm_cmd, "install"], cwd=str(target_dir), check=True)
 	subprocess.run([npm_cmd, "run", "build"], cwd=str(target_dir), check=True)
+
+
+# Compilamos el front de una al arrancar si no estamos en un paquete congelado (frozen)
+if not getattr(sys, "frozen", False):
+	build_frontend()
 
 
 if __name__ == "__main__":

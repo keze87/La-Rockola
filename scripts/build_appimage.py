@@ -37,14 +37,21 @@ def log(msg: str):
 	print(f"[build-appimage] {msg}")
 
 
-try:
-	from . import binary_utils
-except (ImportError, ValueError):
-	import binary_utils
+def is_frontend_built() -> bool:
+	"""Verifica si el frontend ya fue compilado previamente en dist/."""
+	return (DIST_DIR / "index.html").is_file()
 
 
-def build_frontend(force=False):
-	binary_utils.build_frontend(root_dir=ROOT_DIR, force=force, log_fn=log)
+def build_frontend(force: bool = False) -> None:
+	"""Compila el frontend de Vue 3 si no existe o si se fuerza la recompilación."""
+	if not force and is_frontend_built():
+		print("[build-appimage] Frontend ya compilado en dist/, omitiendo (usar --force para recompilar).")
+		return
+
+	print("[build-appimage] Compilando el frontend de Vue 3 (npm run build)...")
+	npm_cmd = "npm.cmd" if sys.platform == "win32" else "npm"
+	subprocess.run([npm_cmd, "run", "build"], cwd=str(ROOT_DIR), check=True)
+	print("[build-appimage] Frontend compilado con éxito en dist/")
 
 
 def run_pyinstaller(skip=False) -> Path:
