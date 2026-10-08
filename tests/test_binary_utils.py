@@ -179,3 +179,141 @@ def test_shared_build_frontend(tmp_path, monkeypatch):
 	monkeypatch.setattr(subprocess, "run", fake_run)
 	binary_utils.build_frontend(root_dir=tmp_path, force=True)
 	assert called is True
+
+
+def test_shared_fetch_github_release_assets_api(monkeypatch):
+	fake_data = {
+		"tag_name": "v1.0.0",
+		"assets": [
+			{"name": "tool-linux.tar.xz", "browser_download_url": "http://test.com/tool.tar.xz", "size": 1234}
+		],
+	}
+
+	class FakeResponse:
+		def read(self):
+			import json
+			return json.dumps(fake_data).encode("utf-8")
+
+		def __enter__(self):
+			return self
+
+		def __exit__(self, *args):
+			pass
+
+	monkeypatch.setattr(binary_utils.urllib.request, "urlopen", lambda req, timeout=10: FakeResponse())
+	res = binary_utils.fetch_github_release_assets(
+		api_url="http://api.github.com/test",
+		html_url="http://github.com/test",
+		user_agent="TestAgent",
+	)
+	assert res["tag"] == "v1.0.0"
+	assert len(res["assets"]) == 1
+	assert res["assets"][0]["name"] == "tool-linux.tar.xz"
+
+
+def test_shared_fetch_github_release_assets_fallback(monkeypatch):
+	logs = []
+
+	class FakeHtmlResponse:
+		def geturl(self):
+			return "https://github.com/owner/repo/releases/tag/v2.1.0"
+
+		def __enter__(self):
+			return self
+
+		def __exit__(self, *args):
+			pass
+
+	def fake_urlopen(req, timeout=10):
+		url = req.full_url if hasattr(req, "full_url") else str(req)
+		if "api.github.com" in url:
+			import urllib.error
+			raise urllib.error.URLError("Rate limit")
+		return FakeHtmlResponse()
+
+	def fake_builder(tag):
+		return [{"name": f"asset-{tag}.zip", "url": f"http://dl/{tag}.zip", "size": 0}]
+
+	monkeypatch.setattr(binary_utils.urllib.request, "urlopen", fake_urlopen)
+	res = binary_utils.fetch_github_release_assets(
+		api_url="http://api.github.com/test",
+		html_url="http://github.com/test",
+		user_agent="TestAgent",
+		fallback_builder=fake_builder,
+		log_fn=logs.append,
+	)
+	assert res["tag"] == "v2.1.0"
+	assert res["assets"][0]["name"] == "asset-v2.1.0.zip"
+	assert any("fallback" in m.lower() or "error" in m.lower() for m in logs)
+
+
+def test_shared_extract_archive_binary_zip_and_tar(tmp_path):
+	import tarfile
+	import zipfile
+	import io
+
+	dest_dir = tmp_path / "extracted"
+	dest_dir.mkdir()
+
+	# Create test zip with binary
+	zip_file = tmp_path / "test.zip"
+	with zipfile.ZipFile(zip_file, "w") as zf:
+		zf.writestr("sub/bin_tool", b"echo binary_content")
+		zf.writestr("sub/other.txt", b"plain text")
+
+	success = binary_utils.extract_archive_binary(
+		archive_path=zip_file,
+		dest_dir=dest_dir,
+		target_names={"bin_tool", "bin_tool.exe"},
+	)
+	assert success is True
+	extracted_bin = dest_dir / "bin_tool"
+	assert extracted_bin.is_file()
+	assert extracted_bin.read_bytes() == b"echo binary_content"
+
+	# Create test tar.gz
+	tar_dest = tmp_path / "extracted_tar"
+	tar_dest.mkdir()
+	tar_file = tmp_path / "test.tar.gz"
+	with tarfile.open(tar_file, "w:gz") as tf:
+		data = b"tar content"
+		ti = tarfile.TarInfo(name="bin_tool")
+		ti.size = len(data)
+		tf.addfile(ti, io.BytesIO(data))
+
+	success_tar = binary_utils.extract_archive_binary(
+		archive_path=tar_file,
+		dest_dir=tar_dest,
+		target_names={"bin_tool"},
+	)
+	assert success_tar is True
+	assert (tar_dest / "bin_tool").read_bytes() == b"tar content"
+
+
+def test_shared_extract_archive_binary_zipslip_protection(tmp_path):
+	import zipfile
+
+	dest_dir = tmp_path / "safe_dir"
+	dest_dir.mkdir()
+
+	zip_file = tmp_path / "malicious.zip"
+	with zipfile.ZipFile(zip_file, "w") as zf:
+		zf.writestr("../../evil_bin", b"evil")
+
+	success = binary_utils.extract_archive_binary(
+		archive_path=zip_file,
+		dest_dir=dest_dir,
+		target_names={"evil_bin"},
+	)
+	assert success is False
+	assert not (tmp_path / "evil_bin").exists()
+
+
+def test_shared_mark_rockola_managed(tmp_path):
+	dest_dir = tmp_path / "bin"
+	dest_dir.mkdir()
+	success = binary_utils.mark_rockola_managed(dest_dir, "testtool")
+	assert success is True
+	assert (dest_dir / ".rockola_managed_testtool").is_file()
+	assert (dest_dir / ".last_testtool_update_check").is_file()
+

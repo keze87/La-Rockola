@@ -34,81 +34,60 @@ except (ImportError, ValueError):
 	from binary_utils import resolve_platform_and_arch
 
 
-def fetch_release_info(timeout: int = 10) -> dict:
+def _build_fallback_assets(tag: str) -> list[dict]:
+	"""Construye la lista de assets de fallback para un tag de chromaprint."""
+	ver = tag.lstrip("vV")
+	return [
+		{
+			"name": f"chromaprint-fpcalc-{ver}-windows-x86_64.zip",
+			"url": f"https://github.com/acoustid/chromaprint/releases/download/{tag}/chromaprint-fpcalc-{ver}-windows-x86_64.zip",
+			"size": 0,
+		},
+		{
+			"name": f"chromaprint-fpcalc-{ver}-linux-x86_64.tar.gz",
+			"url": f"https://github.com/acoustid/chromaprint/releases/download/{tag}/chromaprint-fpcalc-{ver}-linux-x86_64.tar.gz",
+			"size": 0,
+		},
+		{
+			"name": f"chromaprint-fpcalc-{ver}-linux-arm64.tar.gz",
+			"url": f"https://github.com/acoustid/chromaprint/releases/download/{tag}/chromaprint-fpcalc-{ver}-linux-arm64.tar.gz",
+			"size": 0,
+		},
+		{
+			"name": f"chromaprint-fpcalc-{ver}-macos-universal.tar.gz",
+			"url": f"https://github.com/acoustid/chromaprint/releases/download/{tag}/chromaprint-fpcalc-{ver}-macos-universal.tar.gz",
+			"size": 0,
+		},
+		{
+			"name": f"chromaprint-fpcalc-{ver}-macos-arm64.tar.gz",
+			"url": f"https://github.com/acoustid/chromaprint/releases/download/{tag}/chromaprint-fpcalc-{ver}-macos-arm64.tar.gz",
+			"size": 0,
+		},
+		{
+			"name": f"chromaprint-fpcalc-{ver}-macos-x86_64.tar.gz",
+			"url": f"https://github.com/acoustid/chromaprint/releases/download/{tag}/chromaprint-fpcalc-{ver}-macos-x86_64.tar.gz",
+			"size": 0,
+		},
+	]
+
+
+def fetch_release_info(timeout: int = 10, log_fn=default_logger) -> dict:
 	"""
 	Obtiene metadatos del último lanzamiento de chromaprint en GitHub.
 	Intenta primero vía GitHub REST API y, si falla (ej. rate limit),
 	hace fallback siguiendo la redirección HTTP 302 de la URL web para obtener el tag.
 	"""
-	headers = {
-		"User-Agent": USER_AGENT,
-		"Accept": "application/vnd.github.v3+json",
-	}
-
-	# Método 1: GitHub API
-	try:
-		req = urllib.request.Request(GITHUB_API_LATEST, headers=headers)
-		with urllib.request.urlopen(req, timeout=timeout) as resp:
-			data = json.loads(resp.read().decode("utf-8"))
-			tag = data.get("tag_name")
-			assets = [
-				{
-					"name": a.get("name", ""),
-					"url": a.get("browser_download_url", ""),
-					"size": a.get("size", 0),
-				}
-				for a in data.get("assets", [])
-			]
-			if tag and assets:
-				return {"tag": tag, "assets": assets}
-	except Exception:
-		pass
-
-	# Método 2: Redirección de GitHub Releases
-	try:
-		req2 = urllib.request.Request(GITHUB_HTML_LATEST, headers={"User-Agent": USER_AGENT})
-		with urllib.request.urlopen(req2, timeout=timeout) as resp2:
-			final_url = resp2.geturl()
-			tag = final_url.rstrip("/").split("/")[-1]
-			ver = tag.lstrip("vV")
-			if tag and ver:
-				assets = [
-					{
-						"name": f"chromaprint-fpcalc-{ver}-windows-x86_64.zip",
-						"url": f"https://github.com/acoustid/chromaprint/releases/download/{tag}/chromaprint-fpcalc-{ver}-windows-x86_64.zip",
-						"size": 0,
-					},
-					{
-						"name": f"chromaprint-fpcalc-{ver}-linux-x86_64.tar.gz",
-						"url": f"https://github.com/acoustid/chromaprint/releases/download/{tag}/chromaprint-fpcalc-{ver}-linux-x86_64.tar.gz",
-						"size": 0,
-					},
-					{
-						"name": f"chromaprint-fpcalc-{ver}-linux-arm64.tar.gz",
-						"url": f"https://github.com/acoustid/chromaprint/releases/download/{tag}/chromaprint-fpcalc-{ver}-linux-arm64.tar.gz",
-						"size": 0,
-					},
-					{
-						"name": f"chromaprint-fpcalc-{ver}-macos-universal.tar.gz",
-						"url": f"https://github.com/acoustid/chromaprint/releases/download/{tag}/chromaprint-fpcalc-{ver}-macos-universal.tar.gz",
-						"size": 0,
-					},
-					{
-						"name": f"chromaprint-fpcalc-{ver}-macos-arm64.tar.gz",
-						"url": f"https://github.com/acoustid/chromaprint/releases/download/{tag}/chromaprint-fpcalc-{ver}-macos-arm64.tar.gz",
-						"size": 0,
-					},
-					{
-						"name": f"chromaprint-fpcalc-{ver}-macos-x86_64.tar.gz",
-						"url": f"https://github.com/acoustid/chromaprint/releases/download/{tag}/chromaprint-fpcalc-{ver}-macos-x86_64.tar.gz",
-						"size": 0,
-					},
-				]
-				return {"tag": tag, "assets": assets}
-	except Exception:
-		pass
-
-	raise RuntimeError("No se pudo obtener información de lanzamientos de fpcalc desde GitHub.")
+	res = binary_utils.fetch_github_release_assets(
+		api_url=GITHUB_API_LATEST,
+		html_url=GITHUB_HTML_LATEST,
+		user_agent=USER_AGENT,
+		fallback_builder=_build_fallback_assets,
+		timeout=timeout,
+		log_fn=log_fn,
+	)
+	if not res.get("assets"):
+		raise RuntimeError("No se pudo obtener información de lanzamientos de fpcalc desde GitHub.")
+	return res
 
 
 def select_best_asset(assets: list[dict], platform_name: str, arch: str) -> dict | None:
@@ -164,50 +143,14 @@ def extract_fpcalc_archive(archive_path: Path, dest_dir: Path, log_fn=default_lo
 	Extrae fpcalc desde un archivo .zip o .tar.gz a dest_dir,
 	colocando el ejecutable directamente en dest_dir.
 	"""
-	dest_dir = dest_dir.resolve()
-	dest_dir.mkdir(parents=True, exist_ok=True)
-	archive_name = archive_path.name.lower()
-	extracted_any = False
-
-	if archive_name.endswith(".zip"):
-		with zipfile.ZipFile(archive_path, "r") as zf:
-			for member in zf.infolist():
-				member_path = Path(member.filename)
-				name_lower = member_path.name.lower()
-				if name_lower in ("fpcalc.exe", "fpcalc"):
-					resolved = (dest_dir / name_lower).resolve()
-					if not str(resolved).startswith(str(dest_dir)):
-						continue
-					with zf.open(member) as src, open(resolved, "wb") as dst:
-						shutil.copyfileobj(src, dst)
-					if sys.platform != "win32":
-						try:
-							resolved.chmod(resolved.stat().st_mode | 0o755)
-						except Exception:
-							pass
-					extracted_any = True
-	elif archive_name.endswith((".tar.gz", ".tar.xz", ".tar")):
-		mode = "r:*"
-		with tarfile.open(archive_path, mode) as tf:
-			for member in tf.getmembers():
-				member_path = Path(member.name)
-				name_lower = member_path.name.lower()
-				if name_lower in ("fpcalc.exe", "fpcalc") and member.isfile():
-					resolved = (dest_dir / name_lower).resolve()
-					if not str(resolved).startswith(str(dest_dir)):
-						continue
-					extracted_file = tf.extractfile(member)
-					if extracted_file:
-						with open(resolved, "wb") as dst:
-							shutil.copyfileobj(extracted_file, dst)
-						if sys.platform != "win32":
-							try:
-								resolved.chmod(resolved.stat().st_mode | 0o755)
-							except Exception:
-								pass
-						extracted_any = True
-
-	return extracted_any or (dest_dir / "fpcalc.exe").is_file() or (dest_dir / "fpcalc").is_file()
+	targets = {"fpcalc.exe", "fpcalc"}
+	extracted = binary_utils.extract_archive_binary(
+		archive_path=archive_path,
+		dest_dir=dest_dir,
+		target_names=targets,
+		log_fn=log_fn,
+	)
+	return extracted or (dest_dir / "fpcalc.exe").is_file() or (dest_dir / "fpcalc").is_file()
 
 
 def get_default_install_dir() -> Path:
@@ -244,7 +187,7 @@ def install_fpcalc(
 
 	try:
 		log_fn("Consultando últimos lanzamientos de fpcalc (chromaprint) en GitHub...")
-		info = fetch_release_info()
+		info = fetch_release_info(log_fn=log_fn)
 		tag = info.get("tag", "latest")
 		asset = select_best_asset(info.get("assets", []), plat, target_arch)
 
@@ -265,10 +208,7 @@ def install_fpcalc(
 
 			success = extract_fpcalc_archive(download_path, dest_dir, log_fn=log_fn)
 			if success and final_path.is_file():
-				try:
-					(dest_dir / ".rockola_managed_fpcalc").touch(exist_ok=True)
-				except Exception:
-					pass
+				binary_utils.mark_rockola_managed(dest_dir, "fpcalc", log_fn=log_fn)
 				log_fn(f"¡fpcalc instalado exitosamente en {final_path}!")
 				return final_path
 			else:

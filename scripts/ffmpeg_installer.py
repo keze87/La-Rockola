@@ -34,46 +34,9 @@ except (ImportError, ValueError):
 	from binary_utils import resolve_platform_and_arch
 
 
-def fetch_release_info(timeout: int = 10) -> dict:
-	"""
-	Obtiene metadatos del último lanzamiento de FFmpeg en GitHub.
-	Intenta primero vía GitHub REST API y, si falla (ej. rate limit),
-	construye los assets conocidos usando los builds oficiales de yt-dlp/FFmpeg-Builds.
-	"""
-	headers = {
-		"User-Agent": USER_AGENT,
-		"Accept": "application/vnd.github.v3+json",
-	}
-
-	# Método 1: GitHub API
-	try:
-		req = urllib.request.Request(GITHUB_API_LATEST, headers=headers)
-		with urllib.request.urlopen(req, timeout=timeout) as resp:
-			data = json.loads(resp.read().decode("utf-8"))
-			tag = data.get("tag_name", "latest")
-			assets = [
-				{
-					"name": a.get("name", ""),
-					"url": a.get("browser_download_url", ""),
-					"size": a.get("size", 0),
-				}
-				for a in data.get("assets", [])
-			]
-			if assets:
-				return {"tag": tag, "assets": assets}
-	except Exception:
-		pass
-
-	# Método 2: Redirección / fallback conocido de yt-dlp/FFmpeg-Builds
-	try:
-		req2 = urllib.request.Request(GITHUB_HTML_LATEST, headers={"User-Agent": USER_AGENT})
-		with urllib.request.urlopen(req2, timeout=timeout) as resp2:
-			final_url = resp2.geturl()
-			tag = final_url.rstrip("/").split("/")[-1]
-	except Exception:
-		tag = "latest"
-
-	assets = [
+def _build_fallback_assets(tag: str) -> list[dict]:
+	"""Construye la lista de assets oficiales de fallback para un tag determinado."""
+	return [
 		{
 			"name": "ffmpeg-master-latest-win64-gpl.zip",
 			"url": "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip",
@@ -100,7 +63,26 @@ def fetch_release_info(timeout: int = 10) -> dict:
 			"size": 0,
 		},
 	]
-	return {"tag": tag, "assets": assets}
+
+
+def fetch_release_info(timeout: int = 10, log_fn=default_logger) -> dict:
+	"""
+	Obtiene metadatos del último lanzamiento de FFmpeg en GitHub.
+	Intenta primero vía GitHub REST API y, si falla (ej. rate limit),
+	construye los assets conocidos usando los builds oficiales de yt-dlp/FFmpeg-Builds.
+	"""
+	res = binary_utils.fetch_github_release_assets(
+		api_url=GITHUB_API_LATEST,
+		html_url=GITHUB_HTML_LATEST,
+		user_agent=USER_AGENT,
+		fallback_builder=_build_fallback_assets,
+		timeout=timeout,
+		log_fn=log_fn,
+	)
+	if not res.get("assets"):
+		tag = res.get("tag") or "latest"
+		return {"tag": tag, "assets": _build_fallback_assets(tag)}
+	return res
 
 
 def select_best_asset(assets: list[dict], platform_name: str, arch: str) -> dict | None:
@@ -164,53 +146,17 @@ def extract_ffmpeg_archive(archive_path: Path, dest_dir: Path, log_fn=default_lo
 	Extrae ffmpeg y ffprobe desde un archivo .zip o .tar a dest_dir,
 	colocándolos directamente en dest_dir.
 	"""
-	dest_dir = dest_dir.resolve()
-	dest_dir.mkdir(parents=True, exist_ok=True)
-	archive_name = archive_path.name.lower()
-	extracted_targets = set()
-
-	if archive_name.endswith(".zip"):
-		with zipfile.ZipFile(archive_path, "r") as zf:
-			for member in zf.infolist():
-				member_path = Path(member.filename)
-				name_lower = member_path.name.lower()
-				if name_lower in ("ffmpeg.exe", "ffmpeg", "ffprobe.exe", "ffprobe"):
-					resolved = (dest_dir / name_lower).resolve()
-					if not str(resolved).startswith(str(dest_dir)):
-						continue
-					with zf.open(member) as src, open(resolved, "wb") as dst:
-						shutil.copyfileobj(src, dst)
-					if sys.platform != "win32":
-						try:
-							resolved.chmod(resolved.stat().st_mode | 0o755)
-						except Exception:
-							pass
-					extracted_targets.add(name_lower)
-	elif archive_name.endswith((".tar.xz", ".tar.gz", ".tar")):
-		mode = "r:*"
-		with tarfile.open(archive_path, mode) as tf:
-			for member in tf.getmembers():
-				member_path = Path(member.name)
-				name_lower = member_path.name.lower()
-				if name_lower in ("ffmpeg.exe", "ffmpeg", "ffprobe.exe", "ffprobe") and member.isfile():
-					resolved = (dest_dir / name_lower).resolve()
-					if not str(resolved).startswith(str(dest_dir)):
-						continue
-					f_obj = tf.extractfile(member)
-					if f_obj:
-						with open(resolved, "wb") as dst:
-							shutil.copyfileobj(f_obj, dst)
-						if sys.platform != "win32":
-							try:
-								resolved.chmod(resolved.stat().st_mode | 0o755)
-							except Exception:
-								pass
-						extracted_targets.add(name_lower)
-
+	targets = {"ffmpeg.exe", "ffmpeg", "ffprobe.exe", "ffprobe"}
+	extracted = binary_utils.extract_archive_binary(
+		archive_path=archive_path,
+		dest_dir=dest_dir,
+		target_names=targets,
+		log_fn=log_fn,
+	)
 	is_win = sys.platform == "win32" or os.name == "nt"
 	target_ffmpeg = "ffmpeg.exe" if is_win else "ffmpeg"
 	return (
-		bool(extracted_targets)
+		extracted
 		or (dest_dir / target_ffmpeg).is_file()
 		or (dest_dir / "ffmpeg.exe").is_file()
 		or (dest_dir / "ffmpeg").is_file()
@@ -251,7 +197,7 @@ def install_ffmpeg(
 
 	try:
 		log_fn("Consultando últimos lanzamientos de FFmpeg en GitHub...")
-		info = fetch_release_info()
+		info = fetch_release_info(log_fn=log_fn)
 		tag = info.get("tag", "latest")
 		asset = select_best_asset(info.get("assets", []), plat, target_arch)
 
@@ -272,10 +218,7 @@ def install_ffmpeg(
 
 			success = extract_ffmpeg_archive(download_path, dest_dir, log_fn=log_fn)
 			if success and final_path.is_file():
-				try:
-					(dest_dir / ".rockola_managed_ffmpeg").touch(exist_ok=True)
-				except Exception:
-					pass
+				binary_utils.mark_rockola_managed(dest_dir, "ffmpeg", log_fn=log_fn)
 				log_fn(f"¡FFmpeg instalado exitosamente en {final_path}!")
 				return final_path
 			else:

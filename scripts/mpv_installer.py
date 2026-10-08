@@ -77,7 +77,7 @@ def get_installed_mpv_version(bin_path: str | Path) -> str | None:
 		match = re.search(r"mpv\s+(v?[\d\.]+)", output, re.IGNORECASE)
 		if match:
 			return match.group(1).lstrip("vV")
-	except Exception:
+	except (subprocess.SubprocessError, OSError, UnicodeDecodeError):
 		pass
 
 	return None
@@ -91,77 +91,56 @@ def is_rockola_managed(bin_path: str | Path) -> bool:
 	return binary_utils.is_rockola_managed(bin_path, "mpv")
 
 
-def fetch_release_info(timeout: int = 10) -> dict:
+def _build_fallback_assets(tag: str) -> list[dict]:
+	"""Construye la lista de assets de fallback para un tag de MPV."""
+	if not tag.startswith("v"):
+		return []
+	return [
+		{
+			"name": f"mpv-{tag}-x86_64-w64-mingw32.zip",
+			"url": f"https://github.com/mpv-player/mpv/releases/download/{tag}/mpv-{tag}-x86_64-w64-mingw32.zip",
+			"size": 0,
+		},
+		{
+			"name": f"mpv-{tag}-x86_64-pc-windows-msvc.zip",
+			"url": f"https://github.com/mpv-player/mpv/releases/download/{tag}/mpv-{tag}-x86_64-pc-windows-msvc.zip",
+			"size": 0,
+		},
+		{
+			"name": f"mpv-{tag}-i686-w64-mingw32.zip",
+			"url": f"https://github.com/mpv-player/mpv/releases/download/{tag}/mpv-{tag}-i686-w64-mingw32.zip",
+			"size": 0,
+		},
+		{
+			"name": f"mpv-{tag}-aarch64-pc-windows-msvc.zip",
+			"url": f"https://github.com/mpv-player/mpv/releases/download/{tag}/mpv-{tag}-aarch64-pc-windows-msvc.zip",
+			"size": 0,
+		},
+		{
+			"name": f"mpv-{tag}-macos-15-arm.zip",
+			"url": f"https://github.com/mpv-player/mpv/releases/download/{tag}/mpv-{tag}-macos-15-arm.zip",
+			"size": 0,
+		},
+	]
+
+
+def fetch_release_info(timeout: int = 10, log_fn=default_logger) -> dict:
 	"""
 	Obtiene metadatos del último lanzamiento de MPV en GitHub.
 	Intenta primero vía GitHub REST API y, si falla (ej. rate limit 403),
 	hace fallback siguiendo la redirección HTTP 302 de la URL web para obtener el tag.
 	"""
-	headers = {
-		"User-Agent": USER_AGENT,
-		"Accept": "application/vnd.github.v3+json",
-	}
-
-	# Método 1: GitHub API
-	try:
-		req = urllib.request.Request(GITHUB_API_LATEST, headers=headers)
-		with urllib.request.urlopen(req, timeout=timeout) as resp:
-			data = json.loads(resp.read().decode("utf-8"))
-			tag = data.get("tag_name")
-			assets = [
-				{
-					"name": a.get("name", ""),
-					"url": a.get("browser_download_url", ""),
-					"size": a.get("size", 0),
-				}
-				for a in data.get("assets", [])
-			]
-			if tag and assets:
-				return {"tag": tag, "assets": assets}
-	except Exception:
-		pass
-
-	# Método 2: Redirección de GitHub Releases
-	try:
-		req2 = urllib.request.Request(GITHUB_HTML_LATEST, headers={"User-Agent": USER_AGENT})
-		with urllib.request.urlopen(req2, timeout=timeout) as resp2:
-			final_url = resp2.geturl()
-			# La URL final tiene la forma https://github.com/mpv-player/mpv/releases/tag/vX.Y.Z
-			tag = final_url.rstrip("/").split("/")[-1]
-			if tag and tag.startswith("v"):
-				# Construimos assets estándar conocidos para Windows y macOS
-				assets = [
-					{
-						"name": f"mpv-{tag}-x86_64-w64-mingw32.zip",
-						"url": f"https://github.com/mpv-player/mpv/releases/download/{tag}/mpv-{tag}-x86_64-w64-mingw32.zip",
-						"size": 0,
-					},
-					{
-						"name": f"mpv-{tag}-x86_64-pc-windows-msvc.zip",
-						"url": f"https://github.com/mpv-player/mpv/releases/download/{tag}/mpv-{tag}-x86_64-pc-windows-msvc.zip",
-						"size": 0,
-					},
-					{
-						"name": f"mpv-{tag}-i686-w64-mingw32.zip",
-						"url": f"https://github.com/mpv-player/mpv/releases/download/{tag}/mpv-{tag}-i686-w64-mingw32.zip",
-						"size": 0,
-					},
-					{
-						"name": f"mpv-{tag}-aarch64-pc-windows-msvc.zip",
-						"url": f"https://github.com/mpv-player/mpv/releases/download/{tag}/mpv-{tag}-aarch64-pc-windows-msvc.zip",
-						"size": 0,
-					},
-					{
-						"name": f"mpv-{tag}-macos-15-arm.zip",
-						"url": f"https://github.com/mpv-player/mpv/releases/download/{tag}/mpv-{tag}-macos-15-arm.zip",
-						"size": 0,
-					},
-				]
-				return {"tag": tag, "assets": assets}
-	except Exception:
-		pass
-
-	raise RuntimeError("No se pudo obtener información de lanzamientos de MPV desde GitHub.")
+	res = binary_utils.fetch_github_release_assets(
+		api_url=GITHUB_API_LATEST,
+		html_url=GITHUB_HTML_LATEST,
+		user_agent=USER_AGENT,
+		fallback_builder=_build_fallback_assets,
+		timeout=timeout,
+		log_fn=log_fn,
+	)
+	if not res.get("assets"):
+		raise RuntimeError("No se pudo obtener información de lanzamientos de MPV desde GitHub.")
+	return res
 
 
 def select_best_asset(assets: list[dict], platform_name: str, arch: str) -> dict | None:
@@ -226,7 +205,7 @@ def _safe_extract(zf: zipfile.ZipFile, dest_dir: Path):
 			if mode & 0o111:
 				try:
 					target.chmod(target.stat().st_mode | 0o755)
-				except Exception:
+				except OSError:
 					pass
 
 
@@ -306,11 +285,7 @@ def install_mpv(
 
 			success = extract_mpv_zip(download_path, dest_dir, log_fn=log_fn)
 			if success:
-				try:
-					(dest_dir / ".rockola_managed_mpv").touch(exist_ok=True)
-					(dest_dir / ".last_mpv_update_check").write_text(str(time.time()))
-				except Exception:
-					pass
+				binary_utils.mark_rockola_managed(dest_dir, "mpv", log_fn=log_fn)
 				log_fn(f"¡MPV instalado exitosamente en {dest_dir}!")
 				return dest_dir
 			else:
@@ -377,23 +352,23 @@ def update_mpv(
 			last_check = float(timestamp_file.read_text().strip())
 			if time.time() - last_check < cooldown:
 				return True
-		except Exception:
-			pass
+		except (ValueError, OSError) as exc:
+			log_fn(f"Aviso: no se pudo leer timestamp en {timestamp_file}: {exc}")
 
 	cur_ver_str = get_installed_mpv_version(p)
 	log_fn(f"Buscando actualizaciones para MPV (versión instalada: {cur_ver_str or 'desconocida'})...")
 
 	try:
-		info = fetch_release_info(timeout=5)
+		info = fetch_release_info(timeout=5, log_fn=log_fn)
 	except Exception as e:
 		log_fn(f"No se pudo consultar actualizaciones de MPV: {e}")
 		return False
 
 	# Actualizar el timestamp del chequeo
 	try:
-		timestamp_file.write_text(str(time.time()))
-	except Exception:
-		pass
+		timestamp_file.write_text(str(time.time()), encoding="utf-8")
+	except OSError as exc:
+		log_fn(f"Aviso: no se pudo guardar timestamp en {timestamp_file}: {exc}")
 
 	tag = info.get("tag", "")
 	remote_ver = _parse_version(tag)

@@ -107,17 +107,14 @@ def install_ytdlp(
 			shutil.move(str(tmp_download), str(final_path))
 
 			# Dejar constancia de que fue instalado por La Rockola
-			try:
-				(dest_dir / ".rockola_managed_ytdlp").touch(exist_ok=True)
-			except Exception:
-				pass
+			binary_utils.mark_rockola_managed(dest_dir, "ytdlp", log_fn=log_fn)
 
 			# Asignar permisos de ejecución en POSIX
 			if sys.platform != "win32":
 				try:
 					final_path.chmod(final_path.stat().st_mode | 0o755)
-				except Exception:
-					pass
+				except OSError as exc:
+					log_fn(f"Aviso: no se pudieron otorgar permisos de ejecución a {final_path}: {exc}")
 
 		log_fn(f"¡yt-dlp instalado correctamente en {final_path}!")
 		return final_path

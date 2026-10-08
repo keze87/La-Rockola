@@ -5,12 +5,18 @@ y sanitización de entorno de ejecución en La Rockola del Carpincho.
 
 import asyncio
 import glob
+import json
 import os
 import platform
+import shutil
 import socket
 import subprocess
 import sys
+import tarfile
+import time
 import urllib.request
+import zipfile
+from collections.abc import Callable, Iterable
 from pathlib import Path
 
 
@@ -86,7 +92,7 @@ def ensure_display_env(env: dict) -> None:
 							env[k] = v
 						if not os.environ.get(k):
 							os.environ[k] = v
-	except Exception:
+	except (FileNotFoundError, subprocess.SubprocessError, OSError):
 		pass
 
 	# 2. Reconciliar XDG_RUNTIME_DIR y DBUS
@@ -261,7 +267,7 @@ def is_rockola_managed(bin_path: str | Path, tool_name: str | None = None) -> bo
 		if data_dir:
 			path.relative_to(Path(data_dir).resolve().parent)
 			return True
-	except Exception:
+	except (ImportError, AttributeError, ValueError):
 		pass
 
 	return False
@@ -283,7 +289,7 @@ def get_default_install_dir(tool_name: str = "mpv") -> Path:
 					return mpv_dir
 				except OSError:
 					pass
-		except Exception:
+		except (ImportError, AttributeError, OSError):
 			pass
 
 	base = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
@@ -328,3 +334,148 @@ def build_frontend(root_dir: Path | None = None, force: bool = False, log_fn=Non
 	else:
 		if log_fn:
 			log_fn("Frontend ya compilado en dist/. (Usá --rebuild-frontend para forzar)")
+
+
+def fetch_github_release_assets(
+	api_url: str,
+	html_url: str,
+	user_agent: str,
+	fallback_builder: Callable[[str], list[dict]] | None = None,
+	timeout: int = 10,
+	log_fn: Callable[[str], None] | None = None,
+) -> dict:
+	"""
+	Obtiene metadatos y lista de assets del último release de GitHub.
+	Intenta primero vía GitHub REST API; ante fallos (por ej. rate limit 403),
+	hace fallback siguiendo la redirección del HTML del release si hay un builder provisto.
+	"""
+	headers = {
+		"User-Agent": user_agent,
+		"Accept": "application/vnd.github.v3+json",
+	}
+
+	# 1. GitHub REST API
+	try:
+		req = urllib.request.Request(api_url, headers=headers)
+		with urllib.request.urlopen(req, timeout=timeout) as resp:
+			data = json.loads(resp.read().decode("utf-8"))
+			tag = data.get("tag_name", "latest")
+			assets = [
+				{
+					"name": a.get("name", ""),
+					"url": a.get("browser_download_url", ""),
+					"size": a.get("size", 0),
+				}
+				for a in data.get("assets", [])
+			]
+			if tag and assets:
+				return {"tag": tag, "assets": assets}
+	except Exception as exc:
+		if log_fn:
+			log_fn(f"GitHub API falló al consultar {api_url}: {exc}. Intentando fallback HTML...")
+
+	# 2. Fallback vía URL HTML de releases
+	if fallback_builder:
+		try:
+			req2 = urllib.request.Request(html_url, headers={"User-Agent": user_agent})
+			with urllib.request.urlopen(req2, timeout=timeout) as resp2:
+				final_url = resp2.geturl()
+				tag = final_url.rstrip("/").split("/")[-1]
+				if tag and not tag.lower().startswith("latest"):
+					assets = fallback_builder(tag)
+					if assets:
+						return {"tag": tag, "assets": assets}
+		except Exception as exc:
+			if log_fn:
+				log_fn(f"Fallback HTML falló al consultar {html_url}: {exc}")
+
+	return {"tag": "", "assets": []}
+
+
+def extract_archive_binary(
+	archive_path: Path,
+	dest_dir: Path,
+	target_names: Iterable[str],
+	log_fn: Callable[[str], None] | None = None,
+) -> bool:
+	"""
+	Extrae binarios específicos desde un archivo (.zip, .tar.gz, .tar.xz, .tar) hacia dest_dir.
+	Aplica protección Zip Slip y restaura permisos de ejecución (0o755) en sistemas POSIX.
+	"""
+	dest_dir = dest_dir.resolve()
+	dest_dir.mkdir(parents=True, exist_ok=True)
+	archive_name = archive_path.name.lower()
+	targets_normalized = {name.lower() for name in target_names}
+	extracted = False
+
+	if archive_name.endswith(".zip"):
+		with zipfile.ZipFile(archive_path, "r") as zf:
+			for member in zf.infolist():
+				member_path = Path(member.filename)
+				name_lower = member_path.name.lower()
+				if name_lower in targets_normalized:
+					safe_check = (dest_dir / member.filename).resolve()
+					if not str(safe_check).startswith(str(dest_dir)):
+						if log_fn:
+							log_fn(f"Alerta de seguridad: se omitió archivo sospechoso {member.filename}")
+						continue
+					resolved = (dest_dir / member_path.name).resolve()
+					with zf.open(member) as src, open(resolved, "wb") as dst:
+						shutil.copyfileobj(src, dst)
+					if sys.platform != "win32":
+						try:
+							resolved.chmod(resolved.stat().st_mode | 0o755)
+						except OSError as exc:
+							if log_fn:
+								log_fn(f"No se pudieron ajustar permisos para {resolved}: {exc}")
+					extracted = True
+
+	elif archive_name.endswith((".tar.xz", ".tar.gz", ".tar")):
+		with tarfile.open(archive_path, "r:*") as tf:
+			for member in tf.getmembers():
+				member_path = Path(member.name)
+				name_lower = member_path.name.lower()
+				if name_lower in targets_normalized and member.isfile():
+					safe_check = (dest_dir / member.name).resolve()
+					if not str(safe_check).startswith(str(dest_dir)):
+						if log_fn:
+							log_fn(f"Alerta de seguridad: se omitió archivo sospechoso {member.name}")
+						continue
+					resolved = (dest_dir / member_path.name).resolve()
+					f_obj = tf.extractfile(member)
+					if f_obj:
+						with open(resolved, "wb") as dst:
+							shutil.copyfileobj(f_obj, dst)
+						if sys.platform != "win32":
+							try:
+								resolved.chmod(resolved.stat().st_mode | 0o755)
+							except OSError as exc:
+								if log_fn:
+									log_fn(f"No se pudieron ajustar permisos para {resolved}: {exc}")
+						extracted = True
+
+	return extracted
+
+
+def mark_rockola_managed(
+	dest_dir: Path,
+	tool_name: str,
+	log_fn: Callable[[str], None] | None = None,
+) -> bool:
+	"""
+	Registra que una herramienta fue instalada por La Rockola creando un archivo marcador
+	y registrando el timestamp del último chequeo/actualización.
+	"""
+	dest = Path(dest_dir).resolve()
+	dest.mkdir(parents=True, exist_ok=True)
+	marker_file = dest / f".rockola_managed_{tool_name}"
+	timestamp_file = dest / f".last_{tool_name}_update_check"
+	try:
+		marker_file.touch(exist_ok=True)
+		timestamp_file.write_text(str(time.time()), encoding="utf-8")
+		return True
+	except OSError as exc:
+		if log_fn:
+			log_fn(f"Error al marcar {tool_name} como administrado por Rockola: {exc}")
+		return False
+

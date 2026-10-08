@@ -96,8 +96,8 @@ class AsyncMpvController:
 				try:
 					raw_err = await self.process.stderr.read()
 					err_msg = raw_err.decode("utf-8", errors="replace").strip()
-				except Exception:
-					pass
+				except Exception as exc:
+					logger.debug(f"Error al leer stderr de MPV: {exc}")
 			logger.error(
 				f"MPV finalizó inesperadamente con código {self.process.returncode}. Detalle: {err_msg or 'Sin salida'}"
 			)
@@ -276,8 +276,8 @@ class AsyncMpvController:
 				decoded = line.decode("utf-8", errors="replace").rstrip()
 				if decoded:
 					logger.debug(f"[MPV stdout] {decoded}")
-		except Exception:
-			pass
+		except Exception as exc:
+			logger.debug(f"Lectura de MPV stdout finalizada: {exc}")
 
 	async def _drain_stderr(self) -> None:
 		try:
@@ -288,8 +288,8 @@ class AsyncMpvController:
 				decoded = line.decode("utf-8", errors="replace").rstrip()
 				if decoded:
 					logger.debug(f"[MPV stderr] {decoded}")
-		except Exception:
-			pass
+		except Exception as exc:
+			logger.debug(f"Lectura de MPV stderr finalizada: {exc}")
 
 	async def _read_ipc_events_windows(self) -> None:
 		main_loop = asyncio.get_running_loop()
@@ -322,8 +322,8 @@ class AsyncMpvController:
 					res = self.writer.close()
 					if asyncio.iscoroutine(res):
 						res.close()
-				except Exception:
-					pass
+				except Exception as exc:
+					logger.debug(f"Error cerrando writer en Windows: {exc}")
 				self.writer = None
 
 	async def _read_ipc_events(self) -> None:
@@ -344,8 +344,8 @@ class AsyncMpvController:
 				res = self.writer.close()
 				if asyncio.iscoroutine(res):
 					res.close()
-			except Exception:
-				pass
+			except Exception as exc:
+				logger.debug(f"Error cerrando writer Unix: {exc}")
 			self.writer = None
 
 	async def _process_event_line(self, line: bytes) -> None:
@@ -380,8 +380,8 @@ class AsyncMpvController:
 					asyncio.create_task(self.callbacks["duration_update"](prop_val))
 				elif prop_name == "mute" and prop_val is not None and "mute_update" in self.callbacks:
 					asyncio.create_task(self.callbacks["mute_update"](prop_val))
-		except json.JSONDecodeError:
-			pass
+		except json.JSONDecodeError as exc:
+			logger.debug(f"Línea no-JSON ignorada en stream de MPV: {exc}")
 
 	async def _send(self, cmd_payload: str) -> None:
 		"""Envía un comando JSON a MPV de forma asíncrona."""
