@@ -133,6 +133,21 @@ CARPINCHO_FORTUNES: list[str] = [
 	"Menos drama y más cumbia, esa es la receta del éxito.",
 	"Un sabio dijo una vez... ¡subile el volumen que este tema me encanta!",
 	"El oráculo predice: tu día va a mejorar en un cien por ciento con este tema.",
+	"La paciencia no es saber esperar, es saber cebar el mate sin apurar la pava cuando el agua recién empieza a chillar.",
+	"No le pidas peras al olmo ni velocidad al que viene de almorzar un guiso de lentejas con cuarenta grados.",
+	"El sabio no es el que habla mucho, sino el que sabe cuándo pasar el mate sin quedarse conversando con la bombilla en la mano.",
+	"Hay tres cosas que no vuelven atrás: la flecha lanzada, la palabra dicha y el churro de pastelera que te comiste en la siesta.",
+	"El apurado junta canas y el que va despacio junta amigos; vos fijate de qué lado de la orilla te querés sentar.",
+	"Si la vida te da la espalda, tocale el hombro y decile si no tiene un fósforo para prender el espiral.",
+	"Ningún mar en calma hizo experto al marinero, pero un buen plato de guiso hizo feliz a cualquier cristiano.",
+	"Tranquilo el perro que la calle es larga: no hay apuro que no se cure con un par de temas bien puestos.",
+	"El verdadero melómano no discrimina género: te escucha una cumbia santafesina, te mete un rock pesado y cierra con un tango como si nada hubiera pasado.",
+	"La vida es demasiado corta para escuchar un solo estilo de música; lo lindo está en la mezcolanza.",
+	"Dicen que el orden de los factores no altera el producto, y en esta playlist pasar de un folclore a un punk rock es prueba científica de eso.",
+	"Si tu algoritmo de reproducción no sabe si estás triste, de joda o en un viaje espiritual, vas por el buen camino.",
+	"El egoísmo musical no va con nosotros: acá conviven el acordeón, la guitarra eléctrica y el sintetizador en perfecta armonía criolla.",
+	"En la variedad está el gusto y en esta mezcla está la salvación; el que se aburre en esta radio es porque quiere.",
+	"Pasar de un clásico de los 80 a un cuarteto cordobés no es falta de coherencia, es exceso de cultura popular.",
 	# Filosofía zen de pantano
 	"El carpincho no compite con la corriente: flota con dignidad y que el río haga el esfuerzo.",
 	"Conflicto territorial lo tienen los que construyen sobre el humedal; nosotros ya estábamos acá.",
@@ -225,6 +240,14 @@ CARPINCHO_ADS: list[str] = [
 	"Publicidad: Fumigaciones La Garza. Control ecológico de tábanos y jejenes con sapos adiestrados. Eficacia comprobada en todo el humedal.",
 	"Espacio publicitario: Almacén de Ramos Generales La Bajada. Harina, grasa de pella, yerba por bolsa y alpargatas de todos los números.",
 	"Aviso parroquial: Taller de Payadas y Guitarreadas Don Ceferino. Clases abiertas los sábados bajo el sauce llorón. Traer instrumento y mate propio.",
+	"Publicidad: Panadería El Sol Criollo. Facturas de grasa recién sacadas del horno, raspaditas de hojaldre y los mejores criollos de la zona.",
+	"Aviso comercial: Gomería El Despinche. Emparchamos gomas de auto, bicicleta, tractor y hasta la rueda del carro. Atención al paso.",
+	"Espacio publicitario: Imprenta Don José. Afiches para bailes, rifas parroquiales y calendarios de pared con el santoral completo.",
+	"Aviso de la comunidad: Se busca bicicleta playera color roja con canasto de mimbre. Se olvidó en la puerta del club el viernes de baile.",
+	"Publicidad: Carnicería La Tablita. Asado de tira, matambre tiernizado y chorizos de puro cerdo para el emparrillado del domingo.",
+	"Espacio comercial: Almacén de Ramos Generales Don Carmelo. Desde un paquete de yerba hasta un par de alpargatas; si no lo tenemos, no existe.",
+	"Aviso parroquial: Se comunica a los vecinos que el centro vecinal organiza bingo familiar este sábado. Habrá sorteo de una canasta de mercadería.",
+	"Publicidad: Fletes El Rápido. Mudanzas locales, traslado de muebles y repartos en general. Cuidado y puntualidad garantizados.",
 ]
 
 # ---------------------------------------------------------------------------
@@ -252,6 +275,11 @@ TRANSITO_FLUVIAL_Y_CAMINOS: list[str] = [
 	"Aviso de ruta ribereña: calzada resbaladiza por barro negro en la bajada del puente amarillo. Tiren rebajes suaves y no claven los frenos.",
 	"Alerta para boteros y canoeros: viento sur en popa levantando olitas cortas en el canal de acceso. Remen parejo y ajusten el salvavidas.",
 	"Estado de caminos del norte: huella cortada en la cañada por desborde del arroyo. El que quiera cruzar que pida permiso al puestero o nade con poncho.",
+	# "Parte de rutas: Tránsito demorado en el cruce de vías por un camión jaula que aflojó la marcha. Paciencia y mantener la distancia.",
+	# "Reporte del camino: La huella de tierra que va para la curva de la escuela tiene barro fresco tras la llovizna. Pasen despacito.",
+	# "AVISO DE TRÁNSITO: Paso a nivel con barrera baja por maniobras del tren de carga. Vayan calculando diez minutos de demora.",
+	# "Alerta de vialidad: Desvío provisorio en el puente de madera por arreglos en el tablajería. Precaución con los pozos en la bajada.",
+	# "Tránsito pesado: Afluencia de colectivos y camionetas en la avenida principal por la salida de las escuelas. Mente fría y ceda el paso.",
 ]
 
 AVISOS_PARROQUIALES_Y_EXTRAVIOS: list[str] = [
@@ -298,6 +326,11 @@ ALERTAS_INCOMODIDAD_CRIOLLA: list[str] = [
 	"Reporte de pesadez ambiental: la masa de las tortas fritas leudó sola en la mesada sin necesidad de prender el fuego del horno.",
 	"Alerta de jejenes en la barranca: atacan los tobillos con saña milimétrica. La mezcla de barro con ceniza es la única armadura que funciona.",
 	"Clima pesado de tormenta que amaga y no revienta: el cielo está negro como sobaco de cuervo y la modorra carpincha es ley nacional.",
+	"Alerta de incomodidad criolla: Pesadez absoluta en el ambiente; la humedad pegoteó el salero y la sal no cae ni a palos.",
+	"Reporte del clima pesadito: Tarde de siesta bravísima donde las moscas vuelan en cámara lenta y el aire de ventilador parece un secador de pelo.",
+	"Incomodidad total: Tábanos y jejenes ensañados con los tobillos. No hay espiral que alcance ni manotazo que los asuste.",
+	"Alerta de verano porteño y norteño: Asfalto que parece plastilina al sol y la sombra que no alcanza para tapar ni al perro.",
+	"Reporte de humedad: Las galletitas de agua perdieron el crocante en tres minutos de estar abiertas sobre la mesa.",
 ]
 
 SEPARADORES_Y_SLOGANS: list[str] = [
@@ -321,6 +354,16 @@ SEPARADORES_Y_SLOGANS: list[str] = [
 	"Sonido criollo de alta fidelidad ribereña. Conectate a La Rockola del Carpincho.",
 	"Donde la cumbia santafesina y el chamamé se dan la mano: La Rockola en el aire.",
 	"Transmite La Rockola del Carpincho: tu compañía fiel cuando el sol cae sobre la laguna.",
+	"La Rockola: noventa y ocho punto siete en el dial. La radio que te acompaña en la buena, en la mala y en la hora del mate.",
+	"Prendete a La Rockola: cumbia, folklore, rock y la mejor vibra para hacerte la segunda todo el día.",
+	"Estás en La Rockola, el rincón donde la música suena como tiene que sonar: bien fuerte y al corazón.",
+	"Sin vueltas ni rodeos: La Rockola del Carpincho, tu compañía inseparable en el dial.",
+	"Noventa y ocho punto siete: la frecuencia que le pone ritmo a tus tareas y le quita el aburrimiento al día.",
+	"La Rockola: el único lugar del dial donde la cumbia, el rock, el folclore y la electrónica se toman un mate en la misma mesa.",
+	"Sin prejuicios y a puro volumen: estás escuchando la mezcolanza musical más linda del humedal.",
+	"Noventa y ocho punto siete: la frecuencia con la playlist más esdrújula, ecléctica y desprolija del mapa.",
+	"¿Cumbia? Sí. ¿Rock? También. ¿Chamamé? Obvio. En La Rockola no le hacemos asco a ningún ritmo.",
+	"Tu reproductor en modo aleatorio no tiene nada que hacer al lado del cambalache hermoso que armamos acá.",
 ]
 
 DEDICATORIAS_OYENTES: list[str] = [
@@ -344,6 +387,14 @@ DEDICATORIAS_OYENTES: list[str] = [
 	'Audio de chofer de colectivo de larga distancia: "Cruzando el puente Zárate Brazo Largo con el pasaje durmiendo y el mate caliente. Tirate un tema de Spinetta para el chofer".',
 	'WhatsApp de taller de chapa: "Acá lijando masilla fina en una puerta picada. Que suene Gilda bien fuerte que con alegría el trabajo sale más rápido y derechito".',
 	'Nos escriben los guardavidas del arroyo: "Mirando el agua y cuidando a los bañistas con La Rockola en la caseta. Un saludo para todos los carpinchos que nadan tranquilos".',
+	'WhatsApp de la radio: "Mandale un saludo a la banda de la verdulería que está acomodando los cajones de papa con la radio al mango".',
+	'Audio de oyente: "Locutor, tirate un cuartetazo para los pibes del taller que le estamos cambiando el embrague a una camioneta".',
+	'Nos escriben desde la ruta: "Acá el chofer del interno cuarenta y cuatro escuchando La Rockola mientras espera el cambio de turno".',
+	'Mensajito que llega al control: "Un saludo grande para la tía Elba que está haciendo empanadas para toda la familia".',
+	'Mensaje de la muchachada: "Ponete una cumbia santafesina de las viejas para los muchachos que están pintando el paredón del fondo".',
+	'Mensajito al WhatsApp: "Locutor, amo este descontrol de temas, pasaste de Los Redondos a Gilda y en el taller no sabemos si poguear o bailar apretado".',
+	'Audio de oyente: "Acá el camionero Jorge en la ruta, con la mente a mil y la radio saltando de una zamba a un rock de los 80 sin pedir permiso. ¡Espectacular!".',
+	'Nos escriben desde la obra: "En el parlante del corralón mezclamos folklore, cuarteto y heavy metal. Gracias por acompañar el desorden con La Rockola".',
 ]
 
 CARPINCHO_SABIDURIA: list[str] = list(CARPINCHO_FORTUNES)
@@ -397,6 +448,10 @@ RADIO_INTROS: list[str] = [
 	"Desde la cabina de madera sobre pilotes, tiramos buena vibra a todo el humedal. ¡Esto es La Rockola!",
 	"Corré el camalote de la antena que salimos al aire con todo en La Rockola del Carpincho.",
 	"Tardecita dorada en la ribera y nosotros listos para hacerte el aguante en La Rockola.",
+	"¡Atenti todo el mundo! Acomodá la silla, cebate un amargo y dejate llevar porque arranca otra tanda en La Rockola.",
+	"¡Buenas y santas gente! Micrófonos listos, consola al palo y la mejor selección musical para alegrarte el rato.",
+	"¡Agarrate fuerte que la playlist de hoy viene salteada! Acá no hay etiqueta que valga, solo buena música para el corazón.",
+	"Se viene una tanda de esas bien ensaladas: un poco de esto, un poco de aquello y cero prejuicios. ¡Prendete a La Rockola!",
 	# El arranque y la energía de la mañana
 	"¡Sintonía total en todo el país! Estás en la Rockola del Carpincho, donde la música no para y los carpinchos tampoco. ¡Buen día para todos!",
 	"¡Arriba, arriba, arriba! Subí el volumen que si el vecino se queja, lo invitamos a tomar unos mates. ¡Arrancamos otra hora de puros éxitos!",
@@ -476,13 +531,13 @@ RADIO_LEAD_INS: list[str] = LEAD_INS_FORTUNA + LEAD_INS_AVISOS + LEAD_INS_OYENTE
 RADIO_OUTROS: list[str] = [
 	"Dejamos de parlotear y que hable el bajo. ¡Metele play!",
 	"Acomodá el lomo en la orilla que este tema arranca al palo.",
-	"Menos charla y más cumbia. ¡Pegale!",
+	"Menos charla y más cumbia. ¡Cambiame la música!",
 	"¡Subile al parlante antes de que nos tape la marea!",
 	"Se viene un clásico de aquellos... ¡hacete un espacio y bailá!",
 	"Frenamos la charla pero la música no para. ¡Escuchate esto!",
 	"¡Seguimos con más música!",
 	"¡Que no decaiga!",
-	"¡Pegale play que esto sigue!",
+	"¡Mandale play que esto sigue!",
 	"¡Metemos la próxima canción al toque!",
 	"¡Seguimos de joda en La Rockola!",
 	"¡Acomodate que se viene un temazo!",
@@ -506,6 +561,9 @@ RADIO_OUTROS: list[str] = [
 	"¿Querías ritmo? Tomá ritmo. A partir de este momento, se prohíbe quedarse sentado. ¡Que suene la música en la Rockola!",
 	# Cierre de tanda / Separadores cortos
 	"Pausa publicitaria en la mente, pero la música sigue acá. Estás en la Rockola.",
+	"¡Suficiente cháchara por ahora! Subile dos rayitas al parlante y disfrutá este temazo que se viene.",
+	"Se acaba la charla en la cabina pero empieza el baile del otro lado. ¡Mandale play nomás!",
+	"Cambiamos de ritmo sin doblar la esquina y nos metemos de lleno en el próximo temazo. ¡Mandale play que la mezcla no frena!",
 	# "¡Para Maru que nos escucha desde casa, te deseamos que tengas un buen día! ¡Un carpinchazo de tema para vos; cambiame la música!",
 ]
 
