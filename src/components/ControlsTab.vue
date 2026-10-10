@@ -1,5 +1,5 @@
 <script setup lang="ts">
-	import { computed, ref } from 'vue';
+	import { computed, ref, watch } from 'vue';
 	import { apiUrl } from '../composables/useApi';
 	import { serverUrl, weatherLocation } from '../composables/player/state';
 	import { useDragSlider } from '../composables/useDragSlider';
@@ -117,6 +117,54 @@
 	}
 
 	const { isFullscreen, toggle: toggleWebFullscreen } = useFullscreen();
+
+	const resolvedWeatherArea = ref<string | null>(null);
+
+	const isCoordinatesLocation = (loc: string): boolean =>
+		/^[-+]?\d+(\.\d+)?\s*,\s*[-+]?\d+(\.\d+)?$/.test(loc.trim());
+
+	async function resolveWttrLocation(loc: string) {
+		const trimmed = loc.trim();
+		if (!trimmed) {
+			resolvedWeatherArea.value = null;
+			return;
+		}
+
+		if (!isCoordinatesLocation(trimmed)) {
+			resolvedWeatherArea.value = null;
+			return;
+		}
+
+		try {
+			const res = await fetch(apiUrl(`/api/weather/preview?location=${encodeURIComponent(trimmed)}`));
+			const data = await res.json();
+			if (data && data.ok && data.area_name) {
+				resolvedWeatherArea.value = data.area_name;
+			}
+		} catch {
+			// En caso de fallo de red o error de wttr, se mantiene el fallback reactivo
+		}
+	}
+
+	watch(
+		weatherLocation,
+		(newLoc) => {
+			if (newLoc) {
+				resolveWttrLocation(newLoc);
+			} else {
+				resolvedWeatherArea.value = null;
+			}
+		},
+		{ immediate: true }
+	);
+
+	const displayWeatherLocation = computed(() => {
+		if (!weatherLocation.value) return '';
+		if (isCoordinatesLocation(weatherLocation.value)) {
+			return resolvedWeatherArea.value || weatherLocation.value;
+		}
+		return weatherLocation.value;
+	});
 </script>
 
 <template>
@@ -220,7 +268,7 @@
 		<!-- Botones de acción -->
 		<div v-if="hasEdgeTts" class="mb-4 flex flex-wrap justify-center gap-3">
 			<PillButton icon="map" color-class="bg-neutral-800 hover:bg-neutral-700" @click="isWeatherModalOpen = true">
-				{{ weatherLocation ? `Ubicación del Clima: ${weatherLocation}` : 'Configurar ubicación' }}
+				{{ displayWeatherLocation ? `Ubicación del Clima: ${displayWeatherLocation}` : 'Configurar ubicación' }}
 			</PillButton>
 		</div>
 

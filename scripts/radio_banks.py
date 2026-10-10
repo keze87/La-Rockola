@@ -112,7 +112,7 @@ CARPINCHO_FORTUNES: list[str] = [
 	"Ojo al piojo con los que te dicen que no pongas otro tema.",
 	"Si el río suena, es porque un carpincho se tiró de bomba.",
 	"Billetera mata galán, pero temazo mata billetera.",
-	"El oráculo dice: relajá la mandíbula y metele play.",
+	"El oráculo dice: relajá la mandíbula y mandale play.",
 	"No te preocupes por el qué dirán: el carpincho toma sol y le importa un comino.",
 	"El que busca encuentra... menos las llaves cuando estás apurado.",
 	"Mejor solo que mal acompañado, pero con buena música nunca estás solo.",
@@ -529,7 +529,7 @@ LEAD_INS_BY_CATEGORY: dict[str, list[str]] = {
 RADIO_LEAD_INS: list[str] = LEAD_INS_FORTUNA + LEAD_INS_AVISOS + LEAD_INS_OYENTES + LEAD_INS_ALERTAS
 
 RADIO_OUTROS: list[str] = [
-	"Dejamos de parlotear y que hable el bajo. ¡Metele play!",
+	"Dejamos de parlotear y que hable el bajo. ¡Mandale play!",
 	"Acomodá el lomo en la orilla que este tema arranca al palo.",
 	"Menos charla y más cumbia. ¡Cambiame la música!",
 	"¡Subile al parlante antes de que nos tape la marea!",
@@ -541,11 +541,11 @@ RADIO_OUTROS: list[str] = [
 	"¡Metemos la próxima canción al toque!",
 	"¡Seguimos de joda en La Rockola!",
 	"¡Acomodate que se viene un temazo!",
-	"¡Un carpinchazo de tema para vos; metele play!",
+	"¡Un carpinchazo de tema para vos; mandale play!",
 	"Tranqui en el agua, mate en mano... ¡a disfrutar lo que viene!",
 	"¡Al pelo el ritmo; seguimos con todo en La Rockola!",
 	"Posta, qué temazo se viene ahora; no te muevas de ahí.",
-	"¡Basta de cháchara y que reviente el parche! ¡Metele play!",
+	"¡Basta de cháchara y que reviente el parche! ¡Mandale play!",
 	"¡Subile dos rayitas al volumen que este tema te levanta de la reposera!",
 	"¡Agarrate fuerte de la borda que se viene un temazo al palo!",
 	"¡A sacudirse el barro de las patas y meterle baile con esto que suena!",

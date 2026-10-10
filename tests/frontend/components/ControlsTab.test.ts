@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { mount, flushPromises } from '@vue/test-utils';
 import ControlsTab from '@/components/ControlsTab.vue';
 import QRCode from 'qrcode.vue';
 import {
@@ -16,6 +16,7 @@ import {
 	serverMuted,
 	serverUrl,
 	volume,
+	weatherLocation,
 } from '@/composables/player/state';
 
 describe('ControlsTab.vue', () => {
@@ -296,5 +297,36 @@ describe('ControlsTab.vue', () => {
 		const modal = wrapper.findComponent({ name: 'WeatherLocationModal' });
 		expect(modal.exists()).toBe(true);
 		expect(modal.props('isOpen')).toBe(true);
+	});
+
+	it('displays resolved wttr location instead of raw coordinates when weatherLocation contains coordinates', async () => {
+		fetchMock.mockImplementation((url: string) => {
+			if (url.includes('/api/weather/preview')) {
+				return Promise.resolve({
+					ok: true,
+					json: () =>
+						Promise.resolve({
+							ok: true,
+							location: '-34.6037,-58.3816',
+							area_name: 'Buenos Aires',
+							temp_c: 22,
+							phrase: 'Clima lindo',
+						}),
+				} as unknown as Response);
+			}
+			return Promise.resolve({
+				ok: true,
+				json: () => Promise.resolve({ status: 'ok', data: [] }),
+			} as unknown as Response);
+		});
+
+		hasEdgeTts.value = true;
+		weatherLocation.value = '-34.6037,-58.3816';
+		const wrapper = mount(ControlsTab);
+
+		await flushPromises();
+
+		expect(wrapper.text()).toContain('Ubicación del Clima: Buenos Aires');
+		expect(wrapper.text()).not.toContain('-34.6037,-58.3816');
 	});
 });
