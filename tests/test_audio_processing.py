@@ -154,7 +154,12 @@ def test_extract_audio_features_ffmpeg_success(tmp_path):
 	mock_proc.returncode = 0
 	mock_proc.stdout = pcm_bytes
 
-	with patch("subprocess.run", return_value=mock_proc):
+	def fake_run(cmd, *args, **kwargs):
+		if cmd and "ffmpeg" in str(cmd[0]):
+			return mock_proc
+		return MagicMock(returncode=1, stdout="", stderr="")
+
+	with patch("subprocess.run", side_effect=fake_run):
 		bpm, energy, centroid = server.extract_audio_features_ffmpeg(test_file, ffmpeg_bin="/usr/bin/ffmpeg")
 		assert 110.0 <= bpm <= 130.0
 		assert energy > 0.0
@@ -168,7 +173,12 @@ def test_extract_audio_features_ffmpeg_timeout(tmp_path):
 	test_file = tmp_path / "timeout.mp3"
 	test_file.write_bytes(b"dummy")
 
-	with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="ffmpeg", timeout=5.0)):
+	def fake_timeout(cmd, *args, **kwargs):
+		if cmd and "ffmpeg" in str(cmd[0]):
+			raise subprocess.TimeoutExpired(cmd="ffmpeg", timeout=5.0)
+		return MagicMock(returncode=1, stdout="", stderr="")
+
+	with patch("subprocess.run", side_effect=fake_timeout):
 		bpm, energy, centroid = server.extract_audio_features_ffmpeg(test_file, ffmpeg_bin="/usr/bin/ffmpeg")
 		assert bpm == -1.0
 		assert energy == -1.0
@@ -184,7 +194,12 @@ def test_extract_audio_features_ffmpeg_failure(tmp_path):
 	mock_proc.returncode = 1
 	mock_proc.stdout = b""
 
-	with patch("subprocess.run", return_value=mock_proc):
+	def fake_failure(cmd, *args, **kwargs):
+		if cmd and "ffmpeg" in str(cmd[0]):
+			return mock_proc
+		return MagicMock(returncode=1, stdout="", stderr="")
+
+	with patch("subprocess.run", side_effect=fake_failure):
 		bpm, energy, centroid = server.extract_audio_features_ffmpeg(test_file, ffmpeg_bin="/usr/bin/ffmpeg")
 		assert bpm == -1.0
 		assert energy == -1.0

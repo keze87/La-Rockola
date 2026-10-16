@@ -70,8 +70,9 @@ def ensure_display_env(env: dict) -> None:
 			timeout=1.0,
 			check=False,
 		)
-		if res.returncode == 0:
-			for line in res.stdout.splitlines():
+		if res.returncode == 0 and res.stdout:
+			stdout_str = res.stdout if isinstance(res.stdout, str) else res.stdout.decode("utf-8", errors="ignore")
+			for line in stdout_str.splitlines():
 				if "=" in line:
 					k, v = line.split("=", 1)
 					k, v = k.strip(), v.strip()
@@ -92,7 +93,7 @@ def ensure_display_env(env: dict) -> None:
 							env[k] = v
 						if not os.environ.get(k):
 							os.environ[k] = v
-	except (FileNotFoundError, subprocess.SubprocessError, OSError):
+	except Exception:
 		pass
 
 	# 2. Reconciliar XDG_RUNTIME_DIR y DBUS
