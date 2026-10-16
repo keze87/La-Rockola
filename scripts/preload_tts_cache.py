@@ -40,11 +40,7 @@ try:
 		CARPINCHO_FORTUNES,
 		DEFAULT_TTS_TIMEOUT,
 		HAS_EDGE_TTS,
-		RADIO_HANDOFFS,
-		RADIO_INTROS,
 		RADIO_LEAD_INS,
-		RADIO_OUTROS,
-		RADIO_REACTIONS,
 		VOICE_ELENA,
 		VOICE_MARIA,
 		VOICE_NAMES,
@@ -54,6 +50,10 @@ try:
 		format_fortune_for_speech,
 		get_all_degree_segments,
 		get_all_fortune_reaction_segments,
+		get_all_handoff_segments,
+		get_all_intro_segments,
+		get_all_outro_segments,
+		get_all_reaction_segments,
 		get_all_time_segments,
 		get_all_weather_handoff_segments,
 		get_all_weather_reaction_segments,
@@ -68,11 +68,7 @@ except ImportError:
 		CARPINCHO_FORTUNES,
 		DEFAULT_TTS_TIMEOUT,
 		HAS_EDGE_TTS,
-		RADIO_HANDOFFS,
-		RADIO_INTROS,
 		RADIO_LEAD_INS,
-		RADIO_OUTROS,
-		RADIO_REACTIONS,
 		VOICE_ELENA,
 		VOICE_MARIA,
 		VOICE_NAMES,
@@ -82,6 +78,10 @@ except ImportError:
 		format_fortune_for_speech,
 		get_all_degree_segments,
 		get_all_fortune_reaction_segments,
+		get_all_handoff_segments,
+		get_all_intro_segments,
+		get_all_outro_segments,
+		get_all_reaction_segments,
 		get_all_time_segments,
 		get_all_weather_handoff_segments,
 		get_all_weather_reaction_segments,
@@ -118,7 +118,7 @@ def collect_phrases() -> list[tuple[str, str]]:
 	items: list[tuple[str, str]] = []
 
 	# 1. Intros
-	for intro in RADIO_INTROS:
+	for intro in get_all_intro_segments():
 		items.append(("intro", intro))
 
 	# 2. Conectores / Lead-ins
@@ -130,7 +130,7 @@ def collect_phrases() -> list[tuple[str, str]]:
 		items.append(("fortuna", format_fortune_for_speech(fort)))
 
 	# 4. Salidas / Despedidas
-	for outro in RADIO_OUTROS:
+	for outro in get_all_outro_segments():
 		items.append(("salida", outro))
 
 	# 5. Locuciones horarias completas (24 especiales en punto + todas las combinaciones hora/minuto)
@@ -146,7 +146,7 @@ def collect_phrases() -> list[tuple[str, str]]:
 		items.append(("minuto", minuto_str))
 
 	# 8. Pases de cabina criollos
-	for handoff in RADIO_HANDOFFS:
+	for handoff in get_all_handoff_segments():
 		items.append(("pase", handoff))
 
 	# 9. Pases a clima dirigidos al cohost
@@ -154,7 +154,7 @@ def collect_phrases() -> list[tuple[str, str]]:
 		items.append(("pase", handoff_weather))
 
 	# 10. Reacciones de cabina criollas
-	for reaction in RADIO_REACTIONS:
+	for reaction in get_all_reaction_segments():
 		items.append(("reaccion", reaction))
 
 	# 11. Reacciones de cabina por condición de clima

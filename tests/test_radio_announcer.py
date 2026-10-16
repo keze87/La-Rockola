@@ -705,7 +705,9 @@ async def test_system_fortune_read_by_elena_and_cached(tmp_path):
 		assert fortuna_calls[0][1] == radio_announcer.VOICE_ELENA
 
 		# Verificamos que la intro fue hablada por Tomás
-		intro_calls = [(t, v) for t, v in recorded_calls if any(intro in t for intro in radio_announcer.RADIO_INTROS)]
+		intro_calls = [
+			(t, v) for t, v in recorded_calls if any(intro in t for intro in radio_announcer.get_all_intro_segments())
+		]
 		assert len(intro_calls) >= 1
 		assert intro_calls[0][1] == radio_announcer.VOICE_TOMAS
 
@@ -753,11 +755,11 @@ def test_generate_modular_radio_script():
 		radio_announcer.generate_modular_radio_script(voice=radio_announcer.VOICE_TOMAS)
 	)
 	assert voice == radio_announcer.VOICE_TOMAS
-	assert intro in radio_announcer.RADIO_INTROS
+	assert intro in radio_announcer.get_all_intro_segments()
 	assert len(hora) > 0
 	assert minuto is None or len(minuto) > 0
 	assert lead_in in radio_announcer.RADIO_LEAD_INS
-	assert outro in radio_announcer.RADIO_OUTROS
+	assert outro in radio_announcer.get_all_outro_segments()
 	assert fortuna in full_script
 	assert isinstance(is_sys, bool)
 	assert radio_announcer.is_spanish_text(full_script) is True

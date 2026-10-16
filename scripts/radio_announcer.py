@@ -124,6 +124,7 @@ try:
 		TRANSITO_FLUVIAL_Y_CAMINOS,
 		VERBAL_SUFFIXES_REGEX,
 		VOICE_ELENA,
+		VOICE_GENDERS,
 		VOICE_MARIA,
 		VOICE_NAMES,
 		VOICE_PROSODY,
@@ -136,11 +137,17 @@ try:
 		WEATHER_LEAD_INS,
 		WEATHER_RAIN_THRESHOLD,
 		WEATHER_TEMPLATES,
+		RadioContext,
 		RadioPhrase,
+		build_radio_context,
+		expand_phrase_variants,
+		filter_by_context,
 		get_all_weather_desc_phrases,
 		get_lead_ins_for_category,
 		get_reactions_for_category,
 		get_weather_desc_phrase,
+		phrase_fits_context,
+		render_phrase,
 		resolve_segment_category,
 		resolve_weather_desc_category,
 	)
@@ -203,6 +210,7 @@ except ImportError:
 		TRANSITO_FLUVIAL_Y_CAMINOS,
 		VERBAL_SUFFIXES_REGEX,
 		VOICE_ELENA,
+		VOICE_GENDERS,
 		VOICE_MARIA,
 		VOICE_NAMES,
 		VOICE_PROSODY,
@@ -215,11 +223,17 @@ except ImportError:
 		WEATHER_LEAD_INS,
 		WEATHER_RAIN_THRESHOLD,
 		WEATHER_TEMPLATES,
+		RadioContext,
 		RadioPhrase,
+		build_radio_context,
+		expand_phrase_variants,
+		filter_by_context,
 		get_all_weather_desc_phrases,
 		get_lead_ins_for_category,
 		get_reactions_for_category,
 		get_weather_desc_phrase,
+		phrase_fits_context,
+		render_phrase,
 		resolve_segment_category,
 		resolve_weather_desc_category,
 	)
@@ -283,6 +297,7 @@ __all__ = [
 	"VERBAL_SUFFIXES_REGEX",
 	"VOICES",
 	"VOICE_ELENA",
+	"VOICE_GENDERS",
 	"VOICE_MARIA",
 	"VOICE_NAMES",
 	"VOICE_PROSODY",
@@ -295,9 +310,11 @@ __all__ = [
 	"WEATHER_RAIN_THRESHOLD",
 	"WEATHER_TEMPLATES",
 	"RadioAnnouncementResult",
+	"RadioContext",
 	"RadioPhrase",
 	"assemble_announcement_audio",
 	"build_lrc_content",
+	"build_radio_context",
 	"build_radio_dialogue_plan",
 	"build_srt_content",
 	"build_weather_phrase",
@@ -306,14 +323,21 @@ __all__ = [
 	"create_radio_announcement",
 	"describir_lluvias",
 	"estimate_mp3_duration",
+	"expand_phrase_variants",
+	"extract_current_temp_c",
 	"extract_location_from_weather_data",
+	"filter_by_context",
 	"format_fortune_for_speech",
 	"format_temperature",
 	"format_temperature_range",
 	"generate_modular_radio_script",
 	"get_all_degree_segments",
 	"get_all_fortune_reaction_segments",
+	"get_all_handoff_segments",
+	"get_all_intro_segments",
+	"get_all_outro_segments",
 	"get_all_rain_descriptions",
+	"get_all_reaction_segments",
 	"get_all_time_segments",
 	"get_all_weather_desc_phrases",
 	"get_all_weather_handoff_segments",
@@ -342,8 +366,10 @@ __all__ = [
 	"is_valid_spoken_sentence",
 	"load_bundled_fortunes",
 	"mix_announcement_with_bg_track",
+	"phrase_fits_context",
 	"prune_tts_cache_db",
 	"record_phrase_played",
+	"render_phrase",
 	"reset_radio_memory_state",
 	"reset_weather_cache",
 	"resolve_segment_category",
@@ -538,12 +564,21 @@ def extract_location_from_weather_data(data: dict) -> str | None:
 	return None
 
 
+def extract_current_temp_c(data: dict) -> int | None:
+	"""Temperatura actual (°C, redondeada) del JSON format=j1 de wttr.in, o None si falta."""
+	try:
+		return round(float(data["current_condition"][0]["temp_C"]))
+	except (KeyError, IndexError, ValueError, TypeError):
+		return None
+
+
 def get_weather_info(
 	data: dict,
 	lead_in: str | None = None,
 	current_hour: int | None = None,
 	template_idx: int | None = None,
 	location: str | None = None,
+	ctx: RadioContext | None = None,
 ) -> tuple[str, str] | None:
 	"""
 	Extrae los datos del JSON format=j1 de wttr.in y retorna (weather_phrase, weather_condition).
@@ -631,6 +666,7 @@ def get_weather_info(
 			code=code_raw,
 			lang_es=lang_es_raw,
 			variant_idx=template_idx,
+			ctx=ctx,
 		)
 		desc_phrase_str = f" {weather_desc_phrase}" if weather_desc_phrase else ""
 
@@ -661,6 +697,7 @@ def build_weather_phrase(
 	current_hour: int | None = None,
 	template_idx: int | None = None,
 	location: str | None = None,
+	ctx: RadioContext | None = None,
 ) -> str | None:
 	"""
 	Extrae y arma la frase del reporte del clima a partir del JSON format=j1 de wttr.in.
@@ -672,6 +709,7 @@ def build_weather_phrase(
 		current_hour=current_hour,
 		template_idx=template_idx,
 		location=location,
+		ctx=ctx,
 	)
 	return info[0] if info else None
 
@@ -907,6 +945,16 @@ def reset_radio_memory_state() -> None:
 	"""Limpia el estado en memoria del locutor de radio (útil para pruebas y reinicio limpio)."""
 	_RADIO_MEMORY_STATE.clear()
 	_PHRASE_HISTORY_MEMORY.clear()
+	_RENDERED_TO_TEMPLATE_KEY.clear()
+
+
+# Frase ya resuelta ("tal cual, comadre") -> clave de su plantilla ("tal cual, {vocativo}"), para que la
+# ponderación por recencia siga funcionando aunque se hable una versión concordada o según la franja horaria.
+_RENDERED_TO_TEMPLATE_KEY: dict[str, str] = {}
+
+
+def _clean_phrase_text(text: str) -> str:
+	return text.strip().strip("\"'«»").rstrip(".!?:;…").lower()
 
 
 def _normalize_phrase_key(phrase: str | tuple[str, str] | RadioPhrase, category: str = "") -> str:
@@ -916,8 +964,53 @@ def _normalize_phrase_key(phrase: str | tuple[str, str] | RadioPhrase, category:
 			category = str(phrase[1])
 	else:
 		phrase_text = str(phrase)
-	cleaned = phrase_text.strip().strip("\"'«»").rstrip(".!?:;…").lower()
+	cleaned = _clean_phrase_text(phrase_text)
+	cleaned = _RENDERED_TO_TEMPLATE_KEY.get(cleaned, cleaned)
 	return f"{category}:{cleaned}" if category else cleaned
+
+
+def _render(
+	template: str,
+	ctx: RadioContext | None = None,
+	addressee_voice: str | None = None,
+	cohost_name: str | None = None,
+) -> str:
+	"""Resuelve placeholders (vocativo, momento, saludo...) y recuerda de qué plantilla salió el texto."""
+	rendered = render_phrase(template, ctx, addressee_voice=addressee_voice, cohost_name=cohost_name)
+	if rendered != template:
+		_RENDERED_TO_TEMPLATE_KEY[_clean_phrase_text(rendered)] = _clean_phrase_text(template)
+	return rendered
+
+
+def _same_phrase(spoken: str, template: str) -> bool:
+	"""True si `spoken` es el texto de `template` o alguna de sus versiones resueltas."""
+	target = _clean_phrase_text(spoken)
+	if target == _clean_phrase_text(template):
+		return True
+	if "{" in template:
+		return any(_clean_phrase_text(v) == target for v in expand_phrase_variants(template))
+	return False
+
+
+def _find_pase_template(spoken: str) -> str | None:
+	for tpl in PASES_A_CLIMA:
+		if _same_phrase(spoken, tpl):
+			return tpl
+	return None
+
+
+def _recent_temp_c(now_ts: float, db_path: Path | str | None = None, max_age: float = 3 * 3600.0) -> int | None:
+	"""Última temperatura conocida (guardada al consultar wttr.in) si tiene menos de 3 horas."""
+	temp = get_radio_state("last_temp_c", db_path=db_path)
+	ts = get_radio_state("last_temp_ts", db_path=db_path)
+	if temp is None or ts is None:
+		return None
+	try:
+		if now_ts - float(ts) > max_age:
+			return None
+		return round(float(temp))
+	except (ValueError, TypeError):
+		return None
 
 
 def get_phrase_last_played(
@@ -947,12 +1040,11 @@ def get_phrase_last_played(
 		if val is not None:
 			return val
 	elif category == "pase":
-		for tpl in PASES_A_CLIMA:
-			for cname in VOICE_NAMES.values():
-				if _normalize_phrase_key(tpl.format(cohost=cname)) == _normalize_phrase_key(phrase_text):
-					val = _PHRASE_HISTORY_MEMORY.get(_normalize_phrase_key(tpl, "pase"))
-					if val is not None:
-						return val
+		tpl = _find_pase_template(phrase_text)
+		if tpl is not None:
+			val = _PHRASE_HISTORY_MEMORY.get(_normalize_phrase_key(tpl, "pase"))
+			if val is not None:
+				return val
 	return None
 
 
@@ -973,29 +1065,33 @@ def record_phrase_played(
 	norm_key = _normalize_phrase_key(phrase_text, category)
 	_PHRASE_HISTORY_MEMORY[norm_key] = ts
 
-	# Mapeo bidireccional entre categorías específicas y genéricas para garantizar consistencia
+	# Mapeo bidireccional entre categorías específicas y genéricas para garantizar consistencia.
+	# Las claves se guardan siempre con la plantilla (item), no con el texto ya concordado.
 	if category == "lead_in" or category.startswith("lead_in_"):
 		_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(phrase_text, "lead_in")] = ts
 		for cat_name, cat_list in LEAD_INS_BY_CATEGORY.items():
-			if any(_normalize_phrase_key(phrase_text) == _normalize_phrase_key(item) for item in cat_list):
-				_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(phrase_text, f"lead_in_{cat_name}")] = ts
+			match = next((item for item in cat_list if _same_phrase(phrase_text, item)), None)
+			if match is not None:
+				_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(match, f"lead_in_{cat_name}")] = ts
 				break
 	elif category == "reaccion" or category.startswith("reaccion_"):
 		_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(phrase_text, "reaccion")] = ts
 		for cat_name, cat_list in REACCIONES_BY_CATEGORY.items():
-			if any(_normalize_phrase_key(phrase_text) == _normalize_phrase_key(item) for item in cat_list):
-				_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(phrase_text, f"reaccion_{cat_name}")] = ts
+			match = next((item for item in cat_list if _same_phrase(phrase_text, item)), None)
+			if match is not None:
+				_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(match, "reaccion")] = ts
+				_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(match, f"reaccion_{cat_name}")] = ts
 				break
 		for clim_list in REACCIONES_CLIMA.values():
-			if any(_normalize_phrase_key(phrase_text) == _normalize_phrase_key(item) for item in clim_list):
-				_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(phrase_text, "reaccion_clima")] = ts
+			match = next((item for item in clim_list if _same_phrase(phrase_text, item)), None)
+			if match is not None:
+				_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(match, "reaccion")] = ts
+				_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(match, "reaccion_clima")] = ts
 				break
 	elif category == "pase":
-		for tpl in PASES_A_CLIMA:
-			for cname in VOICE_NAMES.values():
-				if _normalize_phrase_key(tpl.format(cohost=cname)) == _normalize_phrase_key(phrase_text):
-					_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(tpl, "pase")] = ts
-					break
+		tpl = _find_pase_template(phrase_text)
+		if tpl is not None:
+			_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(tpl, "pase")] = ts
 
 
 def weighted_choice_by_recency(
@@ -1429,40 +1525,44 @@ def get_bundled_fortune(db_path: Path | str | None = None) -> str | None:
 def select_radio_phrase(
 	force_system_fortune: bool | None = None,
 	db_path: Path | str | None = None,
+	ctx: RadioContext | None = None,
 ) -> tuple[RadioPhrase, bool]:
 	"""
 	Selecciona una frase o fortuna radial explícita (RadioPhrase(text, category), es_del_sistema).
 	Por defecto intenta con probabilidad 1/6 consultar una fortuna del sistema si está disponible en español,
 	o recurre al banco curado de frases del proyecto con duplas explícitas y selección ponderada por recencia.
+	Si se pasa ctx, descarta las frases incoherentes con la hora, el día o el clima (p. ej. "esta tarde" de madrugada).
 	"""
 	if force_system_fortune is not False and (force_system_fortune is True or random.random() < 1 / 6):
 		sys_fort = get_system_fortune()
-		if sys_fort and is_spanish_text(sys_fort):
+		if sys_fort and is_spanish_text(sys_fort) and phrase_fits_context(sys_fort, ctx):
 			return RadioPhrase(sys_fort, "fortuna"), True
 		bundled = get_bundled_fortune(db_path=db_path)
-		if bundled and is_spanish_text(bundled):
+		if bundled and is_spanish_text(bundled) and phrase_fits_context(bundled, ctx):
 			return RadioPhrase(bundled, "fortuna"), True
 
-	chosen = weighted_choice_by_recency(CARPINCHO_PHRASES, category="fortuna", db_path=db_path)
+	pool = filter_by_context(CARPINCHO_PHRASES, ctx)
+	chosen = weighted_choice_by_recency(pool, category="fortuna", db_path=db_path)
 	return chosen, False
 
 
 def select_fortune(
 	force_system_fortune: bool | None = None,
 	db_path: Path | str | None = None,
+	ctx: RadioContext | None = None,
 ) -> tuple[str, bool]:
 	"""
 	Selecciona una fortuna garantizada en español y retorna (texto_fortuna, es_del_sistema).
 	Por defecto intenta con probabilidad 1/6 consultar una fortuna del sistema si está disponible en español,
 	o recurre al banco curado de frases del proyecto (o frases criollas del carpincho) con selección ponderada por recencia.
 	"""
-	phrase, is_sys = select_radio_phrase(force_system_fortune=force_system_fortune, db_path=db_path)
+	phrase, is_sys = select_radio_phrase(force_system_fortune=force_system_fortune, db_path=db_path, ctx=ctx)
 	return phrase.text, is_sys
 
 
-def get_radio_fortune(db_path: Path | str | None = None) -> str:
+def get_radio_fortune(db_path: Path | str | None = None, ctx: RadioContext | None = None) -> str:
 	"""Devuelve una frase o fortuna garantizada en español."""
-	fortuna, _ = select_fortune(db_path=db_path)
+	fortuna, _ = select_fortune(db_path=db_path, ctx=ctx)
 	return fortuna
 
 
@@ -1501,25 +1601,74 @@ def select_radio_hosts(
 
 
 def get_all_weather_handoff_segments() -> list[str]:
-	"""Genera todas las combinaciones posibles de pases de clima para precarga en caché."""
+	"""Genera todas las versiones posibles de pases de clima (con nombre y vocativo concordados) para precarga en caché."""
 	res: list[str] = []
-	for name in VOICE_NAMES.values():
-		for tpl in PASES_A_CLIMA:
-			res.append(tpl.format(cohost=name))
+	for tpl in PASES_A_CLIMA:
+		for variant in expand_phrase_variants(tpl):
+			if variant not in res:
+				res.append(variant)
 	return res
 
 
 def get_all_weather_reaction_segments() -> list[str]:
-	"""Devuelve todas las reacciones climáticas de cabina para precarga en caché."""
+	"""Devuelve todas las reacciones climáticas de cabina (en masculino y femenino) para precarga en caché."""
 	res: list[str] = []
 	for reactions in REACCIONES_CLIMA.values():
-		res.extend(reactions)
+		for r in reactions:
+			for variant in expand_phrase_variants(r):
+				if variant not in res:
+					res.append(variant)
 	return res
 
 
 def get_all_fortune_reaction_segments() -> list[str]:
-	"""Devuelve todas las reacciones de fortuna para precarga en caché."""
-	return list(REACCIONES_FORTUNA)
+	"""Devuelve todas las reacciones de fortuna (en masculino y femenino) para precarga en caché."""
+	res: list[str] = []
+	for r in REACCIONES_FORTUNA:
+		for variant in expand_phrase_variants(r):
+			if variant not in res:
+				res.append(variant)
+	return res
+
+
+def get_all_intro_segments() -> list[str]:
+	"""Todas las intros posibles, con {saludo} resuelto para cada franja horaria."""
+	res: list[str] = []
+	for intro in RADIO_INTROS:
+		for variant in expand_phrase_variants(intro):
+			if variant not in res:
+				res.append(variant)
+	return res
+
+
+def get_all_outro_segments() -> list[str]:
+	"""Todas las salidas a la música posibles, con {momento} resuelto para cada franja horaria."""
+	res: list[str] = []
+	for outro in RADIO_OUTROS:
+		for variant in expand_phrase_variants(outro):
+			if variant not in res:
+				res.append(variant)
+	return res
+
+
+def get_all_handoff_segments() -> list[str]:
+	"""Todos los pases generales posibles, con placeholders expandidos para precarga en caché."""
+	res: list[str] = []
+	for h in RADIO_HANDOFFS:
+		for variant in expand_phrase_variants(h):
+			if variant not in res:
+				res.append(variant)
+	return res
+
+
+def get_all_reaction_segments() -> list[str]:
+	"""Todas las reacciones generales posibles, con placeholders expandidos para precarga en caché."""
+	res: list[str] = []
+	for r in RADIO_REACTIONS:
+		for variant in expand_phrase_variants(r):
+			if variant not in res:
+				res.append(variant)
+	return res
 
 
 def format_fortune_for_speech(fortuna: str | tuple[str, str] | RadioPhrase) -> str:
@@ -1579,22 +1728,31 @@ def build_radio_dialogue_plan(
 	dialogue_mode: bool = True,
 	last_reaction: str | None = None,
 	db_path: Path | str | None = None,
+	ctx: RadioContext | None = None,
 ) -> list[tuple[str, str, str, bool]]:
 	"""
 	Construye el plan estructurado de segmentos para la locución radial (texto, voz, categoría, allow_cache).
 	Si dialogue_mode es True, organiza una charla viva de cabina entre host y cohost.
 	Si dialogue_mode es False, retorna la locución solo tradicional.
 	Garantiza que nunca haya dos reacciones consecutivas idénticas y pondera frases por recencia.
+	Si se pasa ctx (RadioContext), resuelve {saludo}/{momento}, concuerda el género del interlocutor
+	({vocativo}, {filosofo}) y descarta frases incoherentes con la hora, el día o el clima.
 	"""
 	time_phrase = f"{hora_seg} {minuto_seg}".strip() if minuto_seg else hora_seg.strip()
 	fortune_text = format_fortune_for_speech(fortuna)
 	seg_cat = resolve_segment_category(fortuna)
+	cohost_name = VOICE_NAMES.get(cohost_voice, DEFAULT_COHOST_NAME)
+
+	intro = _render(intro, ctx)
+	outro = _render(outro, ctx)
 
 	if lead_in is not None:
-		effective_lead_in = lead_in
+		effective_lead_in = _render(lead_in, ctx)
 	else:
-		cat_lead_ins = get_lead_ins_for_category(seg_cat)
-		effective_lead_in = weighted_choice_by_recency(cat_lead_ins, category=f"lead_in_{seg_cat}", db_path=db_path)
+		cat_lead_ins = filter_by_context(get_lead_ins_for_category(seg_cat), ctx)
+		effective_lead_in = _render(
+			weighted_choice_by_recency(cat_lead_ins, category=f"lead_in_{seg_cat}", db_path=db_path), ctx
+		)
 
 	if not dialogue_mode:
 		fortune_voice = VOICE_ELENA if is_system_fortune else host_voice
@@ -1620,23 +1778,28 @@ def build_radio_dialogue_plan(
 	]
 
 	prev_reaction = last_reaction
+	prev_key = _normalize_phrase_key(prev_reaction) if prev_reaction else None
 
-	# 1. Clima
+	# 1. Clima (el host le habla al cohost)
 	if weather_text:
-		cohost_name = VOICE_NAMES.get(cohost_voice, DEFAULT_COHOST_NAME)
-		pase_template = weighted_choice_by_recency(PASES_A_CLIMA, category="pase", db_path=db_path)
-		pase_text = pase_template.format(cohost=cohost_name)
+		pase_pool = filter_by_context(PASES_A_CLIMA, ctx)
+		pase_template = weighted_choice_by_recency(pase_pool, category="pase", db_path=db_path)
+		pase_text = _render(pase_template, ctx, addressee_voice=cohost_voice, cohost_name=cohost_name)
 		plan.append((pase_text, host_voice, "pase", True))
 
 		plan.append((weather_text, cohost_voice, "clima", False))
 
 		cond = weather_condition or "agradable"
-		candidates = REACCIONES_CLIMA.get(cond, REACCIONES_CLIMA["agradable"])
-		valid_reactions = [r for r in candidates if r != prev_reaction]
+		candidates = filter_by_context(REACCIONES_CLIMA.get(cond, REACCIONES_CLIMA["agradable"]), ctx)
+		valid_reactions = [r for r in candidates if _normalize_phrase_key(r) != prev_key]
 		pool_clima = valid_reactions if valid_reactions else candidates
-		reaccion_clima = weighted_choice_by_recency(pool_clima, category="reaccion_clima", db_path=db_path)
+		reaccion_clima = _render(
+			weighted_choice_by_recency(pool_clima, category="reaccion_clima", db_path=db_path),
+			ctx,
+			addressee_voice=cohost_voice,
+		)
 		plan.append((reaccion_clima, host_voice, "reaccion", True))
-		prev_reaction = reaccion_clima
+		prev_key = _normalize_phrase_key(reaccion_clima)
 
 	# 2. Fortuna / Aviso / Oyentes
 	plan.append((effective_lead_in, host_voice, "lead_in", True))
@@ -1648,11 +1811,18 @@ def build_radio_dialogue_plan(
 
 	plan.append((format_fortune_for_speech(fortuna), fortune_voice, "fortuna", True))
 
-	cat_reactions = get_reactions_for_category(seg_cat)
-	valid_fortune_reactions = [r for r in cat_reactions if r != prev_reaction]
-	pool_fortuna = valid_fortune_reactions if valid_fortune_reactions else cat_reactions
-	reaccion_fortuna = weighted_choice_by_recency(pool_fortuna, category=f"reaccion_{seg_cat}", db_path=db_path)
+	# La reacción la dice la otra voz y va dirigida a quien leyó la frase: el género concuerda con el destinatario
 	react_voice = host_voice if fortune_voice == cohost_voice else cohost_voice
+	addressee_voice = cohost_voice if react_voice == host_voice else host_voice
+
+	cat_reactions = filter_by_context(get_reactions_for_category(seg_cat), ctx)
+	valid_fortune_reactions = [r for r in cat_reactions if _normalize_phrase_key(r) != prev_key]
+	pool_fortuna = valid_fortune_reactions if valid_fortune_reactions else cat_reactions
+	reaccion_fortuna = _render(
+		weighted_choice_by_recency(pool_fortuna, category=f"reaccion_{seg_cat}", db_path=db_path),
+		ctx,
+		addressee_voice=addressee_voice,
+	)
 	plan.append((reaccion_fortuna, react_voice, "reaccion", True))
 
 	# Salida a la música
@@ -1812,13 +1982,14 @@ def generate_modular_radio_script(
 	if not voice or voice not in VOICES:
 		voice = random.choice(VOICES)
 
-	intro = random.choice(RADIO_INTROS)
+	ctx = build_radio_context(dt)
+	intro = render_phrase(random.choice(filter_by_context(RADIO_INTROS, ctx)), ctx)
 	hora_seg, minuto_seg, _ = get_modular_time_segments(dt)
-	fortuna, is_system_fortune = select_fortune(force_system_fortune)
+	fortuna, is_system_fortune = select_fortune(force_system_fortune, ctx=ctx)
 	seg_cat = resolve_segment_category(fortuna)
 	cat_lead_ins = get_lead_ins_for_category(seg_cat)
-	lead_in = random.choice(cat_lead_ins)
-	outro = random.choice(RADIO_OUTROS)
+	lead_in = random.choice(filter_by_context(cat_lead_ins, ctx))
+	outro = render_phrase(random.choice(filter_by_context(RADIO_OUTROS, ctx)), ctx)
 	hora_full = f"{hora_seg} {minuto_seg}" if minuto_seg else hora_seg
 	fort_speech = format_fortune_for_speech(fortuna)
 	full_script = f"{intro} {hora_full} {lead_in} {fort_speech} {outro}"
@@ -2933,12 +3104,7 @@ async def create_radio_announcement(
 		return RadioAnnouncementResult(ok=False, display_title="", script="", error=err_msg)
 
 	effective_dt = dt if dt is not None else datetime.now(UTC).astimezone()
-
-	# Selección de fortuna y asignación de roles de cabina (host y cohost distintos)
-	fortuna, is_sys = select_radio_phrase(force_system_fortune, db_path=db_path)
-	host_voice, cohost_voice = select_radio_hosts(host_voice=voice, is_system_fortune=is_sys)
-	locutor_nombre = VOICE_NAMES.get(host_voice, DEFAULT_HOST_NAME)
-	cohost_nombre = VOICE_NAMES.get(cohost_voice, DEFAULT_COHOST_DISPLAY_NAME)
+	now_ts = effective_dt.timestamp()
 
 	# Reporte del clima con wttr.in (máximo una vez por hora y con al menos 30 min de diferencia)
 	weather_text: str | None = None
@@ -2946,17 +3112,17 @@ async def create_radio_announcement(
 	current_weather_slot = effective_dt.strftime("%Y-%m-%d %H")
 	last_weather_hour = get_radio_state("last_weather_hour", db_path=db_path)
 	last_weather_ts = get_radio_state("last_weather_timestamp", db_path=db_path)
-	now_ts = effective_dt.timestamp()
 
 	enough_time_passed = last_weather_ts is None or (now_ts - float(last_weather_ts)) >= (30 * 60)
 
 	pending_weather_slot: str | None = None
 	pending_weather_ts: float | None = None
+	loc_to_query = weather_location or DEFAULT_WEATHER_LOCATION
+	weather_data: dict | None = None
 
 	if last_weather_hour != current_weather_slot and enough_time_passed:
 		try:
 			weather_timeout = min(timeout, 5.0)
-			loc_to_query = weather_location or DEFAULT_WEATHER_LOCATION
 			weather_data = await asyncio.to_thread(
 				fetch_weather_json,
 				loc_to_query,
@@ -2964,22 +3130,43 @@ async def create_radio_announcement(
 				weather_timeout,
 			)
 			if weather_data:
-				weather_info = get_weather_info(
-					weather_data,
-					current_hour=effective_dt.hour,
-					location=loc_to_query,
-				)
-				if weather_info:
-					weather_text, weather_condition = weather_info
-					pending_weather_slot = current_weather_slot
-					pending_weather_ts = now_ts
-					logger.debug(f"🌤️ Reporte del clima incorporado a la locución: '{weather_text}'")
+				# Recordar la temperatura real para que las alertas criollas respeten la estación
+				fresh_temp = extract_current_temp_c(weather_data)
+				if fresh_temp is not None:
+					set_radio_state("last_temp_c", fresh_temp, db_path=db_path)
+					set_radio_state("last_temp_ts", now_ts, db_path=db_path)
 		except Exception as e:
-			logger.debug(f"Fallo no crítico obteniendo/procesando reporte del clima: {e}")
+			logger.debug(f"Fallo no crítico consultando el clima: {e}")
+			weather_data = None
 
-	intro = weighted_choice_by_recency(RADIO_INTROS, category="intro", db_path=db_path)
+	# Contexto de la transmisión: franja horaria, día, estación y temperatura conocida
+	ctx = build_radio_context(effective_dt, temp_c=_recent_temp_c(now_ts, db_path=db_path))
+
+	if weather_data:
+		try:
+			weather_info = get_weather_info(
+				weather_data,
+				current_hour=effective_dt.hour,
+				location=loc_to_query,
+				ctx=ctx,
+			)
+			if weather_info:
+				weather_text, weather_condition = weather_info
+				pending_weather_slot = current_weather_slot
+				pending_weather_ts = now_ts
+				logger.debug(f"🌤️ Reporte del clima incorporado a la locución: '{weather_text}'")
+		except Exception as e:
+			logger.debug(f"Fallo no crítico procesando reporte del clima: {e}")
+
+	# Selección de fortuna y asignación de roles de cabina (host y cohost distintos)
+	fortuna, is_sys = select_radio_phrase(force_system_fortune, db_path=db_path, ctx=ctx)
+	host_voice, cohost_voice = select_radio_hosts(host_voice=voice, is_system_fortune=is_sys)
+	locutor_nombre = VOICE_NAMES.get(host_voice, DEFAULT_HOST_NAME)
+	cohost_nombre = VOICE_NAMES.get(cohost_voice, DEFAULT_COHOST_DISPLAY_NAME)
+
+	intro = weighted_choice_by_recency(filter_by_context(RADIO_INTROS, ctx), category="intro", db_path=db_path)
 	hora_seg, minuto_seg, _ = get_modular_time_segments(effective_dt)
-	outro = weighted_choice_by_recency(RADIO_OUTROS, category="salida", db_path=db_path)
+	outro = weighted_choice_by_recency(filter_by_context(RADIO_OUTROS, ctx), category="salida", db_path=db_path)
 
 	is_dialogue = dialogue_mode if dialogue_mode is not None else (random.random() < 0.85)
 	last_reaction = get_radio_state("last_reaction", db_path=db_path)
@@ -2998,6 +3185,7 @@ async def create_radio_announcement(
 		dialogue_mode=is_dialogue,
 		last_reaction=last_reaction,
 		db_path=db_path,
+		ctx=ctx,
 	)
 
 	full_script = " ".join(t[0].strip() for t in plan if t[0].strip())

@@ -7,8 +7,10 @@ reacciones de cabina, filtros léxicos y plantillas sintácticas.
 
 from __future__ import annotations
 
+import functools
 import random
 import re
+from datetime import datetime
 from typing import NamedTuple
 
 
@@ -33,6 +35,15 @@ VOICE_NAMES: dict[str, str] = {
 	VOICE_MARIA: "María",
 	VOICE_VALENTINA: "Valentina",
 }
+
+# Género gramatical de cada locutor (para concordar vocativos y adjetivos: compadre/comadre, filósofo/filósofa)
+VOICE_GENDERS: dict[str, str] = {
+	VOICE_TOMAS: "m",
+	VOICE_ELENA: "f",
+	VOICE_MARIA: "f",
+	VOICE_VALENTINA: "f",
+}
+DEFAULT_GENDER: str = "m"
 
 # Prosodia fija por locutor (personajes con impronta propia para sonar naturales y no robóticos)
 VOICE_PROSODY: dict[str, dict[str, str]] = {
@@ -453,7 +464,7 @@ RADIO_INTROS: list[str] = [
 	"¡Agarrate fuerte que la playlist de hoy viene salteada! Acá no hay etiqueta que valga, solo buena música para el corazón.",
 	"Se viene una tanda de esas bien ensaladas: un poco de esto, un poco de aquello y cero prejuicios. ¡Prendete a La Rockola!",
 	# El arranque y la energía de la mañana
-	"¡Sintonía total en todo el país! Estás en la Rockola del Carpincho, donde la música no para y los carpinchos tampoco. ¡Buen día para todos!",
+	"¡Sintonía total en todo el país! Estás en la Rockola del Carpincho, donde la música no para y los carpinchos tampoco. ¡{saludo} para todos!",
 	"¡Arriba, arriba, arriba! Subí el volumen que si el vecino se queja, lo invitamos a tomar unos mates. ¡Arrancamos otra hora de puros éxitos!",
 	"Estás escuchando la Rockola del Carpincho. Conduce quien les habla, musicaliza el destino, y del otro lado... ¡la mejor audiencia del planeta!",
 	"¡Hola, hola! Reportándonos en vivo desde el mejor rincón del dial. Si estás yendo a laburar, paciencia; si estás volviendo, ¡sos un héroe nacional!",
@@ -552,7 +563,7 @@ RADIO_OUTROS: list[str] = [
 	"¡Largá el remo un minuto y mandate a la pista con esta canción!",
 	"¡Este tema te saca la fiaca de un tirón! ¡Dale gas!",
 	"¡Temazo de aquellos para escuchar con la ventanilla baja y el viento en la cara!",
-	"¡Dejate llevar por el compás que la tarde pide fiesta en la orilla!",
+	"¡Dejate llevar por el compás que {momento} pide fiesta en la orilla!",
 	"¡Volumen al mango que los carpinchos quieren cumbia!",
 	"¡Acomodá el parlante mirando al río y disfrutá de este cañonazo musical!",
 	# Presentando el "Próximo Tema"
@@ -1129,6 +1140,15 @@ WEATHER_DESC_PHRASES: dict[str, list[str]] = {
 		"Visibilidad baja por polvo y calina en el ambiente, tarde pesada en la isla.",
 		"Polvareda levantada por el viento seco, el horizonte se ve borroso.",
 	],
+	# Cielo despejado cuando no hay sol (noche y madrugada): wttr.in lo reporta como "Clear" igual que de día
+	"clear_night": [
+		"Cielo despejado y estrellado sobre el bañado, ideal para mirar las estrellas desde la orilla.",
+		"Cielo limpio y sin una sola nube, las estrellas se lucen sobre la laguna.",
+		"Cielo abierto y despejado, con un manto de estrellas sobre el humedal.",
+		"Despejado total sobre los bañados, de esos cielos que dan ganas de escuchar música a la intemperie.",
+		"Cielo claro y sin nubes, el río refleja las estrellas como un espejo.",
+		"Ni una nube en el horizonte, postal perfecta de humedal bajo las estrellas.",
+	],
 	"default": [
 		"Tiempo característico de humedal en la zona, ideal para acompañar con buena música.",
 		"Así viene pintando el cielo por acá, con La Rockola haciéndote el aguante.",
@@ -1212,6 +1232,7 @@ def get_weather_desc_phrase(
 	code: int | str | None = None,
 	lang_es: str | None = None,
 	variant_idx: int | None = None,
+	ctx: RadioContext | None = None,
 ) -> str:
 	"""
 	Retorna una frase descriptiva con impronta criolla para el estado actual del cielo
@@ -1224,16 +1245,23 @@ def get_weather_desc_phrase(
 		return ""
 
 	category = resolve_weather_desc_category(desc=desc, code=code, lang_es=lang_es)
+	if ctx is not None and category == "sunny" and ctx.franja in FRANJAS_NOCTURNAS:
+		category = "clear_night"
 	options = WEATHER_DESC_PHRASES.get(category, WEATHER_DESC_PHRASES["default"])
+	if ctx is not None:
+		# Evita "tarde templada" de madrugada o "sol radiante" de noche
+		options = filter_by_context(options, ctx)
 	if variant_idx is not None:
 		return options[variant_idx % len(options)]
 	return random.choice(options)
 
 
 def get_all_weather_desc_phrases() -> list[str]:
-	"""Devuelve la lista consolidada de todas las descripciones de cielo/tiempo posibles."""
+	"""Devuelve la lista consolidada de las descripciones climáticas canónicas."""
 	res: list[str] = []
-	for p_list in WEATHER_DESC_PHRASES.values():
+	for category, p_list in WEATHER_DESC_PHRASES.items():
+		if category == "default":
+			continue
 		for p in p_list:
 			if p not in res:
 				res.append(p)
@@ -1249,7 +1277,7 @@ PASES_A_CLIMA: list[str] = [
 	"{cohost}, ¿cómo está la temperatura para meter panzada al río?",
 	"Tirame la data del cielo, {cohost}, que se me están enfriando las patas.",
 	"Decime qué onda afuera, {cohost}, ¿sale mate caliente o tereré?",
-	"A ver compadre {cohost}, cantame cómo pinta la mano meteorológica.",
+	"A ver {vocativo} {cohost}, cantame cómo pinta la mano meteorológica.",
 	"Y para el tiempo, {cohost}, ¿cómo viene la mano?",
 	"A ver, {cohost}, ¿qué nos canta el cielo hoy?",
 	"{cohost}, tirate el parte meteorológico carpincho.",
@@ -1263,9 +1291,9 @@ PASES_A_CLIMA: list[str] = [
 	"A ver {cohost}, asomate al muelle y decime si el viento del este nos trae agua.",
 	"{cohost}, tirame la posta del tiempo: ¿está para meter panzada al río o nos refugiamos en la cueva?",
 	"Che {cohost}, mirá cómo vuelan bajo las golondrinas... ¿qué marca el radar para hoy?",
-	"Cantame los números del clima {cohost}, que la tarde está tan pesada que ni los mosquitos vuelan.",
+	"Cantame los números del clima {cohost}, que {momento} está tan pesada que ni los mosquitos vuelan.",
 	"¿Cómo viene la mano con el cielo {cohost}, sale sol para secar el cuero o preparamos el piloto?",
-	"{cohost}, compadre de cabina, ¿cómo pinta el tiempo para los que andan navegando la cuenca?",
+	"{cohost}, {vocativo} de cabina, ¿cómo pinta el tiempo para los que andan navegando la cuenca?",
 ]
 
 RADIO_HANDOFFS: list[str] = [
@@ -1274,7 +1302,7 @@ RADIO_HANDOFFS: list[str] = [
 	"¿Qué tenemos en el pronóstico para hoy?",
 	"Tirate esa data de la laguna.",
 	"Pará que quiero saber qué dice el oráculo.",
-	"¿Qué nos espera en el cielo, compadre?",
+	"¿Qué nos espera en el cielo, {vocativo}?",
 	"Tirame el parte meteorológico carpincho.",
 ]
 
@@ -1288,7 +1316,7 @@ REACCIONES_CLIMA: dict[str, list[str]] = {
 	],
 	"frio": [
 		"¡Fresquito para poncho! Metan más leña al fuego.",
-		"¡Qué frescor, compadre! Salen esos mates bien calientes.",
+		"¡Qué frescor, {vocativo}! Salen esos mates bien calientes.",
 		"¡Está para invernar abajo de la paja brava!",
 		"¡Se vino el frío de golpe! A cuidar las orejas.",
 		"¡Pucha que está fresco! Lindo para unas tortas fritas.",
@@ -1304,7 +1332,7 @@ REACCIONES_CLIMA: dict[str, list[str]] = {
 		"¡Una pinturita de día para andar al aire libre!",
 		"¡Joya total! El clima ideal para unos amargos en la orilla.",
 		"¡Ni frío ni calor, qué más querés para pasarla bomba!",
-		"¡Clima perfecto, compadre! A disfrutarlo a pleno.",
+		"¡Clima perfecto, {vocativo}! A disfrutarlo a pleno.",
 		"¡Está de diez afuera! Ni una queja podemos meter.",
 	],
 }
@@ -1312,13 +1340,13 @@ REACCIONES_CLIMA: dict[str, list[str]] = {
 REACCIONES_FORTUNA: list[str] = [
 	"¡Olvídate! Mejor explicado, imposible.",
 	"¡Uh, qué bárbaro! Me dejó recalculando.",
-	"Tal cual, compadre... no le saques ni una coma.",
+	"Tal cual, {vocativo}... no le saques ni una coma.",
 	"¡Mamita querida! Metiste el dedo en la llaga.",
 	"Naaa, qué momento. Piel de carpincho se me puso.",
 	"Tranqui, fiera... que no cunda el pánico en el pajonal.",
 	"¡Qué personaje! Firmo abajo.",
 	"¡Ja! Qué sabio el oráculo.",
-	"¡Tal cual, compadre! La pura verdad.",
+	"¡Tal cual, {vocativo}! La pura verdad.",
 	"¡Qué lo tiró! Sabiduría pura de la laguna.",
 	"¡Amén! Más claro, echale agua.",
 	"¡Posta! Tomá nota de esa.",
@@ -1328,12 +1356,12 @@ REACCIONES_FORTUNA: list[str] = [
 	"¡Palabra santa! A guardarla en el corazón.",
 	"¡De una! Nada más que agregar.",
 	"¡Clarito como agua de arroyo en bajante!",
-	"¡Naaa, qué filósofo de bañado tenemos hoy!",
+	"¡Naaa, qué {filosofo} de bañado tenemos hoy!",
 	"¡Aplaudo de pie con las dos patas delanteras!",
 	"¡Esa frase te acomoda las ideas de una sola cebada!",
 	"¡Una obra de arte! Ni un poeta del Delta lo decía mejor.",
 	"¡Totalmente! Guardalo en un frasco de mermelada y no lo pierdas.",
-	"¡Qué profundidad criolla! Me quedé sin palabras, compadre.",
+	"¡Qué profundidad criolla! Me quedé sin palabras, {vocativo}.",
 	"¡Eso no fue un consejo, fue una caricia al alma!",
 	"¡Para ponerlo en un cartelito de madera en la entrada del rancho!",
 	"¡Posta pura! Al que no le guste, que vaya a rumiar pasto amargo.",
@@ -1383,7 +1411,7 @@ RADIO_REACTIONS: list[str] = [
 	"Mirá vos, qué momento.",
 	"Lindo momento para unos buenos mates.",
 	"Una pinturita.",
-	"Totalmente, compadre.",
+	"Totalmente, {vocativo}.",
 	"Tal cual, fiera.",
 	"¡Qué temazo metiste!",
 	"La posta pura.",
@@ -1392,7 +1420,7 @@ RADIO_REACTIONS: list[str] = [
 	"¡Qué pedazo de tema, por favor!",
 	"Ese solo te afloja hasta las junturas.",
 	"¡Inolvidable! Para escucharlo en loop todo el domingo.",
-	"¡Qué ritmo sabroso, compadre!",
+	"¡Qué ritmo sabroso, {vocativo}!",
 	"Te deja con el corazón saltando como boga en la red.",
 	"¡Una locura total! Música de la buena.",
 	"Ese tema te levanta cualquier día nublado.",
@@ -2336,6 +2364,275 @@ AI_ROBOTIC_PHRASES: list[str] = [
 	"segmentation fault",
 	"stack overflow",
 ]
+
+
+# ---------------------------------------------------------------------------
+# Contexto radial: franja horaria, día, estación, temperatura y género del interlocutor
+# ---------------------------------------------------------------------------
+
+FRANJAS: tuple[str, ...] = ("madrugada", "mañana", "mediodia", "tarde", "noche")
+FRANJAS_DIURNAS: frozenset[str] = frozenset({"mañana", "mediodia", "tarde"})
+FRANJAS_NOCTURNAS: frozenset[str] = frozenset({"noche", "madrugada"})
+
+# Siempre femeninos para que concuerde el adjetivo ("{momento} está tan pesada")
+MOMENTO_POR_FRANJA: dict[str, str] = {
+	"madrugada": "la madrugada",
+	"mañana": "la mañana",
+	"mediodia": "la jornada",
+	"tarde": "la tarde",
+	"noche": "la noche",
+}
+SALUDOS_UNICOS: tuple[str, ...] = ("Buen día", "Buenas tardes", "Buenas noches")
+DIAS_SEMANA: tuple[str, ...] = ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")
+
+VOCATIVOS: dict[str, str] = {"m": "compadre", "f": "comadre"}
+COMPANEROS: dict[str, str] = {"m": "compañero", "f": "compañera"}
+FILOSOFOS: dict[str, str] = {"m": "filósofo", "f": "filósofa"}
+
+
+class RadioContext(NamedTuple):
+	"""Situación en vivo de la transmisión (hora, día, estación y temperatura conocida)."""
+
+	franja: str = "tarde"
+	momento: str = "la tarde"
+	saludo: str = "Buenas tardes"
+	dia_semana: int = 0  # 0 = lunes ... 6 = domingo
+	dia_nombre: str = "lunes"
+	es_finde: bool = False
+	estacion: str = "primavera"
+	mes: int = 10
+	temp_c: int | None = None
+
+
+def get_franja_horaria(hour: int) -> str:
+	"""madrugada 0-5, mañana 6-11, mediodía 12-13, tarde 14-19, noche 20-23."""
+	h = int(hour) % 24
+	if h < 6:
+		return "madrugada"
+	if h < 12:
+		return "mañana"
+	if h < 14:
+		return "mediodia"
+	if h < 20:
+		return "tarde"
+	return "noche"
+
+
+def get_saludo_horario(hour: int) -> str:
+	"""Saludo radial acorde a la hora ("Buen día" desde las 5 hasta el mediodía)."""
+	h = int(hour) % 24
+	if h < 5:
+		return "Buenas noches"
+	if h < 12:
+		return "Buen día"
+	if h < 20:
+		return "Buenas tardes"
+	return "Buenas noches"
+
+
+def get_estacion(month: int) -> str:
+	"""Estación meteorológica del hemisferio sur."""
+	if month in (12, 1, 2):
+		return "verano"
+	if month in (3, 4, 5):
+		return "otoño"
+	if month in (6, 7, 8):
+		return "invierno"
+	return "primavera"
+
+
+def build_radio_context(dt: datetime | None = None, temp_c: float | None = None) -> RadioContext:
+	"""Arma el contexto de la transmisión a partir de la fecha/hora local y (opcional) la temperatura actual."""
+	if dt is None:
+		dt = datetime.now().astimezone()
+	wd = dt.weekday()
+	franja = get_franja_horaria(dt.hour)
+	return RadioContext(
+		franja=franja,
+		momento=MOMENTO_POR_FRANJA[franja],
+		saludo=get_saludo_horario(dt.hour),
+		dia_semana=wd,
+		dia_nombre=DIAS_SEMANA[wd],
+		es_finde=wd >= 5,
+		estacion=get_estacion(dt.month),
+		mes=dt.month,
+		temp_c=None if temp_c is None else round(float(temp_c)),
+	)
+
+
+def context_allows(cond: str, ctx: RadioContext) -> bool:
+	"""Condiciones climáticas/estacionales: usa la temperatura real si se conoce y, si no, el mes."""
+	t = ctx.temp_c
+	if cond == "calor":
+		return t >= 26 if t is not None else ctx.mes in (11, 12, 1, 2, 3)
+	if cond == "frio":
+		return t <= 14 if t is not None else ctx.mes in (5, 6, 7, 8)
+	if cond == "bichos":
+		return t >= 16 if t is not None else ctx.mes in (10, 11, 12, 1, 2, 3, 4)
+	return True
+
+
+class _ContextRule(NamedTuple):
+	pattern: re.Pattern[str]
+	franjas: frozenset[str] | None = None
+	dias: frozenset[int] | None = None
+	cond: str | None = None
+	only_categories: frozenset[str] | None = None
+
+
+def _rule(
+	pattern: str,
+	franjas: tuple[str, ...] | None = None,
+	dias: tuple[int, ...] | None = None,
+	cond: str | None = None,
+	only_categories: tuple[str, ...] | None = None,
+) -> _ContextRule:
+	return _ContextRule(
+		re.compile(pattern, re.IGNORECASE),
+		frozenset(franjas) if franjas else None,
+		frozenset(dias) if dias else None,
+		cond,
+		frozenset(only_categories) if only_categories else None,
+	)
+
+
+_CAT_CLIMA_CRIOLLA = ("alerta_criolla", "aviso", "oyentes")
+
+# Una frase que cumple una regla solo se puede decir cuando el contexto la satisface (todas las que apliquen).
+CONTEXT_RULES: list[_ContextRule] = [
+	# --- Franja horaria ---
+	_rule(r"\btard(?:e|ecit\w*)\b", franjas=("tarde",)),
+	_rule(r"\bmadrugada\b", franjas=("madrugada", "mañana")),
+	_rule(r"\bde la mañana\b", franjas=("madrugada", "mañana", "mediodia")),
+	_rule(r"\b(?:noche larga|turno noche|cuadrilla de la noche|trasnoch\w*)\b", franjas=("noche", "madrugada")),
+	_rule(r"\bse nos viene la noche\b", franjas=("mediodia", "tarde")),
+	_rule(r"\bsol(?:azo|cito)?\b", franjas=("mañana", "mediodia", "tarde")),
+	_rule(r"\bsol cae\b|\bcae el sol\b", franjas=("tarde",)),
+	_rule(r"\bgolondrinas?\b", franjas=("mañana", "mediodia", "tarde")),
+	_rule(r"\barriba, arriba\b", franjas=("madrugada", "mañana")),
+	_rule(r"\byendo a laburar\b", franjas=("mañana", "mediodia", "tarde", "noche")),
+	# --- Día de la semana ---
+	_rule(r"(?<!todo el )\bdomingo\b", dias=(0, 1, 2, 3, 4, 5)),
+	_rule(r"\beste sábado\b", dias=(0, 1, 2, 3, 4, 5)),
+	# --- Estación / temperatura real ---
+	_rule(
+		r"\bcalor\w*|\bcuarenta grados\b|\bventilador\b|\basfalto\b|\bsudando\b|\bverano\b|\bheladera\b",
+		cond="calor",
+		only_categories=_CAT_CLIMA_CRIOLLA,
+	),
+	_rule(
+		r"\bmosquitos?\b|\bjejenes\b|\btábanos\b|\bmoscas\b", cond="bichos", only_categories=("alerta_criolla", "aviso")
+	),
+]
+
+
+def _split_item(item: object, category: str | None = None) -> tuple[str, str | None]:
+	"""Extrae (texto, categoría) de un str, una tupla o un RadioPhrase."""
+	if isinstance(item, tuple):
+		text = item[0] if item else ""
+		cat = item[1] if len(item) > 1 and item[1] else category
+		return str(text), cat
+	return str(item), category
+
+
+def phrase_fits_context(text: str, ctx: RadioContext | None, category: str | None = None) -> bool:
+	"""True si la frase es coherente con la franja horaria, el día y el clima actuales (ctx None => siempre)."""
+	if ctx is None or not text:
+		return True
+	for rule in CONTEXT_RULES:
+		if rule.only_categories and category not in rule.only_categories:
+			continue
+		if not rule.pattern.search(text):
+			continue
+		if rule.franjas and ctx.franja not in rule.franjas:
+			return False
+		if rule.dias and ctx.dia_semana not in rule.dias:
+			return False
+		if rule.cond and not context_allows(rule.cond, ctx):
+			return False
+	return True
+
+
+def filter_by_context(candidates: list, ctx: RadioContext | None, category: str | None = None) -> list:
+	"""Descarta las frases incoherentes con el contexto. Si no quedara ninguna, devuelve la lista original."""
+	if ctx is None:
+		return list(candidates)
+	kept = []
+	for c in candidates:
+		text, cat = _split_item(c, category)
+		if phrase_fits_context(text, ctx, cat):
+			kept.append(c)
+	return kept or list(candidates)
+
+
+_PLACEHOLDER_RE = re.compile(r"\{(vocativo|companero|filosofo|momento|saludo|cohost)\}")
+
+
+def _placeholder_values(
+	gender: str,
+	momento: str,
+	saludo: str,
+	cohost_name: str | None,
+) -> dict[str, str]:
+	return {
+		"vocativo": VOCATIVOS.get(gender, VOCATIVOS[DEFAULT_GENDER]),
+		"companero": COMPANEROS.get(gender, COMPANEROS[DEFAULT_GENDER]),
+		"filosofo": FILOSOFOS.get(gender, FILOSOFOS[DEFAULT_GENDER]),
+		"momento": momento,
+		"saludo": saludo,
+		"cohost": cohost_name or DEFAULT_COHOST_NAME,
+	}
+
+
+def render_phrase(
+	template: str,
+	ctx: RadioContext | None = None,
+	addressee_voice: str | None = None,
+	cohost_name: str | None = None,
+) -> str:
+	"""
+	Resuelve los placeholders de una frase: {vocativo}, {companero}, {filosofo} (concuerdan con el género de
+	quien recibe el mensaje, addressee_voice), {momento}, {saludo} (según la franja horaria) y {cohost}.
+	Sin ctx usa fórmulas neutras ("la jornada", "Muy buenas"). Las llaves desconocidas se dejan intactas.
+	"""
+	if "{" not in template:
+		return template
+	gender = VOICE_GENDERS.get(addressee_voice or "", DEFAULT_GENDER)
+	momento = ctx.momento if ctx else "la jornada"
+	saludo = ctx.saludo if ctx else "Muy buenas"
+	values = _placeholder_values(gender, momento, saludo, cohost_name)
+	return _PLACEHOLDER_RE.sub(lambda m: values[m.group(1)], template)
+
+
+@functools.lru_cache(maxsize=512)
+def _expand_phrase_variants_cached(template: str) -> tuple[str, ...]:
+	needs = set(_PLACEHOLDER_RE.findall(template))
+	if not needs:
+		return (template,)
+	if "cohost" in needs:
+		subjects: list[tuple[str | None, str]] = [
+			(name, VOICE_GENDERS.get(v, DEFAULT_GENDER)) for v, name in VOICE_NAMES.items()
+		]
+	elif needs & {"vocativo", "companero", "filosofo"}:
+		subjects = [(None, "m"), (None, "f")]
+	else:
+		subjects = [(None, DEFAULT_GENDER)]
+	momentos: list[str] = list(dict.fromkeys(MOMENTO_POR_FRANJA.values())) if "momento" in needs else [""]
+	saludos: list[str] = list(SALUDOS_UNICOS) if "saludo" in needs else [""]
+	out: list[str] = []
+	for name, gender in subjects:
+		for momento in momentos:
+			for saludo in saludos:
+				values = _placeholder_values(gender, momento, saludo, name)
+				text = _PLACEHOLDER_RE.sub(lambda m, v=values: v[m.group(1)], template)
+				if text not in out:
+					out.append(text)
+	return tuple(out)
+
+
+def expand_phrase_variants(template: str) -> list[str]:
+	"""Todas las versiones habladas posibles de una plantilla (útil para precargar la caché de TTS)."""
+	return list(_expand_phrase_variants_cached(template))
 
 
 def resolve_segment_category(text: str | tuple[str, str] | RadioPhrase) -> str:
