@@ -543,6 +543,15 @@ def get_weather_condition(
 	return "agradable"
 
 
+def normalize_location_pronunciation(name: str) -> str:
+	"""Añade tildes a localidades (Metán, Tucumán) que wttr.in devuelve sin acentos para que el TTS las pronuncie de diez."""
+	if not name:
+		return name
+	name = re.sub(r"\bMetan\b", "Metán", name, flags=re.IGNORECASE)
+	name = re.sub(r"\bTucuman\b", "Tucumán", name, flags=re.IGNORECASE)
+	return name
+
+
 def extract_location_from_weather_data(data: dict) -> str | None:
 	"""
 	Extrae el nombre de la localidad/área resuelta por wttr.in a partir del JSON format=j1.
@@ -558,7 +567,8 @@ def extract_location_from_weather_data(data: dict) -> str | None:
 					if isinstance(items, list) and items:
 						val = items[0].get("value")
 						if val and isinstance(val, str) and val.strip():
-							return val.replace("+", " ").replace("_", " ").strip()
+							raw_loc = val.replace("+", " ").replace("_", " ").strip()
+							return normalize_location_pronunciation(raw_loc)
 	except Exception as e:
 		logger.warning(f"No se pudo extraer la ubicación desde los datos del clima: {e}")
 	return None
@@ -657,7 +667,7 @@ def get_weather_info(
 			if re.match(r"^[-+]?\d+(\.\d+)?\s*,\s*[-+]?\d+(\.\d+)?$", clean_candidate):
 				loc_clean = DEFAULT_WEATHER_LOCATION
 			else:
-				loc_clean = clean_candidate
+				loc_clean = normalize_location_pronunciation(clean_candidate)
 		else:
 			loc_clean = DEFAULT_WEATHER_LOCATION
 

@@ -212,7 +212,7 @@
 	<transition name="fogon">
 		<div
 			v-if="isFogonMode"
-			class="fixed inset-0 z-[10000] flex flex-col items-center justify-center bg-black bg-cover bg-center p-6 text-white"
+			class="fixed inset-0 z-[10000] flex cursor-none flex-col items-center justify-center bg-black bg-cover bg-center p-6 text-white [&_*]:cursor-none"
 			:style="fogonBgStyle"
 		>
 			<!-- Capa de fondo oscurecida -->

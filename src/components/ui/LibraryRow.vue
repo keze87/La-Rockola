@@ -10,16 +10,25 @@
 	// adentro de una `<table>` (el navegador lo saca para afuera), por lo que esta fila
 	// no puede ser `<tr>`/`<td>` como TrackRow. Los anchos de columna de abajo están ajustados
 	// a ojo con el layout de tabla anterior; ajustar las clases grid-cols acá si cambian.
-	const props = defineProps<{
-		track: Track;
-		isCurrent: boolean;
-		isPaused: boolean;
-		queuePosition: number;
+	const props = withDefaults(
+		defineProps<{
+			track: Track;
+			isCurrent: boolean;
+			isPaused: boolean;
+			queuePosition: number;
+			hasPlayed?: boolean;
 
-		contextSource?: string;
-		index?: number | null;
-		contextMenuOnly?: boolean;
-	}>();
+			contextSource?: string;
+			index?: number | null;
+			contextMenuOnly?: boolean;
+		}>(),
+		{
+			hasPlayed: false,
+			contextSource: 'library',
+			index: null,
+			contextMenuOnly: false,
+		}
+	);
 
 	const emit = defineEmits<{
 		(e: 'click', track: Track): void;
@@ -68,6 +77,15 @@
 				@click.stop.prevent="toggleFavorite"
 			>
 				{{ queuePosition + 1 }}
+			</span>
+
+			<!-- Indicador de tema ya reproducido -->
+			<span
+				v-else-if="hasPlayed"
+				title="Ya sonó"
+				class="bg-carpincho-panel/80 text-carpincho-muted played-indicator absolute flex h-6 w-6 items-center justify-center rounded-full shadow backdrop-blur-sm"
+			>
+				<i class="material-icons !text-sm">history</i>
 			</span>
 		</div>
 

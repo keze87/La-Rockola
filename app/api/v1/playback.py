@@ -7,7 +7,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import random
 from typing import Any
 
 from fastapi import APIRouter
@@ -147,8 +146,7 @@ async def handle_command_endpoint(req: CommandRequest) -> dict[str, Any]:
 		else:
 			state.radio_mode_enabled = not state.radio_mode_enabled
 		if state.radio_mode_enabled:
-			state.radio_tracks_until_next = random.randint(1, 2)
-			state.radio_track_counter = 0
+			state._reset_radio_schedule()
 	elif cmd == "set_weather_location":
 		if req.location and isinstance(req.location, str):
 			new_loc = req.location.strip()

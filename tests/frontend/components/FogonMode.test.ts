@@ -114,4 +114,11 @@ describe('FogonMode.vue', () => {
 		expect(skipBtn).toBeDefined();
 		await skipBtn!.trigger('click');
 	});
+
+	it('hides cursor by applying cursor-none class to root container', () => {
+		const wrapper = mount(FogonMode);
+		const container = wrapper.find('.fixed.inset-0.z-\\[10000\\]');
+		expect(container.exists()).toBe(true);
+		expect(container.classes()).toContain('cursor-none');
+	});
 });

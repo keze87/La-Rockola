@@ -137,4 +137,58 @@ describe('LibraryRow.vue', () => {
 			})
 		);
 	});
+
+	it('displays played indicator when hasPlayed is true and not current or queued', () => {
+		const wrapper = mount(LibraryRow, {
+			props: {
+				track: mockTrack,
+				isCurrent: false,
+				isPaused: false,
+				queuePosition: -1,
+				hasPlayed: true,
+			},
+		});
+
+		const playedIndicator = wrapper.find('.played-indicator');
+		expect(playedIndicator.exists()).toBe(true);
+		expect(playedIndicator.attributes('title')).toBe('Ya sonó');
+	});
+
+	it('hides played indicator when hasPlayed is false or track is currently playing or queued', () => {
+		// 1. Not played
+		let wrapper = mount(LibraryRow, {
+			props: {
+				track: mockTrack,
+				isCurrent: false,
+				isPaused: false,
+				queuePosition: -1,
+				hasPlayed: false,
+			},
+		});
+		expect(wrapper.find('.played-indicator').exists()).toBe(false);
+
+		// 2. Currently playing takes precedence
+		wrapper = mount(LibraryRow, {
+			props: {
+				track: mockTrack,
+				isCurrent: true,
+				isPaused: false,
+				queuePosition: -1,
+				hasPlayed: true,
+			},
+		});
+		expect(wrapper.find('.played-indicator').exists()).toBe(false);
+
+		// 3. Queued takes precedence
+		wrapper = mount(LibraryRow, {
+			props: {
+				track: mockTrack,
+				isCurrent: false,
+				isPaused: false,
+				queuePosition: 0,
+				hasPlayed: true,
+			},
+		});
+		expect(wrapper.find('.played-indicator').exists()).toBe(false);
+	});
 });

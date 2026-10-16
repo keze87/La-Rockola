@@ -1,3 +1,4 @@
+import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -50,7 +51,7 @@ async def test_toggle_radio_mode_command():
 	await handle_command(req)
 	assert state.radio_mode_enabled is True
 	assert state.radio_track_counter == 0
-	assert 1 <= state.radio_tracks_until_next <= 2
+	assert 600.0 <= state.radio_time_until_next <= 900.0
 
 	# Explicit state to False
 	req_explicit = CommandRequest(cmd="toggle_radio_mode", state=False)
@@ -687,3 +688,86 @@ async def test_play_next_archives_announcement_and_script(tmp_path):
 		assert len(archived_mp3s) == 0
 		assert len(archived_txts) == 1
 		assert "Guion histórico archivado" in archived_txts[0].read_text(encoding="utf-8")
+
+
+@pytest.mark.asyncio
+async def test_radio_triggers_on_timeout_10_to_15_minutes():
+	"""Verifica que la radio se active cuando transcurre el timeout de 10 a 15 minutos."""
+	state.radio_mode_enabled = True
+	state.radio_tracks_until_next = 0
+	state.radio_track_counter = 0
+	now = time.time()
+	state.last_radio_time = now - 700.0  # Hace ~11.6 minutos
+	state.radio_time_until_next = 600.0  # Umbral de 10 minutos
+	state.queue = ["/music/next_song.mp3"]
+	state.current_track = "/music/song1.mp3"
+
+	mock_create = AsyncMock(return_value=(True, "Radio al fin", "Guion tras 10 minutos"))
+
+	async def fake_play_track(path):
+		state.current_track = path
+
+	with (
+		patch("app.services.radio.HAS_EDGE_TTS", True),
+		patch("app.services.radio.create_radio_announcement", mock_create),
+		patch.object(state, "play_track", side_effect=fake_play_track),
+		patch("app.engine.state.broadcast_state", AsyncMock()),
+	):
+		await state.play_next(skipped_by_user=False)
+
+		assert state.current_track == state.radio_announcement_path
+		assert 600.0 <= state.radio_time_until_next <= 900.0
+		assert abs(state.last_radio_time - time.time()) < 5.0
+
+
+@pytest.mark.asyncio
+async def test_radio_does_not_trigger_before_timeout():
+	"""Verifica que la radio NO se active si aún no pasaron los 10 a 15 minutos."""
+	state.radio_mode_enabled = True
+	state.radio_tracks_until_next = 0
+	state.radio_track_counter = 0
+	now = time.time()
+	state.last_radio_time = now - 200.0  # Solo pasaron ~3.3 minutos
+	state.radio_time_until_next = 600.0  # Umbral de 10 minutos
+	state.queue = ["/music/next_song.mp3"]
+	state.current_track = "/music/song1.mp3"
+
+	mock_create = AsyncMock()
+
+	async def fake_play_track(path):
+		state.current_track = path
+
+	with (
+		patch("app.services.radio.HAS_EDGE_TTS", True),
+		patch("app.services.radio.create_radio_announcement", mock_create),
+		patch.object(state, "play_track", side_effect=fake_play_track),
+		patch("app.engine.state.broadcast_state", AsyncMock()),
+	):
+		await state.play_next(skipped_by_user=False)
+
+		# Pasó directo a la canción siguiente sin activar la radio
+		assert state.current_track == "/music/next_song.mp3"
+		mock_create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_radio_pregeneration_triggers_when_song_ends_after_timeout():
+	"""Verifica que la pregeneración arranque cuando la duración de la canción alcance el timeout."""
+	state.radio_mode_enabled = True
+	state.radio_tracks_until_next = 0
+	state.last_radio_time = time.time() - 500.0  # 8.3 minutos
+	state.radio_time_until_next = 600.0  # 10 minutos
+
+	mock_create = AsyncMock(return_value=(True, "Carpincho Timer", "Guion por tiempo"))
+
+	with (
+		patch("app.services.radio.HAS_EDGE_TTS", True),
+		patch("app.services.radio.create_radio_announcement", mock_create),
+		patch("app.engine.state.broadcast_state", AsyncMock()),
+	):
+		# Canción de 150s: 500 + 150 = 650 >= 600 -> debe arrancar pregeneración
+		state._start_radio_pregeneration(current_track_path="/music/song1.mp3", track_duration=150.0)
+
+		assert state.radio_pregeneration_task is not None
+		await state.radio_pregeneration_task
+		assert state.pregenerated_radio_announcement is not None

@@ -12,6 +12,7 @@
 		favorites,
 		handleLibraryClick,
 		haptic,
+		historyState,
 		isPaused,
 		isScanning,
 		librarySearchQuery: searchQuery,
@@ -21,6 +22,9 @@
 
 	// Estado local exclusivo de esta pestaña
 	const showFavoritesOnly = ref(false);
+
+	// Conjunto de temas que ya sonaron en la sesión para lookup O(1)
+	const historyPathsSet = computed(() => new Set(historyState.value));
 
 	// Inicializamos Fuse.js (se recalcula si la biblioteca cambia por completo)
 	const fuse = computed(() => {
@@ -164,6 +168,7 @@
 				:is-current="currentTrackPath === item.data.path"
 				:is-paused="isPaused"
 				:queue-position="queueIndex(item.data.path)"
+				:has-played="historyPathsSet.has(item.data.path)"
 				@click="handleLibraryClick(item.data)"
 			/>
 

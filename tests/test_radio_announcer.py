@@ -1405,7 +1405,20 @@ def test_extract_location_from_weather_data():
 	data_country = {"nearest_area": [{"country": [{"value": "Argentina"}]}]}
 	assert radio_announcer.extract_location_from_weather_data(data_country) == "Argentina"
 
-	# 4. Datos vacíos o inválidos
+	# 4. Normalización con tilde para Metan y Tucuman
+	data_metan = {"nearest_area": [{"areaName": [{"value": "Metan"}]}]}
+	assert radio_announcer.extract_location_from_weather_data(data_metan) == "Metán"
+
+	data_sj_metan = {"nearest_area": [{"areaName": [{"value": "San Jose de Metan"}]}]}
+	assert radio_announcer.extract_location_from_weather_data(data_sj_metan) == "San Jose de Metán"
+
+	data_tucuman = {"nearest_area": [{"areaName": [{"value": "Tucuman"}]}]}
+	assert radio_announcer.extract_location_from_weather_data(data_tucuman) == "Tucumán"
+
+	data_sm_tucuman = {"nearest_area": [{"areaName": [{"value": "San Miguel de Tucuman"}]}]}
+	assert radio_announcer.extract_location_from_weather_data(data_sm_tucuman) == "San Miguel de Tucumán"
+
+	# 5. Datos vacíos o inválidos
 	assert radio_announcer.extract_location_from_weather_data({}) is None
 	assert radio_announcer.extract_location_from_weather_data({"nearest_area": []}) is None
 	assert radio_announcer.extract_location_from_weather_data({"nearest_area": [{}]}) is None
@@ -1430,6 +1443,18 @@ def test_build_weather_phrase_prioritizes_json_location():
 	)
 	assert phrase is not None
 	assert "Villa Crespo" in phrase
+
+	sample_no_area = {
+		"current_condition": [{"temp_C": "20.0"}],
+		"weather": [
+			{"mintempC": "12", "maxtempC": "22", "hourly": []},
+			{"mintempC": "11", "maxtempC": "21", "hourly": []},
+		],
+	}
+	phrase_metan = radio_announcer.build_weather_phrase(sample_no_area, template_idx=0, location="Metan")
+	assert phrase_metan is not None
+	assert "Metán" in phrase_metan
+	assert "Metan" not in phrase_metan.replace("Metán", "")
 
 
 @pytest.fixture(autouse=True)

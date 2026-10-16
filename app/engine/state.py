@@ -173,7 +173,9 @@ class APIState:
 		# Modo Radio
 		self.radio_mode_enabled = True
 		self.radio_track_counter = 0
-		self.radio_tracks_until_next = random.randint(1, 2)
+		self.radio_tracks_until_next = 0
+		self.last_radio_time = time.time()
+		self.radio_time_until_next = float(random.randint(600, 900))
 		self.is_playing_radio_announcement = False
 		self.is_synthesizing_radio = False
 
@@ -678,6 +680,30 @@ class APIState:
 			max_files=self.radio_archive_max_files,
 		)
 
+	def is_radio_due(self) -> bool:
+		"""Verifica si corresponde locución radial por timeout (10-15 min) o por contador configurado."""
+		elapsed = time.time() - getattr(self, "last_radio_time", 0.0)
+		time_threshold = getattr(self, "radio_time_until_next", 600.0)
+		if elapsed >= time_threshold:
+			return True
+		return bool(self.radio_tracks_until_next > 0 and self.radio_track_counter >= self.radio_tracks_until_next)
+
+	def is_radio_pregeneration_due(self, track_duration: float = 0.0) -> bool:
+		"""Determina si la pregeneración debe iniciar al arrancar un tema."""
+		elapsed = time.time() - getattr(self, "last_radio_time", 0.0)
+		time_threshold = getattr(self, "radio_time_until_next", 600.0)
+		if (elapsed + track_duration) >= time_threshold:
+			return True
+		return bool(self.radio_tracks_until_next > 0 and (self.radio_track_counter + 1) >= self.radio_tracks_until_next)
+
+	def _reset_radio_schedule(self):
+		"""Reinicia el temporizador y contador del locutor radial (10 a 15 minutos)."""
+		self.radio_track_counter = 0
+		self.last_radio_time = time.time()
+		self.radio_time_until_next = float(random.randint(600, 900))
+		if self.radio_tracks_until_next > 0:
+			self.radio_tracks_until_next = random.randint(2, 3)
+
 	def _cancel_radio_pregeneration(self):
 		"""Cancela cualquier pregeneración en curso de la locución radial delegando en RadioService."""
 		self.radio_service.cancel_pregeneration()
@@ -687,8 +713,9 @@ class APIState:
 		if not self.radio_mode_enabled or not self.radio_service.is_available:
 			return
 
-		# Solo pregenerar si el contador alcanzará el umbral al terminar este tema
-		if (self.radio_track_counter + 1) < self.radio_tracks_until_next:
+		# Pregenerar si el tiempo transcurrido más la duración del tema alcanzará el umbral,
+		# o si el contador de temas configurado alcanzará el umbral
+		if not self.is_radio_pregeneration_due(track_duration=track_duration):
 			return
 
 		self.radio_service.start_pregeneration(track_duration=track_duration)
@@ -756,7 +783,7 @@ class APIState:
 			if should_pause:
 				self.pause_after_path = None
 
-			# Modo Radio: Intervención de locución cada 2 o 3 canciones durante transiciones naturales
+			# Modo Radio: Intervención de locución cada 10 a 15 minutos durante transiciones naturales
 			has_next_track = bool(self.queue or (self.dj_carpincho_enabled and self.tracks_cache))
 			if (
 				not skipped_by_user
@@ -767,12 +794,11 @@ class APIState:
 				and just_finished != self.radio_announcement_path
 			):
 				self.radio_track_counter += 1
-				if self.radio_track_counter >= self.radio_tracks_until_next:
+				if self.is_radio_due():
 					# Preguntamos si hay internet puntualmente antes de activar la síntesis radial
 					check_net_fn = getattr(radio_service_mod, "check_internet_async", check_internet_async)
 					if not await check_net_fn(timeout=0.8):
-						self.radio_track_counter = 0
-						self.radio_tracks_until_next = random.randint(2, 3)
+						self._reset_radio_schedule()
 						logger.warning(
 							"📻 Carpincho Locutor: no hay conexión a internet disponible. Omitiendo locución radial para no demorar la reproducción."
 						)
@@ -812,8 +838,7 @@ class APIState:
 						)
 
 						if ok:
-							self.radio_track_counter = 0
-							self.radio_tracks_until_next = random.randint(2, 3)
+							self._reset_radio_schedule()
 							self.is_playing_radio_announcement = True
 							self.url_metadata[self.radio_announcement_path] = {
 								"path": self.radio_announcement_path,

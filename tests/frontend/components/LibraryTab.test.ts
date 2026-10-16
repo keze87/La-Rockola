@@ -6,6 +6,7 @@ import {
 	currentTrackPath,
 	currentTracks,
 	favorites,
+	historyState,
 	isPaused,
 	isScanning,
 	librarySearchQuery,
@@ -83,6 +84,7 @@ describe('LibraryTab.vue', () => {
 		currentTrackPath.value = null;
 		currentTracks.value = [...mockTracks];
 		favorites.value = [];
+		historyState.value = [];
 		isPaused.value = false;
 		isScanning.value = false;
 		scanStatus.value = {
@@ -192,5 +194,17 @@ describe('LibraryTab.vue', () => {
 		expect(wrapper.text()).toContain(
 			'Chusmeando la biblioteca por primera vez... Aguantá que ya asoman los temazos.'
 		);
+	});
+
+	it('passes hasPlayed=true to LibraryRow when track is in historyState', () => {
+		historyState.value = ['/music/spinetta.mp3'];
+		const wrapper = mount(LibraryTab);
+
+		const rows = wrapper.findAllComponents({ name: 'LibraryRow' });
+		const spinettaRow = rows.find((r) => r.props('track').path === '/music/spinetta.mp3');
+		const charlyRow = rows.find((r) => r.props('track').path === '/music/charly.mp3');
+
+		expect(spinettaRow?.props('hasPlayed')).toBe(true);
+		expect(charlyRow?.props('hasPlayed')).toBe(false);
 	});
 });
