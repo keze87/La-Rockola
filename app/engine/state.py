@@ -173,7 +173,7 @@ class APIState:
 		# Modo Radio (al arrancar en frío, arranca en 0.0 para mandar la locución de bienvenida tras el primer tema)
 		self.radio_mode_enabled = True
 		self.last_radio_time = 0.0
-		self.radio_time_until_next = float(random.randint(600, 900))
+		self.radio_time_until_next = float(random.randint(300, 900))
 		self.is_playing_radio_announcement = False
 		self.is_synthesizing_radio = False
 
@@ -679,7 +679,7 @@ class APIState:
 		)
 
 	def is_radio_due(self) -> bool:
-		"""Verifica si corresponde locución radial por timeout (10-15 min)."""
+		"""Verifica si corresponde locución radial por timeout (5-15 min)."""
 		elapsed = time.time() - getattr(self, "last_radio_time", 0.0)
 		time_threshold = getattr(self, "radio_time_until_next", 600.0)
 		return elapsed >= time_threshold
@@ -691,9 +691,9 @@ class APIState:
 		return (elapsed + track_duration) >= time_threshold
 
 	def _reset_radio_schedule(self):
-		"""Reinicia el temporizador del locutor radial (10 a 15 minutos)."""
+		"""Reinicia el temporizador del locutor radial (5 a 15 minutos)."""
 		self.last_radio_time = time.time()
-		self.radio_time_until_next = float(random.randint(600, 900))
+		self.radio_time_until_next = float(random.randint(300, 900))
 
 	def _cancel_radio_pregeneration(self):
 		"""Cancela cualquier pregeneración en curso de la locución radial delegando en RadioService."""

@@ -12,6 +12,9 @@ if str(root_dir) not in sys.path:
 import scripts  # noqa: F401 - Registers sys.modules["binary_utils"], etc.
 import server
 
+# Register tests.conftest alias so tests can import helpers without module duplication
+sys.modules["tests.conftest"] = sys.modules[__name__]
+
 
 @pytest.fixture
 def temp_db(tmp_path, monkeypatch):
@@ -112,6 +115,26 @@ def small_audio_file(tmp_path):
 	return audio_path
 
 
+class TestTimeoutError(TimeoutError):
+	"""Excepción lanzada cuando un test excede el tiempo límite establecido."""
+
+
+DEFAULT_TEST_TIMEOUT: float = 30.0
+
+
+def _get_test_timeout(item) -> float:
+	"""Determina el timeout en segundos aplicable a un ítem de test."""
+	marker = item.get_closest_marker("timeout")
+	if marker and marker.args:
+		return float(marker.args[0])
+	config = getattr(item, "config", None)
+	if config:
+		opt = config.getoption("--test-timeout", default=None)
+		if opt is not None:
+			return float(opt)
+	return DEFAULT_TEST_TIMEOUT
+
+
 def pytest_pyfunc_call(pyfuncitem):
 	"""Auto-run async test functions using asyncio.run when pytest-asyncio is not installed."""
 	import asyncio
@@ -122,18 +145,68 @@ def pytest_pyfunc_call(pyfuncitem):
 		raw_kwargs = {
 			arg: pyfuncitem.funcargs[arg] for arg in pyfuncitem._fixtureinfo.argnames if arg in pyfuncitem.funcargs
 		}
-		asyncio.run(test_fn(**raw_kwargs))
+		timeout_val = _get_test_timeout(pyfuncitem)
+		asyncio.run(asyncio.wait_for(test_fn(**raw_kwargs), timeout=timeout_val))
 		return True
 	return None
 
 
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_call(item):
+	"""Aplica un límite de tiempo por test (30s por defecto) para frenar ejecuciones colgadas."""
+	import signal
+	import threading
+
+	timeout_val = _get_test_timeout(item)
+	if timeout_val <= 0:
+		yield
+		return
+
+	timer = None
+	old_handler = None
+
+	if hasattr(signal, "SIGALRM") and hasattr(signal, "setitimer"):
+
+		def _timeout_sig_handler(signum, frame):
+			raise TestTimeoutError(f"El test {item.name} excedió el límite de {timeout_val}s ⏱️")
+
+		old_handler = signal.signal(signal.SIGALRM, _timeout_sig_handler)
+		signal.setitimer(signal.ITIMER_REAL, timeout_val)
+	else:
+		import _thread
+
+		def _timeout_thread_handler():
+			_thread.interrupt_main()
+
+		timer = threading.Timer(timeout_val, _timeout_thread_handler)
+		timer.daemon = True
+		timer.start()
+
+	try:
+		yield
+	finally:
+		if hasattr(signal, "SIGALRM") and hasattr(signal, "setitimer"):
+			signal.setitimer(signal.ITIMER_REAL, 0)
+			if old_handler is not None:
+				signal.signal(signal.SIGALRM, old_handler)
+		elif timer is not None:
+			timer.cancel()
+
+
 def pytest_addoption(parser):
-	"""Agrega la opción por CLI para correr tests con descargas de red."""
+	"""Agrega la opción por CLI para correr tests con descargas de red y configurar timeouts."""
 	parser.addoption(
 		"--run-downloads",
 		action="store_true",
 		default=False,
 		help="Ejecuta tests con descargas de red (salteados por defecto)",
+	)
+	parser.addoption(
+		"--test-timeout",
+		action="store",
+		type=float,
+		default=30.0,
+		help="Tiempo límite en segundos por test (por defecto: 30s)",
 	)
 
 

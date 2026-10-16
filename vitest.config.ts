@@ -12,6 +12,7 @@ export default defineConfig({
 	test: {
 		environment: 'happy-dom',
 		globals: true,
+		testTimeout: 30000,
 		include: ['src/**/*.{test,spec}.ts', 'tests/frontend/**/*.{test,spec}.ts'],
 		coverage: {
 			provider: 'v8',

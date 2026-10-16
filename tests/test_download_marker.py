@@ -50,14 +50,12 @@ def test_pytest_addoption_registers_run_downloads():
 	"""Verifica que pytest_addoption registre el flag --run-downloads en el parser."""
 	mock_parser = MagicMock()
 	pytest_addoption(mock_parser)
-	mock_parser.addoption.assert_called_once()
-	args, kwargs = mock_parser.addoption.call_args
-	assert "--run-downloads" in args
-	assert kwargs.get("action") == "store_true"
-	assert kwargs.get("default") is False
+	download_call = next((call for call in mock_parser.addoption.call_args_list if "--run-downloads" in call[0]), None)
+	assert download_call is not None
+	assert download_call[1].get("action") == "store_true"
+	assert download_call[1].get("default") is False
 
 
 @pytest.mark.download
 def test_dummy_download_marked_function():
 	"""Test señuelo marcado con download que debe saltearse por defecto en la suite."""
-

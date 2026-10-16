@@ -50,7 +50,7 @@ async def test_toggle_radio_mode_command():
 	# Toggle back on
 	await handle_command(req)
 	assert state.radio_mode_enabled is True
-	assert 600.0 <= state.radio_time_until_next <= 900.0
+	assert 300.0 <= state.radio_time_until_next <= 900.0
 
 	# Explicit state to False
 	req_explicit = CommandRequest(cmd="toggle_radio_mode", state=False)
@@ -104,7 +104,7 @@ async def test_play_next_triggers_radio_when_due():
 		mock_play.assert_awaited_once_with(state.radio_announcement_path)
 
 		# Timer reset and new random threshold
-		assert 600.0 <= state.radio_time_until_next <= 900.0
+		assert 300.0 <= state.radio_time_until_next <= 900.0
 
 
 @pytest.mark.asyncio
@@ -287,7 +287,7 @@ async def test_play_next_skips_radio_locution_when_no_internet():
 		# is_synthesizing_radio debe permanecer en False
 		assert state.is_synthesizing_radio is False
 		# El temporizador se reinicia y se sortea el próximo intervalo
-		assert 600.0 <= state.radio_time_until_next <= 900.0
+		assert 300.0 <= state.radio_time_until_next <= 900.0
 		# Pasa directamente al siguiente tema de la cola
 		mock_play.assert_awaited_once_with("/music/song2.mp3")
 
@@ -714,7 +714,7 @@ async def test_radio_triggers_on_timeout_10_to_15_minutes():
 		await state.play_next(skipped_by_user=False)
 
 		assert state.current_track == state.radio_announcement_path
-		assert 600.0 <= state.radio_time_until_next <= 900.0
+		assert 300.0 <= state.radio_time_until_next <= 900.0
 		assert abs(state.last_radio_time - time.time()) < 5.0
 
 
@@ -962,4 +962,4 @@ async def test_startup_radio_pregenerates_and_triggers_after_first_song():
 
 		# Y el temporizador debe haberse reseteado a la hora actual con ventana de 10 a 15 min
 		assert abs(state.last_radio_time - time.time()) < 5.0
-		assert 600.0 <= state.radio_time_until_next <= 900.0
+		assert 300.0 <= state.radio_time_until_next <= 900.0
