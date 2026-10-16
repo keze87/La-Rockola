@@ -6,7 +6,6 @@ Permite descargar y descomprimir MPV (reproductor nativo) directamente desde los
 oficiales de mpv-player/mpv en GitHub cuando no se encuentra instalado en el sistema.
 """
 
-import json
 import os
 import re
 import shutil
@@ -14,8 +13,6 @@ import subprocess
 import sys
 import tempfile
 import time
-import urllib.error
-import urllib.request
 import zipfile
 from pathlib import Path
 

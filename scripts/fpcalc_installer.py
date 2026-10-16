@@ -6,15 +6,10 @@ Permite descargar y descomprimir la herramienta de huella acústica fpcalc direc
 desde los lanzamientos oficiales de acoustid/chromaprint en GitHub.
 """
 
-import json
 import os
 import shutil
 import sys
-import tarfile
 import tempfile
-import urllib.error
-import urllib.request
-import zipfile
 from pathlib import Path
 
 GITHUB_API_LATEST = "https://api.github.com/repos/acoustid/chromaprint/releases/latest"

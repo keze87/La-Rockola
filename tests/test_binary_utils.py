@@ -184,14 +184,13 @@ def test_shared_build_frontend(tmp_path, monkeypatch):
 def test_shared_fetch_github_release_assets_api(monkeypatch):
 	fake_data = {
 		"tag_name": "v1.0.0",
-		"assets": [
-			{"name": "tool-linux.tar.xz", "browser_download_url": "http://test.com/tool.tar.xz", "size": 1234}
-		],
+		"assets": [{"name": "tool-linux.tar.xz", "browser_download_url": "http://test.com/tool.tar.xz", "size": 1234}],
 	}
 
 	class FakeResponse:
 		def read(self):
 			import json
+
 			return json.dumps(fake_data).encode("utf-8")
 
 		def __enter__(self):
@@ -228,6 +227,7 @@ def test_shared_fetch_github_release_assets_fallback(monkeypatch):
 		url = req.full_url if hasattr(req, "full_url") else str(req)
 		if "api.github.com" in url:
 			import urllib.error
+
 			raise urllib.error.URLError("Rate limit")
 		return FakeHtmlResponse()
 
@@ -248,9 +248,9 @@ def test_shared_fetch_github_release_assets_fallback(monkeypatch):
 
 
 def test_shared_extract_archive_binary_zip_and_tar(tmp_path):
+	import io
 	import tarfile
 	import zipfile
-	import io
 
 	dest_dir = tmp_path / "extracted"
 	dest_dir.mkdir()
@@ -316,4 +316,3 @@ def test_shared_mark_rockola_managed(tmp_path):
 	assert success is True
 	assert (dest_dir / ".rockola_managed_testtool").is_file()
 	assert (dest_dir / ".last_testtool_update_check").is_file()
-

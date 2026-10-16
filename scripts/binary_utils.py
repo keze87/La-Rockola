@@ -478,4 +478,3 @@ def mark_rockola_managed(
 		if log_fn:
 			log_fn(f"Error al marcar {tool_name} como administrado por Rockola: {exc}")
 		return False
-

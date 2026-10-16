@@ -6,15 +6,10 @@ Permite descargar y descomprimir FFmpeg directamente desde los lanzamientos opti
 de yt-dlp/FFmpeg-Builds (o fallback oficial) en GitHub.
 """
 
-import json
 import os
 import shutil
 import sys
-import tarfile
 import tempfile
-import urllib.error
-import urllib.request
-import zipfile
 from pathlib import Path
 
 GITHUB_API_LATEST = "https://api.github.com/repos/yt-dlp/FFmpeg-Builds/releases/latest"
