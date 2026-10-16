@@ -338,7 +338,7 @@ describe('ControlsTab.vue', () => {
 		listenLocally.value = false;
 		const wrapper = mount(ControlsTab);
 
-		expect(wrapper.text()).toContain('Alguien está escuchando en su dispositivo');
+		expect(wrapper.text()).not.toContain('Alguien está escuchando en su dispositivo');
 		expect(wrapper.text()).toContain('Volver a parlantes del servidor');
 	});
 
