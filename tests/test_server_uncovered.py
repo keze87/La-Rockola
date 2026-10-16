@@ -669,6 +669,7 @@ async def test_dj_safe_mode_selection_and_pause_after():
 	assert chosen_norm["path"] == "/music/normal.mp3"
 
 	# play_next with pause_after_path
+	state.radio_mode_enabled = False
 	state.current_track = "/music/song1.mp3"
 	state.pause_after_path = "/music/song1.mp3"
 	state.queue = ["/music/song2.mp3"]

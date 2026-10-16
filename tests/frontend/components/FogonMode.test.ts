@@ -115,10 +115,32 @@ describe('FogonMode.vue', () => {
 		await skipBtn!.trigger('click');
 	});
 
-	it('hides cursor by applying cursor-none class to root container', () => {
-		const wrapper = mount(FogonMode);
-		const container = wrapper.find('.fixed.inset-0.z-\\[10000\\]');
-		expect(container.exists()).toBe(true);
-		expect(container.classes()).toContain('cursor-none');
+	it('only hides cursor when inactive and shows it when mouse moves', async () => {
+		vi.useFakeTimers();
+		try {
+			const wrapper = mount(FogonMode);
+			const container = wrapper.find('.fixed.inset-0.z-\\[10000\\]');
+			expect(container.exists()).toBe(true);
+
+			// Inicialmente el cursor está visible
+			expect(container.classes()).not.toContain('cursor-none');
+
+			// Tras 3 segundos de inactividad, se oculta el cursor
+			vi.advanceTimersByTime(3000);
+			await wrapper.vm.$nextTick();
+			expect(container.classes()).toContain('cursor-none');
+
+			// Al mover el mouse, el cursor reaparece de inmediato
+			window.dispatchEvent(new MouseEvent('mousemove'));
+			await wrapper.vm.$nextTick();
+			expect(container.classes()).not.toContain('cursor-none');
+
+			// Tras otros 3 segundos quieto, se vuelve a ocultar
+			vi.advanceTimersByTime(3000);
+			await wrapper.vm.$nextTick();
+			expect(container.classes()).toContain('cursor-none');
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });

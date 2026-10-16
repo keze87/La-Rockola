@@ -1,5 +1,5 @@
 <script setup lang="ts">
-	import { computed, watch } from 'vue';
+	import { computed, onUnmounted, ref, watch } from 'vue';
 	import { useLyrics } from '../composables/useLyrics';
 	import { useCover } from '../composables/useCover';
 	import { usePlaybackControls } from '../composables/usePlaybackControls';
@@ -206,13 +206,61 @@
 		togglePauseAfterCurrent();
 		haptic();
 	}
+
+	// Ocultar el cursor únicamente cuando no haya actividad del mouse por 3 segundos
+	const isCursorInactive = ref(false);
+	let cursorTimer: ReturnType<typeof setTimeout> | null = null;
+	const INACTIVITY_DELAY_MS = 3000;
+
+	function resetCursorTimer() {
+		isCursorInactive.value = false;
+		if (cursorTimer) {
+			clearTimeout(cursorTimer);
+		}
+		if (isFogonMode.value) {
+			cursorTimer = setTimeout(() => {
+				isCursorInactive.value = true;
+			}, INACTIVITY_DELAY_MS);
+		}
+	}
+
+	function handleMouseMove() {
+		resetCursorTimer();
+	}
+
+	watch(
+		isFogonMode,
+		(active) => {
+			if (active) {
+				window.addEventListener('mousemove', handleMouseMove);
+				resetCursorTimer();
+			} else {
+				window.removeEventListener('mousemove', handleMouseMove);
+				if (cursorTimer) {
+					clearTimeout(cursorTimer);
+					cursorTimer = null;
+				}
+				isCursorInactive.value = false;
+			}
+		},
+		{ immediate: true }
+	);
+
+	onUnmounted(() => {
+		window.removeEventListener('mousemove', handleMouseMove);
+		if (cursorTimer) {
+			clearTimeout(cursorTimer);
+			cursorTimer = null;
+		}
+	});
 </script>
 
 <template>
 	<transition name="fogon">
 		<div
 			v-if="isFogonMode"
-			class="fixed inset-0 z-[10000] flex cursor-none flex-col items-center justify-center bg-black bg-cover bg-center p-6 text-white [&_*]:cursor-none"
+			class="fixed inset-0 z-[10000] flex flex-col items-center justify-center bg-black bg-cover bg-center p-6 text-white"
+			:class="{ 'cursor-none [&_*]:cursor-none': isCursorInactive }"
 			:style="fogonBgStyle"
 		>
 			<!-- Capa de fondo oscurecida -->
