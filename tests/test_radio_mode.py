@@ -720,7 +720,7 @@ async def test_radio_triggers_on_timeout_10_to_15_minutes():
 
 @pytest.mark.asyncio
 async def test_radio_does_not_trigger_before_timeout():
-	"""Verifica que la radio NO se active si aún no pasaron los 10 a 15 minutos."""
+	"""Verifica que la radio NO se active si aún no pasaron los 5 a 15 minutos."""
 	state.radio_mode_enabled = True
 	now = time.time()
 	state.last_radio_time = now - 200.0  # Solo pasaron ~3.3 minutos

@@ -274,16 +274,13 @@
 			</PillButton>
 		</div>
 
-		<div class="mb-4 flex flex-wrap justify-center gap-3">
-			<PillButton
-				v-if="hasLocalPlayer && !listenLocally"
-				icon="volume_up"
-				color-class="bg-amber-700 hover:bg-amber-600"
-				@click="returnToServerSpeakers"
-			>
+		<div v-if="hasLocalPlayer && !listenLocally" class="mb-4 flex flex-wrap justify-center gap-3">
+			<PillButton icon="volume_up" color-class="bg-amber-700 hover:bg-amber-600" @click="returnToServerSpeakers">
 				Volver a parlantes del servidor
 			</PillButton>
+		</div>
 
+		<div class="mb-4 flex flex-wrap justify-center gap-3">
 			<PillButton icon="stop" color-class="bg-red-700 hover:bg-red-600" @click="stop">Cortala de una</PillButton>
 
 			<PillButton icon="fullscreen" color-class="bg-blue-700 hover:bg-blue-600" @click="fullscreen">
