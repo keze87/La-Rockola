@@ -28,6 +28,10 @@
 
 Whenever changes are about to be made, first create the tests, make sure they fail, and then start implementing the changes.
 
+### Backward Compatibility
+
+- Backward compatibility is NOT needed or critical: prioritize clean, modern architectures, removing dead code, legacy flags, and obsolete fallbacks rather than keeping redundant shims.
+
 ---
 
 ## 🧉 Identity & Tone

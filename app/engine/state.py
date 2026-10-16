@@ -172,8 +172,6 @@ class APIState:
 
 		# Modo Radio
 		self.radio_mode_enabled = True
-		self.radio_track_counter = 0
-		self.radio_tracks_until_next = 0
 		self.last_radio_time = time.time()
 		self.radio_time_until_next = float(random.randint(600, 900))
 		self.is_playing_radio_announcement = False
@@ -681,28 +679,21 @@ class APIState:
 		)
 
 	def is_radio_due(self) -> bool:
-		"""Verifica si corresponde locución radial por timeout (10-15 min) o por contador configurado."""
+		"""Verifica si corresponde locución radial por timeout (10-15 min)."""
 		elapsed = time.time() - getattr(self, "last_radio_time", 0.0)
 		time_threshold = getattr(self, "radio_time_until_next", 600.0)
-		if elapsed >= time_threshold:
-			return True
-		return bool(self.radio_tracks_until_next > 0 and self.radio_track_counter >= self.radio_tracks_until_next)
+		return elapsed >= time_threshold
 
 	def is_radio_pregeneration_due(self, track_duration: float = 0.0) -> bool:
 		"""Determina si la pregeneración debe iniciar al arrancar un tema."""
 		elapsed = time.time() - getattr(self, "last_radio_time", 0.0)
 		time_threshold = getattr(self, "radio_time_until_next", 600.0)
-		if (elapsed + track_duration) >= time_threshold:
-			return True
-		return bool(self.radio_tracks_until_next > 0 and (self.radio_track_counter + 1) >= self.radio_tracks_until_next)
+		return (elapsed + track_duration) >= time_threshold
 
 	def _reset_radio_schedule(self):
-		"""Reinicia el temporizador y contador del locutor radial (10 a 15 minutos)."""
-		self.radio_track_counter = 0
+		"""Reinicia el temporizador del locutor radial (10 a 15 minutos)."""
 		self.last_radio_time = time.time()
 		self.radio_time_until_next = float(random.randint(600, 900))
-		if self.radio_tracks_until_next > 0:
-			self.radio_tracks_until_next = random.randint(2, 3)
 
 	def _cancel_radio_pregeneration(self):
 		"""Cancela cualquier pregeneración en curso de la locución radial delegando en RadioService."""
@@ -724,8 +715,7 @@ class APIState:
 		if not self.radio_mode_enabled or not self.radio_service.is_available:
 			return
 
-		# Pregenerar si el tiempo transcurrido más la duración del tema alcanzará el umbral,
-		# o si el contador de temas configurado alcanzará el umbral
+		# Pregenerar si el tiempo transcurrido más la duración del tema alcanzará el umbral de tiempo
 		if not self.is_radio_pregeneration_due(track_duration=track_duration):
 			return
 
@@ -804,7 +794,6 @@ class APIState:
 				and just_finished is not None
 				and just_finished != self.radio_announcement_path
 			):
-				self.radio_track_counter += 1
 				has_pregenerated = self.pregenerated_radio_announcement is not None or (
 					self.radio_pregeneration_task is not None and not self.radio_pregeneration_task.done()
 				)

@@ -10,13 +10,13 @@ from server import CommandRequest, app, handle_command, state
 @pytest.fixture(autouse=True)
 def reset_radio_state(tmp_path):
 	orig_radio = state.radio_mode_enabled
-	orig_counter = state.radio_track_counter
-	orig_until = state.radio_tracks_until_next
+	orig_last_time = getattr(state, "last_radio_time", time.time())
+	orig_time_until = getattr(state, "radio_time_until_next", 600.0)
 	orig_playing = state.is_playing_radio_announcement
 	orig_path = state.radio_announcement_path
 	state.radio_mode_enabled = True
-	state.radio_track_counter = 0
-	state.radio_tracks_until_next = 2
+	state.last_radio_time = time.time()
+	state.radio_time_until_next = 600.0
 	state.is_playing_radio_announcement = False
 	state.radio_announcement_path = str(tmp_path / "radio.mp3")
 	state.radio_pregenerated_path = str(tmp_path / "radio_pregenerated.mp3")
@@ -34,8 +34,8 @@ def reset_radio_state(tmp_path):
 	finally:
 		state._cancel_radio_pregeneration()
 		state.radio_mode_enabled = orig_radio
-		state.radio_track_counter = orig_counter
-		state.radio_tracks_until_next = orig_until
+		state.last_radio_time = orig_last_time
+		state.radio_time_until_next = orig_time_until
 		state.is_playing_radio_announcement = orig_playing
 		state.radio_announcement_path = orig_path
 
@@ -50,7 +50,6 @@ async def test_toggle_radio_mode_command():
 	# Toggle back on
 	await handle_command(req)
 	assert state.radio_mode_enabled is True
-	assert state.radio_track_counter == 0
 	assert 600.0 <= state.radio_time_until_next <= 900.0
 
 	# Explicit state to False
@@ -69,10 +68,10 @@ def test_state_to_dict_includes_radio_fields():
 
 
 @pytest.mark.asyncio
-async def test_play_next_increments_counter_and_triggers_radio():
+async def test_play_next_triggers_radio_when_due():
 	state.radio_mode_enabled = True
-	state.radio_track_counter = 1
-	state.radio_tracks_until_next = 2
+	state.last_radio_time = time.time() - 700.0
+	state.radio_time_until_next = 600.0
 	state.queue = ["/music/song2.mp3"]
 	state.current_track = "/music/song1.mp3"
 
@@ -104,9 +103,8 @@ async def test_play_next_increments_counter_and_triggers_radio():
 		assert state.current_track == state.radio_announcement_path
 		mock_play.assert_awaited_once_with(state.radio_announcement_path)
 
-		# Counter reset and new random threshold
-		assert state.radio_track_counter == 0
-		assert 2 <= state.radio_tracks_until_next <= 3
+		# Timer reset and new random threshold
+		assert 600.0 <= state.radio_time_until_next <= 900.0
 
 
 @pytest.mark.asyncio
@@ -197,8 +195,8 @@ async def test_radio_announcement_failure_logs_reason(caplog):
 	import logging
 
 	state.radio_mode_enabled = True
-	state.radio_track_counter = 1
-	state.radio_tracks_until_next = 2
+	state.last_radio_time = time.time() - 700.0
+	state.radio_time_until_next = 600.0
 	state.queue = ["/music/song2.mp3"]
 	state.current_track = "/music/song1.mp3"
 
@@ -227,8 +225,8 @@ async def test_radio_announcement_failure_logs_reason(caplog):
 @pytest.mark.asyncio
 async def test_toggle_queue_initial_playback_does_not_trigger_radio():
 	state.radio_mode_enabled = True
-	state.radio_track_counter = 1
-	state.radio_tracks_until_next = 1
+	state.last_radio_time = time.time() - 700.0
+	state.radio_time_until_next = 600.0
 	state.current_track = None
 	state.queue = []
 
@@ -268,8 +266,8 @@ def test_get_cover_art_uri_for_radio():
 @pytest.mark.asyncio
 async def test_play_next_skips_radio_locution_when_no_internet():
 	state.radio_mode_enabled = True
-	state.radio_track_counter = 1
-	state.radio_tracks_until_next = 2
+	state.last_radio_time = time.time() - 700.0
+	state.radio_time_until_next = 600.0
 	state.queue = ["/music/song2.mp3"]
 	state.current_track = "/music/song1.mp3"
 
@@ -288,9 +286,8 @@ async def test_play_next_skips_radio_locution_when_no_internet():
 		mock_create.assert_not_called()
 		# is_synthesizing_radio debe permanecer en False
 		assert state.is_synthesizing_radio is False
-		# El contador se reinicia y se sortea el próximo intervalo
-		assert state.radio_track_counter == 0
-		assert state.radio_tracks_until_next in (2, 3)
+		# El temporizador se reinicia y se sortea el próximo intervalo
+		assert 600.0 <= state.radio_time_until_next <= 900.0
 		# Pasa directamente al siguiente tema de la cola
 		mock_play.assert_awaited_once_with("/music/song2.mp3")
 
@@ -298,8 +295,8 @@ async def test_play_next_skips_radio_locution_when_no_internet():
 @pytest.mark.asyncio
 async def test_play_next_passes_configured_weather_location():
 	state.radio_mode_enabled = True
-	state.radio_track_counter = 1
-	state.radio_tracks_until_next = 2
+	state.last_radio_time = time.time() - 700.0
+	state.radio_time_until_next = 600.0
 	state.queue = ["/music/song2.mp3"]
 	state.current_track = "/music/song1.mp3"
 	state.weather_location = "Rosario, Santa Fe"
@@ -328,8 +325,11 @@ async def test_play_next_passes_configured_weather_location():
 async def test_radio_pregeneration_starts_at_song_start(tmp_path):
 	"""Verifica que si la próxima canción requerirá locutor, se dispare la pregeneración de fondo."""
 	state.radio_mode_enabled = True
-	state.radio_track_counter = 1
-	state.radio_tracks_until_next = 2  # (1 + 1) >= 2 -> Dispara pregeneración anticipada
+	state.tracks_cache = [{"path": "/music/current_song.mp3", "duration_str": "03:00"}]
+	state.last_radio_time = time.time() - 500.0
+	state.radio_time_until_next = (
+		600.0  # Con canción de 180s, (500 + 180) = 680 >= 600 -> Dispara pregeneración anticipada
+	)
 	state.queue = ["/music/next_song.mp3"]
 
 	mock_create = AsyncMock(return_value=(True, "Carpincho Pregenerado", "Discurso anticipado"))
@@ -353,8 +353,8 @@ async def test_radio_pregeneration_starts_at_song_start(tmp_path):
 async def test_play_next_uses_pregenerated_announcement(tmp_path):
 	"""Verifica que play_next use la locución pregenerada con 0 ms de latencia."""
 	state.radio_mode_enabled = True
-	state.radio_track_counter = 1
-	state.radio_tracks_until_next = 2
+	state.last_radio_time = time.time() - 700.0
+	state.radio_time_until_next = 600.0
 	state.queue = ["/music/next_song.mp3"]
 	state.current_track = "/music/song1.mp3"
 
@@ -392,8 +392,8 @@ async def test_play_next_uses_pregenerated_announcement(tmp_path):
 async def test_hot_bg_track_mixing_on_queue_change(tmp_path):
 	"""Verifica que la mezcla de cortina musical se realice en caliente con la canción real si cambió la cola."""
 	state.radio_mode_enabled = True
-	state.radio_track_counter = 1
-	state.radio_tracks_until_next = 2
+	state.last_radio_time = time.time() - 700.0
+	state.radio_time_until_next = 600.0
 	state.current_track = "/music/song1.mp3"
 
 	# Canción que se agrega en caliente a la cola antes de terminar la canción actual
@@ -443,8 +443,8 @@ async def test_hot_bg_track_mixing_on_queue_change(tmp_path):
 async def test_pregenerated_announcement_copies_subtitles_to_radio_announcement(tmp_path):
 	"""Verifica que los subtítulos .lrc y .srt de la locución pregenerada se copien a radio_announcement."""
 	state.radio_mode_enabled = True
-	state.radio_track_counter = 1
-	state.radio_tracks_until_next = 2
+	state.last_radio_time = time.time() - 700.0
+	state.radio_time_until_next = 600.0
 	state.current_track = "/music/song1.mp3"
 
 	new_song = tmp_path / "song.mp3"
@@ -490,8 +490,8 @@ async def test_pregenerated_announcement_expires_after_15_minutes(tmp_path):
 	import time
 
 	state.radio_mode_enabled = True
-	state.radio_track_counter = 1
-	state.radio_tracks_until_next = 2
+	state.last_radio_time = time.time() - 700.0
+	state.radio_time_until_next = 600.0
 	state.queue = ["/music/next_song.mp3"]
 	state.current_track = "/music/song1.mp3"
 
@@ -545,8 +545,8 @@ async def test_pregenerated_corrupt_file_rejected_falls_back_to_live(tmp_path):
 	import time
 
 	state.radio_mode_enabled = True
-	state.radio_track_counter = 1
-	state.radio_tracks_until_next = 2
+	state.last_radio_time = time.time() - 700.0
+	state.radio_time_until_next = 600.0
 	state.queue = ["/music/next_song.mp3"]
 	state.current_track = "/music/song1.mp3"
 
@@ -654,8 +654,8 @@ async def test_play_next_archives_announcement_and_script(tmp_path):
 	"""Verifica que al sonar una locución en play_next se archive el guion sin duplicar MP3s en disco."""
 	state.radio_archive_dir = tmp_path / "play_next_archive"
 	state.radio_mode_enabled = True
-	state.radio_track_counter = 1
-	state.radio_tracks_until_next = 2
+	state.last_radio_time = time.time() - 700.0
+	state.radio_time_until_next = 600.0
 	state.queue = ["/music/next_song.mp3"]
 	state.current_track = "/music/song1.mp3"
 
@@ -694,8 +694,6 @@ async def test_play_next_archives_announcement_and_script(tmp_path):
 async def test_radio_triggers_on_timeout_10_to_15_minutes():
 	"""Verifica que la radio se active cuando transcurre el timeout de 10 a 15 minutos."""
 	state.radio_mode_enabled = True
-	state.radio_tracks_until_next = 0
-	state.radio_track_counter = 0
 	now = time.time()
 	state.last_radio_time = now - 700.0  # Hace ~11.6 minutos
 	state.radio_time_until_next = 600.0  # Umbral de 10 minutos
@@ -724,8 +722,6 @@ async def test_radio_triggers_on_timeout_10_to_15_minutes():
 async def test_radio_does_not_trigger_before_timeout():
 	"""Verifica que la radio NO se active si aún no pasaron los 10 a 15 minutos."""
 	state.radio_mode_enabled = True
-	state.radio_tracks_until_next = 0
-	state.radio_track_counter = 0
 	now = time.time()
 	state.last_radio_time = now - 200.0  # Solo pasaron ~3.3 minutos
 	state.radio_time_until_next = 600.0  # Umbral de 10 minutos
@@ -754,7 +750,6 @@ async def test_radio_does_not_trigger_before_timeout():
 async def test_radio_pregeneration_triggers_when_song_ends_after_timeout():
 	"""Verifica que la pregeneración arranque cuando la duración de la canción alcance el timeout."""
 	state.radio_mode_enabled = True
-	state.radio_tracks_until_next = 0
 	state.last_radio_time = time.time() - 500.0  # 8.3 minutos
 	state.radio_time_until_next = 600.0  # 10 minutos
 
@@ -778,8 +773,8 @@ async def test_play_next_plays_radio_when_queue_empty_and_then_stops(tmp_path):
 	"""Verifica que no se desperdicie la radio cuando la cola queda vacía, usando outro_mode='break' y frenando al terminar."""
 	state.radio_mode_enabled = True
 	state.dj_carpincho_enabled = False
-	state.radio_track_counter = 1
-	state.radio_tracks_until_next = 2
+	state.last_radio_time = time.time() - 700.0
+	state.radio_time_until_next = 600.0
 	state.queue = []
 	state.current_track = "/music/last_song.mp3"
 
@@ -823,8 +818,8 @@ async def test_play_next_plays_radio_when_queue_empty_and_then_stops(tmp_path):
 async def test_play_next_plays_radio_unpaused_when_pause_after_active_and_pauses_next_track(tmp_path):
 	"""Verifica que cuando pause_after_path está activo, suene primero la radio sin pausarse y luego pause en el siguiente tema."""
 	state.radio_mode_enabled = True
-	state.radio_track_counter = 1
-	state.radio_tracks_until_next = 2
+	state.last_radio_time = time.time() - 700.0
+	state.radio_time_until_next = 600.0
 	state.queue = ["/music/song2.mp3"]
 	state.current_track = "/music/song1.mp3"
 	state.pause_after_path = "/music/song1.mp3"
@@ -873,8 +868,8 @@ async def test_pregenerated_announcement_swaps_outro_when_state_changes_mid_song
 	from scripts.radio_announcer import RadioAnnouncementResult
 
 	state.radio_mode_enabled = True
-	state.radio_track_counter = 0
-	state.radio_tracks_until_next = 2  # Aún no venció por contador, pero sí hay pregeneración lista
+	state.last_radio_time = time.time()
+	state.radio_time_until_next = 600.0  # Aún no venció por tiempo, pero sí hay pregeneración lista
 	state.queue = ["/music/song2.mp3"]
 	state.current_track = "/music/song1.mp3"
 	state.pause_after_path = "/music/song1.mp3"  # Activado a mitad de la canción
