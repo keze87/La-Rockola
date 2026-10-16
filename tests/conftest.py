@@ -125,3 +125,23 @@ def pytest_pyfunc_call(pyfuncitem):
 		asyncio.run(test_fn(**raw_kwargs))
 		return True
 	return None
+
+
+def pytest_addoption(parser):
+	"""Agrega la opción por CLI para correr tests con descargas de red."""
+	parser.addoption(
+		"--run-downloads",
+		action="store_true",
+		default=False,
+		help="Ejecuta tests con descargas de red (salteados por defecto)",
+	)
+
+
+def pytest_collection_modifyitems(config, items):
+	"""Saltea los tests marcados con 'download' salvo que se pase --run-downloads."""
+	if config.getoption("--run-downloads"):
+		return
+	skip_download = pytest.mark.skip(reason="Requiere descargas de red (usá --run-downloads para ejecutar)")
+	for item in items:
+		if "download" in item.keywords:
+			item.add_marker(skip_download)

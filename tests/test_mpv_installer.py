@@ -219,8 +219,8 @@ def test_server_check_dependencies_triggers_mpv_install(monkeypatch, tmp_path):
 			call_count += 1
 			if call_count > 1:
 				return str(fake_mpv)
-		if bin_name == "yt-dlp":
-			return str(tmp_path / "yt-dlp.exe")
+		if bin_name in ("yt-dlp", "ffmpeg", "fpcalc"):
+			return str(tmp_path / f"{bin_name}.exe")
 		return None
 
 	monkeypatch.setattr(server, "find_binary", fake_find)
@@ -230,11 +230,15 @@ def test_server_check_dependencies_triggers_mpv_install(monkeypatch, tmp_path):
 	with (
 		patch("scripts.mpv_installer.install_mpv", return_value=fake_mpv.parent) as mock_install,
 		patch("scripts.ytdlp_installer.install_ytdlp") as mock_ytdlp,
+		patch("scripts.ffmpeg_installer.install_ffmpeg") as mock_ffmpeg,
+		patch("scripts.fpcalc_installer.install_fpcalc") as mock_fpcalc,
 		patch("sys.exit") as mock_exit,
 	):
 		server.check_dependencies(force=True)
 		mock_install.assert_called_once()
 		mock_ytdlp.assert_not_called()
+		mock_ffmpeg.assert_not_called()
+		mock_fpcalc.assert_not_called()
 		mock_exit.assert_not_called()
 
 
@@ -369,7 +373,7 @@ def test_server_check_dependencies_triggers_mpv_update(monkeypatch, tmp_path):
 	fake_mpv = managed_dir / "mpv.exe"
 	fake_mpv.touch()
 
-	find_fn = lambda b: str(fake_mpv) if b == "mpv" else (str(tmp_path / "yt-dlp.exe") if b == "yt-dlp" else None)
+	find_fn = lambda b: str(fake_mpv) if b == "mpv" else str(tmp_path / f"{b}.exe")
 	monkeypatch.setattr(server, "find_binary", find_fn)
 	monkeypatch.setattr("app.engine.audio_analysis.find_binary", find_fn)
 	monkeypatch.setattr("server.importlib.util.find_spec", lambda mod: True)
@@ -377,7 +381,11 @@ def test_server_check_dependencies_triggers_mpv_update(monkeypatch, tmp_path):
 	with (
 		patch("scripts.mpv_installer.update_mpv") as mock_update,
 		patch("scripts.ytdlp_installer.install_ytdlp") as mock_ytdlp,
+		patch("scripts.ffmpeg_installer.install_ffmpeg") as mock_ffmpeg,
+		patch("scripts.fpcalc_installer.install_fpcalc") as mock_fpcalc,
 	):
 		server.check_dependencies(force=True)
 		mock_update.assert_called_once()
 		mock_ytdlp.assert_not_called()
+		mock_ffmpeg.assert_not_called()
+		mock_fpcalc.assert_not_called()
