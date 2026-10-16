@@ -922,3 +922,44 @@ async def test_pregenerated_announcement_swaps_outro_when_state_changes_mid_song
 		assert state.current_track == state.radio_announcement_path
 		assert Path(state.radio_announcement_path).read_bytes() == b"ID3\x04\x00\x00\x00\x00\x00\x00SWAPPED_PAUSE_AUDIO"
 		assert state.pause_after_path == state.radio_announcement_path
+
+
+def test_startup_initializes_last_radio_time_to_zero():
+	"""Al arrancar la rockola, last_radio_time debe iniciar en 0.0 para disparar la locución tras el primer tema."""
+	from server import APIState
+
+	fresh_state = APIState()
+	assert fresh_state.last_radio_time == 0.0
+
+
+@pytest.mark.asyncio
+async def test_startup_radio_pregenerates_and_triggers_after_first_song():
+	"""Verifica que tras arrancar en frío (last_radio_time=0.0), la primera canción pregenere y al finalizar suene la radio."""
+	state.radio_mode_enabled = True
+	state.last_radio_time = 0.0
+	state.queue = ["/music/second_song.mp3"]
+
+	mock_create = AsyncMock(return_value=(True, "Bienvenida Radial", "Bienvenidos a la rockola."))
+
+	with (
+		patch("app.services.radio.HAS_EDGE_TTS", True),
+		patch("app.services.radio.create_radio_announcement", mock_create),
+		patch("app.services.radio.check_internet_async", AsyncMock(return_value=True)),
+		patch("app.engine.state.broadcast_state", AsyncMock()),
+	):
+		# 1. Arranca a sonar el primer tema
+		await state.play_track("/music/first_song.mp3")
+
+		# La pregeneración debe haberse disparado inmediatamente
+		assert state.radio_pregeneration_task is not None
+		await state.radio_pregeneration_task
+
+		# 2. Termina el primer tema
+		await state.play_next(skipped_by_user=False)
+
+		# Debe sonar la locución radial
+		assert state.current_track == state.radio_announcement_path
+
+		# Y el temporizador debe haberse reseteado a la hora actual con ventana de 10 a 15 min
+		assert abs(state.last_radio_time - time.time()) < 5.0
+		assert 600.0 <= state.radio_time_until_next <= 900.0

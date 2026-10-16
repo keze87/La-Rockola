@@ -170,9 +170,9 @@ class APIState:
 
 		self.favorites = self._load_favs_from_db()
 
-		# Modo Radio
+		# Modo Radio (al arrancar en frío, arranca en 0.0 para mandar la locución de bienvenida tras el primer tema)
 		self.radio_mode_enabled = True
-		self.last_radio_time = time.time()
+		self.last_radio_time = 0.0
 		self.radio_time_until_next = float(random.randint(600, 900))
 		self.is_playing_radio_announcement = False
 		self.is_synthesizing_radio = False
