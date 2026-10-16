@@ -2485,3 +2485,68 @@ def test_assemble_announcement_audio_uses_fine_grained_cues(tmp_path):
 		assert "Buenas tardes." in lrc_text
 		assert "Seguimos con buena música." in lrc_text
 		assert "1\n00:00:00,100" in srt_text
+
+
+def test_pause_and_break_outro_banks_valid_spanish():
+	"""Verifica que los bancos RADIO_OUTROS_PAUSE y RADIO_OUTROS_BREAK existan y cumplan con las reglas del idioma."""
+	assert len(radio_announcer.RADIO_OUTROS_PAUSE) >= 6
+	assert len(radio_announcer.RADIO_OUTROS_BREAK) >= 6
+
+	for outro in radio_announcer.RADIO_OUTROS_PAUSE:
+		assert not outro.endswith("..."), f"Outro de pausa no debe terminar con '...': {outro}"
+		assert radio_announcer.is_spanish_text(outro) is True
+		assert outro in radio_announcer.get_all_outro_segments()
+
+	for outro in radio_announcer.RADIO_OUTROS_BREAK:
+		assert not outro.endswith("..."), f"Outro de recreo no debe terminar con '...': {outro}"
+		assert radio_announcer.is_spanish_text(outro) is True
+		assert outro in radio_announcer.get_all_outro_segments()
+
+	assert radio_announcer.get_outros_for_mode("pause") == radio_announcer.RADIO_OUTROS_PAUSE
+	assert radio_announcer.get_outros_for_mode("break") == radio_announcer.RADIO_OUTROS_BREAK
+	assert radio_announcer.get_outros_for_mode("continue") == radio_announcer.RADIO_OUTROS
+
+
+@pytest.mark.asyncio
+async def test_create_radio_announcement_outro_modes_and_swap(tmp_path):
+	"""Verifica que create_radio_announcement respete outro_mode ('pause'/'break') y permita cambiar el cierre en caliente."""
+	db_p = tmp_path / "tts_modes.db"
+	out_p = tmp_path / "ann.mp3"
+
+	async def fake_synth(text, voice, category, **kwargs):
+		payload = f"AUDIO[{category}:{text}]".encode()
+		if kwargs.get("return_cues"):
+			return payload, [(0.0, 1.0, text)]
+		return payload
+
+	with (
+		patch("scripts.radio_announcer.HAS_EDGE_TTS", True),
+		patch("scripts.radio_announcer.synthesize_segment", side_effect=fake_synth),
+		patch("scripts.radio_announcer.fetch_weather_json", return_value=None),
+		patch("shutil.which", return_value=None),
+	):
+		res_pause = await radio_announcer.create_radio_announcement(
+			out_p,
+			db_path=db_p,
+			outro_mode="pause",
+			dialogue_mode=False,
+		)
+		assert res_pause.ok is True
+		assert res_pause.outro_mode == "pause"
+		assert res_pause.stem_segments is not None
+		assert any(p in res_pause.script for p in radio_announcer.RADIO_OUTROS_PAUSE)
+
+		# Ahora probamos cambiar el cierre en caliente de 'pause' a 'break' conservando el cuerpo
+		swapped_p = tmp_path / "swapped_break.mp3"
+		swapped_res = await radio_announcer.replace_announcement_outro(
+			stem_segments=res_pause.stem_segments,
+			host_voice=res_pause.host_voice,
+			outro_mode="break",
+			output_path=swapped_p,
+			db_path=db_p,
+		)
+		assert swapped_res.ok is True
+		assert swapped_res.outro_mode == "break"
+		assert any(p in swapped_res.script for p in radio_announcer.RADIO_OUTROS_BREAK)
+		assert not any(p in swapped_res.script for p in radio_announcer.RADIO_OUTROS_PAUSE)
+		assert swapped_p.is_file()

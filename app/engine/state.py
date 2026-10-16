@@ -708,6 +708,17 @@ class APIState:
 		"""Cancela cualquier pregeneración en curso de la locución radial delegando en RadioService."""
 		self.radio_service.cancel_pregeneration()
 
+	def _get_expected_radio_outro_mode(
+		self,
+		current_track_path: str | None = None,
+		should_pause: bool = False,
+	) -> str:
+		"""Determina el modo de cierre ('continue', 'pause' o 'break') según el estado de reproducción."""
+		if should_pause or (current_track_path is not None and self.pause_after_path == current_track_path):
+			return "pause"
+		has_next = bool(self.queue or (self.dj_carpincho_enabled and self.tracks_cache))
+		return "continue" if has_next else "break"
+
 	def _start_radio_pregeneration(self, current_track_path: str, track_duration: float = 0.0):
 		"""Dispara la síntesis y procesamiento de la locución radial en segundo plano delegando en RadioService."""
 		if not self.radio_mode_enabled or not self.radio_service.is_available:
@@ -718,7 +729,8 @@ class APIState:
 		if not self.is_radio_pregeneration_due(track_duration=track_duration):
 			return
 
-		self.radio_service.start_pregeneration(track_duration=track_duration)
+		outro_mode = self._get_expected_radio_outro_mode(current_track_path=current_track_path)
+		self.radio_service.start_pregeneration(track_duration=track_duration, outro_mode=outro_mode)
 
 	def _select_candidate_dj_track(self, unplayed: list[dict]) -> dict | None:
 		"""Elige una pista de la lista de pendientes según el modo del DJ Carpincho."""
@@ -784,17 +796,19 @@ class APIState:
 				self.pause_after_path = None
 
 			# Modo Radio: Intervención de locución cada 10 a 15 minutos durante transiciones naturales
-			has_next_track = bool(self.queue or (self.dj_carpincho_enabled and self.tracks_cache))
+			# (incluyendo cuando la fila queda vacía o se pidió pausar tras este tema, para no desperdiciar pregeneración)
 			if (
 				not skipped_by_user
 				and self.radio_mode_enabled
 				and self.radio_service.is_available
-				and has_next_track
 				and just_finished is not None
 				and just_finished != self.radio_announcement_path
 			):
 				self.radio_track_counter += 1
-				if self.is_radio_due():
+				has_pregenerated = self.pregenerated_radio_announcement is not None or (
+					self.radio_pregeneration_task is not None and not self.radio_pregeneration_task.done()
+				)
+				if self.is_radio_due() or has_pregenerated:
 					# Preguntamos si hay internet puntualmente antes de activar la síntesis radial
 					check_net_fn = getattr(radio_service_mod, "check_internet_async", check_internet_async)
 					if not await check_net_fn(timeout=0.8):
@@ -808,16 +822,20 @@ class APIState:
 						script = ""
 						radio_err = ""
 
+						outro_mode = self._get_expected_radio_outro_mode(should_pause=should_pause)
+
 						# Averiguamos qué tema viene realmente en este momento para superponerlo como cortina en caliente
+						# (solo si la reproducción continúa inmediatamente con música)
 						next_track_path = None
-						if self.queue:
-							next_track_path = self.queue[0]
-						elif self.dj_next_track:
-							next_track_path = self.dj_next_track.get("path")
-						elif self.dj_carpincho_enabled and self.tracks_cache:
-							self._pick_dj_next()
-							if self.dj_next_track:
+						if outro_mode == "continue":
+							if self.queue:
+								next_track_path = self.queue[0]
+							elif self.dj_next_track:
 								next_track_path = self.dj_next_track.get("path")
+							elif self.dj_carpincho_enabled and self.tracks_cache:
+								self._pick_dj_next()
+								if self.dj_next_track:
+									next_track_path = self.dj_next_track.get("path")
 
 						bg_offset = 0.0
 						if next_track_path:
@@ -835,6 +853,7 @@ class APIState:
 							next_track_path=next_track_path,
 							bg_offset=bg_offset,
 							on_synthesis_status=_set_synthesizing_radio,
+							outro_mode=outro_mode,
 						)
 
 						if ok:
@@ -852,9 +871,10 @@ class APIState:
 								script_text=script,
 								display_title=display_title,
 							)
-							await self.play_track(self.radio_announcement_path)
 							if should_pause:
-								await self.set_pause(True)
+								# Diferimos la pausa para cuando termine de hablar el locutor radial
+								self.pause_after_path = self.radio_announcement_path
+							await self.play_track(self.radio_announcement_path)
 							await broadcast_state()
 							return
 						else:

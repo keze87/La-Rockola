@@ -29,6 +29,7 @@ try:
 		is_valid_mp3_file,
 		is_valid_mp3_stream,
 		mix_announcement_with_bg_track,
+		replace_announcement_outro,
 	)
 except ImportError:
 	try:
@@ -42,6 +43,7 @@ except ImportError:
 			is_valid_mp3_file,
 			is_valid_mp3_stream,
 			mix_announcement_with_bg_track,
+			replace_announcement_outro,
 		)
 	except ImportError:
 		DEFAULT_WEATHER_LOCATION = "San Miguel de Tucumán"
@@ -50,6 +52,7 @@ except ImportError:
 		create_radio_announcement = None
 		get_carpincho_cover_path = None
 		mix_announcement_with_bg_track = None
+		replace_announcement_outro = None
 		embed_cover_art_in_mp3 = None
 		is_valid_mp3_file = None
 		is_valid_mp3_stream = None
@@ -127,6 +130,7 @@ class RadioService:
 		track_duration: float = 0.0,
 		location: str | None = None,
 		pregenerated_path: Path | str | None = None,
+		outro_mode: str = "continue",
 	) -> None:
 		"""
 		Dispara la síntesis y procesamiento de la locución radial en segundo plano
@@ -145,11 +149,13 @@ class RadioService:
 
 			try:
 				logger.info("📻 Carpincho Locutor: Iniciando pregeneración anticipada al comienzo de la canción...")
+				extra_kwargs: dict[str, Any] = {"outro_mode": outro_mode} if outro_mode != "continue" else {}
 				res = await create_radio_announcement(
 					str(target_path),
 					dt=finish_dt,
 					bg_track_path=None,
 					weather_location=target_loc,
+					**extra_kwargs,
 				)
 				res_ok, res_title, res_script, res_err = _unpack_radio_result(res)
 
@@ -159,6 +165,9 @@ class RadioService:
 						"display_title": res_title,
 						"script": res_script,
 						"created_at": time.time(),
+						"outro_mode": getattr(res, "outro_mode", outro_mode),
+						"host_voice": getattr(res, "host_voice", ""),
+						"stem_segments": getattr(res, "stem_segments", None),
 					}
 					logger.info(
 						"📻 Carpincho Locutor: Pregeneración de voz lista con anticipación para el final del tema."
@@ -172,6 +181,61 @@ class RadioService:
 
 		self.pregeneration_task = asyncio.create_task(_do_pregeneration())
 
+	async def _consume_pregenerated(
+		self,
+		pre: dict[str, Any],
+		target_ann_path: Path,
+		next_track_path: str | None,
+		bg_offset: float,
+		outro_mode: str,
+	) -> tuple[bool, str, str]:
+		"""Evalúa y procesa una locución pregenerada, reemplazando el cierre si cambió el modo."""
+		pre_created_at = pre.get("created_at")
+		pre_age = (time.time() - pre_created_at) if pre_created_at is not None else 0.0
+		if pre_age > RADIO_PREGENERATION_MAX_AGE_SECONDS:
+			logger.info(
+				f"📻 Carpincho Locutor: La locución pregenerada expiró ({pre_age / 60:.1f} min > 15 min tras pausa). Descartando para sintetizar locución fresca..."
+			)
+			return False, "", ""
+
+		pre_p = Path(pre["path"])
+		if not _is_valid_radio_mp3_file(pre_p):
+			logger.warning(
+				"📻 Carpincho Locutor: El archivo pregenerado está incompleto o no es un MP3 válido. Descartando..."
+			)
+			return False, "", ""
+
+		pre_mode = pre.get("outro_mode")
+		stem_segments = pre.get("stem_segments")
+		if pre_mode is not None and pre_mode != outro_mode and stem_segments and replace_announcement_outro is not None:
+			logger.info(
+				f"🔄 Carpincho Locutor: El modo de transición cambió de '{pre_mode}' a '{outro_mode}'. Reemplazando cierre sobre el audio pregenerado..."
+			)
+			swapped_res = await replace_announcement_outro(
+				stem_segments=stem_segments,
+				host_voice=pre.get("host_voice") or "",
+				outro_mode=outro_mode,
+				output_path=target_ann_path,
+				bg_track_path=next_track_path,
+				bg_offset=bg_offset,
+				bg_volume=0.1,
+			)
+			s_ok, s_title, s_script, _ = _unpack_radio_result(swapped_res)
+			if s_ok:
+				return True, s_title, s_script
+
+		if await self.apply_hot_mix_to_announcement(
+			pre_p,
+			target_ann_path,
+			pre["display_title"],
+			next_track_path=next_track_path,
+			bg_offset=bg_offset,
+		):
+			logger.info("⚡ Carpincho Locutor: Transición con locución pregenerada y mezcla de cortina en caliente.")
+			return True, pre["display_title"], pre.get("script", "")
+
+		return False, "", ""
+
 	async def get_or_synthesize(
 		self,
 		next_track_path: str | None = None,
@@ -179,6 +243,7 @@ class RadioService:
 		on_synthesis_status: Callable[[bool], Any] | None = None,
 		location: str | None = None,
 		announcement_path: Path | str | None = None,
+		outro_mode: str = "continue",
 	) -> tuple[bool, str, str, str | None]:
 		"""
 		Obtiene la locución pregenerada o realiza síntesis en caliente, aplicando
@@ -197,33 +262,10 @@ class RadioService:
 		# 1. Comprobar si ya está lista la pregeneración de fondo (0 ms de latencia)
 		if self.pregenerated_announcement:
 			pre = self.pregenerated_announcement
-			pre_created_at = pre.get("created_at")
-			pre_age = (time.time() - pre_created_at) if pre_created_at is not None else 0.0
-			if pre_age > RADIO_PREGENERATION_MAX_AGE_SECONDS:
-				logger.info(
-					f"📻 Carpincho Locutor: La locución pregenerada expiró ({pre_age / 60:.1f} min > 15 min tras pausa). Descartando para sintetizar locución fresca..."
-				)
-			else:
-				pre_p = Path(pre["path"])
-				if _is_valid_radio_mp3_file(pre_p):
-					if await self.apply_hot_mix_to_announcement(
-						pre_p,
-						target_ann_path,
-						pre["display_title"],
-						next_track_path=next_track_path,
-						bg_offset=bg_offset,
-					):
-						ok = True
-						display_title = pre["display_title"]
-						script = pre.get("script", "")
-						logger.info(
-							"⚡ Carpincho Locutor: Transición con locución pregenerada y mezcla de cortina en caliente."
-						)
-				else:
-					logger.warning(
-						"📻 Carpincho Locutor: El archivo pregenerado está incompleto o no es un MP3 válido. Descartando..."
-					)
 			self.pregenerated_announcement = None
+			ok, display_title, script = await self._consume_pregenerated(
+				pre, target_ann_path, next_track_path, bg_offset, outro_mode
+			)
 
 		# 2. Si la tarea de pregeneración sigue corriendo, esperarla brevemente
 		if not ok and self.pregeneration_task and not self.pregeneration_task.done():
@@ -236,30 +278,10 @@ class RadioService:
 				await asyncio.wait_for(asyncio.shield(self.pregeneration_task), timeout=3.0)
 				if self.pregenerated_announcement:
 					pre = self.pregenerated_announcement
-					pre_created_at = pre.get("created_at")
-					pre_age = (time.time() - pre_created_at) if pre_created_at is not None else 0.0
-					if pre_age > RADIO_PREGENERATION_MAX_AGE_SECONDS:
-						logger.info(
-							f"📻 Carpincho Locutor: La locución pregenerada expiró ({pre_age / 60:.1f} min > 15 min tras pausa). Descartando..."
-						)
-					else:
-						pre_p = Path(pre["path"])
-						if _is_valid_radio_mp3_file(pre_p):
-							if await self.apply_hot_mix_to_announcement(
-								pre_p,
-								target_ann_path,
-								pre["display_title"],
-								next_track_path=next_track_path,
-								bg_offset=bg_offset,
-							):
-								ok = True
-								display_title = pre["display_title"]
-								script = pre.get("script", "")
-						else:
-							logger.warning(
-								"📻 Carpincho Locutor: El archivo pregenerado esperado está incompleto o no es un MP3 válido. Descartando..."
-							)
 					self.pregenerated_announcement = None
+					ok, display_title, script = await self._consume_pregenerated(
+						pre, target_ann_path, next_track_path, bg_offset, outro_mode
+					)
 			except Exception as wait_e:
 				logger.debug(f"Espera de pregeneración agotada o falló: {wait_e}")
 			finally:
@@ -277,12 +299,14 @@ class RadioService:
 					await res_notify
 
 			try:
+				extra_kwargs: dict[str, Any] = {"outro_mode": outro_mode} if outro_mode != "continue" else {}
 				res = await create_radio_announcement(
 					str(target_ann_path),
 					bg_track_path=next_track_path,
 					bg_offset=bg_offset,
 					bg_volume=0.1,
 					weather_location=target_loc,
+					**extra_kwargs,
 				)
 				ok, display_title, script, radio_err = _unpack_radio_result(res)
 			except Exception as e:

@@ -771,3 +771,159 @@ async def test_radio_pregeneration_triggers_when_song_ends_after_timeout():
 		assert state.radio_pregeneration_task is not None
 		await state.radio_pregeneration_task
 		assert state.pregenerated_radio_announcement is not None
+
+
+@pytest.mark.asyncio
+async def test_play_next_plays_radio_when_queue_empty_and_then_stops(tmp_path):
+	"""Verifica que no se desperdicie la radio cuando la cola queda vacía, usando outro_mode='break' y frenando al terminar."""
+	state.radio_mode_enabled = True
+	state.dj_carpincho_enabled = False
+	state.radio_track_counter = 1
+	state.radio_tracks_until_next = 2
+	state.queue = []
+	state.current_track = "/music/last_song.mp3"
+
+	mock_create = AsyncMock(return_value=(True, "Carpincho Descanso", "Nos tomamos un recreo en la laguna."))
+
+	async def fake_play_track(path):
+		state.current_track = path
+
+	with (
+		patch("app.services.radio.HAS_EDGE_TTS", True),
+		patch("app.services.radio.create_radio_announcement", mock_create),
+		patch("app.services.radio.check_internet_async", AsyncMock(return_value=True)),
+		patch.object(state, "play_track", side_effect=fake_play_track) as mock_play,
+		patch.object(state, "stop_playback", wraps=state.stop_playback) as spy_stop,
+		patch("app.engine.state.broadcast_state", AsyncMock()),
+	):
+		# Termina el último tema de la fila: debe sonar la locución radial en modo 'break' sin cortina de fondo
+		await state.play_next(skipped_by_user=False)
+
+		mock_create.assert_awaited_once_with(
+			state.radio_announcement_path,
+			bg_track_path=None,
+			bg_offset=0.0,
+			bg_volume=0.1,
+			weather_location=state.weather_location,
+			outro_mode="break",
+		)
+		assert state.is_playing_radio_announcement is True
+		assert state.current_track == state.radio_announcement_path
+		mock_play.assert_awaited_once_with(state.radio_announcement_path)
+		spy_stop.assert_not_called()
+
+		# Ahora termina la locución radial y sigue sin haber temas en la cola: debe frenar limpiamente
+		await state.play_next(skipped_by_user=False)
+		assert state.is_playing_radio_announcement is False
+		assert state.current_track is None
+		spy_stop.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_play_next_plays_radio_unpaused_when_pause_after_active_and_pauses_next_track(tmp_path):
+	"""Verifica que cuando pause_after_path está activo, suene primero la radio sin pausarse y luego pause en el siguiente tema."""
+	state.radio_mode_enabled = True
+	state.radio_track_counter = 1
+	state.radio_tracks_until_next = 2
+	state.queue = ["/music/song2.mp3"]
+	state.current_track = "/music/song1.mp3"
+	state.pause_after_path = "/music/song1.mp3"
+
+	mock_create = AsyncMock(return_value=(True, "Carpincho Pausa", "Hacemos una pausita para el mate."))
+
+	async def fake_play_track(path):
+		state.current_track = path
+		state.mpv_paused = False
+
+	with (
+		patch("app.services.radio.HAS_EDGE_TTS", True),
+		patch("app.services.radio.create_radio_announcement", mock_create),
+		patch("app.services.radio.check_internet_async", AsyncMock(return_value=True)),
+		patch.object(state, "play_track", side_effect=fake_play_track),
+		patch("app.engine.state.broadcast_state", AsyncMock()),
+	):
+		# 1. Termina song1 con pause_after_path activo -> suena la radio en modo 'pause', SIN pausarse en 0:00
+		await state.play_next(skipped_by_user=False)
+
+		mock_create.assert_awaited_once_with(
+			state.radio_announcement_path,
+			bg_track_path=None,
+			bg_offset=0.0,
+			bg_volume=0.1,
+			weather_location=state.weather_location,
+			outro_mode="pause",
+		)
+		assert state.current_track == state.radio_announcement_path
+		assert state.is_playing_radio_announcement is True
+		assert state.mpv_paused is False
+		assert state.pause_after_path == state.radio_announcement_path
+
+		# 2. Termina la locución radial -> carga song2 y queda pausado
+		await state.play_next(skipped_by_user=False)
+
+		assert state.is_playing_radio_announcement is False
+		assert state.current_track == "/music/song2.mp3"
+		assert state.mpv_paused is True
+		assert state.pause_after_path is None
+
+
+@pytest.mark.asyncio
+async def test_pregenerated_announcement_swaps_outro_when_state_changes_mid_song(tmp_path):
+	"""Verifica que si se pregeneró en modo 'continue' y el usuario activa pause_after a mitad del tema, se reemplace solo el cierre."""
+	from scripts.radio_announcer import RadioAnnouncementResult
+
+	state.radio_mode_enabled = True
+	state.radio_track_counter = 0
+	state.radio_tracks_until_next = 2  # Aún no venció por contador, pero sí hay pregeneración lista
+	state.queue = ["/music/song2.mp3"]
+	state.current_track = "/music/song1.mp3"
+	state.pause_after_path = "/music/song1.mp3"  # Activado a mitad de la canción
+
+	pre_file = Path(state.radio_pregenerated_path)
+	pre_file.write_bytes(b"ID3\x04\x00\x00\x00\x00\x00\x00PREGENERATED_CONTINUE_AUDIO")
+	stem_segs = [(b"STEM_INTRO_HORA_FORTUNA", "intro", "es-AR-TomasNeural", "Buenas tardes.", None)]
+	state.pregenerated_radio_announcement = {
+		"path": state.radio_pregenerated_path,
+		"display_title": "Carpincho Original",
+		"script": "Buenas tardes. Mandale play.",
+		"created_at": time.time(),
+		"outro_mode": "continue",
+		"host_voice": "es-AR-TomasNeural",
+		"stem_segments": stem_segs,
+	}
+
+	def fake_replace_outro(stem_segments, host_voice, outro_mode, output_path, **kwargs):
+		Path(output_path).write_bytes(b"ID3\x04\x00\x00\x00\x00\x00\x00SWAPPED_PAUSE_AUDIO")
+		return RadioAnnouncementResult(
+			ok=True,
+			display_title="Carpincho Locutor: Buenas tardes. Hacemos una pausita.",
+			script="Buenas tardes. Hacemos una pausita.",
+			outro_mode=outro_mode,
+			host_voice=host_voice,
+			stem_segments=stem_segments,
+		)
+
+	mock_replace = AsyncMock(side_effect=fake_replace_outro)
+	mock_create_live = AsyncMock()
+
+	async def fake_play_track(path):
+		state.current_track = path
+
+	with (
+		patch("app.services.radio.HAS_EDGE_TTS", True),
+		patch("app.services.radio.create_radio_announcement", mock_create_live),
+		patch("app.services.radio.replace_announcement_outro", mock_replace),
+		patch("app.services.radio.check_internet_async", AsyncMock(return_value=True)),
+		patch.object(state, "play_track", side_effect=fake_play_track),
+		patch("app.engine.state.broadcast_state", AsyncMock()),
+	):
+		await state.play_next(skipped_by_user=False)
+
+		# No debe re-sintetizar desde cero, sino reemplazar solo el cierre sobre el stem pregenerado
+		mock_create_live.assert_not_called()
+		mock_replace.assert_awaited_once()
+		assert mock_replace.call_args.kwargs["outro_mode"] == "pause"
+		assert mock_replace.call_args.kwargs["stem_segments"] == stem_segs
+		assert state.current_track == state.radio_announcement_path
+		assert Path(state.radio_announcement_path).read_bytes() == b"ID3\x04\x00\x00\x00\x00\x00\x00SWAPPED_PAUSE_AUDIO"
+		assert state.pause_after_path == state.radio_announcement_path

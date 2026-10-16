@@ -578,6 +578,29 @@ RADIO_OUTROS: list[str] = [
 	# "¡Para Maru que nos escucha desde casa, te deseamos que tengas un buen día! ¡Un carpinchazo de tema para vos; cambiame la música!",
 ]
 
+RADIO_OUTROS_PAUSE: list[str] = [
+	"Hacemos una pausita en la orilla para calentar el agua del mate y enseguida volvemos con más música.",
+	"Clavamos los remos un ratito porque pidieron pausa en la consola. Cuando quieras, le damos play de nuevo.",
+	"Ponemos el freno de mano un toque en La Rockola. Acomodá los tantos y mandale play cuando estés listo.",
+	"Pausa pedida en la madriguera: dejamos el próximo tema preparado en la gatera para cuando quieras seguir.",
+	"Frenamos la pelota un instante para renovar la yerba. La música queda en pausa esperándote.",
+	"Bajamos la palanca un ratito por pedido de la audiencia. ¡A la vuelta seguimos con todo en La Rockola!",
+	"Nos tomamos un respiro corto en la barranca. Cuando le des play de nuevo, seguimos bailando.",
+	"Queda la consola en pausa como pidieron. Andá tranquilo que los carpinchos te cuidan el lugar.",
+]
+
+RADIO_OUTROS_BREAK: list[str] = [
+	"Se nos secó la fila de temas por ahora, así que los carpinchos nos tomamos un recreo en la laguna hasta que elijan más música.",
+	"Llegamos al final de la lista en La Rockola. Cerramos el micrófono un ratito; cuando quieran más ritmo, tiren otro tema a la cola.",
+	"No quedaron más canciones en la gatera, che. Nos vamos a flotar un rato al arroyo hasta que alguien ponga otra ficha.",
+	"Hasta acá llegó la fila de hoy. Dejamos la consola descansando a la sombra del sauce; sumá unos temas cuando quieras seguir.",
+	"Se acabó el repertorio de la cola, compadre. Hacemos un alto en la orilla y volvemos apenas carguen más música.",
+	"Último tema de la lista cumplido. Los locutores nos vamos a cebar unos amargos; ¡agregá canciones cuando quieras que acá estamos!",
+	"Bolsillos vacíos de canciones por este rato en La Rockola. Nos tomamos un descanso en el juncal hasta la próxima tanda.",
+	"Se terminó la fila de reproducción, gente linda. Apagamos los parlantes por un ratito, pero el micrófono queda listo para cuando vuelvan.",
+]
+
+
 # ---------------------------------------------------------------------------
 # Horas especiales en punto y segmentos modulares
 # ---------------------------------------------------------------------------
@@ -2782,3 +2805,12 @@ def get_lead_ins_for_category(category: str) -> list[str]:
 def get_reactions_for_category(category: str) -> list[str]:
 	"""Devuelve las reacciones de cabina pertinentes a la categoría del segmento."""
 	return REACCIONES_BY_CATEGORY.get(category, REACCIONES_FORTUNA)
+
+
+def get_outros_for_mode(outro_mode: str = "continue") -> list[str]:
+	"""Devuelve el banco de cierres radiales acorde al modo ('continue', 'pause' o 'break')."""
+	if outro_mode == "pause":
+		return RADIO_OUTROS_PAUSE
+	if outro_mode == "break":
+		return RADIO_OUTROS_BREAK
+	return RADIO_OUTROS

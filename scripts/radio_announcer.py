@@ -40,6 +40,9 @@ class RadioAnnouncementResult:
 	display_title: str = ""
 	script: str = ""
 	error: str | None = None
+	outro_mode: str = "continue"
+	host_voice: str = ""
+	stem_segments: list[Any] | None = None
 
 	def __iter__(self):
 		# Retrocompatibilidad con código o tests que esperan desempaquetar (ok, title, script_o_error)
@@ -106,6 +109,8 @@ try:
 		RADIO_INTROS,
 		RADIO_LEAD_INS,
 		RADIO_OUTROS,
+		RADIO_OUTROS_BREAK,
+		RADIO_OUTROS_PAUSE,
 		RADIO_REACTIONS,
 		RAIN_BOTH_DAYS,
 		RAIN_DESCRIPTIONS,
@@ -144,6 +149,7 @@ try:
 		filter_by_context,
 		get_all_weather_desc_phrases,
 		get_lead_ins_for_category,
+		get_outros_for_mode,
 		get_reactions_for_category,
 		get_weather_desc_phrase,
 		phrase_fits_context,
@@ -192,6 +198,8 @@ except ImportError:
 		RADIO_INTROS,
 		RADIO_LEAD_INS,
 		RADIO_OUTROS,
+		RADIO_OUTROS_BREAK,
+		RADIO_OUTROS_PAUSE,
 		RADIO_REACTIONS,
 		RAIN_BOTH_DAYS,
 		RAIN_DESCRIPTIONS,
@@ -230,6 +238,7 @@ except ImportError:
 		filter_by_context,
 		get_all_weather_desc_phrases,
 		get_lead_ins_for_category,
+		get_outros_for_mode,
 		get_reactions_for_category,
 		get_weather_desc_phrase,
 		phrase_fits_context,
@@ -278,6 +287,8 @@ __all__ = [
 	"RADIO_INTROS",
 	"RADIO_LEAD_INS",
 	"RADIO_OUTROS",
+	"RADIO_OUTROS_BREAK",
+	"RADIO_OUTROS_PAUSE",
 	"RADIO_REACTIONS",
 	"RAIN_BOTH_DAYS",
 	"RAIN_DESCRIPTIONS",
@@ -349,6 +360,7 @@ __all__ = [
 	"get_modular_hour_segments",
 	"get_modular_minute_segments",
 	"get_modular_time_segments",
+	"get_outros_for_mode",
 	"get_phrase_last_played",
 	"get_radio_fortune",
 	"get_radio_state",
@@ -370,6 +382,7 @@ __all__ = [
 	"prune_tts_cache_db",
 	"record_phrase_played",
 	"render_phrase",
+	"replace_announcement_outro",
 	"reset_radio_memory_state",
 	"reset_weather_cache",
 	"resolve_segment_category",
@@ -1652,9 +1665,9 @@ def get_all_intro_segments() -> list[str]:
 
 
 def get_all_outro_segments() -> list[str]:
-	"""Todas las salidas a la música posibles, con {momento} resuelto para cada franja horaria."""
+	"""Todas las salidas (música, pausa y recreo) posibles, con {momento} resuelto para cada franja horaria."""
 	res: list[str] = []
-	for outro in RADIO_OUTROS:
+	for outro in (*RADIO_OUTROS, *RADIO_OUTROS_PAUSE, *RADIO_OUTROS_BREAK):
 		for variant in expand_phrase_variants(outro):
 			if variant not in res:
 				res.append(variant)
@@ -1983,6 +1996,7 @@ def generate_modular_radio_script(
 	dt: datetime | None = None,
 	voice: str | None = None,
 	force_system_fortune: bool | None = None,
+	outro_mode: str = "continue",
 ) -> tuple[str, str, str | None, str, str, bool, str, str, str]:
 	"""
 	Genera los componentes del guión radial de forma modular.
@@ -1999,7 +2013,8 @@ def generate_modular_radio_script(
 	seg_cat = resolve_segment_category(fortuna)
 	cat_lead_ins = get_lead_ins_for_category(seg_cat)
 	lead_in = random.choice(filter_by_context(cat_lead_ins, ctx))
-	outro = render_phrase(random.choice(filter_by_context(RADIO_OUTROS, ctx)), ctx)
+	outro_pool = get_outros_for_mode(outro_mode)
+	outro = render_phrase(random.choice(filter_by_context(outro_pool, ctx)), ctx)
 	hora_full = f"{hora_seg} {minuto_seg}" if minuto_seg else hora_seg
 	fort_speech = format_fortune_for_speech(fortuna)
 	full_script = f"{intro} {hora_full} {lead_in} {fort_speech} {outro}"
@@ -3088,6 +3103,7 @@ async def create_radio_announcement(
 	cover_image_path: Path | str | None = None,
 	weather_location: str | None = None,
 	dialogue_mode: bool | None = None,
+	outro_mode: str = "continue",
 ) -> RadioAnnouncementResult:
 	"""
 	Sintetiza la locución radial con dinámica de charla de cabina entre locutores carpinchos.
@@ -3103,7 +3119,7 @@ async def create_radio_announcement(
 	if not HAS_EDGE_TTS or edge_tts is None:
 		err_msg = "El paquete 'edge-tts' no está instalado en el entorno de Python o falló su importación."
 		logger.warning(f"📻 El Carpincho no puede locutar: {err_msg}")
-		return RadioAnnouncementResult(ok=False, display_title="", script="", error=err_msg)
+		return RadioAnnouncementResult(ok=False, display_title="", script="", error=err_msg, outro_mode=outro_mode)
 
 	out_p = Path(output_path)
 	try:
@@ -3111,7 +3127,7 @@ async def create_radio_announcement(
 	except Exception as e:
 		err_msg = f"No se pudo crear el directorio de destino '{out_p.parent}': {type(e).__name__}: {e}"
 		logger.warning(f"📻 El Carpincho: {err_msg}")
-		return RadioAnnouncementResult(ok=False, display_title="", script="", error=err_msg)
+		return RadioAnnouncementResult(ok=False, display_title="", script="", error=err_msg, outro_mode=outro_mode)
 
 	effective_dt = dt if dt is not None else datetime.now(UTC).astimezone()
 	now_ts = effective_dt.timestamp()
@@ -3176,7 +3192,8 @@ async def create_radio_announcement(
 
 	intro = weighted_choice_by_recency(filter_by_context(RADIO_INTROS, ctx), category="intro", db_path=db_path)
 	hora_seg, minuto_seg, _ = get_modular_time_segments(effective_dt)
-	outro = weighted_choice_by_recency(filter_by_context(RADIO_OUTROS, ctx), category="salida", db_path=db_path)
+	outro_pool = get_outros_for_mode(outro_mode)
+	outro = weighted_choice_by_recency(filter_by_context(outro_pool, ctx), category="salida", db_path=db_path)
 
 	is_dialogue = dialogue_mode if dialogue_mode is not None else (random.random() < 0.85)
 	last_reaction = get_radio_state("last_reaction", db_path=db_path)
@@ -3257,7 +3274,7 @@ async def create_radio_announcement(
 		if not ok:
 			err_msg = "Falló el ensamblado del audio del anuncio radial."
 			logger.warning(f"📻 El Carpincho: {err_msg}")
-			return RadioAnnouncementResult(ok=False, display_title="", script="", error=err_msg)
+			return RadioAnnouncementResult(ok=False, display_title="", script="", error=err_msg, outro_mode=outro_mode)
 
 		# Guardar el slot horario y timestamp del clima tras ensamblado exitoso
 		if pending_weather_slot:
@@ -3276,7 +3293,16 @@ async def create_radio_announcement(
 			if clean_s:
 				record_phrase_played(clean_s, category=cat, timestamp=now_ts, db_path=db_path)
 
-		return RadioAnnouncementResult(ok=True, display_title=display_title, script=full_script, error=None)
+		stem_segs = segment_results[:-1] if len(segment_results) > 1 else []
+		return RadioAnnouncementResult(
+			ok=True,
+			display_title=display_title,
+			script=full_script,
+			error=None,
+			outro_mode=outro_mode,
+			host_voice=host_voice,
+			stem_segments=stem_segs,
+		)
 
 	except Exception as e:
 		is_timeout = isinstance(e, (asyncio.TimeoutError, TimeoutError)) or (
@@ -3286,7 +3312,7 @@ async def create_radio_announcement(
 		if is_timeout:
 			err_msg = f"Se agotó el tiempo de espera ({timeout}s) contactando al servicio de síntesis de voz (edge-tts). Verificá la conexión a internet."
 			logger.warning(f"📻 El Carpincho: {err_msg}")
-			return RadioAnnouncementResult(ok=False, display_title="", script="", error=err_msg)
+			return RadioAnnouncementResult(ok=False, display_title="", script="", error=err_msg, outro_mode=outro_mode)
 
 		if hasattr(e, "exceptions"):
 			nested_msgs = "; ".join(
@@ -3297,4 +3323,97 @@ async def create_radio_announcement(
 		else:
 			err_msg = f"Error de síntesis ({type(e).__name__}: {e})"
 		logger.warning(f"📻 El Carpincho: {err_msg}")
-		return RadioAnnouncementResult(ok=False, display_title="", script="", error=err_msg)
+		return RadioAnnouncementResult(ok=False, display_title="", script="", error=err_msg, outro_mode=outro_mode)
+
+
+async def replace_announcement_outro(
+	stem_segments: list[tuple[bytes, str, str, str, list[tuple[float, float, str]] | None]],
+	host_voice: str,
+	outro_mode: str,
+	output_path: Path | str,
+	bg_track_path: Path | str | None = None,
+	bg_offset: float = 0.0,
+	bg_volume: float = DEFAULT_BG_VOLUME,
+	db_path: Path | str | None = None,
+	dt: datetime | None = None,
+	cover_image_path: Path | str | None = None,
+	timeout: float = DEFAULT_TTS_TIMEOUT,
+	max_retries: int = DEFAULT_TTS_RETRIES,
+) -> RadioAnnouncementResult:
+	"""
+	Reemplaza únicamente el segmento final ('salida') sobre los segmentos troncales pregenerados
+	cuando cambia el modo de transición a mitad de la canción (ej. se activa pausa tras este tema
+	o se vacía/llena la fila), evitando desperdiciar la síntesis principal y el reporte del clima.
+	"""
+	out_p = Path(output_path)
+	effective_dt = dt if dt is not None else datetime.now(UTC).astimezone()
+	now_ts = effective_dt.timestamp()
+	ctx = build_radio_context(effective_dt, temp_c=_recent_temp_c(now_ts, db_path=db_path))
+
+	outro_pool = get_outros_for_mode(outro_mode)
+	raw_outro = weighted_choice_by_recency(filter_by_context(outro_pool, ctx), category="salida", db_path=db_path)
+	outro_text = _render(raw_outro, ctx)
+	effective_voice = host_voice if host_voice in VOICES else VOICE_TOMAS
+	locutor_nombre = VOICE_NAMES.get(effective_voice, DEFAULT_HOST_NAME)
+
+	try:
+		res = await synthesize_segment(
+			text=outro_text,
+			voice=effective_voice,
+			category="salida",
+			allow_cache=True,
+			timeout=timeout,
+			max_retries=max_retries,
+			db_path=db_path,
+			return_cues=True,
+		)
+		if isinstance(res, tuple) and len(res) == 2:
+			outro_bytes, outro_cues = res
+		else:
+			outro_bytes, outro_cues = res, None
+
+		combined_segments = [*stem_segments, (outro_bytes, "salida", effective_voice, outro_text, outro_cues)]
+		full_script = " ".join(s[3].strip() for s in combined_segments if len(s) >= 4 and s[3].strip())
+		display_title = f"Carpincho locutor: {full_script}"
+
+		loop = asyncio.get_running_loop()
+		ok = await loop.run_in_executor(
+			None,
+			assemble_announcement_audio,
+			combined_segments,
+			out_p,
+			bg_track_path,
+			bg_offset,
+			bg_volume,
+			cover_image_path,
+			display_title,
+			locutor_nombre,
+			timeout,
+		)
+		if not ok:
+			return RadioAnnouncementResult(
+				ok=False,
+				display_title="",
+				script="",
+				error="Falló el re-ensamblado del cierre radial.",
+				outro_mode=outro_mode,
+			)
+
+		record_phrase_played(outro_text, category="salida", timestamp=now_ts, db_path=db_path)
+		return RadioAnnouncementResult(
+			ok=True,
+			display_title=display_title,
+			script=full_script,
+			error=None,
+			outro_mode=outro_mode,
+			host_voice=effective_voice,
+			stem_segments=list(stem_segments),
+		)
+	except Exception as e:
+		return RadioAnnouncementResult(
+			ok=False,
+			display_title="",
+			script="",
+			error=f"Error cambiando el cierre radial ({type(e).__name__}: {e})",
+			outro_mode=outro_mode,
+		)
