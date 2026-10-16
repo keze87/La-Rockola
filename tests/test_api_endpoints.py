@@ -259,16 +259,17 @@ async def test_websocket_endpoint_flow(clean_state, clean_manager, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_websocket_local_player_rejection(clean_state, clean_manager, monkeypatch):
-	"""Test rejection of second client trying to claim local player."""
+async def test_websocket_local_player_replacement(clean_state, clean_manager, monkeypatch):
+	"""Test replacement of active local player and eviction notice to previous client."""
 	monkeypatch.setattr(server, "state", clean_state)
 	monkeypatch.setattr(server, "manager", clean_manager)
 
 	# First client claims
 	first_ws = MagicMock()
+	first_ws.send_json = AsyncMock()
 	clean_manager.claim_local_player(first_ws)
 
-	# Second client attempts claim
+	# Second client attempts claim and replaces first
 	second_ws = MagicMock()
 	second_ws.client.host = "192.168.0.102"
 	second_ws.accept = AsyncMock()
@@ -280,7 +281,12 @@ async def test_websocket_local_player_rejection(clean_state, clean_manager, monk
 	with patch("server.broadcast_state", new_callable=AsyncMock):
 		await server.websocket_endpoint(second_ws)
 
-	assert clean_manager.local_player_ws is first_ws
+	# First client received eviction notification
+	first_ws.send_json.assert_called_with({"type": "local_player_evicted", "reason": "replaced"})
+	# Second client received claim approval
+	second_ws.send_json.assert_any_call({"type": "local_player_claim_result", "ok": True})
+	# Upon second_ws disconnect, local player is released
+	assert clean_manager.local_player_ws is None
 
 
 @pytest.mark.asyncio

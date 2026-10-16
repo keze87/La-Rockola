@@ -8,6 +8,7 @@ import {
 	djSafeModeEnabled,
 	hasEdgeTts,
 	hasFfmpeg,
+	hasLocalPlayer,
 	isScanning,
 	listenLocally,
 	mpvVisible,
@@ -15,6 +16,7 @@ import {
 	scanStatus,
 	serverMuted,
 	serverUrl,
+	setWsSend,
 	volume,
 	weatherLocation,
 } from '@/composables/player/state';
@@ -34,6 +36,7 @@ describe('ControlsTab.vue', () => {
 		djSafeModeEnabled.value = false;
 		hasEdgeTts.value = true;
 		hasFfmpeg.value = true;
+		hasLocalPlayer.value = false;
 		listenLocally.value = false;
 		mpvVisible.value = true;
 		radioModeEnabled.value = false;
@@ -328,5 +331,47 @@ describe('ControlsTab.vue', () => {
 
 		expect(wrapper.text()).toContain('Ubicación del Clima: Buenos Aires');
 		expect(wrapper.text()).not.toContain('-34.6037,-58.3816');
+	});
+
+	it('shows return to server speakers button when another client is playing locally', async () => {
+		hasLocalPlayer.value = true;
+		listenLocally.value = false;
+		const wrapper = mount(ControlsTab);
+
+		expect(wrapper.text()).toContain('Alguien está escuchando en su dispositivo');
+		expect(wrapper.text()).toContain('Volver a parlantes del servidor');
+	});
+
+	it('hides return to server speakers button when local player is not active or this client is playing', () => {
+		// 1. No local player
+		hasLocalPlayer.value = false;
+		listenLocally.value = false;
+		let wrapper = mount(ControlsTab);
+		expect(wrapper.text()).not.toContain('Volver a parlantes del servidor');
+
+		// 2. This client is the local player
+		hasLocalPlayer.value = true;
+		listenLocally.value = true;
+		wrapper = mount(ControlsTab);
+		expect(wrapper.text()).not.toContain('Volver a parlantes del servidor');
+	});
+
+	it('calls returnToServerSpeakers when return button is clicked', async () => {
+		const wsSendMock = vi.fn();
+		setWsSend(wsSendMock);
+
+		hasLocalPlayer.value = true;
+		listenLocally.value = false;
+		const wrapper = mount(ControlsTab);
+
+		const btn = wrapper
+			.findAllComponents({ name: 'PillButton' })
+			.find((b) => b.text().includes('Volver a parlantes del servidor'));
+		expect(btn).toBeDefined();
+		await btn!.trigger('click');
+
+		expect(wsSendMock).toHaveBeenCalled();
+		const sent = JSON.parse(wsSendMock.mock.calls[0][0]);
+		expect(sent.type).toBe('local_player_reset');
 	});
 });

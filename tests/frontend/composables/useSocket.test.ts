@@ -9,6 +9,7 @@ import {
 	duration,
 	favorites,
 	hasEdgeTts,
+	hasLocalPlayer,
 	historyState,
 	isDraggingSeek,
 	isPaused,
@@ -70,6 +71,7 @@ describe('useSocket.ts', () => {
 		djSafeModeEnabled.value = false;
 		duration.value = 0;
 		favorites.value = [];
+		hasLocalPlayer.value = false;
 		historyState.value = [];
 		isDraggingSeek.value = false;
 		isPaused.value = false;
@@ -159,6 +161,34 @@ describe('useSocket.ts', () => {
 		expect(listenLocally.value).toBe(false);
 	});
 
+	it('handles local_player_evicted when replaced by another client', () => {
+		const stopLpSpy = vi.spyOn(localPlayback, '_stopLocalPlayer').mockImplementation(() => {});
+		listenLocally.value = true;
+		const { connectWebSocket } = useSocket();
+		connectWebSocket();
+
+		capturedOptions.onMessage(null, {
+			data: JSON.stringify({ type: 'local_player_evicted', reason: 'replaced' }),
+		});
+
+		expect(listenLocally.value).toBe(false);
+		expect(stopLpSpy).toHaveBeenCalled();
+	});
+
+	it('handles local_player_evicted when server reset requested', () => {
+		const stopLpSpy = vi.spyOn(localPlayback, '_stopLocalPlayer').mockImplementation(() => {});
+		listenLocally.value = true;
+		const { connectWebSocket } = useSocket();
+		connectWebSocket();
+
+		capturedOptions.onMessage(null, {
+			data: JSON.stringify({ type: 'local_player_evicted', reason: 'server_requested' }),
+		});
+
+		expect(listenLocally.value).toBe(false);
+		expect(stopLpSpy).toHaveBeenCalled();
+	});
+
 	it('processes state_update payload and updates all player states', () => {
 		const { connectWebSocket } = useSocket();
 		connectWebSocket();
@@ -181,6 +211,7 @@ describe('useSocket.ts', () => {
 			is_synthesizing_radio: true,
 			is_playing_radio_announcement: true,
 			has_edge_tts: true,
+			has_local_player: true,
 			server_muted: true,
 			top_played: [{ path: '/music/spinetta.mp3', count: 10 }],
 			url_metadata: { 'https://youtube.com/watch?v=1': { display_title: 'Web Song' } },
@@ -197,6 +228,7 @@ describe('useSocket.ts', () => {
 		expect(isSynthesizingRadio.value).toBe(true);
 		expect(isPlayingRadioAnnouncement.value).toBe(true);
 		expect(hasEdgeTts.value).toBe(true);
+		expect(hasLocalPlayer.value).toBe(true);
 		expect(djNextTrack.value?.title).toBe('DJ Tune');
 		expect(djSafeModeEnabled.value).toBe(true);
 		expect(duration.value).toBe(210);

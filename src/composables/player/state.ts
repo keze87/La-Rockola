@@ -59,6 +59,7 @@ export const duration = ref<number>(0);
 export const pendingSeekTime = ref<number | null>(null);
 export const isDraggingSeek = ref<boolean>(false);
 export const listenLocally = ref<boolean>(false);
+export const hasLocalPlayer = ref<boolean>(false); // Algún dispositivo tiene la reproducción local activa
 export const localPlayerRef = ref<HTMLAudioElement | null>(null); // vinculado al elemento <audio> en App.vue
 export const localTimePos = ref<number>(0);
 export const serverMuted = ref<boolean>(false);

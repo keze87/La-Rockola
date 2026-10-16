@@ -1,4 +1,4 @@
-import { _startLocalPlayer, applyRemoteSeek } from './useLocalPlayback';
+import { _startLocalPlayer, _stopLocalPlayer, applyRemoteSeek } from './useLocalPlayback';
 import { useToasts } from './useToasts';
 import { getWsUrl } from '../useApi';
 import { useWebSocket } from '@vueuse/core';
@@ -12,6 +12,7 @@ import {
 	favorites,
 	hasEdgeTts,
 	hasFfmpeg,
+	hasLocalPlayer,
 	historyState,
 	isDraggingSeek,
 	isPaused,
@@ -92,9 +93,23 @@ export function useSocket() {
 						return;
 					}
 
+					if (data.type === 'local_player_evicted') {
+						// El servidor nos desalojó porque otro cliente tomó el control o se pidió volver a los parlantes
+						listenLocally.value = false;
+						_stopLocalPlayer();
+						const msg =
+							data.reason === 'replaced'
+								? 'La reproducción local pasó a otro dispositivo.'
+								: 'La música volvió a los parlantes del servidor.';
+						showToast(msg, 'warning');
+						return;
+					}
+
 					if (data.type === 'state_update') {
 						const state: PlayerState = data;
 						if (state.current_track !== undefined) currentTrackPath.value = state.current_track;
+						if (state.has_local_player !== undefined)
+							hasLocalPlayer.value = Boolean(state.has_local_player);
 						if (state.dj_carpincho_enabled !== undefined)
 							djCarpinchoEnabled.value = state.dj_carpincho_enabled;
 						if (state.dj_next_track !== undefined) djNextTrack.value = state.dj_next_track;

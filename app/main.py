@@ -25,6 +25,7 @@ from app.api.middleware import SubpathMiddleware
 from app.api.schemas import (
 	LocalPlayerClaim,
 	LocalPlayerRelease,
+	LocalPlayerReset,
 	LocalPlayerUpdate,
 )
 from app.api.v1.library import scan_library
@@ -44,7 +45,7 @@ from app.engine.state import broadcast_state
 logger = logging.getLogger("RockolaCarpincho")
 
 WSIncomingMessage = Annotated[
-	LocalPlayerClaim | LocalPlayerRelease | LocalPlayerUpdate,
+	LocalPlayerClaim | LocalPlayerRelease | LocalPlayerReset | LocalPlayerUpdate,
 	Field(discriminator="type"),
 ]
 ws_adapter = TypeAdapter(WSIncomingMessage)
@@ -254,17 +255,41 @@ async def websocket_endpoint(websocket: WebSocket):
 			mgr = get_manager()
 			state = get_state()
 			if isinstance(msg, LocalPlayerClaim):
-				ok = mgr.claim_local_player(websocket) if mgr else False
+				if mgr:
+					ok, old_ws = mgr.claim_local_player(websocket)
+					if old_ws and old_ws is not websocket:
+						try:
+							await old_ws.send_json({"type": "local_player_evicted", "reason": "replaced"})
+						except Exception as e:
+							logger.debug(f"No se pudo notificar desalojo al reproductor previo: {e}")
+				else:
+					ok = False
 				await websocket.send_json({"type": "local_player_claim_result", "ok": ok})
 				if ok and state and hasattr(state, "mpv") and state.mpv:
 					logger.info(f"Cliente registrado como reproductor local ({client_host}).")
 					await state.mpv._send('{"command": ["set_property", "mute", true]}')
+				await broadcast_state()
 			elif isinstance(msg, LocalPlayerRelease):
 				if mgr and mgr.release_local_player(websocket) and state and hasattr(state, "mpv") and state.mpv:
 					logger.info("Restaurando mute de MPV...")
 					await state.mpv._send(
 						json.dumps({"command": ["set_property", "mute", getattr(state, "server_muted", False)]})
 					)
+					await broadcast_state()
+			elif isinstance(msg, LocalPlayerReset):
+				if mgr:
+					old_ws = mgr.reset_local_player()
+					if old_ws:
+						try:
+							await old_ws.send_json({"type": "local_player_evicted", "reason": "server_requested"})
+						except Exception as e:
+							logger.debug(f"No se pudo notificar reseteo al reproductor previo: {e}")
+				if state and hasattr(state, "mpv") and state.mpv:
+					logger.info("Restaurando reproducción en parlantes del servidor por solicitud de cliente...")
+					await state.mpv._send(
+						json.dumps({"command": ["set_property", "mute", getattr(state, "server_muted", False)]})
+					)
+				await broadcast_state()
 			elif isinstance(msg, LocalPlayerUpdate) and mgr and mgr.local_player_ws is websocket:
 				changed = False
 				if msg.time_pos is not None and state:
@@ -313,6 +338,10 @@ async def websocket_endpoint(websocket: WebSocket):
 				await curr_state.mpv._send(
 					json.dumps({"command": ["set_property", "mute", getattr(curr_state, "server_muted", False)]})
 				)
+			except Exception:
+				pass
+			try:
+				await broadcast_state()
 			except Exception:
 				pass
 

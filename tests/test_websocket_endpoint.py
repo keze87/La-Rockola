@@ -32,36 +32,68 @@ def test_websocket_initial_state_push(clean_state):
 		assert msg["current_track"] == "/music/intro.mp3"
 
 
-def test_websocket_local_player_claim_and_release(clean_state, clean_manager):
-	"""Test claiming local player, rejecting duplicate claims, and releasing."""
+def test_websocket_local_player_claim_and_replace(clean_state, clean_manager):
+	"""Prueba que un segundo reclamo reemplace al cliente previo notificándolo con local_player_evicted."""
 	clean_state.server_muted = False
 	clean_state.mpv._send.reset_mock()
 
 	client = TestClient(server.app)
 	with client.websocket_connect("/ws") as ws1:
-		ws1.receive_json()  # Consume initial state
+		ws1.receive_json()  # Consumir estado inicial
 
-		# 1. First client claims local player
+		# 1. Primer cliente reclama reproductor local
 		ws1.send_json({"type": "local_player_claim"})
 		res1 = ws1.receive_json()
 		assert res1 == {"type": "local_player_claim_result", "ok": True}
+		claim_state = ws1.receive_json()
+		assert claim_state["type"] == "state_update"
+		assert claim_state.get("has_local_player") is True
 		assert clean_manager.local_player_ws is not None
 		clean_state.mpv._send.assert_called_with('{"command": ["set_property", "mute", true]}')
 
-		# 2. Second client attempts to claim while first is active -> rejected
+		# 2. Segundo cliente reclama mientras el primero está activo -> reemplaza exitosamente
 		with client.websocket_connect("/ws") as ws2:
-			ws2.receive_json()  # Consume initial state
+			ws2.receive_json()  # Consumir estado inicial
 			ws2.send_json({"type": "local_player_claim"})
 			res2 = ws2.receive_json()
-			assert res2 == {"type": "local_player_claim_result", "ok": False}
+			assert res2 == {"type": "local_player_claim_result", "ok": True}
 
-		# 3. First client releases local player
-		clean_state.mpv._send.reset_mock()
-		ws1.send_json({"type": "local_player_release"})
-		# Send a ping/dummy to ensure release processed
-		ws1.send_json({"type": "dummy_ping"})
-		assert clean_manager.local_player_ws is None
-		clean_state.mpv._send.assert_called_with(json.dumps({"command": ["set_property", "mute", False]}))
+			# El primer cliente recibe la notificación de desalojo
+			evicted_msg = ws1.receive_json()
+			assert evicted_msg == {"type": "local_player_evicted", "reason": "replaced"}
+
+			# 3. El segundo cliente libera el reproductor local
+			clean_state.mpv._send.reset_mock()
+			ws2.send_json({"type": "local_player_release"})
+			ws2.send_json({"type": "dummy_ping"})
+			assert clean_manager.local_player_ws is None
+			clean_state.mpv._send.assert_called_with(json.dumps({"command": ["set_property", "mute", False]}))
+
+
+def test_websocket_local_player_reset(clean_state, clean_manager):
+	"""Prueba que cualquier cliente pueda solicitar volver a parlantes del servidor."""
+	clean_state.server_muted = False
+	client = TestClient(server.app)
+	with client.websocket_connect("/ws") as ws1:
+		ws1.receive_json()  # Estado inicial
+		ws1.send_json({"type": "local_player_claim"})
+		assert ws1.receive_json() == {"type": "local_player_claim_result", "ok": True}
+		claim_state = ws1.receive_json()
+		assert claim_state["type"] == "state_update"
+		assert clean_manager.local_player_ws is not None
+
+		# Otro cliente pide volver a parlantes del servidor
+		with client.websocket_connect("/ws") as ws2:
+			ws2.receive_json()  # Estado inicial
+			clean_state.mpv._send.reset_mock()
+			ws2.send_json({"type": "local_player_reset"})
+			ws2.send_json({"type": "dummy_ping"})
+
+			# El cliente local recibe aviso de desalojo
+			evicted_msg = ws1.receive_json()
+			assert evicted_msg == {"type": "local_player_evicted", "reason": "server_requested"}
+			assert clean_manager.local_player_ws is None
+			clean_state.mpv._send.assert_called_with(json.dumps({"command": ["set_property", "mute", False]}))
 
 
 def test_websocket_local_player_time_drift_reconciliation(clean_state, clean_manager):
@@ -76,7 +108,8 @@ def test_websocket_local_player_time_drift_reconciliation(clean_state, clean_man
 
 		# Claim local player
 		ws.send_json({"type": "local_player_claim"})
-		ws.receive_json()
+		assert ws.receive_json() == {"type": "local_player_claim_result", "ok": True}
+		assert ws.receive_json()["type"] == "state_update"
 
 		# 1. Small drift (<= 5.0s): time_pos 10.0 -> 13.0 (diff 3.0) -> No MPV seek
 		clean_state.mpv._send.reset_mock()
@@ -127,7 +160,8 @@ def test_websocket_local_player_duration_paused_and_song_ended(clean_state, clea
 
 		# Claim local player
 		ws.send_json({"type": "local_player_claim"})
-		ws.receive_json()
+		assert ws.receive_json() == {"type": "local_player_claim_result", "ok": True}
+		assert ws.receive_json()["type"] == "state_update"
 
 		# Update duration and paused
 		ws.send_json({"type": "local_player_update", "duration": 240.0, "paused": True})

@@ -613,5 +613,10 @@ export function useLocalPlayback() {
 		});
 	}
 
-	return { _sendLocalPlayerUpdate, setVolume };
+	return { _sendLocalPlayerUpdate, setVolume, returnToServerSpeakers };
+}
+
+// Solicita al servidor volver a reproducir por sus propios parlantes y desalojar cualquier reproductor local
+export function returnToServerSpeakers() {
+	sendRaw({ type: 'local_player_reset' });
 }

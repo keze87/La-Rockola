@@ -66,6 +66,18 @@ describe('useLocalPlayback', () => {
 		expect(sent.time_pos).toBe(15.2);
 	});
 
+	it('returnToServerSpeakers sends local_player_reset over websocket', () => {
+		const wsSendMock = vi.fn();
+		setWsSend(wsSendMock);
+
+		const { returnToServerSpeakers } = useLocalPlayback();
+		returnToServerSpeakers();
+
+		expect(wsSendMock).toHaveBeenCalled();
+		const sent = JSON.parse(wsSendMock.mock.calls[0][0]);
+		expect(sent.type).toBe('local_player_reset');
+	});
+
 	it('_startLocalPlayer configures audio element and triggers load', () => {
 		useLocalPlayback();
 

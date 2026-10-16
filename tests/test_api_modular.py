@@ -49,15 +49,19 @@ async def test_connection_manager_claim_and_release():
 	assert ws2 in manager.active_connections
 
 	# ws1 reclama ser el reproductor local
-	assert manager.claim_local_player(ws1) is True
+	claimed1, old_ws1 = manager.claim_local_player(ws1)
+	assert claimed1 is True
+	assert old_ws1 is None
 	assert manager.local_player_ws is ws1
 
-	# ws2 intenta reclamar pero es rechazado
-	assert manager.claim_local_player(ws2) is False
-	assert manager.local_player_ws is ws1
+	# ws2 reclama y reemplaza a ws1 en vez de fallar
+	claimed2, old_ws2 = manager.claim_local_player(ws2)
+	assert claimed2 is True
+	assert old_ws2 is ws1
+	assert manager.local_player_ws is ws2
 
-	# ws1 libera
-	assert manager.release_local_player(ws1) is True
+	# ws2 libera
+	assert manager.release_local_player(ws2) is True
 	assert manager.local_player_ws is None
 
 	manager.disconnect(ws1)

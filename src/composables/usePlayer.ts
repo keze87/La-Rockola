@@ -9,6 +9,7 @@ import {
 	favorites,
 	hasEdgeTts,
 	hasFfmpeg,
+	hasLocalPlayer,
 	historyState,
 	pendingSeekTime,
 	isDraggingSeek,
@@ -53,7 +54,7 @@ import { useToasts } from './player/useToasts';
 // ./player/, y esta función las ensambla y reexporta con la misma API plana para no
 // romper ningún componente consumidor.
 export function usePlayer() {
-	const { _sendLocalPlayerUpdate, setVolume } = useLocalPlayback();
+	const { _sendLocalPlayerUpdate, returnToServerSpeakers, setVolume } = useLocalPlayback();
 	const { connectWebSocket } = useSocket();
 	const { getTrackInfo, loadLibrary, queueIndex, sortLibrary } = useLibrary();
 	const { handleLibraryClick, toggleFavorite, togglePauseAfterCurrent, toggleQueue } = useQueue();
@@ -79,6 +80,7 @@ export function usePlayer() {
 		haptic,
 		hasEdgeTts,
 		hasFfmpeg,
+		hasLocalPlayer,
 		historyState,
 		pendingSeekTime,
 		isDraggingSeek,
@@ -99,6 +101,7 @@ export function usePlayer() {
 		queueIndex,
 		queueState,
 		radioModeEnabled,
+		returnToServerSpeakers,
 		scanStatus,
 		sendCmd,
 		serverMuted,

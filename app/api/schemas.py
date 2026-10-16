@@ -110,3 +110,16 @@ class LocalPlayerSeek(WebSocketMessage):
 	type: Literal["local_player_seek"] = "local_player_seek"
 	mode: str = Field(..., description="'relative' o 'absolute'")
 	amount: float = Field(..., description="Segundos a desplazar o posición absoluta")
+
+
+class LocalPlayerReset(WebSocketMessage):
+	"""Solicitud de cualquier cliente para desalojar el reproductor local y volver a parlantes del servidor."""
+
+	type: Literal["local_player_reset"] = "local_player_reset"
+
+
+class LocalPlayerEvicted(WebSocketMessage):
+	"""Notificación enviada por el servidor a un cliente indicando que su rol de reproductor local fue revocado."""
+
+	type: Literal["local_player_evicted"] = "local_player_evicted"
+	reason: str = "replaced"

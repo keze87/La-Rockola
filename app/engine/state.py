@@ -317,6 +317,7 @@ class APIState:
 			"url_metadata": dict(self.url_metadata),
 			"volume": self.volume,
 			"weather_location": self.weather_location,
+			"has_local_player": manager.local_player_ws is not None,
 		}
 
 		if include_library:

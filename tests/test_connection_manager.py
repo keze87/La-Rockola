@@ -4,27 +4,54 @@ import pytest
 
 
 @pytest.mark.asyncio
-async def test_claim_and_release_local_player(clean_manager):
-	"""Test claiming local player role with single-client ownership and release."""
+async def test_claim_and_replace_local_player(clean_manager):
+	"""Prueba que un segundo cliente reemplace al primero en vez de ser rechazado."""
 	manager = clean_manager
 	ws1 = MagicMock()
 	ws2 = MagicMock()
 
-	# First client claims successfully
-	assert manager.claim_local_player(ws1) is True
+	# Primer cliente reclama el rol
+	ok1, evicted1 = manager.claim_local_player(ws1)
+	assert ok1 is True
+	assert evicted1 is None
 	assert manager.local_player_ws is ws1
+	assert manager.has_local_player is True
 
-	# Second client is rejected while first is active
-	assert manager.claim_local_player(ws2) is False
-	assert manager.local_player_ws is ws1
-
-	# First client releases role
-	manager.release_local_player(ws1)
-	assert manager.local_player_ws is None
-
-	# Second client can now claim
-	assert manager.claim_local_player(ws2) is True
+	# Segundo cliente reclama y reemplaza al primero
+	ok2, evicted2 = manager.claim_local_player(ws2)
+	assert ok2 is True
+	assert evicted2 is ws1
 	assert manager.local_player_ws is ws2
+	assert manager.has_local_player is True
+
+	# El mismo cliente reclama de nuevo sin auto-desalojarse
+	ok3, evicted3 = manager.claim_local_player(ws2)
+	assert ok3 is True
+	assert evicted3 is None
+	assert manager.local_player_ws is ws2
+
+	# Liberación normal
+	assert manager.release_local_player(ws2) is True
+	assert manager.local_player_ws is None
+	assert manager.has_local_player is False
+
+
+@pytest.mark.asyncio
+async def test_reset_local_player(clean_manager):
+	"""Prueba el reseteo del reproductor local para volver a parlantes del servidor."""
+	manager = clean_manager
+	ws = MagicMock()
+
+	# Reseteo sin reproductor activo no falla
+	assert manager.reset_local_player() is None
+
+	# Reclamar rol y resetearlo forzosamente
+	manager.claim_local_player(ws)
+	assert manager.has_local_player is True
+	evicted = manager.reset_local_player()
+	assert evicted is ws
+	assert manager.local_player_ws is None
+	assert manager.has_local_player is False
 
 
 @pytest.mark.asyncio

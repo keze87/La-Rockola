@@ -26,11 +26,13 @@
 		haptic,
 		hasEdgeTts,
 		hasFfmpeg,
+		hasLocalPlayer,
 		isScanning,
 		listenLocally,
 		loadLibrary,
 		mpvVisible,
 		radioModeEnabled,
+		returnToServerSpeakers,
 		scanStatus,
 		serverMuted,
 		setVolume,
@@ -235,6 +237,24 @@
 			title="Escuchar acá"
 			description="Stremea la música directo a tu celular o PC."
 		/>
+
+		<!-- Notificación y acción si otro cliente está reproduciendo en su dispositivo -->
+		<div
+			v-if="hasLocalPlayer && !listenLocally"
+			class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-amber-200 shadow-sm"
+		>
+			<div class="flex items-center gap-2 text-sm font-medium">
+				<i class="material-icons text-amber-400">speaker_group</i>
+				<span>Alguien está escuchando en su dispositivo</span>
+			</div>
+			<PillButton
+				icon="volume_up"
+				color-class="bg-amber-600 hover:bg-amber-500 text-white"
+				@click="returnToServerSpeakers"
+			>
+				Volver a parlantes del servidor
+			</PillButton>
+		</div>
 
 		<ToggleRow
 			:model-value="djCarpinchoEnabled"

@@ -45,12 +45,22 @@ class ConnectionManager:
 		logger.debug(f"Conexión WebSocket cerrada. Restantes: {len(self.active_connections)}")
 		return was_local
 
-	def claim_local_player(self, websocket: WebSocket) -> bool:
-		"""Intenta asignar el rol de reproductor local exclusivo a este cliente."""
+	@property
+	def has_local_player(self) -> bool:
+		"""Indica si hay un cliente activo reproduciendo localmente."""
+		return self.local_player_ws is not None
+
+	def claim_local_player(self, websocket: WebSocket) -> tuple[bool, WebSocket | None]:
+		"""
+		Asigna el rol de reproductor local exclusivo a este cliente.
+		Si otro cliente ya lo tenía, lo reemplaza y retorna (True, old_websocket)
+		para que el servidor pueda notificar el desalojo.
+		"""
+		old_ws = None
 		if self.local_player_ws is not None and self.local_player_ws is not websocket:
-			return False
+			old_ws = self.local_player_ws
 		self.local_player_ws = websocket
-		return True
+		return True, old_ws
 
 	def release_local_player(self, websocket: WebSocket) -> bool:
 		"""Libera el rol de reproductor local si el solicitante es el dueño actual."""
@@ -58,6 +68,15 @@ class ConnectionManager:
 			self.local_player_ws = None
 			return True
 		return False
+
+	def reset_local_player(self) -> WebSocket | None:
+		"""
+		Libera forzosamente el rol de reproductor local para volver a los parlantes del servidor.
+		Retorna el WebSocket desalojado (si había uno) para notificarle el cambio.
+		"""
+		old_ws = self.local_player_ws
+		self.local_player_ws = None
+		return old_ws
 
 	async def broadcast(self, message: dict[str, Any] | str) -> None:
 		"""Emite un mensaje a todos los clientes conectados de manera concurrente y segura."""
