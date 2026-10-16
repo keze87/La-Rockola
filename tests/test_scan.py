@@ -1,4 +1,5 @@
 import concurrent.futures
+import contextlib
 import os
 import sqlite3
 from unittest.mock import AsyncMock, patch
@@ -37,7 +38,7 @@ def test_scan_directory_fresh_and_cached(clean_state, temp_db, tmp_path):
 		assert str(file2) in state.path_to_id
 
 		# Verify DB insertion
-		with sqlite3.connect(temp_db) as conn:
+		with contextlib.closing(sqlite3.connect(temp_db)) as conn:
 			cursor = conn.cursor()
 			cursor.execute("SELECT COUNT(*) FROM tracks")
 			count = cursor.fetchone()[0]
@@ -78,7 +79,7 @@ def test_scan_directory_reconciliation(clean_state, temp_db, tmp_path):
 		old_id = tracks[0]["track_hash"]
 
 		# Add favorite and history entries for old_id in DB
-		with sqlite3.connect(temp_db) as conn:
+		with contextlib.closing(sqlite3.connect(temp_db)) as conn:
 			conn.execute("INSERT INTO favorites (track_id) VALUES (?)", (old_id,))
 			conn.execute("INSERT INTO play_history (track_id, played_at) VALUES (?, ?)", (old_id, 1700000000.0))
 			conn.commit()
@@ -102,7 +103,7 @@ def test_scan_directory_reconciliation(clean_state, temp_db, tmp_path):
 		assert state.id_to_current_path[old_id] == str(new_file)
 
 		# Verify favorites and history still link to old_id
-		with sqlite3.connect(temp_db) as conn:
+		with contextlib.closing(sqlite3.connect(temp_db)) as conn:
 			fav_count = conn.execute("SELECT COUNT(*) FROM favorites WHERE track_id = ?", (old_id,)).fetchone()[0]
 			hist_count = conn.execute("SELECT COUNT(*) FROM play_history WHERE track_id = ?", (old_id,)).fetchone()[0]
 			assert fav_count == 1
@@ -147,7 +148,7 @@ def test_scan_directory_reconciliation_negative_dissimilar(clean_state, temp_db,
 		old_id = tracks[0]["track_hash"]
 
 		# Add favorite for old_id
-		with sqlite3.connect(temp_db) as conn:
+		with contextlib.closing(sqlite3.connect(temp_db)) as conn:
 			conn.execute("INSERT INTO favorites (track_id) VALUES (?)", (old_id,))
 			conn.commit()
 
@@ -198,7 +199,7 @@ def test_scan_directory_reanalyzes_untested_bpm(clean_state, temp_db, tmp_path):
 		assert len(tracks) == 1
 		assert tracks[0]["bpm"] == 0.0
 
-		with sqlite3.connect(temp_db) as conn:
+		with contextlib.closing(sqlite3.connect(temp_db)) as conn:
 			row = conn.execute(
 				"SELECT bpm, energy, spectral_centroid FROM tracks WHERE path = ?", (str(file1),)
 			).fetchone()
@@ -239,7 +240,7 @@ def test_scan_directory_reanalyzes_untested_bpm(clean_state, temp_db, tmp_path):
 		assert tracks_after[0]["energy"] == 0.8
 		assert tracks_after[0]["spectral_centroid"] == 2200.0
 
-		with sqlite3.connect(temp_db) as conn:
+		with contextlib.closing(sqlite3.connect(temp_db)) as conn:
 			row = conn.execute(
 				"SELECT bpm, energy, spectral_centroid FROM tracks WHERE path = ?", (str(file1),)
 			).fetchone()
@@ -277,7 +278,7 @@ def test_scan_directory_skips_failed_mood(clean_state, temp_db, tmp_path):
 		assert len(tracks) == 1
 		assert tracks[0]["bpm"] == -1.0
 
-		with sqlite3.connect(temp_db) as conn:
+		with contextlib.closing(sqlite3.connect(temp_db)) as conn:
 			row = conn.execute(
 				"SELECT bpm, energy, spectral_centroid FROM tracks WHERE path = ?", (str(file1),)
 			).fetchone()
@@ -367,7 +368,7 @@ def test_scan_directory_parallel_fast_pass(clean_state, temp_db, tmp_path):
 			assert t["fingerprint"] is None
 
 		# Check SQLite DB insertion
-		with sqlite3.connect(temp_db) as conn:
+		with contextlib.closing(sqlite3.connect(temp_db)) as conn:
 			count = conn.execute("SELECT COUNT(*) FROM tracks").fetchone()[0]
 			assert count == 10
 
@@ -438,7 +439,7 @@ async def test_background_mood_analysis(clean_state, temp_db, tmp_path):
 		assert t["mood_score"] > 0.0
 
 	# Verify SQLite DB updated
-	with sqlite3.connect(temp_db) as conn:
+	with contextlib.closing(sqlite3.connect(temp_db)) as conn:
 		rows = conn.execute("SELECT bpm, energy, spectral_centroid FROM tracks").fetchall()
 		assert len(rows) == 2
 		for row in rows:
@@ -475,7 +476,7 @@ def test_scan_directory_without_fpcalc_uses_cache(clean_state, temp_db, tmp_path
 	mtime = f1.stat().st_mtime
 	size = f1.stat().st_size
 	tid = "test_tid_no_fp"
-	with sqlite3.connect(temp_db) as conn:
+	with contextlib.closing(sqlite3.connect(temp_db)) as conn:
 		conn.execute(
 			"""
 			INSERT INTO tracks (track_id, path, title, album, artist, duration_str, mtime, file_size, bpm, energy, spectral_centroid, fingerprint)

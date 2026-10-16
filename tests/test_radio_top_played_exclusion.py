@@ -1,3 +1,4 @@
+import contextlib
 import sqlite3
 import time
 from unittest.mock import AsyncMock, patch
@@ -25,7 +26,7 @@ def test_register_play_stat_ignores_radio_announcement(clean_db):
 	# Los intentos de registrar reproducciones en la ruta temporal de locución deben ser ignorados
 	test_state._register_play_stat(announcement_path)
 
-	with sqlite3.connect(server.DB_PATH) as conn:
+	with contextlib.closing(sqlite3.connect(server.DB_PATH)) as conn:
 		count = conn.execute("SELECT COUNT(*) FROM play_history").fetchone()[0]
 	assert count == 0
 
@@ -43,7 +44,7 @@ def test_legitimate_library_track_named_radio_announcement_is_tracked(clean_db, 
 	# La pista legítima del usuario debe registrarse en el historial de reproducción
 	test_state._register_play_stat(str_user_track)
 
-	with sqlite3.connect(server.DB_PATH) as conn:
+	with contextlib.closing(sqlite3.connect(server.DB_PATH)) as conn:
 		row = conn.execute("SELECT track_id, COUNT(*) FROM play_history").fetchone()
 	assert row[0] == "track_hash_123"
 	assert row[1] == 1
@@ -60,7 +61,7 @@ def test_register_play_stat_ignores_when_flag_active(clean_db):
 	# Aunque la ruta sea inusual, la bandera activa evita registrar estadísticas
 	test_state._register_play_stat("/tmp/custom_announcement.wav")
 
-	with sqlite3.connect(server.DB_PATH) as conn:
+	with contextlib.closing(sqlite3.connect(server.DB_PATH)) as conn:
 		count = conn.execute("SELECT COUNT(*) FROM play_history").fetchone()[0]
 	assert count == 0
 
@@ -78,7 +79,7 @@ async def test_handle_song_ended_does_not_track_radio_announcement(clean_db):
 		await test_state.handle_song_ended(reason="eof")
 		mock_play_next.assert_awaited_once_with(skipped_by_user=False)
 
-	with sqlite3.connect(server.DB_PATH) as conn:
+	with contextlib.closing(sqlite3.connect(server.DB_PATH)) as conn:
 		count = conn.execute("SELECT COUNT(*) FROM play_history").fetchone()[0]
 	assert count == 0
 
@@ -93,7 +94,7 @@ def test_get_top_played_excludes_radio_announcement(clean_db, tmp_path):
 	real_track.write_bytes(b"dummy track")
 
 	now = time.time()
-	with sqlite3.connect(server.DB_PATH) as conn:
+	with contextlib.closing(sqlite3.connect(server.DB_PATH)) as conn:
 		# Insertar filas tanto para la locución como para la canción real
 		conn.execute(
 			"INSERT INTO play_history (track_id, played_at) VALUES (?, ?)",
@@ -118,7 +119,7 @@ def test_get_top_played_excludes_radio_announcement(clean_db, tmp_path):
 
 def test_init_db_cleans_legacy_radio_announcements(clean_db):
 	# Insertar fila legacy en la base de datos
-	with sqlite3.connect(server.DB_PATH) as conn:
+	with contextlib.closing(sqlite3.connect(server.DB_PATH)) as conn:
 		conn.execute(
 			"INSERT INTO play_history (track_id, played_at) VALUES (?, ?)",
 			("/tmp/legacy/radio_announcement.mp3", time.time()),
@@ -128,7 +129,7 @@ def test_init_db_cleans_legacy_radio_announcements(clean_db):
 	# Re-ejecutar init_db
 	server.init_db()
 
-	with sqlite3.connect(server.DB_PATH) as conn:
+	with contextlib.closing(sqlite3.connect(server.DB_PATH)) as conn:
 		count = conn.execute(
 			"SELECT COUNT(*) FROM play_history WHERE track_id LIKE '%radio_announcement.mp3%'"
 		).fetchone()[0]

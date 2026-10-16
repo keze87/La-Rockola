@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import contextlib
 import json
 import sqlite3
 import subprocess
@@ -2271,7 +2272,7 @@ def test_save_cached_audio_stores_duration(tmp_path):
 		db_path=db_p,
 	)
 
-	with sqlite3.connect(db_p) as conn:
+	with contextlib.closing(sqlite3.connect(db_p)) as conn:
 		cur = conn.cursor()
 		cur.execute("SELECT category, duration FROM tts_cache ORDER BY category ASC")
 		rows = cur.fetchall()
@@ -2302,7 +2303,7 @@ def test_prune_tts_cache_db(tmp_path):
 		("item_recent_2", now - 100),
 		("item_recent_3", now),
 	]
-	with sqlite3.connect(db_p) as conn:
+	with contextlib.closing(sqlite3.connect(db_p)) as conn:
 		for key, last_used in entries:
 			conn.execute(
 				"""
@@ -2318,7 +2319,7 @@ def test_prune_tts_cache_db(tmp_path):
 	deleted = radio_announcer.prune_tts_cache_db(max_entries=10, max_age_days=30.0, db_path=db_p)
 	assert deleted == 2
 
-	with sqlite3.connect(db_p) as conn:
+	with contextlib.closing(sqlite3.connect(db_p)) as conn:
 		cur = conn.cursor()
 		cur.execute("SELECT count(*) FROM tts_cache")
 		assert cur.fetchone()[0] == 3
@@ -2328,7 +2329,7 @@ def test_prune_tts_cache_db(tmp_path):
 	deleted_excess = radio_announcer.prune_tts_cache_db(max_entries=2, max_age_days=30.0, db_path=db_p)
 	assert deleted_excess == 1
 
-	with sqlite3.connect(db_p) as conn:
+	with contextlib.closing(sqlite3.connect(db_p)) as conn:
 		cur = conn.cursor()
 		cur.execute("SELECT cache_key FROM tts_cache ORDER BY last_used ASC")
 		remaining = [r[0] for r in cur.fetchall()]
@@ -2361,7 +2362,7 @@ def test_record_phrase_played_and_get_last_played(tmp_path):
 	# Verificar que no se crea la tabla phrase_history en la base SQLite
 	db_p = tmp_path / "tts_cache.db"
 	radio_announcer.init_tts_cache_db(db_p)
-	with sqlite3.connect(db_p) as conn:
+	with contextlib.closing(sqlite3.connect(db_p)) as conn:
 		cur = conn.cursor()
 		cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='phrase_history'")
 		assert cur.fetchone() is None

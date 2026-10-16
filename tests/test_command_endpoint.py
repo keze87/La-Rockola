@@ -1,3 +1,4 @@
+import contextlib
 import json
 import sqlite3
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -535,7 +536,7 @@ async def test_command_toggle_favorite_and_db_persistence(clean_state, temp_db):
 	await server.handle_command(server.CommandRequest(cmd="toggle_favorite", path="/music/song.mp3"))
 	assert "track_hash_123" in clean_state.favorites
 
-	with sqlite3.connect(temp_db) as conn:
+	with contextlib.closing(sqlite3.connect(temp_db)) as conn:
 		count = conn.execute("SELECT COUNT(*) FROM favorites WHERE track_id = 'track_hash_123'").fetchone()[0]
 		assert count == 1
 
@@ -543,7 +544,7 @@ async def test_command_toggle_favorite_and_db_persistence(clean_state, temp_db):
 	await server.handle_command(server.CommandRequest(cmd="toggle_favorite", path="/music/song.mp3"))
 	assert "track_hash_123" not in clean_state.favorites
 
-	with sqlite3.connect(temp_db) as conn:
+	with contextlib.closing(sqlite3.connect(temp_db)) as conn:
 		count = conn.execute("SELECT COUNT(*) FROM favorites WHERE track_id = 'track_hash_123'").fetchone()[0]
 		assert count == 0
 

@@ -1,3 +1,4 @@
+import contextlib
 import json
 import sqlite3
 import time
@@ -184,7 +185,7 @@ def test_websocket_local_player_duration_paused_and_song_ended(clean_state, clea
 		assert clean_state.current_track == "/music/song2.mp3"
 		assert clean_state.queue == []
 
-		with sqlite3.connect(temp_db) as conn:
+		with contextlib.closing(sqlite3.connect(temp_db)) as conn:
 			row = conn.execute("SELECT track_id FROM play_history WHERE track_id = 'track_1_hash'").fetchone()
 			assert row is not None
 

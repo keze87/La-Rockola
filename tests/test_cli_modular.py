@@ -44,3 +44,26 @@ def test_configure_console_encoding(monkeypatch):
 	assert len(reconfigured) == 2
 	assert reconfigured[0]["encoding"] == "utf-8"
 	assert reconfigured[0]["errors"] == "replace"
+
+
+def test_cli_init_getattr():
+	from app import cli
+
+	assert callable(cli.build_arg_parser)
+	assert callable(cli.main)
+	assert callable(cli.run_interactive_wizard)
+	assert callable(cli.select_folder_dialog)
+
+	import pytest
+
+	with pytest.raises(AttributeError, match="has no attribute 'non_existent_thing'"):
+		_ = cli.non_existent_thing
+
+
+def test_app_main_execution():
+	import runpy
+	from unittest.mock import patch
+
+	with patch("app.cli.entrypoint.main") as mock_main:
+		runpy.run_module("app.__main__", run_name="__main__")
+		mock_main.assert_called_once()

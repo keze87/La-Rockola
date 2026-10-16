@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import hashlib
 import io
 import json
@@ -800,7 +801,7 @@ def init_tts_cache_db(db_path: Path | str | None = None) -> Path:
 	"""Inicializa la base de datos SQLite para la caché de audios de TTS."""
 	target_path = Path(db_path) if db_path else (get_carpincho_data_dir() / "tts_cache.db")
 	target_path.parent.mkdir(parents=True, exist_ok=True)
-	with sqlite3.connect(target_path, timeout=5.0) as conn:
+	with contextlib.closing(sqlite3.connect(target_path, timeout=5.0)) as conn:
 		conn.execute(
 			"""
 			CREATE TABLE IF NOT EXISTS tts_cache (
@@ -843,7 +844,7 @@ def get_cached_audio(
 	if not target_path.exists():
 		return None
 	try:
-		with sqlite3.connect(target_path, timeout=5.0) as conn:
+		with contextlib.closing(sqlite3.connect(target_path, timeout=5.0)) as conn:
 			cur = conn.cursor()
 			cur.execute("SELECT audio_blob FROM tts_cache WHERE cache_key = ?", (cache_key,))
 			row = cur.fetchone()
@@ -877,7 +878,7 @@ def save_cached_audio(
 	target_path = init_tts_cache_db(db_path)
 	now = time.time()
 	try:
-		with sqlite3.connect(target_path, timeout=5.0) as conn:
+		with contextlib.closing(sqlite3.connect(target_path, timeout=5.0)) as conn:
 			conn.execute(
 				"""
 				INSERT INTO tts_cache (cache_key, category, voice, text, audio_blob, duration, created_at, last_used, use_count)
@@ -913,7 +914,7 @@ def prune_tts_cache_db(
 
 	deleted_count = 0
 	try:
-		with sqlite3.connect(target_path, timeout=5.0) as conn:
+		with contextlib.closing(sqlite3.connect(target_path, timeout=5.0)) as conn:
 			cur = conn.cursor()
 			# 1. Poda por antigüedad (last_used)
 			cutoff = time.time() - (max_age_days * 86400.0)

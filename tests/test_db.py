@@ -1,3 +1,4 @@
+import contextlib
 import sqlite3
 
 import server
@@ -5,7 +6,7 @@ import server
 
 def test_init_db_creates_tables(temp_db):
 	"""Test that init_db properly creates all required tables and columns."""
-	with sqlite3.connect(temp_db) as conn:
+	with contextlib.closing(sqlite3.connect(temp_db)) as conn:
 		cursor = conn.cursor()
 		cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
 		tables = {row[0] for row in cursor.fetchall()}
@@ -54,7 +55,7 @@ def test_favorites_operations(clean_state, temp_db):
 	state.path_to_id[track_path] = track_id
 	state.id_to_current_path[track_id] = track_path
 
-	with sqlite3.connect(temp_db) as conn:
+	with contextlib.closing(sqlite3.connect(temp_db)) as conn:
 		conn.execute("INSERT INTO favorites (track_id) VALUES (?)", (track_id,))
 		conn.commit()
 
@@ -108,7 +109,7 @@ def test_log_url(clean_state, temp_db):
 
 	state._log_url(url)
 
-	with sqlite3.connect(temp_db) as conn:
+	with contextlib.closing(sqlite3.connect(temp_db)) as conn:
 		cursor = conn.cursor()
 		cursor.execute("SELECT url, title, artist FROM url_logs WHERE url = ?", (url,))
 		row = cursor.fetchone()
