@@ -17,6 +17,20 @@ if str(root_dir) not in sys.path:
 sys.modules["tests.conftest"] = sys.modules[__name__]
 
 
+@pytest.fixture(autouse=True)
+def isolate_container():
+	"""Aísla el singleton de AppContainer por cada test para evitar fuga de estado global."""
+	from app.core.container import AppContainer, get_container, set_container
+
+	previous_container = get_container()
+	fresh_container = AppContainer()
+	set_container(fresh_container)
+	try:
+		yield fresh_container
+	finally:
+		set_container(previous_container)
+
+
 @pytest.fixture
 def temp_db(tmp_path: Path):
 	"""Provee una base de datos SQLite temporal aislada por cada test."""
@@ -25,8 +39,13 @@ def temp_db(tmp_path: Path):
 
 	db_path = tmp_path / "test_rockola.db"
 	init_db(db_path)
-	get_container().db_path = db_path
-	yield db_path
+	container = get_container()
+	old_db_path = container.db_path
+	container.db_path = db_path
+	try:
+		yield db_path
+	finally:
+		container.db_path = old_db_path
 
 
 @pytest.fixture

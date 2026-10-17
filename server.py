@@ -23,4 +23,6 @@ __all__ = [
 ]
 
 if __name__ == "__main__":
+	configure_console_encoding()
+	enable_system_site_packages()
 	main()

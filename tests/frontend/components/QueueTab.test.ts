@@ -542,4 +542,23 @@ describe('QueueTab.vue', () => {
 			expect.objectContaining({ body: JSON.stringify({ cmd: 'remove_queue_item', index: 0 }) })
 		);
 	});
+
+	it('updates swipe row transform style when touchmove triggers swipeOffsets', async () => {
+		queueState.value = ['/music/q1.mp3'];
+		const wrapper = mount(QueueTab);
+		const row = wrapper.find('.swipe-row');
+		expect(row.exists()).toBe(true);
+
+		// Touch start at x=100
+		await row.trigger('touchstart', {
+			changedTouches: [{ screenX: 100 }],
+		});
+		// Touch move at x=140 (diff = 40)
+		await row.trigger('touchmove', {
+			touches: [{ screenX: 140 }],
+		});
+
+		// Visual feedback: translateX(40px)
+		expect(row.attributes('style')).toContain('transform: translateX(40px)');
+	});
 });

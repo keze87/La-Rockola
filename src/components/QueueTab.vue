@@ -73,6 +73,7 @@
 
 	const {
 		unifiedQueue,
+		swipeOffsets,
 		queueTouchStart,
 		queueTouchMove,
 		queueTouchEnd,
@@ -158,6 +159,11 @@
 						item.status === 'history' ? item.historyIndex : item.status === 'queue' ? item.queueIndex : null
 					"
 					:context-menu-only="item.status === 'queue'"
+					:style="
+						item.status === 'queue' && item.queueIndex !== undefined && swipeOffsets.has(item.queueIndex)
+							? { transform: `translateX(${swipeOffsets.get(item.queueIndex)}px)` }
+							: undefined
+					"
 					draggable="true"
 					@click="onTrackClick(item)"
 					@dragstart="dragStart($event, item.index)"

@@ -168,7 +168,6 @@ def create_app() -> FastAPI:
 
 	container = get_container()
 	container.ensure_ws_manager()
-	container.ensure_orchestrator()
 
 	app = FastAPI(
 		title="La Rockola del Carpincho",
