@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.config import DEFAULT_CONFIG, DEFAULT_WEATHER_LOCATION, load_config, save_config
-from app.engine.audio_analysis import get_clean_env
+from app.infrastructure.binaries.manager import get_clean_env
 
 logger = logging.getLogger("RockolaCarpincho")
 
@@ -105,10 +105,9 @@ def _select_folder_macos(title: str, initial_dir: str | None = None) -> str | No
 	try:
 		safe_title = title.replace('"', '\\"')
 		script = f'POSIX path of (choose folder with prompt "{safe_title}")'
-		clean_env = get_clean_env()
 		res = subprocess.run(
 			["osascript", "-e", script],
-			env=clean_env,
+			env=get_clean_env(),
 			capture_output=True,
 			text=True,
 			timeout=180,
@@ -163,20 +162,10 @@ def _select_folder_linux(title: str, initial_dir: str | None = None) -> str | No
 def select_folder_dialog(title: str = "Seleccioná la carpeta de música", initial_dir: str | None = None) -> str | None:
 	"""Abre un diálogo gráfico nativo según el sistema operativo."""
 	if sys.platform == "win32":
-		res = _select_folder_powershell(title, initial_dir)
-		if res:
-			return res
-		return _select_folder_tkinter(title, initial_dir)
-	elif sys.platform == "darwin":
-		res = _select_folder_macos(title, initial_dir)
-		if res:
-			return res
-		return _select_folder_tkinter(title, initial_dir)
-	else:
-		res = _select_folder_linux(title, initial_dir)
-		if res:
-			return res
-		return _select_folder_tkinter(title, initial_dir)
+		return _select_folder_powershell(title, initial_dir) or _select_folder_tkinter(title, initial_dir)
+	if sys.platform == "darwin":
+		return _select_folder_macos(title, initial_dir) or _select_folder_tkinter(title, initial_dir)
+	return _select_folder_linux(title, initial_dir) or _select_folder_tkinter(title, initial_dir)
 
 
 def setup_readline_completion() -> None:
@@ -185,7 +174,7 @@ def setup_readline_completion() -> None:
 		import glob
 		import readline
 
-		def path_completer(text: str, state: int):
+		def path_completer(text: str, state: int) -> str | None:
 			exp = os.path.expanduser(text)
 			matches = glob.glob(exp + "*")
 			matches = [m + "/" if os.path.isdir(m) else m for m in matches]
@@ -275,20 +264,16 @@ def run_interactive_wizard(
 		try:
 			choice = input("Elegí una opción [1-3] o escribí la ruta [default: 1]: ").strip()
 		except (EOFError, KeyboardInterrupt):
-			print("\nOperación cancelada. Usando valores actuales.")
 			return cfg
 
 		if choice == "" or choice == "1" or choice.lower() in ("b", "e", "examinar", "browse", "selector"):
-			print("⏳ Abriendo selector de carpetas...")
 			selected = folder_dialog(
 				title="Seleccioná la carpeta principal de música",
 				initial_dir=default_resolved if Path(default_resolved).is_dir() else None,
 			)
 			if selected:
-				print(f"✅ Carpeta seleccionada: {selected}")
 				chosen_dir = selected
 			else:
-				print("⚠️  No se seleccionó ninguna carpeta en el selector gráfico.")
 				try:
 					explore_tui = input(
 						"   ¿Querés explorar las carpetas acá en la terminal? [S/n / o pegá la ruta]: "
@@ -296,7 +281,6 @@ def run_interactive_wizard(
 					if explore_tui.lower() in ("", "s", "si", "y", "yes"):
 						tui_selected = select_folder_terminal(initial_dir=default_resolved)
 						if tui_selected:
-							print(f"✅ Carpeta seleccionada: {tui_selected}")
 							chosen_dir = tui_selected
 						else:
 							continue
@@ -310,7 +294,7 @@ def run_interactive_wizard(
 			chosen_dir = default_dir
 		elif choice == "3":
 			try:
-				manual_val = input("📁 Ingresá la ruta de la carpeta (podés usar Tab para autocompletar): ").strip()
+				manual_val = input("📁 Ingresá la ruta de la carpeta: ").strip()
 			except (EOFError, KeyboardInterrupt):
 				manual_val = ""
 			if not manual_val:
@@ -321,7 +305,6 @@ def run_interactive_wizard(
 
 		expanded = Path(chosen_dir).expanduser().resolve()
 		if not expanded.is_dir():
-			print(f"⚠️  La carpeta '{expanded}' no existe actualmente.")
 			try:
 				create = input("¿Querés crearla ahora? [S/n]: ").strip().lower()
 			except (EOFError, KeyboardInterrupt):
@@ -331,17 +314,13 @@ def run_interactive_wizard(
 					expanded.mkdir(parents=True, exist_ok=True)
 					cfg["music_dir"] = str(expanded)
 					break
-				except Exception as e:
-					print(f"❌ No se pudo crear la carpeta: {e}. Probemos otra opción.")
-			else:
-				print("Probemos indicando otra opción o ruta.")
+				except Exception:
+					pass
 		else:
 			cfg["music_dir"] = str(expanded)
 			break
 
 	default_weather = cfg.get("weather_location") or DEFAULT_WEATHER_LOCATION
-	print("\n🌤️  Ubicación para el reporte del clima en la radio:")
-	print(f"   Podés ingresar tu ciudad o localidad [default: {default_weather}]:\n")
 	try:
 		weather_ans = input(f"Ciudad/Localidad [{default_weather}]: ").strip()
 	except (EOFError, KeyboardInterrupt, StopIteration):
@@ -349,10 +328,5 @@ def run_interactive_wizard(
 
 	chosen_weather = weather_ans if weather_ans else default_weather
 	cfg["weather_location"] = chosen_weather
-	print(f"✅ Clima configurado para: {chosen_weather}")
-
 	save_config(config_path, cfg)
-	print("\n✨ ¡Listo el pollo y pelada la gallina! Configuración guardada en:")
-	print(f"   {config_path}\n")
-	print("=" * 62 + "\n")
 	return cfg

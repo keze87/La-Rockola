@@ -24,73 +24,38 @@ from pathlib import Path
 # Añadir directorio raíz al sys.path para importar scripts y server
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-try:
-	from scripts.binary_utils import is_internet_available
-except ImportError:
-	try:
-		from binary_utils import is_internet_available
-	except ImportError:
-
-		def is_internet_available(timeout: float = 0.8) -> bool:
-			return True
-
-
-try:
-	from scripts.radio_announcer import (
-		CARPINCHO_FORTUNES,
-		DEFAULT_TTS_TIMEOUT,
-		HAS_EDGE_TTS,
-		RADIO_LEAD_INS,
-		VOICE_ELENA,
-		VOICE_MARIA,
-		VOICE_NAMES,
-		VOICE_TOMAS,
-		VOICE_VALENTINA,
-		VOICES,
-		format_fortune_for_speech,
-		get_all_degree_segments,
-		get_all_fortune_reaction_segments,
-		get_all_handoff_segments,
-		get_all_intro_segments,
-		get_all_outro_segments,
-		get_all_reaction_segments,
-		get_all_time_segments,
-		get_all_weather_handoff_segments,
-		get_all_weather_reaction_segments,
-		get_cached_audio,
-		get_modular_hour_segments,
-		get_modular_minute_segments,
-		init_tts_cache_db,
-		synthesize_segment,
-	)
-except ImportError:
-	from radio_announcer import (
-		CARPINCHO_FORTUNES,
-		DEFAULT_TTS_TIMEOUT,
-		HAS_EDGE_TTS,
-		RADIO_LEAD_INS,
-		VOICE_ELENA,
-		VOICE_MARIA,
-		VOICE_NAMES,
-		VOICE_TOMAS,
-		VOICE_VALENTINA,
-		VOICES,
-		format_fortune_for_speech,
-		get_all_degree_segments,
-		get_all_fortune_reaction_segments,
-		get_all_handoff_segments,
-		get_all_intro_segments,
-		get_all_outro_segments,
-		get_all_reaction_segments,
-		get_all_time_segments,
-		get_all_weather_handoff_segments,
-		get_all_weather_reaction_segments,
-		get_cached_audio,
-		get_modular_hour_segments,
-		get_modular_minute_segments,
-		init_tts_cache_db,
-		synthesize_segment,
-	)
+from app.domain.radio.banks import (
+	CARPINCHO_FORTUNES,
+	DEFAULT_TTS_TIMEOUT,
+	RADIO_LEAD_INS,
+	VOICE_ELENA,
+	VOICE_MARIA,
+	VOICE_NAMES,
+	VOICE_TOMAS,
+	VOICE_VALENTINA,
+	VOICES,
+)
+from app.domain.radio.dialogue import (
+	format_fortune_for_speech,
+	get_all_degree_segments,
+	get_all_fortune_reaction_segments,
+	get_all_handoff_segments,
+	get_all_intro_segments,
+	get_all_outro_segments,
+	get_all_reaction_segments,
+	get_all_time_segments,
+	get_all_weather_handoff_segments,
+	get_all_weather_reaction_segments,
+	get_modular_hour_segments,
+	get_modular_minute_segments,
+)
+from app.infrastructure.binaries.manager import is_internet_available
+from app.infrastructure.media.tts_cache import (
+	HAS_EDGE_TTS,
+	get_cached_audio,
+	init_tts_cache_db,
+	synthesize_segment,
+)
 
 logging.basicConfig(
 	level=logging.INFO,

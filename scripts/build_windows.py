@@ -42,10 +42,8 @@ def ensure_icon():
 			log(f"No se pudo generar .ico con Pillow: {e}")
 
 
-try:
-	from . import binary_utils
-except (ImportError, ValueError):
-	import binary_utils
+sys.path.insert(0, str(ROOT_DIR))
+from app.infrastructure.binaries import manager as binary_utils
 
 
 def build_frontend(force=False):

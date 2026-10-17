@@ -5,7 +5,6 @@ Fábrica de aplicación FastAPI, lifespan y configuración de montaje estático.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import socket
@@ -21,26 +20,23 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import Field, TypeAdapter, ValidationError
 
+from app.api.library import scan_library
 from app.api.middleware import SubpathMiddleware
+from app.api.router import api_v1_router, root_api_router
 from app.api.schemas import (
 	LocalPlayerClaim,
 	LocalPlayerRelease,
 	LocalPlayerReset,
 	LocalPlayerUpdate,
 )
-from app.api.v1.library import scan_library
-from app.api.v1.router import api_v1_router, legacy_router
 from app.api.websocket import ConnectionManager
 from app.core.config import get_carpincho_data_dir, get_dist_dirs
-from app.core.dependencies import (
-	get_manager,
-	get_state,
-	set_db_path,
-	set_global_manager,
-)
-from app.db.database import backup_db, get_default_db_path
-from app.db.migrations import apply_migrations
-from app.engine.state import broadcast_state
+from app.core.container import get_container
+from app.domain.playback.orchestrator import broadcast_state
+from app.infrastructure.binaries import ytdlp as ytdlp_installer
+from app.infrastructure.binaries.manager import find_binary
+from app.infrastructure.db.connection import backup_db, get_default_db_path
+from app.infrastructure.db.migrations import apply_migrations
 
 logger = logging.getLogger("RockolaCarpincho")
 
@@ -54,8 +50,9 @@ ws_adapter = TypeAdapter(WSIncomingMessage)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
 	"""Gestión del ciclo de vida de la aplicación: arranque y apagado seguro."""
-	db_path = get_default_db_path()
-	set_db_path(db_path)
+	container = get_container()
+	db_path = container.db_path or get_default_db_path()
+	container.db_path = Path(db_path)
 	data_dir = get_carpincho_data_dir()
 
 	try:
@@ -64,38 +61,27 @@ async def lifespan(app: FastAPI):
 	except Exception as e:
 		logger.error(f"Error preparando base de datos en arranque: {e}")
 
-	state = get_state()
+	state = container.orchestrator
 	if state and hasattr(state, "mpv") and state.mpv and hasattr(state.mpv, "start"):
 		try:
-			logger.info("Iniciando motor de reproducción MPV...")
 			res = state.mpv.start(state_ref=state)
 			if asyncio.iscoroutine(res):
 				await res
 		except Exception as e:
 			logger.warning(f"No se pudo arrancar MPV en el inicio: {e}")
 
-	# Disparar escaneo de la biblioteca musical en segundo plano
 	asyncio.create_task(scan_library())
 
-	# Actualización en segundo plano de yt-dlp para mantener compatibilidad con YouTube
-	async def _bg_update_ytdlp():
+	async def _bg_update_ytdlp() -> None:
 		try:
-			try:
-				from scripts import ytdlp_installer
-			except ImportError:
-				import ytdlp_installer
-
 			await asyncio.to_thread(ytdlp_installer.update_ytdlp)
-		except Exception as e:
-			logger.debug(f"Aviso en actualización de yt-dlp: {e}")
-
-	from app.engine.audio_analysis import find_binary
+		except Exception:
+			pass
 
 	if find_binary("yt-dlp"):
 		asyncio.create_task(_bg_update_ytdlp())
 
-	# Abrir navegador automáticamente si está configurado (y no estamos corriendo tests)
-	async def _bg_open_browser(target_url: str, port: int, host: str):
+	async def _bg_open_browser(target_url: str, port: int, host: str) -> None:
 		try:
 			bind_ip = "127.0.0.1" if host in ("0.0.0.0", "") else host
 			for _ in range(30):
@@ -104,15 +90,11 @@ async def lifespan(app: FastAPI):
 					s.settimeout(0.2)
 					if s.connect_ex((bind_ip, port)) == 0:
 						break
-
-			logger.info(f"🌐 Abriendo La Rockola en tu navegador: {target_url}")
 			import app.cli.entrypoint as entrypoint_mod
 
-			open_fn = getattr(entrypoint_mod, "open_browser_url", None)
-			if open_fn:
-				await asyncio.to_thread(open_fn, target_url)
-		except Exception as e:
-			logger.debug(f"Aviso al abrir el navegador automáticamente: {e}")
+			await asyncio.to_thread(entrypoint_mod.open_browser_url, target_url)
+		except Exception:
+			pass
 
 	if state and state.open_browser and "PYTEST_CURRENT_TEST" not in os.environ:
 		asyncio.create_task(
@@ -127,11 +109,8 @@ async def lifespan(app: FastAPI):
 
 	logger.info("Cerrando La Rockola del Carpincho. ¡Nos vemos en los fogones!")
 	if state:
-		if getattr(state, "mpris_bus", None):
-			try:
-				state.mpris_bus.disconnect()
-			except Exception:
-				pass
+		if hasattr(state, "mpris_service") and state.mpris_service:
+			state.mpris_service.disconnect()
 		if hasattr(state, "mpv") and state.mpv:
 			if (
 				hasattr(state.mpv, "socket_path")
@@ -157,7 +136,7 @@ async def serve_index():
 	return FileResponse(html_path)
 
 
-async def serve_favicon(request: Request = None):
+async def serve_favicon(request: Request = None):  # type: ignore[assignment]
 	frontend_dir, dist_dir, _ = get_dist_dirs()
 	favicon_path = dist_dir / "favicon.png"
 	if not favicon_path.exists():
@@ -187,11 +166,9 @@ def create_app() -> FastAPI:
 	"""Crea y configura la instancia de FastAPI con sus middlewares y enrutadores."""
 	_, _, assets_dir = get_dist_dirs()
 
-	# Inicializar manager de websockets si no existe
-	manager = get_manager()
-	if manager is None:
-		manager = ConnectionManager()
-		set_global_manager(manager)
+	container = get_container()
+	if container.ws_manager is None:
+		container.ws_manager = ConnectionManager()
 
 	app = FastAPI(
 		title="La Rockola del Carpincho",
@@ -200,7 +177,6 @@ def create_app() -> FastAPI:
 		lifespan=lifespan,
 	)
 
-	# Middlewares
 	app.add_middleware(SubpathMiddleware)
 	app.add_middleware(
 		CORSMiddleware,
@@ -209,33 +185,28 @@ def create_app() -> FastAPI:
 		allow_headers=["*"],
 	)
 
-	# Enrutadores API
 	app.include_router(api_v1_router)
-	app.include_router(legacy_router)
+	app.include_router(root_api_router)
 
-	# Montaje condicional de assets estáticos SOLO si existen en disco (sin compilar en import)
 	if assets_dir.exists():
 		app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
-	else:
-		logger.debug("La carpeta 'dist/assets' no existe aún. Modo API/Desarrollo.")
 
 	app.add_api_route("/", serve_index, methods=["GET"])
 	app.add_api_route("/favicon.ico", serve_favicon, methods=["GET"], include_in_schema=False)
 	app.add_api_route("/favicon.png", serve_favicon, methods=["GET"], include_in_schema=False)
-
 	app.add_api_websocket_route("/ws", websocket_endpoint)
 
 	return app
 
 
-async def websocket_endpoint(websocket: WebSocket):
-	mgr = get_manager()
-	state = get_state()
+async def websocket_endpoint(websocket: WebSocket) -> None:
+	container = get_container()
+	mgr = container.ws_manager
+	state = container.orchestrator
 	client_host = getattr(websocket.client, "host", "desconocido") if websocket.client else "desconocido"
 	if mgr:
 		await mgr.connect(websocket)
 
-	# Enviar estado completo inmediatamente
 	if state and hasattr(state, "get_full_state_dict"):
 		try:
 			state_dict = state.get_full_state_dict(include_library=False)
@@ -252,29 +223,26 @@ async def websocket_endpoint(websocket: WebSocket):
 			except ValidationError:
 				continue
 
-			mgr = get_manager()
-			state = get_state()
+			container = get_container()
+			mgr = container.ws_manager
+			state = container.orchestrator
 			if isinstance(msg, LocalPlayerClaim):
 				if mgr:
 					ok, old_ws = mgr.claim_local_player(websocket)
 					if old_ws and old_ws is not websocket:
 						try:
 							await old_ws.send_json({"type": "local_player_evicted", "reason": "replaced"})
-						except Exception as e:
-							logger.debug(f"No se pudo notificar desalojo al reproductor previo: {e}")
+						except Exception:
+							pass
 				else:
 					ok = False
 				await websocket.send_json({"type": "local_player_claim_result", "ok": ok})
 				if ok and state and hasattr(state, "mpv") and state.mpv:
-					logger.info(f"Cliente registrado como reproductor local ({client_host}).")
-					await state.mpv._send('{"command": ["set_property", "mute", true]}')
+					await state.mpv.set_mute(True)
 				await broadcast_state()
 			elif isinstance(msg, LocalPlayerRelease):
 				if mgr and mgr.release_local_player(websocket) and state and hasattr(state, "mpv") and state.mpv:
-					logger.info("Restaurando mute de MPV...")
-					await state.mpv._send(
-						json.dumps({"command": ["set_property", "mute", getattr(state, "server_muted", False)]})
-					)
+					await state.mpv.set_mute(getattr(state, "server_muted", False))
 					await broadcast_state()
 			elif isinstance(msg, LocalPlayerReset):
 				if mgr:
@@ -282,13 +250,10 @@ async def websocket_endpoint(websocket: WebSocket):
 					if old_ws:
 						try:
 							await old_ws.send_json({"type": "local_player_evicted", "reason": "server_requested"})
-						except Exception as e:
-							logger.debug(f"No se pudo notificar reseteo al reproductor previo: {e}")
+						except Exception:
+							pass
 				if state and hasattr(state, "mpv") and state.mpv:
-					logger.info("Restaurando reproducción en parlantes del servidor por solicitud de cliente...")
-					await state.mpv._send(
-						json.dumps({"command": ["set_property", "mute", getattr(state, "server_muted", False)]})
-					)
+					await state.mpv.set_mute(getattr(state, "server_muted", False))
 				await broadcast_state()
 			elif isinstance(msg, LocalPlayerUpdate) and mgr and mgr.local_player_ws is websocket:
 				changed = False
@@ -298,7 +263,7 @@ async def websocket_endpoint(websocket: WebSocket):
 						getattr(state, "time_pos", 0), new_pos, getattr(state, "last_seek_drift", None)
 					)
 					if should_seek and hasattr(state, "mpv") and state.mpv:
-						await state.mpv._send(json.dumps({"command": ["seek", new_pos, "absolute"]}))
+						await state.mpv.seek_absolute(new_pos)
 					state.last_seek_drift = new_drift
 					state.time_pos = new_pos
 					now = time.time()
@@ -331,13 +296,12 @@ async def websocket_endpoint(websocket: WebSocket):
 	except WebSocketDisconnect:
 		logger.info(f"Cliente desconectado: {client_host}")
 	finally:
-		curr_mgr = get_manager()
-		curr_state = get_state()
+		curr_container = get_container()
+		curr_mgr = curr_container.ws_manager
+		curr_state = curr_container.orchestrator
 		if curr_mgr and curr_mgr.disconnect(websocket) and curr_state and hasattr(curr_state, "mpv") and curr_state.mpv:
 			try:
-				await curr_state.mpv._send(
-					json.dumps({"command": ["set_property", "mute", getattr(curr_state, "server_muted", False)]})
-				)
+				await curr_state.mpv.set_mute(getattr(curr_state, "server_muted", False))
 			except Exception:
 				pass
 			try:

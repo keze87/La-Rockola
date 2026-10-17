@@ -1,115 +1,117 @@
+"""
+Configuración compartida de Pytest y fixtures aislados para la arquitectura limpia de La Rockola.
+"""
+
+from __future__ import annotations
+
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-# Ensure server.py in root directory can be imported
 root_dir = Path(__file__).resolve().parent.parent
 if str(root_dir) not in sys.path:
 	sys.path.insert(0, str(root_dir))
 
-import scripts  # noqa: F401 - Registers sys.modules["binary_utils"], etc.
-import server
-
-# Register tests.conftest alias so tests can import helpers without module duplication
 sys.modules["tests.conftest"] = sys.modules[__name__]
 
 
 @pytest.fixture
-def temp_db(tmp_path, monkeypatch):
-	"""Provides an isolated temporary SQLite database for each test."""
-	db_path = tmp_path / "test_rockola.db"
-	from app.core.dependencies import set_db_path
+def temp_db(tmp_path: Path):
+	"""Provee una base de datos SQLite temporal aislada por cada test."""
+	from app.core.container import get_container
+	from app.infrastructure.db.connection import init_db
 
-	set_db_path(db_path)
-	monkeypatch.setattr(server, "DB_PATH", db_path, raising=False)
-	server.init_db(db_path)
+	db_path = tmp_path / "test_rockola.db"
+	init_db(db_path)
+	get_container().db_path = db_path
 	yield db_path
-	set_db_path(None)
+
+
+@pytest.fixture
+def test_db(temp_db: Path) -> Path:
+	"""Alias de conveniencia para temp_db."""
+	return temp_db
 
 
 @pytest.fixture
 def mock_mpv():
-	"""Creates a mocked MPV controller to test without launching actual MPV process."""
-	mpv = MagicMock(spec=server.AsyncMpvController)
+	"""Crea un controlador MPV simulado sin lanzar subprocesos reales."""
+	from app.infrastructure.mpv.controller import AsyncMpvController
+
+	mpv = MagicMock(spec=AsyncMpvController)
 	mpv.is_running = True
+	mpv.has_display = True
 	mpv.start = AsyncMock()
 	mpv.stop = AsyncMock()
+	mpv.load_file = AsyncMock()
+	mpv.set_pause = AsyncMock()
+	mpv.set_volume = AsyncMock()
+	mpv.set_mute = AsyncMock()
+	mpv.seek_relative = AsyncMock()
+	mpv.seek_absolute = AsyncMock()
+	mpv.toggle_fullscreen = AsyncMock()
+	mpv.set_force_window = AsyncMock()
+	mpv.add_subtitle = AsyncMock()
+	mpv.stop_playback = AsyncMock()
 	mpv._send = AsyncMock()
 	return mpv
 
 
 @pytest.fixture
-def clean_state(temp_db, mock_mpv, monkeypatch):
-	"""Provides a fresh, isolated APIState instance."""
-	from app.core.dependencies import get_state, set_db_path, set_global_state
+def clean_state(temp_db: Path, mock_mpv):
+	"""Provee una instancia limpia y aislada de PlaybackOrchestrator."""
+	from app.core.container import get_container
+	from app.domain.playback.orchestrator import PlaybackOrchestrator
 
-	set_db_path(temp_db)
-	state = server.APIState()
-	state.mpv = mock_mpv
-	orig_state = get_state()
-	set_global_state(state)
-	monkeypatch.setattr(server, "state", state, raising=False)
-	yield state
-	set_global_state(orig_state)
-
-
-@pytest.fixture
-def test_db(temp_db):
-	"""Alias de conveniencia para temp_db compatible con la arquitectura modular."""
-	return temp_db
+	container = get_container()
+	orig_orch = container.orchestrator
+	orch = PlaybackOrchestrator(db_path=temp_db, open_browser=False)
+	orch.mpv = mock_mpv
+	container.orchestrator = orch
+	yield orch
+	container.orchestrator = orig_orch
 
 
 @pytest.fixture
-def clean_manager(monkeypatch):
-	"""Provides a fresh ConnectionManager instance."""
-	from app.core.dependencies import get_manager, set_global_manager
+def clean_manager():
+	"""Provee una instancia limpia de ConnectionManager."""
+	from app.api.websocket import ConnectionManager
+	from app.core.container import get_container
 
-	mgr = server.ConnectionManager()
-	orig_mgr = get_manager()
-	set_global_manager(mgr)
-	monkeypatch.setattr(server, "manager", mgr, raising=False)
+	container = get_container()
+	orig_mgr = container.ws_manager
+	mgr = ConnectionManager()
+	container.ws_manager = mgr
 	yield mgr
 	mgr.local_player_ws = None
-	set_global_manager(orig_mgr)
+	container.ws_manager = orig_mgr
 
 
 @pytest.fixture
 def client(clean_state, clean_manager):
-	"""Provee un TestClient de FastAPI aislado con dependencias inyectadas."""
+	"""Provee un TestClient de FastAPI aislado con dependencias inyectadas en AppContainer."""
 	from fastapi.testclient import TestClient
 
-	import app.core.dependencies as deps
 	from app.main import create_app
 
-	orig_state = deps.get_state()
-	orig_mgr = deps.get_manager()
-
-	deps.set_global_state(clean_state)
-	deps.set_global_manager(clean_manager)
 	app_instance = create_app()
 	yield TestClient(app_instance)
 
-	deps.set_global_state(orig_state)
-	deps.set_global_manager(orig_mgr)
-	if hasattr(server, "manager") and server.manager is not None:
-		server.manager.local_player_ws = None
-
 
 @pytest.fixture
-def dummy_audio_file(tmp_path):
-	"""Creates a dummy audio file with some binary content."""
+def dummy_audio_file(tmp_path: Path) -> Path:
+	"""Crea un archivo de audio simulado (>3MB) para probar el muestreo 15% / 85%."""
 	audio_path = tmp_path / "test_track.mp3"
-	# Write >3MB of dummy data to test smart hash 15% / 85% chunk sampling
 	data = b"ID3\x04\x00\x00\x00\x00\x00\x00" + b"AUDIO_DATA_" * (400 * 1024)
 	audio_path.write_bytes(data)
 	return audio_path
 
 
 @pytest.fixture
-def small_audio_file(tmp_path):
-	"""Creates a small dummy audio file (<3MB)."""
+def small_audio_file(tmp_path: Path) -> Path:
+	"""Crea un archivo de audio simulado pequeño (<3MB)."""
 	audio_path = tmp_path / "small_track.mp3"
 	audio_path.write_bytes(b"SHORT_AUDIO_DATA_" * 1024)
 	return audio_path
@@ -123,7 +125,6 @@ DEFAULT_TEST_TIMEOUT: float = 30.0
 
 
 def _get_test_timeout(item) -> float:
-	"""Determina el timeout en segundos aplicable a un ítem de test."""
 	marker = item.get_closest_marker("timeout")
 	if marker and marker.args:
 		return float(marker.args[0])
@@ -136,7 +137,7 @@ def _get_test_timeout(item) -> float:
 
 
 def pytest_pyfunc_call(pyfuncitem):
-	"""Auto-run async test functions using asyncio.run when pytest-asyncio is not installed."""
+	"""Ejecuta automáticamente funciones de test async usando asyncio.run."""
 	import asyncio
 	import inspect
 
@@ -153,7 +154,7 @@ def pytest_pyfunc_call(pyfuncitem):
 
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_call(item):
-	"""Aplica un límite de tiempo por test (30s por defecto) para frenar ejecuciones colgadas."""
+	"""Aplica un límite de tiempo por test (30s por defecto)."""
 	import signal
 	import threading
 
@@ -194,7 +195,6 @@ def pytest_runtest_call(item):
 
 
 def pytest_addoption(parser):
-	"""Agrega la opción por CLI para correr tests con descargas de red y configurar timeouts."""
 	parser.addoption(
 		"--run-downloads",
 		action="store_true",
@@ -211,7 +211,6 @@ def pytest_addoption(parser):
 
 
 def pytest_collection_modifyitems(config, items):
-	"""Saltea los tests marcados con 'download' salvo que se pase --run-downloads."""
 	if config.getoption("--run-downloads"):
 		return
 	skip_download = pytest.mark.skip(reason="Requiere descargas de red (usá --run-downloads para ejecutar)")

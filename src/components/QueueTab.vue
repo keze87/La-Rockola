@@ -1,8 +1,10 @@
 <script setup lang="ts">
-	import { computed, ref } from 'vue';
+	import { ref } from 'vue';
+	import { useQueueDragDrop, type UnifiedTrackItem } from '../composables/player/useQueueDragDrop';
 	import { useContextMenu } from '../composables/useContextMenu';
 	import { usePlaybackControls } from '../composables/usePlaybackControls';
 	import { usePlayer } from '../composables/usePlayer';
+	import DjBanner from './queue/DjBanner.vue';
 	import TrackRow from './ui/TrackRow.vue';
 
 	// Clases de estructura y maquetado extraídas
@@ -37,61 +39,9 @@
 	} = usePlaybackControls();
 
 	const newUrl = ref('');
-	const swipeOffsets = ref(new Map<number, number>());
-
-	// Las filas de la fila necesitan tanto presión larga (abrir menú contextual) COMO deslizamiento horizontal
-	// (borrar / mandar al principio), por lo que tienen su propio manejador en lugar del
-	// compartido onCtxTouchStart/onCtxTouchEnd (que solo maneja pulsación larga).
-	let touchStartX = 0;
-	let queueLongPressTimer: ReturnType<typeof setTimeout> | null = null;
-	let queueLongPressFired = false;
-
-	function queueTouchStart(e: TouchEvent, path: string, i: number) {
-		touchStartX = e.changedTouches[0].screenX;
-		queueLongPressFired = false;
-
-		queueLongPressTimer = setTimeout(() => {
-			queueLongPressFired = true;
-			haptic(true);
-			openCtxMenu(e, getTrackInfo(path), 'queue', i);
-		}, 500);
-	}
-
-	function queueTouchMove(e: TouchEvent, index: number) {
-		if (Math.abs(e.touches[0].screenX - touchStartX) > 10 && queueLongPressTimer) {
-			clearTimeout(queueLongPressTimer);
-		}
-		const diff = e.touches[0].screenX - touchStartX;
-		// Solo permitimos deslizamientos dentro de los límites
-		if (diff < 100 && diff > -100) {
-			swipeOffsets.value.set(index, diff);
-		}
-	}
-
-	function queueTouchEnd(e: TouchEvent, index: number) {
-		if (queueLongPressTimer) {
-			clearTimeout(queueLongPressTimer);
-		}
-
-		if (queueLongPressFired) return;
-
-		const diff = touchStartX - e.changedTouches[0].screenX;
-
-		if (diff > 80) {
-			haptic(true);
-			removeQueueItemCmd(index); // ¡El TransitionGroup de Vue se encarga de la animación automáticamente!
-		} else if (diff < -80) {
-			haptic();
-			moveQueueItem(index, 'first');
-		}
-
-		// Reiniciamos el desplazamiento de forma reactiva
-		swipeOffsets.value.delete(index);
-	}
 
 	async function addUrl() {
 		if (!newUrl.value.trim()) return;
-
 		await addUrlCmd(newUrl.value.trim());
 		newUrl.value = '';
 	}
@@ -114,7 +64,6 @@
 
 	function moveQueueItem(index: number, target: 'first' | 'last' | number) {
 		let newIndex = target === 'first' ? 0 : queueState.value.length - 1;
-
 		if (typeof target === 'number') newIndex = target;
 
 		if (newIndex !== index) {
@@ -122,52 +71,27 @@
 		}
 	}
 
-	// --- Cálculo de la lista unificada ---
-	interface UnifiedTrackItem {
-		id: string;
-		path: string;
-		status: 'history' | 'current' | 'queue';
-		index: number;
-		historyIndex?: number;
-		queueIndex?: number;
-	}
-
-	const unifiedQueue = computed<UnifiedTrackItem[]>(() => {
-		const list: UnifiedTrackItem[] = [];
-		let idx = 0;
-
-		for (let i = 0; i < historyState.value.length; i++) {
-			const path = historyState.value[i];
-			list.push({
-				id: `hist-${i}-${path}`,
-				path,
-				status: 'history',
-				index: idx++,
-				historyIndex: i,
-			});
-		}
-
-		if (currentTrackPath.value) {
-			list.push({
-				id: `current-${currentTrackPath.value}`,
-				path: currentTrackPath.value,
-				status: 'current',
-				index: idx++,
-			});
-		}
-
-		for (let i = 0; i < queueState.value.length; i++) {
-			const path = queueState.value[i];
-			list.push({
-				id: `queue-${i}-${path}`,
-				path,
-				status: 'queue',
-				index: idx++,
-				queueIndex: i,
-			});
-		}
-
-		return list;
+	const {
+		unifiedQueue,
+		queueTouchStart,
+		queueTouchMove,
+		queueTouchEnd,
+		dragStart,
+		dragOver,
+		dragLeave,
+		dragDrop,
+		dragEnd,
+		dropAtEnd,
+	} = useQueueDragDrop({
+		historyState,
+		currentTrackPath,
+		queueState,
+		getTrackInfo,
+		haptic,
+		openCtxMenu,
+		moveInPlaylist,
+		moveQueueItem,
+		removeQueueItemCmd,
 	});
 
 	function onTrackClick(item: UnifiedTrackItem) {
@@ -178,79 +102,6 @@
 		} else if (item.status === 'queue' && item.queueIndex !== undefined) {
 			jumpToQueue(item.queueIndex);
 		}
-	}
-
-	// --- Manejadores de arrastrar y soltar (Drag & Drop) ---
-	const dragFromIndex = ref<number | null>(null);
-
-	function dragStart(e: DragEvent, index: number) {
-		dragFromIndex.value = index;
-		(e.currentTarget as HTMLElement)?.classList?.add('opacity-40');
-
-		if (e.dataTransfer) {
-			e.dataTransfer.effectAllowed = 'move';
-			const item = unifiedQueue.value[index];
-			if (item && typeof e.dataTransfer.setData === 'function') {
-				e.dataTransfer.setData('text/plain', item.path);
-			}
-		}
-	}
-
-	function dragOver(e: DragEvent, index: number) {
-		if (dragFromIndex.value === null || dragFromIndex.value === index) return;
-
-		const target = e.currentTarget as HTMLElement | null;
-		if (!target) return;
-
-		const rect = target.getBoundingClientRect ? target.getBoundingClientRect() : { top: 0, height: 0 };
-		const midY = (rect.top || 0) + (rect.height || 0) / 2;
-
-		target.classList?.remove('border-t-2', 'border-b-2', 'border-carpincho-primary');
-
-		if ((e.clientY ?? 0) < midY) {
-			target.classList?.add('border-t-2', 'border-carpincho-primary');
-		} else {
-			target.classList?.add('border-b-2', 'border-carpincho-primary');
-		}
-	}
-
-	function dragLeave(e: DragEvent) {
-		const target = e.currentTarget as HTMLElement | null;
-		target?.classList?.remove('border-t-2', 'border-b-2', 'border-carpincho-primary');
-	}
-
-	function dragDrop(e: DragEvent, toIndex: number) {
-		const target = e.currentTarget as HTMLElement | null;
-		target?.classList?.remove('border-t-2', 'border-b-2', 'border-carpincho-primary');
-
-		if (dragFromIndex.value === null || dragFromIndex.value === toIndex) return;
-
-		const rect = target?.getBoundingClientRect ? target.getBoundingClientRect() : { top: 0, height: 0 };
-		const midY = (rect.top || 0) + (rect.height || 0) / 2;
-
-		let finalIndex = (e.clientY ?? 0) < midY ? toIndex : toIndex + 1;
-		if (finalIndex > dragFromIndex.value) finalIndex--;
-
-		if (finalIndex !== dragFromIndex.value) {
-			moveInPlaylist(dragFromIndex.value, finalIndex);
-		}
-
-		dragFromIndex.value = null;
-	}
-
-	function dragEnd(e: DragEvent) {
-		const target = e.currentTarget as HTMLElement | null;
-		target?.classList?.remove('opacity-40', 'border-t-2', 'border-b-2', 'border-carpincho-primary');
-		dragFromIndex.value = null;
-	}
-
-	function dropAtEnd() {
-		if (dragFromIndex.value === null) return;
-		const lastIndex = unifiedQueue.value.length - 1;
-		if (lastIndex >= 0 && dragFromIndex.value !== lastIndex) {
-			moveInPlaylist(dragFromIndex.value, lastIndex);
-		}
-		dragFromIndex.value = null;
 	}
 </script>
 
@@ -330,14 +181,11 @@
 							: undefined
 					"
 				>
-					<!-- Slot de prefijo: Acciones / Ecualizador / Tilde de historial -->
 					<template #prefix>
-						<!-- Ícono de historial -->
 						<template v-if="item.status === 'history'">
 							<i class="material-icons text-carpincho-success text-sm">check</i>
 						</template>
 
-						<!-- Ecualizador de reproducción actual y botón de pausa programada -->
 						<template v-else-if="item.status === 'current'">
 							<div class="flex items-center justify-center gap-1" @click.stop>
 								<div :class="['equalizer', isPaused ? 'paused' : '']">
@@ -369,7 +217,6 @@
 							</div>
 						</template>
 
-						<!-- Columna de acciones de la fila -->
 						<template v-else-if="item.status === 'queue' && item.queueIndex !== undefined">
 							<div class="flex items-center justify-center gap-1" @click.stop>
 								<button
@@ -410,7 +257,6 @@
 						</template>
 					</template>
 
-					<!-- Info del tema: Indicador de pausa programada -->
 					<template #title-extra>
 						<i
 							v-if="item.path === pauseAfterPath"
@@ -432,7 +278,7 @@
 				@drop.prevent="dropAtEnd"
 			/>
 
-			<!-- EMPTY STATE: Cuando no hay nada en la fila ni está sonando nada -->
+			<!-- EMPTY STATE -->
 			<div
 				v-if="unifiedQueue.length === 0 && !djCarpinchoEnabled"
 				id="empty-queue-full-state"
@@ -447,35 +293,12 @@
 			</div>
 
 			<!-- DJ CARPINCHO PLACEHOLDER -->
-			<div
-				v-if="djCarpinchoEnabled"
-				:class="['border-carpincho-border bg-carpincho-panel/50 items-center border-b', trackGridClass]"
-			>
-				<div class="flex justify-center p-4">
-					<i
-						class="material-icons text-carpincho-warning"
-						:class="{ 'animate-pulse': queueState.length === 0 }"
-					>
-						auto_awesome
-					</i>
-				</div>
-
-				<div class="text-carpincho-muted p-4 italic">
-					{{
-						queueState.length === 0
-							? djNextTrack
-								? 'DJ Carpincho eligió: ' + (djNextTrack.display_title || djNextTrack.title)
-								: 'Eligiendo...'
-							: 'Al vaciarse la fila, entra el DJ Carpincho'
-					}}
-				</div>
-
-				<div class="text-carpincho-muted p-4 italic">
-					{{ queueState.length === 0 && djNextTrack ? djNextTrack.display_artist || djNextTrack.artist : '' }}
-				</div>
-
-				<div class="hidden p-4 text-right sm:block">🦦</div>
-			</div>
+			<DjBanner
+				:dj-carpincho-enabled="djCarpinchoEnabled"
+				:queue-length="queueState.length"
+				:dj-next-track="djNextTrack"
+				:track-grid-class="trackGridClass"
+			/>
 		</div>
 	</section>
 </template>

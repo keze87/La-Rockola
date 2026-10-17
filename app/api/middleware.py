@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from app.core.dependencies import get_state
+from app.core.container import get_container
 
 
 class SubpathMiddleware:
@@ -20,7 +20,7 @@ class SubpathMiddleware:
 		self.app = app
 
 	async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-		state = get_state()
+		state = get_container().orchestrator
 		subpath = getattr(state, "subpath", "") if state else ""
 
 		if subpath and scope.get("type") in ("http", "websocket"):
