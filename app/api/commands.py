@@ -136,17 +136,18 @@ async def _cmd_toggle_favorite(state: PlaybackOrchestrator, req: CommandRequest,
 			try:
 				await asyncio.to_thread(state.favorites_repo.remove, track_id)
 			except Exception as e:
-				logger.warning(f"No se pudo borrar favorito {track_id} de la DB: {e}")
+				logger.error(f"Error guardando favorito: {e}")
 		else:
 			state.favorites.append(track_id)
 			try:
 				await asyncio.to_thread(state.favorites_repo.add, track_id)
 			except Exception as e:
-				logger.warning(f"No se pudo guardar favorito {track_id} en la DB: {e}")
+				logger.error(f"Error guardando favorito: {e}")
 
 
 async def _cmd_toggle_dj_carpincho(state: PlaybackOrchestrator, _req: CommandRequest, _mgr: Any) -> None:
 	state.dj_carpincho_enabled = not state.dj_carpincho_enabled
+	logger.info(f"DJ Carpincho cambiado a: {state.dj_carpincho_enabled}")
 	if state.dj_carpincho_enabled and not state.current_track:
 		await state.play_next(skipped_by_user=True)
 	else:
@@ -177,6 +178,7 @@ async def _cmd_set_weather_location(state: PlaybackOrchestrator, req: CommandReq
 		cfg["weather_location"] = new_loc
 		config_mod.save_config(cfg_path, cfg)
 		reset_weather_cache()
+		logger.info(f"Ubicación del clima actualizada a: {state.weather_location}")
 
 
 async def _cmd_pause_after(state: PlaybackOrchestrator, req: CommandRequest, _mgr: Any) -> None:
@@ -370,6 +372,7 @@ async def mpv_hide() -> dict[str, str]:
 		return {"status": "error"}
 	state.mpv_visible = False
 	if state.mpv and state.mpv.is_running:
+		logger.info("Reiniciando MPV para ocultar la ventana...")
 		await state.mpv.start(is_restart=True, state_ref=state)
 	await broadcast_state()
 	return {"status": "ok"}
@@ -387,6 +390,7 @@ async def mpv_show() -> dict[str, str]:
 		return {"status": "ok"}
 	state.mpv_visible = True
 	if state.mpv and state.mpv.is_running:
+		logger.info("Reiniciando MPV para mostrar la ventana...")
 		await state.mpv.start(is_restart=True, state_ref=state)
 	await broadcast_state()
 	return {"status": "ok"}

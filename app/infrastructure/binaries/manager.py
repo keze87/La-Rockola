@@ -391,7 +391,7 @@ def build_frontend(
 		if log_fn:
 			log_fn("Compilando el frontend de Vue 3 (npm run build)...")
 		npm_cmd = "npm.cmd" if os.name == "nt" else "npm"
-		subprocess.run([npm_cmd, "run", "build"], cwd=str(root), check=True)
+		subprocess.run([npm_cmd, "run", "build"], cwd=str(root), check=True, env=get_clean_env())
 		if log_fn:
 			log_fn("Frontend compilado con éxito en dist/")
 	elif log_fn:

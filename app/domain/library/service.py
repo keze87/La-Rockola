@@ -204,6 +204,7 @@ class LibraryService:
 			for ext in extensions:
 				raw_files.extend(list(music_dir.rglob(ext)))
 
+		logger.info(f"Encontré {len(raw_files)} archivos en total. Revisando cuáles son nuevos o cambiaron...")
 		if state:
 			state.scan_phase = "metadata"
 			state.scan_total = len(raw_files)
@@ -331,6 +332,9 @@ class LibraryService:
 					if state:
 						state.scan_current = len(cache_hits) + processed_count
 					if processed_count % 50 == 0:
+						logger.info(
+							f"Ya procesé la data de {processed_count}/{len(miss_files)} joyitas nuevas/modificadas..."
+						)
 						gc.collect()
 
 		tracks: list[dict[str, Any]] = []
@@ -373,6 +377,7 @@ class LibraryService:
 		if tracks_to_insert:
 			try:
 				self.track_repo.save_many(tracks_to_insert)
+				logger.info(f"Guardados {len(tracks_to_insert)} metadatos frescos en la base de datos.")
 			except Exception as e:
 				logger.error(f"Error guardando tracks en la DB: {e}")
 
@@ -380,6 +385,7 @@ class LibraryService:
 			state.scan_current = len(tracks)
 			state.scan_total = len(tracks)
 			state.scan_message = "¡Listo el escaneo, maestro!"
+		logger.info("¡Listo el escaneo, maestro!")
 		return tracks
 
 	async def run_background_mood_analysis(
@@ -396,6 +402,7 @@ class LibraryService:
 		has_fpcalc = fpcalc_bin is not None
 
 		if not ffmpeg_bin and not has_fpcalc:
+			logger.info("Sin FFmpeg ni fpcalc, salteando análisis acústico de fondo.")
 			if state:
 				state.is_analyzing_mood = False
 				state.scan_phase = "idle"
@@ -425,8 +432,8 @@ class LibraryService:
 					res = on_progress(cur, tot, msg)
 					if asyncio.iscoroutine(res):
 						await res
-				except Exception:
-					pass
+				except Exception as err:
+					logger.debug(f"Aviso en on_progress callback: {err}")
 
 		if not pending_tracks:
 			if state:
@@ -445,6 +452,8 @@ class LibraryService:
 			state.scan_current = 0
 			state.scan_message = f"Sintonizando la vibra de los temas (0/{len(pending_tracks)})..."
 			await _notify_progress(0, len(pending_tracks), state.scan_message)
+
+		logger.info(f"Comenzando análisis acústico en segundo plano para {len(pending_tracks)} temas...")
 
 		def _process_mood_item(
 			item: tuple[dict[str, Any], bool, bool],
@@ -496,8 +505,8 @@ class LibraryService:
 						if line.startswith("FINGERPRINT="):
 							fp = line.split("=", 1)[1]
 							break
-				except Exception:
-					pass
+				except Exception as e:
+					logger.debug(f"Pifió fpcalc en background para {path_str}: {e}")
 
 			return t_dict["track_hash"], path_str, bpm, energy, centroid, fp
 
@@ -544,6 +553,9 @@ class LibraryService:
 					calculate_mood_scores(state.tracks_cache)
 					await _notify_progress(state.scan_current, state.scan_total, state.scan_message)
 				gc.collect()
+		except asyncio.CancelledError:
+			logger.info("Análisis de mood en background cancelado por nueva solicitud.")
+			raise
 		finally:
 			if state:
 				state.is_analyzing_mood = False
@@ -554,5 +566,5 @@ class LibraryService:
 					res = on_finished()
 					if asyncio.iscoroutine(res):
 						await res
-				except Exception:
-					pass
+				except Exception as err:
+					logger.debug(f"Aviso en on_finished callback: {err}")

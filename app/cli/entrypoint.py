@@ -327,11 +327,28 @@ def check_dependencies(force: bool = False) -> None:
 		print(file=sys.stderr)
 
 	if missing_req_py or missing_req_sys:
-		print("🦦 ¡Pará un cacho, che! La Rockola del Carpincho no puede arrancar así 🧉\n", file=sys.stderr)
-		for mod, fix in missing_req_py:
-			print(f"  - {mod:<10} -> Mandale un: {fix}", file=sys.stderr)
-		for bin_name, fix in missing_req_sys:
-			print(f"  - {bin_name:<10} -> Fijate con: {fix}", file=sys.stderr)
+		print(
+			"🦦 ¡Pará un cacho, che! La Rockola del Carpincho no puede arrancar así 🧉\n",
+			file=sys.stderr,
+		)
+
+		if missing_req_py:
+			print("📦 Paquetes de Python que faltan en la ronda:", file=sys.stderr)
+			for mod, fix in missing_req_py:
+				print(f"  - {mod:<10} -> Mandale un: {fix}", file=sys.stderr)
+
+		if missing_req_sys:
+			print(
+				"\n🛠️ Herramientas del sistema (sin esto el carpincho no canta):",
+				file=sys.stderr,
+			)
+			for bin_name, fix in missing_req_sys:
+				print(f"  - {bin_name:<10} -> Fijate con: {fix}", file=sys.stderr)
+
+		print(
+			"\nTranqui, instalá eso, cambiale la yerba al mate y volvé a correr el script. ¡Te espero! 🦦🧉🎶",
+			file=sys.stderr,
+		)
 		sys.exit(1)
 
 
@@ -339,10 +356,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
 	"""Construye el parser de argumentos de línea de comandos."""
 	parser = argparse.ArgumentParser(
 		description="🦦 La Rockola del Carpincho — Servidor de música y reproductor con alma de campo y sabor a mate.",
+		epilog="""Ejemplos de uso:
+  larockola                              Inicia el servidor y abre el navegador en la IP local
+  larockola --no-browser                 Inicia sin abrir el navegador automáticamente
+  larockola --setup                      Ejecuta el asistente interactivo para elegir carpetas
+  larockola --dir ~/Musica --port 8080   Usa una carpeta y un puerto específicos
+  larockola --host 127.0.0.1             Modo solo local (sin acceso desde la red Wi-Fi)
+  larockola --debug                      Habilita logs detallados en nivel DEBUG
+""",
 		formatter_class=argparse.RawDescriptionHelpFormatter,
-		epilog=(
-			"Ejemplos de uso:\n  larockola --dir ~/Música\n  larockola --port 8080 --no-browser\n  larockola --setup\n"
-		),
 	)
 	parser.add_argument("--host", type=str, default=None, help="Dirección IP de escucha (default: 0.0.0.0)")
 	parser.add_argument("--port", type=int, default=None, help="Puerto del servidor web (default: 1729)")
@@ -421,8 +443,8 @@ def enable_system_site_packages() -> None:
 		pass
 
 
-def build_frontend(frontend_dir: Path | None = None) -> None:
-	"""Compila el frontend si no estamos en un entorno empaquetado (frozen)."""
+def build_frontend(frontend_dir: Path | None = None, force: bool = False) -> None:
+	"""Compila el frontend si no estamos en un entorno empaquetado (frozen) y aún no existe dist/index.html."""
 	if getattr(sys, "frozen", False):
 		return
 	if any(arg in sys.argv for arg in ("-h", "--help")):
@@ -431,11 +453,15 @@ def build_frontend(frontend_dir: Path | None = None) -> None:
 	pkg = target_dir / "package.json"
 	if not pkg.exists():
 		return
+	index_html = target_dir / "dist" / "index.html"
+	if not force and index_html.is_file():
+		return
 	npm_cmd = shutil.which("npm") or ("npm.cmd" if os.name == "nt" else "npm")
+	clean_env = get_clean_env()
 	node_modules = target_dir / "node_modules"
 	if not node_modules.exists():
-		subprocess.run([npm_cmd, "install"], cwd=str(target_dir), check=True)
-	subprocess.run([npm_cmd, "run", "build"], cwd=str(target_dir), check=True)
+		subprocess.run([npm_cmd, "install"], cwd=str(target_dir), check=True, env=clean_env)
+	subprocess.run([npm_cmd, "run", "build"], cwd=str(target_dir), check=True, env=clean_env)
 
 
 def main() -> None:

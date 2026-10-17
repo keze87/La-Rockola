@@ -301,3 +301,237 @@ class TestRadioContextualAndCoherenceSuite:
 		ini_text = Path("pytest.ini").read_text(encoding="utf-8")
 		assert "--cov=app" in ini_text
 		assert "--cov=server" in ini_text
+
+
+def test_build_frontend_skips_when_dist_exists_and_uses_clean_env(
+	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+	"""
+	Verifica que build_frontend en entrypoint.py no recompile si dist/index.html ya existe
+	(a menos que force=True), y que pase env=get_clean_env() a subprocess.run.
+	"""
+	pkg = tmp_path / "package.json"
+	pkg.write_text("{}", encoding="utf-8")
+	(tmp_path / "node_modules").mkdir()
+	dist_dir = tmp_path / "dist"
+	dist_dir.mkdir()
+	(dist_dir / "index.html").write_text("<html></html>", encoding="utf-8")
+
+	calls: list[tuple[list[str], dict]] = []
+
+	def fake_run(cmd, **kwargs):
+		calls.append((list(cmd), kwargs))
+		return MagicMock(returncode=0)
+
+	monkeypatch.setattr(cli_entrypoint.subprocess, "run", fake_run)
+	monkeypatch.setattr(cli_entrypoint.sys, "argv", ["larockola"])
+
+	# Con dist/index.html presente y force=False, no debe invocar npm run build
+	cli_entrypoint.build_frontend(frontend_dir=tmp_path)
+	assert len(calls) == 0
+
+	# Con force=True (o sin dist/index.html), debe invocar npm pasando env
+	cli_entrypoint.build_frontend(frontend_dir=tmp_path, force=True)
+	assert len(calls) == 1
+	assert calls[0][1].get("env") is not None
+
+
+@pytest.mark.asyncio
+async def test_mpv_start_falls_back_to_container_orchestrator(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+	"""
+	Verifica que AsyncMpvController.start() obtenga el estado del contenedor activo
+	cuando self.state_ref es None.
+	"""
+	import app.infrastructure.mpv.controller as mpv_mod
+	from app.infrastructure.mpv.controller import AsyncMpvController
+
+	db_path = tmp_path / "mpv_fallback.db"
+	init_db(db_path)
+	orch = PlaybackOrchestrator(db_path=db_path)
+	orch.mpv_visible = False
+	orch.mpris_service.registered = True
+	set_container(AppContainer(db_path=db_path, orchestrator=orch))
+
+	captured_args: list[str] = []
+
+	class DummyProc:
+		returncode = None
+		stdout = None
+		stderr = None
+
+		async def wait(self):
+			return 0
+
+	async def fake_subproc(*args, **_kwargs):
+		captured_args.extend(args)
+		return DummyProc()
+
+	monkeypatch.setattr(mpv_mod.asyncio, "create_subprocess_exec", fake_subproc)
+	monkeypatch.setattr(mpv_mod.os.path, "exists", lambda _p: True)
+	monkeypatch.setattr(mpv_mod.asyncio, "open_unix_connection", AsyncMock(return_value=(AsyncMock(), AsyncMock())))
+
+	standalone_mpv = AsyncMpvController(state_ref=None)
+	monkeypatch.setattr(standalone_mpv, "command", AsyncMock())
+	await standalone_mpv.start()
+
+	assert standalone_mpv.state_ref is orch
+	assert "--force-window=no" in captured_args
+	assert "--load-scripts=no" in captured_args
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_manager_proxy_and_dummy_mpv_send_fallback(
+	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+	"""
+	Verifica:
+	1. Que app.domain.playback.orchestrator exponga el proxy `manager` para monkeypatching.
+	2. Que si `state.mpv` se reemplaza por un objeto dummy que solo tiene `_send` y `start`,
+	   los métodos de orquestador y comandos funcionen mediante fallback a `_send`.
+	"""
+	from types import SimpleNamespace
+
+	import app.domain.playback.orchestrator as orch_mod
+	from app.api.commands import handle_command_endpoint
+	from app.api.schemas import CommandRequest
+
+	db_path = tmp_path / "proxy_mpv.db"
+	init_db(db_path)
+	orch = PlaybackOrchestrator(db_path=db_path)
+	set_container(AppContainer(db_path=db_path, orchestrator=orch))
+
+	assert hasattr(orch_mod, "manager")
+	fake_mgr = SimpleNamespace(local_player_ws=MagicMock(send_json=AsyncMock()), broadcast_json=AsyncMock())
+	monkeypatch.setattr(orch_mod, "manager", fake_mgr)
+	assert orch._has_local_player() is True
+
+	monkeypatch.setattr(orch_mod, "manager", SimpleNamespace(local_player_ws=None, broadcast_json=AsyncMock()))
+	assert orch._has_local_player() is False
+
+	sent_payloads: list[str] = []
+
+	async def dummy_send(payload: str) -> None:
+		sent_payloads.append(payload)
+
+	dummy_mpv = SimpleNamespace(
+		_send=dummy_send,
+		start=AsyncMock(),
+		is_running=True,
+		has_display=True,
+	)
+	orch.mpv = dummy_mpv  # type: ignore[assignment]
+
+	await orch.play_track("/musica/cancion.mp3")
+	assert any("loadfile" in p for p in sent_payloads)
+
+	await handle_command_endpoint(CommandRequest(cmd="fullscreen"))
+	assert any("fullscreen" in p for p in sent_payloads)
+
+	await handle_command_endpoint(CommandRequest(cmd="seek", amount=15.0))
+	assert any('"seek"' in p for p in sent_payloads)
+
+
+def test_cli_dependency_error_messages_and_arg_parser_epilog(
+	monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+	"""
+	Verifica que check_dependencies imprima los encabezados y saludo criollo al faltar
+	requisitos, y que build_arg_parser conserve el epilog completo con --host y --debug.
+	"""
+	parser = cli_entrypoint.build_arg_parser()
+	assert parser.epilog is not None
+	assert "--host 127.0.0.1" in parser.epilog
+	assert "--debug" in parser.epilog
+
+	monkeypatch.setattr(cli_entrypoint.sys, "argv", ["larockola"])
+	monkeypatch.setattr(
+		cli_entrypoint,
+		"_check_python_packages",
+		lambda **_kw: ([("fastapi", "pip install fastapi")], []),
+	)
+	monkeypatch.setattr(cli_entrypoint, "_check_mpv", lambda **_kw: ("mpv", "sudo apt install mpv"))
+	monkeypatch.setattr(cli_entrypoint, "_check_ytdlp", lambda **_kw: None)
+	monkeypatch.setattr(cli_entrypoint, "_check_ffmpeg", lambda **_kw: None)
+	monkeypatch.setattr(cli_entrypoint, "_check_fpcalc", lambda **_kw: None)
+
+	with pytest.raises(SystemExit):
+		cli_entrypoint.check_dependencies(force=True)
+
+	err = capsys.readouterr().err
+	assert "📦 Paquetes de Python que faltan en la ronda:" in err
+	assert "🛠️ Herramientas del sistema (sin esto el carpincho no canta):" in err
+	assert "Tranqui, instalá eso, cambiale la yerba al mate y volvé a correr el script. ¡Te espero! 🦦🧉🎶" in err
+
+
+@pytest.mark.asyncio
+async def test_restored_diagnostic_logs_in_orchestrator_commands_and_library(
+	tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+	"""
+	Verifica los logs restaurados enPlaybackOrchestrator, commands.py y LibraryService.
+	"""
+	import time
+
+	from app.api.commands import handle_command_endpoint, mpv_hide, mpv_show
+	from app.api.schemas import CommandRequest
+
+	db_path = tmp_path / "diag_logs.db"
+	init_db(db_path)
+	orch = PlaybackOrchestrator(db_path=db_path)
+	orch.mpv.start = AsyncMock()
+	orch.mpv.load_file = AsyncMock()
+	orch.mpv.set_pause = AsyncMock()
+	orch.mpv.set_volume = AsyncMock()
+	orch.mpv.set_mute = AsyncMock()
+	orch.mpv.seek_absolute = AsyncMock()
+	orch.mpv.stop_playback = AsyncMock()
+	orch.mpv.set_force_window = AsyncMock()
+	orch.mpv.is_running = True
+	orch.mpv.has_display = True
+	set_container(AppContainer(db_path=db_path, orchestrator=orch))
+
+	with caplog.at_level("INFO"):
+		orch.current_track = "/musica/tema.mp3"
+		await orch.handle_mpv_restarted()
+		assert any("El MPV revivió" in r.message for r in caplog.records)
+
+		caplog.clear()
+		orch.last_track_change = time.time()
+		await orch.handle_track_stopped()
+		assert any("Recibí un 'stop' pero el tema cambió hace menos de 1.5s" in r.message for r in caplog.records)
+
+		caplog.clear()
+		orch.current_track = "/musica/tema.mp3"
+		orch.queue = []
+		orch.tracks_cache = [{"path": "/musica/tema.mp3", "display_title": "Tema"}]
+		orch.history = ["/musica/tema.mp3"]
+		orch.dj_carpincho_enabled = True
+		await orch.play_next(skipped_by_user=True)
+		assert any("DJ Carpincho se quedó sin temas nuevos esta sesión." in r.message for r in caplog.records)
+
+		caplog.clear()
+		await handle_command_endpoint(CommandRequest(cmd="toggle_dj_carpincho"))
+		assert any("DJ Carpincho cambiado a:" in r.message for r in caplog.records)
+
+		caplog.clear()
+		monkeypatch.setattr("app.core.config.get_config_path", lambda *_a: tmp_path / "cfg.json")
+		await handle_command_endpoint(CommandRequest(cmd="set_weather_location", location="Rosario"))
+		assert any("Ubicación del clima actualizada a: Rosario" in r.message for r in caplog.records)
+
+		caplog.clear()
+		await mpv_hide()
+		assert any("Reiniciando MPV para ocultar la ventana..." in r.message for r in caplog.records)
+
+		caplog.clear()
+		await mpv_show()
+		assert any("Reiniciando MPV para mostrar la ventana..." in r.message for r in caplog.records)
+
+		caplog.clear()
+		orch.library_service.scan_directory([tmp_path], extract_mood=False)
+		assert any("¡Listo el escaneo, maestro!" in r.message for r in caplog.records)
+
+	caplog.clear()
+	monkeypatch.setattr(orch.favorites_repo, "add", MagicMock(side_effect=RuntimeError("DB bloqueada")))
+	with caplog.at_level("ERROR"):
+		await handle_command_endpoint(CommandRequest(cmd="toggle_favorite", path="/musica/fav.mp3"))
+	assert any("Error guardando favorito:" in r.message and r.levelname == "ERROR" for r in caplog.records)

@@ -29,6 +29,7 @@ class AsyncMpvController:
 		on_property_change: Callable[..., Any] | None = None,
 		on_event: Callable[..., Any] | None = None,
 		on_process_exit: Callable[..., Any] | None = None,
+		state_ref: Any = None,
 	) -> None:
 		self.process: asyncio.subprocess.Process | None = None
 		self.socket_path: str | None = ipc_path
@@ -43,7 +44,8 @@ class AsyncMpvController:
 		if on_process_exit:
 			self.callbacks["process_exit"] = on_process_exit
 
-		self.state_ref: Any = None
+		self.state_ref: Any = state_ref
+		self._is_running_override: bool | None = None
 		self._start_lock = asyncio.Lock()
 		env = get_clean_env()
 		self.has_display = bool(self.is_windows or env.get("WAYLAND_DISPLAY") or env.get("DISPLAY"))
@@ -56,7 +58,13 @@ class AsyncMpvController:
 	@property
 	def is_running(self) -> bool:
 		"""Indica si el proceso de MPV se encuentra activo."""
+		if self._is_running_override is not None:
+			return self._is_running_override
 		return self.process is not None and self.process.returncode is None
+
+	@is_running.setter
+	def is_running(self, value: bool | None) -> None:
+		self._is_running_override = value
 
 	async def stop(self) -> None:
 		"""Finaliza el proceso de MPV de manera limpia y libera recursos de IPC."""
@@ -68,6 +76,7 @@ class AsyncMpvController:
 			except (TimeoutError, ProcessLookupError, OSError):
 				pass
 		self.process = None
+		self._is_running_override = None
 		self.reader = None
 		self.writer = None
 
@@ -130,7 +139,16 @@ class AsyncMpvController:
 
 			if state_ref is not None:
 				self.state_ref = state_ref
-			state = self.state_ref
+			state = getattr(self, "state_ref", None)
+			if state is None:
+				try:
+					from app.core.container import get_container
+
+					state = get_container().ensure_orchestrator()
+					if state is not None:
+						self.state_ref = state
+				except Exception:
+					state = None
 
 			show_window = getattr(state, "mpv_visible", True) if state else True
 			if not has_display:
@@ -223,9 +241,9 @@ class AsyncMpvController:
 			if not self.is_windows and not os.path.exists(self.socket_path):
 				raise RuntimeError("MPV se quedó dormido y no armó el socket a tiempo.")
 
-			if self.process and self.process.stdout:
+			if self.process and getattr(self.process, "stdout", None):
 				asyncio.create_task(self._drain_stdout())
-			if self.process and self.process.stderr:
+			if self.process and getattr(self.process, "stderr", None):
 				asyncio.create_task(self._drain_stderr())
 
 			if self.is_windows:
@@ -453,3 +471,69 @@ class AsyncMpvController:
 	async def stop_playback(self) -> None:
 		"""Detiene la reproducción activa en MPV."""
 		await self.command("stop")
+
+
+def ensure_mpv_methods(mpv_obj: Any) -> Any:
+	"""
+	Garantiza que cualquier objeto dummy o SimpleNamespace con `_send` asignado a `state.mpv`
+	exponga los métodos de alto nivel de AsyncMpvController delegando en `_send`.
+	"""
+	if mpv_obj is None or isinstance(mpv_obj, AsyncMpvController):
+		return mpv_obj
+	send_fn = getattr(mpv_obj, "_send", None)
+	if not callable(send_fn):
+		return mpv_obj
+
+	async def _cmd(*args: Any) -> None:
+		await mpv_obj._send(json.dumps({"command": list(args)}, ensure_ascii=False))
+
+	async def _load_file(path: str | Path) -> None:
+		await _cmd("loadfile", str(path))
+
+	async def _set_pause(paused: bool) -> None:
+		await _cmd("set_property", "pause", bool(paused))
+
+	async def _set_volume(volume: float) -> None:
+		await _cmd("set_property", "volume", max(0, min(110, int(volume))))
+
+	async def _set_mute(muted: bool) -> None:
+		await _cmd("set_property", "mute", bool(muted))
+
+	async def _seek_relative(amount: float) -> None:
+		await _cmd("seek", amount)
+
+	async def _seek_absolute(position: float) -> None:
+		await _cmd("seek", position, "absolute")
+
+	async def _toggle_fullscreen() -> None:
+		await _cmd("cycle", "fullscreen")
+
+	async def _set_force_window(visible: bool) -> None:
+		await _cmd("set_property", "force-window", "yes" if visible else "no")
+
+	async def _add_subtitle(sub_path: str | Path) -> None:
+		await _cmd("sub-add", str(sub_path), "select")
+
+	async def _stop_playback() -> None:
+		await _cmd("stop")
+
+	fallbacks = {
+		"command": _cmd,
+		"load_file": _load_file,
+		"set_pause": _set_pause,
+		"set_volume": _set_volume,
+		"set_mute": _set_mute,
+		"seek_relative": _seek_relative,
+		"seek_absolute": _seek_absolute,
+		"toggle_fullscreen": _toggle_fullscreen,
+		"set_force_window": _set_force_window,
+		"add_subtitle": _add_subtitle,
+		"stop_playback": _stop_playback,
+	}
+	for name, fn in fallbacks.items():
+		if not hasattr(mpv_obj, name):
+			try:
+				setattr(mpv_obj, name, fn)
+			except Exception:
+				pass
+	return mpv_obj

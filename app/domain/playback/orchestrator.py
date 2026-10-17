@@ -36,17 +36,30 @@ from app.infrastructure.db.repositories import (
 )
 from app.infrastructure.media.tts_cache import HAS_EDGE_TTS
 from app.infrastructure.mpris.adapter import MPRISService
-from app.infrastructure.mpv.controller import AsyncMpvController
+from app.infrastructure.mpv.controller import AsyncMpvController, ensure_mpv_methods
 
 logger = logging.getLogger("RockolaCarpincho")
+
+
+class _ManagerProxy:
+	"""Proxy dinámico para acceder a ConnectionManager incluso cuando es monkeypatcheado."""
+
+	def __getattr__(self, name: str) -> Any:
+		return getattr(get_container().ensure_ws_manager(), name)
+
+	def __setattr__(self, name: str, value: Any) -> None:
+		setattr(get_container().ensure_ws_manager(), name, value)
+
+
+manager: Any = _ManagerProxy()
 
 
 async def broadcast_state(include_library: bool = False) -> None:
 	"""Envía por WebSocket el diff de estado a todos los clientes conectados."""
 	container = get_container()
 	state = container.ensure_orchestrator()
-	manager = container.ensure_ws_manager()
-	if not state or not manager:
+	ws_mgr = globals().get("manager") or container.ensure_ws_manager()
+	if not state or not ws_mgr:
 		return
 	new_state = state.get_full_state_dict(include_library=include_library)
 	diff: dict[str, Any] = {"type": "state_update"}
@@ -55,7 +68,7 @@ async def broadcast_state(include_library: bool = False) -> None:
 			diff[k] = v
 	if len(diff) > 1:
 		state.last_broadcast.update(new_state)
-		await manager.broadcast_json(diff)
+		await ws_mgr.broadcast_json(diff)
 		state.notify_mpris()
 
 
@@ -139,7 +152,7 @@ class PlaybackOrchestrator:
 
 		self._play_next_lock = asyncio.Lock()
 
-		self.mpv = AsyncMpvController(
+		self._mpv: Any = AsyncMpvController(
 			{
 				"duration_update": self.handle_duration_update,
 				"mpv_restarted": self.handle_mpv_restarted,
@@ -150,10 +163,18 @@ class PlaybackOrchestrator:
 				"track_stopped": self.handle_track_stopped,
 				"visibility_update": self.handle_visibility_update,
 				"volume_update": self.handle_volume_update,
-			}
+			},
+			state_ref=self,
 		)
-		self.mpv.state_ref = self
-		self.mpv_visible: bool = getattr(self.mpv, "has_display", True)
+		self.mpv_visible: bool = getattr(self._mpv, "has_display", True)
+
+	@property
+	def mpv(self) -> Any:
+		return ensure_mpv_methods(self._mpv)
+
+	@mpv.setter
+	def mpv(self, val: Any) -> None:
+		self._mpv = ensure_mpv_methods(val)
 
 	async def _dispatch_mpris_command(self, cmd: str, **kwargs: Any) -> None:
 		"""Despacha comandos provenientes de D-Bus MPRIS hacia la tabla de comandos."""
@@ -322,7 +343,7 @@ class PlaybackOrchestrator:
 		self.radio_service.archive_max_files = val
 
 	def _has_local_player(self) -> bool:
-		ws_mgr = get_container().ws_manager
+		ws_mgr = globals().get("manager") or get_container().ensure_ws_manager()
 		return bool(ws_mgr and getattr(ws_mgr, "local_player_ws", None) is not None)
 
 	def get_full_state_dict(self, include_library: bool = False) -> dict[str, Any]:
@@ -500,6 +521,7 @@ class PlaybackOrchestrator:
 
 	async def handle_mpv_restarted(self) -> None:
 		if self.current_track:
+			logger.info("El MPV revivió. Volviéndole a cargar el temita que estaba sonando...")
 			self.last_track_change = time.time()
 			await self.mpv.load_file(str(self.current_track))
 			await self.mpv.set_pause(self.mpv_paused)
@@ -512,7 +534,10 @@ class PlaybackOrchestrator:
 	async def handle_track_stopped(self) -> None:
 		if self._has_local_player():
 			return
-		if time.time() - self.last_track_change < 1.5:
+		if time.time() - getattr(self, "last_track_change", 0) < 1.5:
+			logger.info(
+				"Recibí un 'stop' pero el tema cambió hace menos de 1.5s, asumo que es el viejo muriendo, ignoro."
+			)
 			return
 		self.current_track = None
 		self.mpv_paused = False
@@ -592,8 +617,8 @@ class PlaybackOrchestrator:
 			if sub_candidate.is_file():
 				try:
 					await self.mpv.add_subtitle(str(sub_candidate))
-				except Exception:
-					pass
+				except Exception as sub_err:
+					logger.debug(f"Fallo cargando subtítulos en MPV: {sub_err}")
 
 		if str_path != self.radio_announcement_path and self.radio_mode_enabled:
 			track_duration = get_track_duration_seconds(str_path, self.tracks_cache)
@@ -809,6 +834,7 @@ class PlaybackOrchestrator:
 									self._pick_dj_next()
 									await broadcast_state()
 							except asyncio.CancelledError:
+								logger.info("Countdown del DJ cancelado, no se reproduce el tema pre-elegido.")
 								if self.dj_next_track == target_track:
 									self.dj_next_track = None
 								await broadcast_state()
@@ -826,6 +852,7 @@ class PlaybackOrchestrator:
 					await broadcast_state()
 					return
 				else:
+					logger.info("DJ Carpincho se quedó sin temas nuevos esta sesión.")
 					self.dj_carpincho_enabled = False
 					await self.stop_playback()
 			else:
@@ -863,7 +890,8 @@ class PlaybackOrchestrator:
 		try:
 			rows = self.history_repo.get_top_played(limit=50, since=two_months_ago)
 			results = [(r["track_id"], r["count"]) for r in rows]
-		except Exception:
+		except Exception as e:
+			logger.error(f"Error calculando el top played: {e}")
 			return []
 
 		top_played: list[dict[str, Any]] = []
