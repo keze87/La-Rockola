@@ -82,6 +82,16 @@ def build_mpris_metadata(
 ) -> dict[str, Any]:
 	"""Construye el diccionario de metadatos para MPRIS (MediaPlayer2.Player.Metadata)."""
 	v_cls = variant_cls or Variant
+	if cover_resolver is None:
+		try:
+			from app.domain.library.service import get_cover_art_uri
+
+			if isinstance(track_or_state, dict):
+				cover_resolver = get_cover_art_uri
+			else:
+				cover_resolver = lambda p: get_cover_art_uri(p, state_ref=track_or_state)
+		except Exception:
+			cover_resolver = None
 
 	if isinstance(track_or_state, dict):
 		track_path = track_or_state.get("path", "")
@@ -229,6 +239,14 @@ class MPRISPlayer(ServiceInterface):
 	def _dispatch(self, cmd: str, **kwargs: Any) -> None:
 		if self.command_handler:
 			asyncio.create_task(self.command_handler(cmd, **kwargs))
+			return
+		try:
+			from app.api.commands import handle_command_endpoint
+			from app.api.schemas import CommandRequest
+
+			asyncio.create_task(handle_command_endpoint(CommandRequest(cmd=cmd, **kwargs)))
+		except Exception as e:
+			logger.debug(f"No se pudo despachar comando MPRIS {cmd}: {e}")
 
 	@method()
 	def Next(self):
@@ -413,3 +431,8 @@ class MPRISService:
 				pass
 			self.bus = None
 			self.registered = False
+
+
+def get_mpris_provider(state_ref: Any = None, command_handler: Any = None, cover_resolver: Any = None) -> MPRISService:
+	"""Fábrica de servicio MPRIS vinculada al estado del reproductor."""
+	return MPRISService(state_ref, command_handler=command_handler, cover_resolver=cover_resolver)

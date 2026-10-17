@@ -181,6 +181,8 @@ def test_library_media_system_and_websocket_routes(tmp_path: Path, dummy_audio_f
 		assert claim_msg["type"] in ("local_player_claim_result", "state_update")
 
 		ws.send_json({"type": "local_player_update", "time_pos": 12.5, "duration": 180.0, "paused": False})
+		upd_msg = ws.receive_json()
+		assert upd_msg["type"] in ("state_update", "local_player_claim_result")
 		assert orch.time_pos == 12.5
 		assert orch.duration == 180.0
 

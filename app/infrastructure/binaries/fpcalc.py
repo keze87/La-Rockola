@@ -5,6 +5,7 @@ Instalador automático de fpcalc (Chromaprint) para reconciliación de huellas a
 from __future__ import annotations
 
 import os
+import sys
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
@@ -199,3 +200,7 @@ def ensure_fpcalc(log_fn: Callable[[str], None] = default_logger) -> str | None:
 		return existing
 	installed = install_fpcalc(force=False, log_fn=log_fn)
 	return str(installed) if installed else None
+
+
+if __name__ == "__main__":
+	install_fpcalc(force="--force" in sys.argv)

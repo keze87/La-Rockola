@@ -18,6 +18,7 @@ from app.domain.radio.banks import (
 	DEFAULT_RADIO_ARTIST,
 	DEFAULT_RADIO_TITLE,
 )
+from app.infrastructure.binaries.manager import find_binary, get_clean_env
 from app.infrastructure.media.tts_cache import estimate_mp3_duration, is_valid_mp3_stream
 
 logger = logging.getLogger("rockola.radio")
@@ -52,7 +53,7 @@ def get_audio_duration(file_path: Path | str, timeout: float = 2.0) -> float:
 		except Exception:
 			pass
 
-	ffprobe_bin = shutil.which("ffprobe")
+	ffprobe_bin = find_binary("ffprobe")
 	if not ffprobe_bin:
 		return 0.0
 	try:
@@ -71,6 +72,7 @@ def get_audio_duration(file_path: Path | str, timeout: float = 2.0) -> float:
 			text=True,
 			timeout=timeout,
 			check=False,
+			env=get_clean_env(),
 		)
 		if res.returncode == 0 and res.stdout.strip():
 			return float(res.stdout.strip())
@@ -186,7 +188,7 @@ def embed_cover_art_in_mp3(
 	except Exception:
 		pass
 
-	ffmpeg_bin = shutil.which("ffmpeg")
+	ffmpeg_bin = find_binary("ffmpeg")
 	if ffmpeg_bin:
 		tmp_tagged = mp3_p.parent / f".tmp_tag_{uuid.uuid4().hex[:8]}.mp3"
 		cmd = [
@@ -218,7 +220,13 @@ def embed_cover_art_in_mp3(
 		cmd.append(str(tmp_tagged))
 
 		try:
-			proc = subprocess.run(cmd, capture_output=True, timeout=max(3.0, timeout * 0.5), check=False)
+			proc = subprocess.run(
+				cmd,
+				capture_output=True,
+				timeout=max(3.0, timeout * 0.5),
+				check=False,
+				env=get_clean_env(),
+			)
 			if proc.returncode == 0 and tmp_tagged.is_file() and tmp_tagged.stat().st_size > 0:
 				tmp_tagged.replace(mp3_p)
 				return True
@@ -240,7 +248,7 @@ def mix_announcement_with_bg_track(
 	timeout: float = 10.0,
 ) -> bool:
 	"""Superpone la canción de fondo como cortina musical con la voz del locutor usando FFmpeg."""
-	ffmpeg_bin = shutil.which("ffmpeg")
+	ffmpeg_bin = find_binary("ffmpeg")
 	if not ffmpeg_bin:
 		return False
 
@@ -287,7 +295,7 @@ def mix_announcement_with_bg_track(
 	]
 
 	try:
-		proc = subprocess.run(cmd, capture_output=True, timeout=max(5.0, timeout), check=False)
+		proc = subprocess.run(cmd, capture_output=True, timeout=max(5.0, timeout), check=False, env=get_clean_env())
 		if proc.returncode == 0 and tmp_out.is_file() and tmp_out.stat().st_size > 0:
 			tmp_dest = out_p.parent / f".tmp_{out_p.name}"
 			shutil.copyfile(tmp_out, tmp_dest)

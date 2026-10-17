@@ -20,8 +20,9 @@ from app.core.container import get_container
 from app.domain.dj.selector import DjCarpinchoSelector
 from app.domain.library.models import get_track_duration_seconds
 from app.domain.library.mood import is_mood_available
-from app.domain.library.service import LibraryService
+from app.domain.library.service import LibraryService, get_cover_art_uri
 from app.domain.queue.manager import QueueManager
+from app.domain.radio import service as radio_service_mod
 from app.domain.radio.banks import DEFAULT_WEATHER_LOCATION
 from app.domain.radio.service import RadioService
 from app.infrastructure.binaries.manager import check_internet_async
@@ -87,7 +88,11 @@ class PlaybackOrchestrator:
 		self.library_service = LibraryService(db_path=self.db_path, track_repo=self.track_repo)
 		self.radio_service = RadioService(db_path=self.db_path, weather_location=DEFAULT_WEATHER_LOCATION)
 		self.ytdlp_service = YtDlpAdapter()
-		self.mpris_service = MPRISService(self)
+		self.mpris_service = MPRISService(
+			self,
+			command_handler=self._dispatch_mpris_command,
+			cover_resolver=lambda p: get_cover_art_uri(p, state_ref=self),
+		)
 
 		# Estado de escaneo y biblioteca en memoria
 		self.id_to_current_path: dict[str, str] = {}
@@ -116,7 +121,6 @@ class PlaybackOrchestrator:
 		self.last_broadcast: dict[str, Any] = {}
 		self.volume: int = 100
 		self.server_muted: bool = False
-		self.dj_countdown_task: asyncio.Task[None] | None = None
 
 		# Modo Radio
 		self.radio_mode_enabled: bool = True
@@ -150,6 +154,21 @@ class PlaybackOrchestrator:
 		)
 		self.mpv.state_ref = self
 		self.mpv_visible: bool = getattr(self.mpv, "has_display", True)
+
+	async def _dispatch_mpris_command(self, cmd: str, **kwargs: Any) -> None:
+		"""Despacha comandos provenientes de D-Bus MPRIS hacia la tabla de comandos."""
+		from app.api.commands import handle_command_endpoint
+		from app.api.schemas import CommandRequest
+
+		await handle_command_endpoint(CommandRequest(cmd=cmd, **kwargs))
+
+	@property
+	def mpris_registered(self) -> bool:
+		return bool(getattr(self.mpris_service, "registered", False))
+
+	@mpris_registered.setter
+	def mpris_registered(self, val: bool) -> None:
+		self.mpris_service.registered = bool(val)
 
 	# Propiedades delegadas a QueueManager
 	@property
@@ -208,6 +227,14 @@ class PlaybackOrchestrator:
 	@dj_next_track.setter
 	def dj_next_track(self, val: dict[str, Any] | None) -> None:
 		self.dj_selector.next_track = val
+
+	@property
+	def dj_countdown_task(self) -> asyncio.Task[None] | None:
+		return self.dj_selector.countdown_task
+
+	@dj_countdown_task.setter
+	def dj_countdown_task(self, val: asyncio.Task[None] | None) -> None:
+		self.dj_selector.countdown_task = val
 
 	# Propiedades delegadas a RadioService
 	@property
@@ -629,9 +656,7 @@ class PlaybackOrchestrator:
 		await self.mpv.set_volume(self.volume)
 
 	async def stop_playback(self, reset_ui_state: bool = False) -> None:
-		if self.dj_countdown_task and not self.dj_countdown_task.done():
-			self.dj_countdown_task.cancel()
-		self.dj_countdown_task = None
+		self.dj_selector.cancel_countdown()
 		self._cancel_radio_pregeneration()
 		self.dj_next_track = None
 		self.current_track = None
@@ -645,9 +670,7 @@ class PlaybackOrchestrator:
 		await self.mpv.set_force_window(False)
 
 	async def play_next(self, skipped_by_user: bool = False) -> None:
-		if self.dj_countdown_task and not self.dj_countdown_task.done():
-			self.dj_countdown_task.cancel()
-		self.dj_countdown_task = None
+		self.dj_selector.cancel_countdown()
 
 		async with self._play_next_lock:
 			is_radio_track = self.current_track == self.radio_announcement_path
@@ -666,7 +689,8 @@ class PlaybackOrchestrator:
 					self.radio_pregeneration_task is not None and not self.radio_pregeneration_task.done()
 				)
 				if self.is_radio_due() or has_pregenerated:
-					if not await check_internet_async(timeout=0.8):
+					check_net_fn = getattr(radio_service_mod, "check_internet_async", check_internet_async)
+					if not await check_net_fn(timeout=0.8):
 						self._reset_radio_schedule()
 					else:
 						outro_mode = self._get_expected_radio_outro_mode(should_pause=should_pause)

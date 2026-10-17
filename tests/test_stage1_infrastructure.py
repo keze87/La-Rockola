@@ -94,7 +94,7 @@ def test_binary_manager_clean_env_and_find(monkeypatch: pytest.MonkeyPatch) -> N
 
 async def test_check_internet_async() -> None:
 	"""Verifica el chequeo rápido de conectividad asíncrona."""
-	with patch("asyncio.open_connection", side_effect=OSError("Sin red")):
+	with patch("socket.create_connection", side_effect=OSError("Sin red")):
 		assert await check_internet_async(timeout=0.05) is False
 
 

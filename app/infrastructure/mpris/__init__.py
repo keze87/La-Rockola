@@ -12,6 +12,7 @@ from app.infrastructure.mpris.adapter import (
 	Variant,
 	build_mpris_metadata,
 	dbus_property,
+	get_mpris_provider,
 	method,
 )
 
@@ -25,5 +26,6 @@ __all__ = [
 	"Variant",
 	"build_mpris_metadata",
 	"dbus_property",
+	"get_mpris_provider",
 	"method",
 ]

@@ -133,10 +133,16 @@ async def _cmd_toggle_favorite(state: PlaybackOrchestrator, req: CommandRequest,
 		track_id = state.path_to_id.get(req.path, req.path)
 		if track_id in state.favorites:
 			state.favorites.remove(track_id)
-			await asyncio.to_thread(state.favorites_repo.remove, track_id)
+			try:
+				await asyncio.to_thread(state.favorites_repo.remove, track_id)
+			except Exception as e:
+				logger.warning(f"No se pudo borrar favorito {track_id} de la DB: {e}")
 		else:
 			state.favorites.append(track_id)
-			await asyncio.to_thread(state.favorites_repo.add, track_id)
+			try:
+				await asyncio.to_thread(state.favorites_repo.add, track_id)
+			except Exception as e:
+				logger.warning(f"No se pudo guardar favorito {track_id} en la DB: {e}")
 
 
 async def _cmd_toggle_dj_carpincho(state: PlaybackOrchestrator, _req: CommandRequest, _mgr: Any) -> None:
@@ -342,7 +348,7 @@ COMMAND_HANDLERS: dict[str, CommandHandlerFn] = {
 async def handle_command_endpoint(req: CommandRequest) -> dict[str, Any]:
 	"""Despacha comandos de reproducción utilizando la tabla declarativa COMMAND_HANDLERS."""
 	container = get_container()
-	state = container.orchestrator
+	state = container.ensure_orchestrator()
 	manager = container.ws_manager
 	if not state:
 		return {"status": "error", "message": "Estado del servidor no inicializado"}
@@ -359,7 +365,7 @@ async def handle_command_endpoint(req: CommandRequest) -> dict[str, Any]:
 @router.post("/mpv/hide")
 async def mpv_hide() -> dict[str, str]:
 	"""Reinicia MPV con la ventana oculta si está activo."""
-	state = get_container().orchestrator
+	state = get_container().ensure_orchestrator()
 	if not state:
 		return {"status": "error"}
 	state.mpv_visible = False
@@ -372,7 +378,7 @@ async def mpv_hide() -> dict[str, str]:
 @router.post("/mpv/show")
 async def mpv_show() -> dict[str, str]:
 	"""Reinicia MPV con la ventana visible si está activo."""
-	state = get_container().orchestrator
+	state = get_container().ensure_orchestrator()
 	if not state:
 		return {"status": "error"}
 	if state.mpv and not getattr(state.mpv, "has_display", True):

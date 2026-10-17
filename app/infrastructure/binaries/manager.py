@@ -279,15 +279,7 @@ def is_internet_available(timeout: float = 0.8) -> bool:
 
 async def check_internet_async(timeout: float = 0.8) -> bool:
 	"""Verifica conectividad a internet de forma asíncrona sin bloquear el event loop."""
-	for host, port in (("1.1.1.1", 53), ("8.8.8.8", 53)):
-		try:
-			_, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
-			writer.close()
-			await writer.wait_closed()
-			return True
-		except (OSError, TimeoutError):
-			continue
-	return False
+	return await asyncio.to_thread(is_internet_available, timeout)
 
 
 def download_file(

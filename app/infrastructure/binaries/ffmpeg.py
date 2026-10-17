@@ -210,3 +210,7 @@ def ensure_ffmpeg(log_fn: Callable[[str], None] = default_logger) -> str | None:
 		return existing
 	installed = install_ffmpeg(force=False, log_fn=log_fn)
 	return str(installed) if installed else None
+
+
+if __name__ == "__main__":
+	install_ffmpeg(force="--force" in sys.argv)

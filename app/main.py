@@ -61,7 +61,7 @@ async def lifespan(app: FastAPI):
 	except Exception as e:
 		logger.error(f"Error preparando base de datos en arranque: {e}")
 
-	state = container.orchestrator
+	state = container.ensure_orchestrator()
 	if state and hasattr(state, "mpv") and state.mpv and hasattr(state.mpv, "start"):
 		try:
 			res = state.mpv.start(state_ref=state)
@@ -169,6 +169,7 @@ def create_app() -> FastAPI:
 	container = get_container()
 	if container.ws_manager is None:
 		container.ws_manager = ConnectionManager()
+	container.ensure_orchestrator()
 
 	app = FastAPI(
 		title="La Rockola del Carpincho",
@@ -202,7 +203,7 @@ def create_app() -> FastAPI:
 async def websocket_endpoint(websocket: WebSocket) -> None:
 	container = get_container()
 	mgr = container.ws_manager
-	state = container.orchestrator
+	state = container.ensure_orchestrator()
 	client_host = getattr(websocket.client, "host", "desconocido") if websocket.client else "desconocido"
 	if mgr:
 		await mgr.connect(websocket)

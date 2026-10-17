@@ -11,7 +11,6 @@ import hashlib
 import logging
 import os
 import re
-import shutil
 import subprocess
 import tempfile
 from collections.abc import Callable
@@ -20,10 +19,11 @@ from typing import Any
 
 from mutagen import File as MutagenFile
 
+from app.core.container import get_container
 from app.domain.library.hasher import compare_fps, parse_fp
 from app.domain.library.models import Track
 from app.domain.library.mood import calculate_mood_scores, extract_audio_features_ffmpeg, is_mood_available
-from app.infrastructure.binaries.manager import find_binary
+from app.infrastructure.binaries.manager import find_binary, get_clean_env
 from app.infrastructure.db.repositories import TrackRepository
 from app.infrastructure.media.mixer import get_carpincho_cover_path
 
@@ -35,11 +35,8 @@ def get_cover_art_uri(path: str, state_ref: Any = None) -> str:
 	if not path or path.startswith("http"):
 		return ""
 	try:
-		is_announcement = (
-			state_ref is not None
-			and hasattr(state_ref, "is_radio_announcement")
-			and state_ref.is_radio_announcement(path)
-		)
+		st = state_ref or get_container().orchestrator
+		is_announcement = st is not None and hasattr(st, "is_radio_announcement") and st.is_radio_announcement(path)
 		if is_announcement:
 			carpincho_p = get_carpincho_cover_path()
 			if carpincho_p and carpincho_p.is_file():
@@ -217,7 +214,7 @@ class LibraryService:
 
 		raw_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
 		has_ffmpeg = is_mood_available()
-		has_fpcalc = bool(shutil.which("fpcalc"))
+		has_fpcalc = bool(find_binary("fpcalc"))
 
 		db_cache: dict[str, dict[str, Any]] = {}
 		try:
@@ -395,7 +392,8 @@ class LibraryService:
 	) -> None:
 		"""Analiza BPM/mood y huella acústica de forma asíncrona en lotes pequeños."""
 		ffmpeg_bin = find_binary("ffmpeg")
-		has_fpcalc = shutil.which("fpcalc") is not None
+		fpcalc_bin = find_binary("fpcalc")
+		has_fpcalc = fpcalc_bin is not None
 
 		if not ffmpeg_bin and not has_fpcalc:
 			if state:
@@ -483,15 +481,16 @@ class LibraryService:
 					energy = e
 					centroid = c
 
-			if need_fp and shutil.which("fpcalc"):
+			resolved_fpcalc = fpcalc_bin or find_binary("fpcalc")
+			if need_fp and resolved_fpcalc:
 				try:
-					fpcalc_bin = find_binary("fpcalc") or "fpcalc"
 					proc = subprocess.run(
-						[fpcalc_bin, "-raw", "-length", "60", path_str],
+						[resolved_fpcalc, "-raw", "-length", "60", path_str],
 						capture_output=True,
 						text=True,
 						timeout=10,
 						check=False,
+						env=get_clean_env(),
 					)
 					for line in proc.stdout.splitlines():
 						if line.startswith("FINGERPRINT="):

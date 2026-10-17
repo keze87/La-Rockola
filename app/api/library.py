@@ -21,7 +21,7 @@ router = APIRouter(tags=["Library"])
 @router.get("/library")
 async def get_library() -> dict[str, Any]:
 	"""Devuelve la biblioteca cacheada sin disparar un nuevo escaneo."""
-	state = get_container().orchestrator
+	state = get_container().ensure_orchestrator()
 	if not state:
 		return {"status": "ok", "data": []}
 
@@ -38,7 +38,7 @@ async def get_library() -> dict[str, Any]:
 @router.get("/scan")
 async def scan_library(dir: str | None = None, dir2: str | None = None) -> dict[str, Any]:
 	"""Dispara el proceso de escaneo de carpetas de música."""
-	state = get_container().orchestrator
+	state = get_container().ensure_orchestrator()
 	if not state:
 		return {"status": "error", "data": []}
 

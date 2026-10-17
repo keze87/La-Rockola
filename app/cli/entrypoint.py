@@ -181,9 +181,14 @@ def _check_mpv(is_win: bool, is_mac: bool, is_frozen: bool) -> tuple[str, str] |
 
 	if mpv_bin is None:
 		if is_portable:
+			print(
+				"🦦 ¡Opa! No se encontró MPV instalado. Descargando MPV portátil automáticamente...",
+				file=sys.stderr,
+			)
 			try:
 				installed = mpv_installer.install_mpv(log_fn=lambda m: print(f"  {m}", file=sys.stderr))
 				if installed and find_binary("mpv"):
+					print("✅ ¡Joya! MPV se descargó e instaló listo para usar.", file=sys.stderr)
 					return None
 			except Exception as e:
 				print(f"⚠️ Falló la descarga automática de MPV: {e}", file=sys.stderr)
@@ -198,8 +203,8 @@ def _check_mpv(is_win: bool, is_mac: bool, is_frozen: bool) -> tuple[str, str] |
 		try:
 			if mpv_installer.is_rockola_managed(mpv_bin):
 				mpv_installer.update_mpv(bin_path=mpv_bin, log_fn=lambda m: print(f"  {m}", file=sys.stderr))
-		except Exception:
-			pass
+		except Exception as e:
+			print(f"⚠️ No se pudo verificar actualización de MPV: {e}", file=sys.stderr)
 
 	return None
 
@@ -335,6 +340,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
 	parser = argparse.ArgumentParser(
 		description="🦦 La Rockola del Carpincho — Servidor de música y reproductor con alma de campo y sabor a mate.",
 		formatter_class=argparse.RawDescriptionHelpFormatter,
+		epilog=(
+			"Ejemplos de uso:\n  larockola --dir ~/Música\n  larockola --port 8080 --no-browser\n  larockola --setup\n"
+		),
 	)
 	parser.add_argument("--host", type=str, default=None, help="Dirección IP de escucha (default: 0.0.0.0)")
 	parser.add_argument("--port", type=int, default=None, help="Puerto del servidor web (default: 1729)")
@@ -514,3 +522,6 @@ __all__ = [
 	"open_browser_url",
 	"print_startup_banner",
 ]
+
+if __name__ == "__main__":
+	main()

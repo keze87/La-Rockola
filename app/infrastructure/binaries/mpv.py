@@ -332,3 +332,10 @@ def update_mpv(
 		return False
 	log_fn(f"MPV está al día (versión {cur_ver_str or tag}).")
 	return True
+
+
+if __name__ == "__main__":
+	if "--update" in sys.argv:
+		update_mpv(force="--force" in sys.argv)
+	else:
+		install_mpv()

@@ -264,9 +264,11 @@ def run_interactive_wizard(
 		try:
 			choice = input("Elegí una opción [1-3] o escribí la ruta [default: 1]: ").strip()
 		except (EOFError, KeyboardInterrupt):
+			print("\n⚠️ Configuración cancelada. Usando valores predeterminados.")
 			return cfg
 
 		if choice == "" or choice == "1" or choice.lower() in ("b", "e", "examinar", "browse", "selector"):
+			print("⏳ Abriendo selector de carpetas...")
 			selected = folder_dialog(
 				title="Seleccioná la carpeta principal de música",
 				initial_dir=default_resolved if Path(default_resolved).is_dir() else None,
@@ -274,6 +276,7 @@ def run_interactive_wizard(
 			if selected:
 				chosen_dir = selected
 			else:
+				print("⚠️ No se seleccionó ninguna carpeta en la ventana gráfica.")
 				try:
 					explore_tui = input(
 						"   ¿Querés explorar las carpetas acá en la terminal? [S/n / o pegá la ruta]: "
@@ -305,6 +308,7 @@ def run_interactive_wizard(
 
 		expanded = Path(chosen_dir).expanduser().resolve()
 		if not expanded.is_dir():
+			print(f"⚠️ La carpeta '{expanded}' no existe actualmente.")
 			try:
 				create = input("¿Querés crearla ahora? [S/n]: ").strip().lower()
 			except (EOFError, KeyboardInterrupt):
@@ -312,15 +316,18 @@ def run_interactive_wizard(
 			if create in ("", "s", "si", "y", "yes"):
 				try:
 					expanded.mkdir(parents=True, exist_ok=True)
+					print(f"✅ Carpeta creada: {expanded}")
 					cfg["music_dir"] = str(expanded)
 					break
-				except Exception:
-					pass
+				except Exception as e:
+					print(f"❌ No se pudo crear la carpeta: {e}")
 		else:
+			print(f"✅ Carpeta seleccionada: {expanded}")
 			cfg["music_dir"] = str(expanded)
 			break
 
 	default_weather = cfg.get("weather_location") or DEFAULT_WEATHER_LOCATION
+	print("\n🌤️ Ubicación para el pronóstico del clima en el Modo Radio:")
 	try:
 		weather_ans = input(f"Ciudad/Localidad [{default_weather}]: ").strip()
 	except (EOFError, KeyboardInterrupt, StopIteration):
@@ -328,5 +335,7 @@ def run_interactive_wizard(
 
 	chosen_weather = weather_ans if weather_ans else default_weather
 	cfg["weather_location"] = chosen_weather
+	print(f"✅ Ubicación del clima configurada: {chosen_weather}")
 	save_config(config_path, cfg)
+	print(f"\n✨ Configuración guardada en: {config_path}\n")
 	return cfg

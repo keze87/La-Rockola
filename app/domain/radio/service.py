@@ -47,6 +47,7 @@ from app.domain.radio.nlp import (
 	set_radio_state,
 	weighted_choice_by_recency,
 )
+from app.infrastructure.binaries.manager import find_binary, get_clean_env
 from app.infrastructure.media.mixer import (
 	build_lrc_content,
 	build_srt_content,
@@ -130,7 +131,7 @@ def assemble_announcement_audio(
 	tmp_dest = out_p.parent / f".tmp_{out_p.name}"
 
 	try:
-		ffmpeg_bin = shutil.which("ffmpeg")
+		ffmpeg_bin = find_binary("ffmpeg")
 		tmp_voice_combined = work_dir / "voice_combined.mp3"
 		ffmpeg_timeout = max(5.0, timeout)
 
@@ -192,6 +193,7 @@ def assemble_announcement_audio(
 					capture_output=True,
 					timeout=ffmpeg_timeout,
 					check=False,
+					env=get_clean_env(),
 				)
 				concat_ok = (
 					proc_demux.returncode == 0
@@ -848,13 +850,17 @@ class RadioService:
 
 	def archive_radio_announcement(
 		self,
+		src_mp3_path: str | Path | None = None,
 		archive_dir: Path | None = None,
 		script_text: str = "",
 		display_title: str = "",
 		max_files: int = 50,
 	) -> Path | None:
 		"""Guarda el guion .txt en el archivo histórico con marca temporal."""
-		target_dir = archive_dir or self.archive_dir
+		if isinstance(src_mp3_path, Path) and src_mp3_path.is_dir() and archive_dir is None:
+			target_dir = src_mp3_path
+		else:
+			target_dir = archive_dir or self.archive_dir
 		try:
 			target_dir.mkdir(parents=True, exist_ok=True)
 			now = datetime.now(UTC).astimezone()

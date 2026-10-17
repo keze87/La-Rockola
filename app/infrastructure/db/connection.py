@@ -160,3 +160,6 @@ def backup_db(db_path: Path | str | None = None, data_dir: Path | str | None = N
 			logger.debug(f"No se pudo limpiar backup viejo {old}: {e}")
 
 	return backup_path
+
+
+db_query = execute_query

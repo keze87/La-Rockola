@@ -22,6 +22,19 @@ class AppContainer:
 	ws_manager: Any = None
 	mpv: Any = None
 
+	def ensure_orchestrator(self) -> Any:
+		"""Inicializa perezosamente el PlaybackOrchestrator si aún no fue instanciado."""
+		if self.orchestrator is None:
+			from app.domain.playback.orchestrator import PlaybackOrchestrator
+
+			self.orchestrator = PlaybackOrchestrator(
+				initial_dir=self.settings.music_dir,
+				secondary_dir=self.settings.music_dir2,
+				open_browser=self.settings.open_browser,
+				db_path=self.db_path,
+			)
+		return self.orchestrator
+
 
 _active_container: AppContainer | None = None
 
@@ -38,3 +51,13 @@ def set_container(container: AppContainer | None) -> None:
 	"""Reemplaza el contenedor activo (ideal para aislamiento en tests)."""
 	global _active_container
 	_active_container = container
+
+
+def get_state() -> Any:
+	"""Devuelve el PlaybackOrchestrator activo inicializándolo perezosamente si es necesario."""
+	return get_container().ensure_orchestrator()
+
+
+def get_db() -> Path:
+	"""Devuelve la ruta de la base de datos SQLite activa."""
+	return get_container().db_path

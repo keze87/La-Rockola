@@ -19,5 +19,6 @@ root_api_router.include_router(commands.router)
 root_api_router.include_router(library.router)
 root_api_router.include_router(media.router)
 root_api_router.include_router(system.router)
+root_api_router.include_router(system.router, prefix="/api")
 
 api_router = api_v1_router

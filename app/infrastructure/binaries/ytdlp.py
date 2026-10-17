@@ -210,3 +210,9 @@ class YtDlpAdapter:
 
 
 YtDlpService = YtDlpAdapter
+
+if __name__ == "__main__":
+	if "--update" in sys.argv:
+		update_ytdlp()
+	else:
+		install_ytdlp(force="--force" in sys.argv)
