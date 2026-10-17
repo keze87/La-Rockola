@@ -66,8 +66,8 @@ export const serverMuted = ref<boolean>(false);
 export const timePos = ref<number>(0);
 export const volume = ref<number>(100);
 
-// Visibilidad de la ventana de MPV
-export const mpvVisible = ref<boolean>(true);
+// Visibilidad de la ventana de MPV (arranca en false por si inicia headless o tarda en conectar)
+export const mpvVisible = ref<boolean>(false);
 
 // Modo Fogón
 export const isFogonMode = ref<boolean>(false);

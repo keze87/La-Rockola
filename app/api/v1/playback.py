@@ -318,6 +318,10 @@ async def mpv_show() -> dict[str, str]:
 	state = get_state()
 	if not state:
 		return {"status": "error"}
+	if state.mpv and not getattr(state.mpv, "has_display", True):
+		state.mpv_visible = False
+		await broadcast_state()
+		return {"status": "ok"}
 	state.mpv_visible = True
 	if state.mpv and state.mpv.is_running:
 		logger.info("Reiniciando MPV para mostrar la ventana...")

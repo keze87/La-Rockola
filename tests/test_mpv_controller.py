@@ -7,6 +7,14 @@ import pytest
 import server
 
 
+@pytest.fixture(autouse=True)
+def isolate_mpv_visible():
+	orig = getattr(server.state, "mpv_visible", True)
+	server.state.mpv_visible = True
+	yield
+	server.state.mpv_visible = orig
+
+
 @pytest.mark.asyncio
 async def test_mpv_process_event_line_property_changes():
 	"""Test parsing of property-change IPC messages for volume, pause, time-pos, duration, mute."""
@@ -438,3 +446,105 @@ async def test_mpv_drain_stdout_logs_debug():
 		assert mock_debug.call_count == 2
 		assert any("[MPV stdout] [cplayer] mpv v0.41.0" in str(call) for call in mock_debug.call_args_list)
 		assert any("[MPV stdout] [cplayer] audio-pts: 1.234" in str(call) for call in mock_debug.call_args_list)
+
+
+@pytest.mark.asyncio
+async def test_mpv_start_normal_window_when_visible_and_has_display():
+	"""Verifica que al iniciar con display y ventana visible NO se fuerce ventana inmediata y se use idle normal."""
+	mpv = server.AsyncMpvController({})
+	mock_proc = MagicMock()
+	mock_proc.returncode = None
+	mock_proc.stderr = AsyncMock()
+	mock_proc.stderr.readline = AsyncMock(return_value=b"")
+
+	mock_reader = MagicMock()
+	mock_reader.readline = AsyncMock(return_value=b"")
+	mock_writer = MagicMock()
+	mock_writer.drain = AsyncMock()
+	mock_writer.close = MagicMock()
+
+	state_mock = MagicMock()
+	state_mock.mpv_visible = True
+
+	with (
+		patch.dict("os.environ", {"DISPLAY": ":0"}, clear=False),
+		patch("server.logger.isEnabledFor", return_value=False),
+		patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec,
+		patch("asyncio.open_unix_connection", return_value=(mock_reader, mock_writer), create=True),
+		patch("os.path.exists", return_value=True),
+		patch.object(mpv, "_send", new_callable=AsyncMock),
+	):
+		await mpv.start(state_ref=state_mock)
+
+		cmd_args = mock_exec.call_args[0]
+		assert "--force-window=immediate" not in cmd_args
+		assert "--autofit=33%x33%" in cmd_args
+		assert state_mock.mpv_visible is True
+
+
+@pytest.mark.asyncio
+async def test_mpv_start_headless_updates_state_mpv_visible_to_false():
+	"""Verifica que al iniciar sin display, state.mpv_visible se actualice a False y se use --force-window=no."""
+	mpv = server.AsyncMpvController({})
+	mock_proc = MagicMock()
+	mock_proc.returncode = None
+	mock_proc.stderr = AsyncMock()
+	mock_proc.stderr.readline = AsyncMock(return_value=b"")
+
+	mock_reader = MagicMock()
+	mock_reader.readline = AsyncMock(return_value=b"")
+	mock_writer = MagicMock()
+	mock_writer.drain = AsyncMock()
+	mock_writer.close = MagicMock()
+
+	state_mock = MagicMock()
+	state_mock.mpv_visible = True
+
+	with (
+		patch.dict("os.environ", {}, clear=True),
+		patch.object(mpv, "is_windows", False),
+		patch("app.engine.mpv_controller.get_clean_env", return_value={}),
+		patch("app.engine.mpv_controller.ensure_display_env", lambda env: None),
+		patch("server.get_clean_env", return_value={}),
+		patch("server.ensure_display_env", lambda env: None),
+		patch("server.logger.isEnabledFor", return_value=False),
+		patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec,
+		patch("asyncio.open_unix_connection", return_value=(mock_reader, mock_writer), create=True),
+		patch("os.path.exists", return_value=True),
+		patch.object(mpv, "_send", new_callable=AsyncMock),
+	):
+		await mpv.start(state_ref=state_mock)
+
+		cmd_args = mock_exec.call_args[0]
+		assert "--force-window=no" in cmd_args
+		assert "--vo=null" in cmd_args
+		assert state_mock.mpv_visible is False
+
+
+@pytest.mark.asyncio
+async def test_mpv_process_event_line_current_vo_updates_visibility():
+	"""Verifica que los cambios en current-vo actualicen mpv_visible y llamen a visibility_update."""
+	callbacks = {
+		"visibility_update": AsyncMock(),
+	}
+	mpv = server.AsyncMpvController(callbacks)
+	state_mock = MagicMock()
+	state_mock.mpv_visible = True
+	mpv.state_ref = state_mock
+
+	# 1. MPV reporta vo 'null' (ventana oculta o fallback) -> visibility_update(False)
+	line_null = json.dumps({"event": "property-change", "name": "current-vo", "data": "null"}).encode("utf-8")
+	await mpv._process_event_line(line_null)
+	await asyncio.sleep(0.01)
+
+	assert state_mock.mpv_visible is False
+	callbacks["visibility_update"].assert_called_once_with(False)
+
+	# 2. MPV reporta vo activo (ej. 'gpu') -> visibility_update(True)
+	callbacks["visibility_update"].reset_mock()
+	line_gpu = json.dumps({"event": "property-change", "name": "current-vo", "data": "gpu"}).encode("utf-8")
+	await mpv._process_event_line(line_gpu)
+	await asyncio.sleep(0.01)
+
+	assert state_mock.mpv_visible is True
+	callbacks["visibility_update"].assert_called_once_with(True)

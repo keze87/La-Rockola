@@ -374,4 +374,22 @@ describe('ControlsTab.vue', () => {
 		const sent = JSON.parse(wsSendMock.mock.calls[0][0]);
 		expect(sent.type).toBe('local_player_reset');
 	});
+
+	it('displays "Mostrar MPV" with visibility icon when mpvVisible is false', () => {
+		mpvVisible.value = false;
+		const wrapper = mount(ControlsTab);
+
+		const btn = wrapper.findAllComponents({ name: 'PillButton' }).find((b) => b.text().includes('Mostrar MPV'));
+		expect(btn).toBeDefined();
+		expect(btn?.props('icon')).toBe('visibility');
+	});
+
+	it('displays "Ocultar MPV" with visibility_off icon when mpvVisible is true', () => {
+		mpvVisible.value = true;
+		const wrapper = mount(ControlsTab);
+
+		const btn = wrapper.findAllComponents({ name: 'PillButton' }).find((b) => b.text().includes('Ocultar MPV'));
+		expect(btn).toBeDefined();
+		expect(btn?.props('icon')).toBe('visibility_off');
+	});
 });

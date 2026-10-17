@@ -54,6 +54,9 @@ class AsyncMpvController:
 
 		self.state_ref: Any = None
 		self._start_lock = asyncio.Lock()
+		env_fn = globals().get("get_clean_env", get_clean_env)
+		env = env_fn()
+		self.has_display = bool(self.is_windows or env.get("WAYLAND_DISPLAY") or env.get("DISPLAY"))
 
 	@property
 	def ipc_path(self) -> str | None:
@@ -154,6 +157,12 @@ class AsyncMpvController:
 			if state and hasattr(state, "mpv_visible"):
 				show_window = state.mpv_visible
 
+			# Si no hay entorno gráfico disponible, forzamos estado oculto
+			if not has_display:
+				show_window = False
+				if state and hasattr(state, "mpv_visible"):
+					state.mpv_visible = False
+
 			# Si logramos registrar nuestro propio MPRIS en DBus, silenciamos el nativo de MPV.
 			# Si falló (ej. no hay DBus o se rompió), dejamos que MPV use su MPRIS de rescate.
 			own_mpris_active = getattr(state, "mpris_registered", False) if state else False
@@ -204,6 +213,8 @@ class AsyncMpvController:
 			else:
 				# Modo headless o ventana oculta: salida de video nula para que los audios con carátula
 				# (como FLAC o MP3) no intenten inicializar video y fallen con error de display.
+				if state and hasattr(state, "mpv_visible"):
+					state.mpv_visible = False
 				mpv_args.extend(["--vo=null", "--no-audio-display", "--force-window=no"])
 
 			ytdlp_bin = find_binary("yt-dlp")
@@ -263,6 +274,7 @@ class AsyncMpvController:
 				await self._send(json.dumps({"command": ["observe_property", 3, "time-pos"]}))
 				await self._send(json.dumps({"command": ["observe_property", 4, "duration"]}))
 				await self._send(json.dumps({"command": ["observe_property", 5, "mute"]}))
+				await self._send(json.dumps({"command": ["observe_property", 6, "current-vo"]}))
 
 			if is_restart and "mpv_restarted" in self.callbacks:
 				asyncio.create_task(self.callbacks["mpv_restarted"]())
@@ -302,6 +314,7 @@ class AsyncMpvController:
 					pipe.write(b'{"command": ["observe_property", 3, "time-pos"]}\n')
 					pipe.write(b'{"command": ["observe_property", 4, "duration"]}\n')
 					pipe.write(b'{"command": ["observe_property", 5, "mute"]}\n')
+					pipe.write(b'{"command": ["observe_property", 6, "current-vo"]}\n')
 					pipe.flush()
 
 					while True:
@@ -380,6 +393,13 @@ class AsyncMpvController:
 					asyncio.create_task(self.callbacks["duration_update"](prop_val))
 				elif prop_name == "mute" and prop_val is not None and "mute_update" in self.callbacks:
 					asyncio.create_task(self.callbacks["mute_update"](prop_val))
+				elif prop_name == "current-vo":
+					# Si el driver de video es nulo o viene vacío, la ventana está oculta o falló el entorno gráfico
+					is_visible = bool(prop_val and prop_val != "null")
+					if self.state_ref and hasattr(self.state_ref, "mpv_visible"):
+						self.state_ref.mpv_visible = is_visible
+					if "visibility_update" in self.callbacks:
+						asyncio.create_task(self.callbacks["visibility_update"](is_visible))
 		except json.JSONDecodeError as exc:
 			logger.debug(f"Línea no-JSON ignorada en stream de MPV: {exc}")
 

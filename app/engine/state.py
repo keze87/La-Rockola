@@ -202,9 +202,12 @@ class APIState:
 				"song_ended": self.handle_song_ended,
 				"time_update": self.handle_time_update,
 				"track_stopped": self.handle_track_stopped,
+				"visibility_update": self.handle_visibility_update,
 				"volume_update": self.handle_volume_update,
 			}
 		)
+		self.mpv.state_ref = self
+		self.mpv_visible = getattr(self.mpv, "has_display", True)
 
 	@property
 	def radio_pregeneration_task(self) -> asyncio.Task | None:
@@ -589,6 +592,12 @@ class APIState:
 			return
 		self.server_muted = is_muted
 		await broadcast_state()
+
+	async def handle_visibility_update(self, visible: bool) -> None:
+		"""Actualiza el estado de visibilidad de MPV si cambió y avisa a los clientes por WebSocket."""
+		if self.mpv_visible != visible:
+			self.mpv_visible = visible
+			await broadcast_state()
 
 	async def play_track(self, path):
 		# Cancelar el countdown del DJ si el usuario eligió un tema manualmente (no si lo dispara el countdown mismo)
