@@ -349,7 +349,7 @@ async def handle_command_endpoint(req: CommandRequest) -> dict[str, Any]:
 	"""Despacha comandos de reproducción utilizando la tabla declarativa COMMAND_HANDLERS."""
 	container = get_container()
 	state = container.ensure_orchestrator()
-	manager = container.ws_manager
+	manager = container.ensure_ws_manager()
 	if not state:
 		return {"status": "error", "message": "Estado del servidor no inicializado"}
 

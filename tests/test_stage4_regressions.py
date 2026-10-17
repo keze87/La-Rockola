@@ -166,3 +166,64 @@ def test_wizard_and_cli_feedback_and_exports(tmp_path: Path, monkeypatch: pytest
 	out = capsys.readouterr().out
 	assert "no existe actualmente" in out
 	assert "Configuración guardada en" in out
+
+
+@pytest.mark.asyncio
+async def test_second_pass_contract_and_cli_regressions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+	"""
+	Verifica:
+	1. get_db() como generador de sqlite3.Connection y get_db_path() devolviendo Path.
+	2. get_mpris_provider() devolviendo None cuando DBUS_AVAILABLE=False y (root, player) cuando True.
+	3. AppContainer.ensure_ws_manager() e inicialización perezosa de ws_manager en broadcast_state.
+	4. Propiedades mpris_player, mpris_root y mpris_bus en PlaybackOrchestrator.
+	5. Alerta de seguridad log_fn en extract_archive_binary ante Zip Slip.
+	"""
+	import sqlite3
+	import zipfile
+
+	import app.core as core_mod
+	from app.api.system import get_system_capabilities
+	from app.core.container import get_container
+	from app.domain.playback.orchestrator import broadcast_state
+	from app.infrastructure.mpris import adapter as mpris_adapter
+
+	db_path = tmp_path / "pass2.db"
+	init_db(db_path)
+	set_container(AppContainer(db_path=db_path, orchestrator=None, ws_manager=None))
+
+	# 1. get_db_path() devuelve Path y get_db() es un generador de sqlite3.Connection
+	assert hasattr(core_mod, "get_db_path")
+	assert core_mod.get_db_path() == db_path
+	gen = core_mod.get_db()
+	conn = next(gen)
+	assert isinstance(conn, sqlite3.Connection)
+	gen.close()
+
+	# 2. get_mpris_provider() respeta DBUS_AVAILABLE y devuelve tupla (root, player)
+	monkeypatch.setattr(mpris_adapter, "DBUS_AVAILABLE", False)
+	assert mpris_adapter.get_mpris_provider(None) is None
+	monkeypatch.setattr(mpris_adapter, "DBUS_AVAILABLE", True)
+	provider_tuple = mpris_adapter.get_mpris_provider(None)
+	assert isinstance(provider_tuple, tuple) and len(provider_tuple) == 2
+
+	# 3. get_system_capabilities y broadcast_state inicializan perezosamente orchestrator y ws_manager
+	caps = await get_system_capabilities()
+	assert "has_edge_tts" in caps
+	assert get_container().orchestrator is not None
+	await broadcast_state()
+	assert get_container().ws_manager is not None
+
+	# 4. Propiedades mpris_player, mpris_root y mpris_bus en PlaybackOrchestrator
+	orch = get_container().orchestrator
+	dummy_player = MagicMock()
+	orch.mpris_player = dummy_player
+	assert orch.mpris_service.player is dummy_player
+	orch.notify_mpris()
+
+	# 5. Zip Slip log_fn en extract_archive_binary
+	zip_path = tmp_path / "slip.zip"
+	with zipfile.ZipFile(zip_path, "w") as zf:
+		zf.writestr("../../ffmpeg", b"malicious")
+	logs: list[str] = []
+	bin_manager.extract_archive_binary(zip_path, tmp_path / "dest", ["ffmpeg"], log_fn=logs.append)
+	assert any("Alerta de seguridad" in m for m in logs)

@@ -4,7 +4,15 @@ Contiene la configuración tipada, logging unificado e inyección de dependencia
 """
 
 from app.core.config import Settings, get_config_path, get_settings, load_config, save_config
-from app.core.container import AppContainer, get_container, get_db, get_state, set_container
+from app.core.container import (
+	AppContainer,
+	get_container,
+	get_db,
+	get_db_path,
+	get_manager,
+	get_state,
+	set_container,
+)
 from app.core.logging import configure_logging, get_logger
 
 __all__ = [
@@ -14,7 +22,9 @@ __all__ = [
 	"get_config_path",
 	"get_container",
 	"get_db",
+	"get_db_path",
 	"get_logger",
+	"get_manager",
 	"get_settings",
 	"get_state",
 	"load_config",

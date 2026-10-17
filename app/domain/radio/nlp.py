@@ -412,8 +412,17 @@ def get_available_spanish_dbs(timeout: float = 2.0) -> list[str]:
 		_SPANISH_FORTUNE_DBS_CACHE = []
 		return _SPANISH_FORTUNE_DBS_CACHE
 
+	from app.infrastructure.binaries.manager import get_clean_env
+
 	try:
-		res = subprocess.run([fortune_bin, "-f"], capture_output=True, text=True, timeout=timeout, check=False)
+		res = subprocess.run(
+			[fortune_bin, "-f"],
+			capture_output=True,
+			text=True,
+			timeout=timeout,
+			check=False,
+			env=get_clean_env(),
+		)
 		dbs = []
 		for line in (res.stdout + res.stderr).splitlines():
 			m = re.search(r"^\s*[\d,.]+\%\s+([a-zA-Z0-9_\-]+)", line)
@@ -439,10 +448,19 @@ def get_system_fortune(timeout: float = 2.0, max_attempts: int = 3) -> str | Non
 	if not spanish_dbs:
 		return None
 
+	from app.infrastructure.binaries.manager import get_clean_env
+
 	cmd = [fortune_bin, "-s"] + spanish_dbs
 	for _ in range(max_attempts):
 		try:
-			res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
+			res = subprocess.run(
+				cmd,
+				capture_output=True,
+				text=True,
+				timeout=timeout,
+				check=False,
+				env=get_clean_env(),
+			)
 			if res.returncode == 0 and res.stdout:
 				cleaned = clean_fortune_text(res.stdout)
 				if is_spanish_text(cleaned) and is_valid_spoken_sentence(cleaned):

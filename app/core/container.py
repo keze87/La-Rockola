@@ -35,6 +35,14 @@ class AppContainer:
 			)
 		return self.orchestrator
 
+	def ensure_ws_manager(self) -> Any:
+		"""Inicializa perezosamente el ConnectionManager de WebSockets si aún no fue instanciado."""
+		if self.ws_manager is None:
+			from app.api.websocket import ConnectionManager
+
+			self.ws_manager = ConnectionManager()
+		return self.ws_manager
+
 
 _active_container: AppContainer | None = None
 
@@ -58,6 +66,19 @@ def get_state() -> Any:
 	return get_container().ensure_orchestrator()
 
 
-def get_db() -> Path:
+def get_manager() -> Any:
+	"""Devuelve el ConnectionManager activo inicializándolo perezosamente si es necesario."""
+	return get_container().ensure_ws_manager()
+
+
+def get_db_path() -> Path:
 	"""Devuelve la ruta de la base de datos SQLite activa."""
 	return get_container().db_path
+
+
+def get_db() -> Any:
+	"""Generador de conexiones SQLite para inyección de dependencias en FastAPI (Depends(get_db))."""
+	from app.infrastructure.db.connection import get_db_connection
+
+	with get_db_connection(get_db_path()) as conn:
+		yield conn

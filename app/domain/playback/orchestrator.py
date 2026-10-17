@@ -44,8 +44,8 @@ logger = logging.getLogger("RockolaCarpincho")
 async def broadcast_state(include_library: bool = False) -> None:
 	"""Envía por WebSocket el diff de estado a todos los clientes conectados."""
 	container = get_container()
-	state = container.orchestrator
-	manager = container.ws_manager
+	state = container.ensure_orchestrator()
+	manager = container.ensure_ws_manager()
 	if not state or not manager:
 		return
 	new_state = state.get_full_state_dict(include_library=include_library)
@@ -169,6 +169,30 @@ class PlaybackOrchestrator:
 	@mpris_registered.setter
 	def mpris_registered(self, val: bool) -> None:
 		self.mpris_service.registered = bool(val)
+
+	@property
+	def mpris_player(self) -> Any:
+		return getattr(self.mpris_service, "player", None)
+
+	@mpris_player.setter
+	def mpris_player(self, val: Any) -> None:
+		self.mpris_service.player = val
+
+	@property
+	def mpris_root(self) -> Any:
+		return getattr(self.mpris_service, "root", None)
+
+	@mpris_root.setter
+	def mpris_root(self, val: Any) -> None:
+		self.mpris_service.root = val
+
+	@property
+	def mpris_bus(self) -> Any:
+		return getattr(self.mpris_service, "bus", None)
+
+	@mpris_bus.setter
+	def mpris_bus(self, val: Any) -> None:
+		self.mpris_service.bus = val
 
 	# Propiedades delegadas a QueueManager
 	@property
@@ -533,14 +557,7 @@ class PlaybackOrchestrator:
 			await broadcast_state()
 
 	async def play_track(self, path: str | Path) -> None:
-		if self.dj_countdown_task and not self.dj_countdown_task.done():
-			try:
-				curr_task = asyncio.current_task()
-			except Exception:
-				curr_task = None
-			if curr_task is not self.dj_countdown_task:
-				self.dj_countdown_task.cancel()
-				self.dj_countdown_task = None
+		self.dj_selector.cancel_countdown()
 
 		await self.ensure_mpris()
 

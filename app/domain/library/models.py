@@ -14,7 +14,7 @@ from mutagen import File as MutagenFile
 
 from app.domain.library.hasher import generate_smart_hash
 from app.domain.library.mood import extract_audio_features_ffmpeg
-from app.infrastructure.binaries.manager import find_binary
+from app.infrastructure.binaries.manager import find_binary, get_clean_env
 
 logger = logging.getLogger("RockolaCarpincho")
 
@@ -75,6 +75,7 @@ def get_track_duration_seconds(path: str | Path | None, tracks_cache: list[dict[
 					text=True,
 					timeout=2.0,
 					check=False,
+					env=get_clean_env(),
 				)
 				if res.returncode == 0 and res.stdout.strip():
 					return float(res.stdout.strip())
@@ -168,6 +169,7 @@ class Track:
 					text=True,
 					timeout=10,
 					check=False,
+					env=get_clean_env(),
 				)
 				for line in proc.stdout.splitlines():
 					if line.startswith("FINGERPRINT="):

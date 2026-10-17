@@ -75,7 +75,7 @@ async def serve_cover(
 	request: Request = None,  # type: ignore[assignment]
 ) -> Response:
 	"""Extrae la portada incrustada del archivo de audio o devuelve la predeterminada."""
-	state = get_container().orchestrator
+	state = get_container().ensure_orchestrator()
 	if not isinstance(size, int) or size <= 0:
 		size = None
 
@@ -178,7 +178,7 @@ async def serve_cover(
 @router.get("/stream")
 async def stream_audio(path: str = Query(..., description="Ruta de la canción a transmitir")) -> Response:
 	"""Transmite el archivo de audio para reproducción local en el navegador del cliente."""
-	state = get_container().orchestrator
+	state = get_container().ensure_orchestrator()
 	is_radio = state.is_radio_announcement(path) if (state and hasattr(state, "is_radio_announcement")) else False
 	path_to_id = getattr(state, "path_to_id", {}) if state else {}
 	tracks_cache = getattr(state, "tracks_cache", []) if state else []
@@ -200,7 +200,7 @@ async def stream_audio(path: str = Query(..., description="Ruta de la canción a
 @router.get("/lrc")
 async def serve_lrc(path: str = Query(..., description="Ruta de la canción para buscar subtítulos .lrc")) -> Response:
 	"""Sirve la letra sincronizada .lrc si existe junto al archivo original."""
-	state = get_container().orchestrator
+	state = get_container().ensure_orchestrator()
 	is_radio = state.is_radio_announcement(path) if (state and hasattr(state, "is_radio_announcement")) else False
 	path_to_id = getattr(state, "path_to_id", {}) if state else {}
 	tracks_cache = getattr(state, "tracks_cache", []) if state else []

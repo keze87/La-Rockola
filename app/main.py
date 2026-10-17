@@ -167,8 +167,7 @@ def create_app() -> FastAPI:
 	_, _, assets_dir = get_dist_dirs()
 
 	container = get_container()
-	if container.ws_manager is None:
-		container.ws_manager = ConnectionManager()
+	container.ensure_ws_manager()
 	container.ensure_orchestrator()
 
 	app = FastAPI(
@@ -202,7 +201,7 @@ def create_app() -> FastAPI:
 
 async def websocket_endpoint(websocket: WebSocket) -> None:
 	container = get_container()
-	mgr = container.ws_manager
+	mgr = container.ensure_ws_manager()
 	state = container.ensure_orchestrator()
 	client_host = getattr(websocket.client, "host", "desconocido") if websocket.client else "desconocido"
 	if mgr:
@@ -225,8 +224,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 				continue
 
 			container = get_container()
-			mgr = container.ws_manager
-			state = container.orchestrator
+			mgr = container.ensure_ws_manager()
+			state = container.ensure_orchestrator()
 			if isinstance(msg, LocalPlayerClaim):
 				if mgr:
 					ok, old_ws = mgr.claim_local_player(websocket)
@@ -298,8 +297,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 		logger.info(f"Cliente desconectado: {client_host}")
 	finally:
 		curr_container = get_container()
-		curr_mgr = curr_container.ws_manager
-		curr_state = curr_container.orchestrator
+		curr_mgr = curr_container.ensure_ws_manager()
+		curr_state = curr_container.ensure_orchestrator()
 		if curr_mgr and curr_mgr.disconnect(websocket) and curr_state and hasattr(curr_state, "mpv") and curr_state.mpv:
 			try:
 				await curr_state.mpv.set_mute(getattr(curr_state, "server_muted", False))

@@ -335,7 +335,11 @@ def update_mpv(
 
 
 if __name__ == "__main__":
+	pos = [a for a in sys.argv[1:] if not a.startswith("-")]
+	target = Path(pos[0]) if pos else None
 	if "--update" in sys.argv:
-		update_mpv(force="--force" in sys.argv)
+		ok = update_mpv(bin_path=target, force=True)
+		sys.exit(0 if ok else 1)
 	else:
-		install_mpv()
+		res = install_mpv(target_dir=target)
+		sys.exit(0 if res else 1)

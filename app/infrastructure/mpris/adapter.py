@@ -433,6 +433,10 @@ class MPRISService:
 			self.registered = False
 
 
-def get_mpris_provider(state_ref: Any = None, command_handler: Any = None, cover_resolver: Any = None) -> MPRISService:
-	"""Fábrica de servicio MPRIS vinculada al estado del reproductor."""
-	return MPRISService(state_ref, command_handler=command_handler, cover_resolver=cover_resolver)
+def get_mpris_provider(
+	state_ref: Any = None, command_handler: Any = None, cover_resolver: Any = None
+) -> tuple[Any, Any] | None:
+	"""Fábrica de interfaces D-Bus MPRIS (root, player) o None si DBus no está disponible."""
+	if not DBUS_AVAILABLE:
+		return None
+	return (MPRISRoot(), MPRISPlayer(state_ref, command_handler, cover_resolver))

@@ -213,4 +213,7 @@ def ensure_ffmpeg(log_fn: Callable[[str], None] = default_logger) -> str | None:
 
 
 if __name__ == "__main__":
-	install_ffmpeg(force="--force" in sys.argv)
+	pos = [a for a in sys.argv[1:] if not a.startswith("-")]
+	target = Path(pos[0]) if pos else None
+	res = install_ffmpeg(target_dir=target, force="--force" in sys.argv)
+	sys.exit(0 if res else 1)

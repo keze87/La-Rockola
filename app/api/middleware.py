@@ -20,7 +20,7 @@ class SubpathMiddleware:
 		self.app = app
 
 	async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-		state = get_container().orchestrator
+		state = get_container().ensure_orchestrator()
 		subpath = getattr(state, "subpath", "") if state else ""
 
 		if subpath and scope.get("type") in ("http", "websocket"):

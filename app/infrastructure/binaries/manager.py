@@ -468,6 +468,8 @@ def extract_archive_binary(
 				if member_path.name.lower() in targets_normalized:
 					safe_check = (dest_dir / member.filename).resolve()
 					if not str(safe_check).startswith(str(dest_dir)):
+						if log_fn:
+							log_fn(f"Alerta de seguridad: se omitió archivo sospechoso {member.filename}")
 						continue
 					resolved = (dest_dir / member_path.name).resolve()
 					with zf.open(member) as src, open(resolved, "wb") as dst:
@@ -486,6 +488,8 @@ def extract_archive_binary(
 				if member_path.name.lower() in targets_normalized and member.isfile():
 					safe_check = (dest_dir / member.name).resolve()
 					if not str(safe_check).startswith(str(dest_dir)):
+						if log_fn:
+							log_fn(f"Alerta de seguridad: se omitió archivo sospechoso {member.name}")
 						continue
 					resolved = (dest_dir / member_path.name).resolve()
 					f_obj = tf.extractfile(member)

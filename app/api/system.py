@@ -61,7 +61,7 @@ async def preview_weather(location: str = Query(..., description="Ciudad o local
 @router.get("/system/capabilities")
 async def get_system_capabilities() -> dict[str, Any]:
 	"""Reporta la disponibilidad de binarios y servicios externos para el frontend."""
-	state = get_container().orchestrator
+	state = get_container().ensure_orchestrator()
 	ytdlp_srv = YtDlpAdapter()
 	return {
 		"has_ffmpeg": is_mood_available(),
