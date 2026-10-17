@@ -421,6 +421,23 @@ def enable_system_site_packages() -> None:
 		pass
 
 
+def build_frontend(frontend_dir: Path | None = None) -> None:
+	"""Compila el frontend si no estamos en un entorno empaquetado (frozen)."""
+	if getattr(sys, "frozen", False):
+		return
+	if any(arg in sys.argv for arg in ("-h", "--help")):
+		return
+	target_dir = frontend_dir or Path(__file__).resolve().parents[2]
+	pkg = target_dir / "package.json"
+	if not pkg.exists():
+		return
+	npm_cmd = shutil.which("npm") or ("npm.cmd" if os.name == "nt" else "npm")
+	node_modules = target_dir / "node_modules"
+	if not node_modules.exists():
+		subprocess.run([npm_cmd, "install"], cwd=str(target_dir), check=True)
+	subprocess.run([npm_cmd, "run", "build"], cwd=str(target_dir), check=True)
+
+
 def main() -> None:
 	"""Función principal de arranque para CLI y binarios empaquetados."""
 	import uvicorn
@@ -434,6 +451,12 @@ def main() -> None:
 	enable_system_site_packages()
 	parser = build_arg_parser()
 	args = parser.parse_args()
+
+	if not getattr(sys, "frozen", False):
+		try:
+			build_frontend()
+		except Exception as e:
+			logger.warning(f"No se pudo compilar el frontend automáticamente en el arranque: {e}")
 
 	check_dependencies()
 	config_path = get_config_path(args.config)
@@ -511,6 +534,7 @@ def main() -> None:
 
 __all__ = [
 	"build_arg_parser",
+	"build_frontend",
 	"check_dependencies",
 	"configure_console_encoding",
 	"enable_system_site_packages",

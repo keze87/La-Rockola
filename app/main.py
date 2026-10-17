@@ -75,8 +75,8 @@ async def lifespan(app: FastAPI):
 	async def _bg_update_ytdlp() -> None:
 		try:
 			await asyncio.to_thread(ytdlp_installer.update_ytdlp)
-		except Exception:
-			pass
+		except Exception as e:
+			logger.warning(f"Error actualizando yt-dlp en segundo plano: {e}")
 
 	if find_binary("yt-dlp"):
 		asyncio.create_task(_bg_update_ytdlp())

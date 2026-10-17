@@ -50,8 +50,10 @@ def get_audio_duration(file_path: Path | str, timeout: float = 2.0) -> float:
 				dur = float(audio.info.length)
 				if dur > 0.0:
 					return dur
-		except Exception:
-			pass
+		except ImportError as e:
+			logger.info(f"Librería opcional mutagen no disponible para calcular duración de {p}: {e}")
+		except Exception as e:
+			logger.warning(f"Error al calcular duración con mutagen para {p}: {e}")
 
 	ffprobe_bin = find_binary("ffprobe")
 	if not ffprobe_bin:
@@ -76,8 +78,10 @@ def get_audio_duration(file_path: Path | str, timeout: float = 2.0) -> float:
 		)
 		if res.returncode == 0 and res.stdout.strip():
 			return float(res.stdout.strip())
-	except Exception:
-		pass
+		if res.returncode != 0:
+			logger.warning(f"ffprobe falló al obtener duración de {file_path}: {res.stderr.strip()[:200]}")
+	except Exception as e:
+		logger.warning(f"Error ejecutando ffprobe para {file_path}: {e}")
 	return 0.0
 
 
@@ -184,9 +188,12 @@ def embed_cover_art_in_mp3(
 			tags.add(TALB(encoding=3, text=[album]))
 
 		tags.save(str(mp3_p))
+		logger.debug(f"🖼️ Carátula del carpincho incrustada con mutagen en '{mp3_p.name}'")
 		return True
-	except Exception:
-		pass
+	except ImportError as e:
+		logger.info(f"Librería opcional mutagen no está disponible para ID3: {e}. Probando fallback con ffmpeg...")
+	except Exception as e:
+		logger.warning(f"Mutagen falló al incrustar carátula en {mp3_p}: {e}. Probando fallback con ffmpeg...")
 
 	ffmpeg_bin = find_binary("ffmpeg")
 	if ffmpeg_bin:
@@ -229,12 +236,17 @@ def embed_cover_art_in_mp3(
 			)
 			if proc.returncode == 0 and tmp_tagged.is_file() and tmp_tagged.stat().st_size > 0:
 				tmp_tagged.replace(mp3_p)
+				logger.debug(f"🖼️ Carátula del carpincho incrustada con ffmpeg en '{mp3_p.name}'")
 				return True
-		except Exception:
-			pass
+			logger.warning(f"ffmpeg falló al incrustar carátula: {proc.stderr.decode('utf-8', errors='ignore')[:150]}")
+		except Exception as e:
+			logger.warning(f"Excepción usando ffmpeg para carátula: {e}")
 		finally:
 			if tmp_tagged.exists():
-				tmp_tagged.unlink(missing_ok=True)
+				try:
+					tmp_tagged.unlink()
+				except Exception as e:
+					logger.warning(f"No se pudo eliminar archivo temporal {tmp_tagged}: {e}")
 
 	return False
 
@@ -300,12 +312,19 @@ def mix_announcement_with_bg_track(
 			tmp_dest = out_p.parent / f".tmp_{out_p.name}"
 			shutil.copyfile(tmp_out, tmp_dest)
 			tmp_dest.replace(out_p)
+			logger.info(
+				f"🎵 Cortina musical superpuesta con éxito desde el segundo {bg_offset:.1f} de '{bg_p.name}' (volumen {bg_volume * 100:.0f}%)"
+			)
 			return True
-	except Exception:
-		pass
+		logger.warning(f"ffmpeg falló al mezclar cortina musical: {proc.stderr.decode('utf-8', errors='ignore')[:200]}")
+	except Exception as e:
+		logger.warning(f"Error mezclando cortina musical con ffmpeg: {e}")
 	finally:
 		if tmp_out.exists():
-			tmp_out.unlink(missing_ok=True)
+			try:
+				tmp_out.unlink()
+			except Exception as e:
+				logger.warning(f"No se pudo eliminar archivo temporal {tmp_out}: {e}")
 
 	return False
 

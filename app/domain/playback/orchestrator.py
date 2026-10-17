@@ -709,6 +709,9 @@ class PlaybackOrchestrator:
 					check_net_fn = getattr(radio_service_mod, "check_internet_async", check_internet_async)
 					if not await check_net_fn(timeout=0.8):
 						self._reset_radio_schedule()
+						logger.warning(
+							"📻 Carpincho Locutor: no hay conexión a internet disponible. Omitiendo locución radial para no demorar la reproducción."
+						)
 					else:
 						outro_mode = self._get_expected_radio_outro_mode(should_pause=should_pause)
 						next_track_path = None
@@ -734,7 +737,7 @@ class PlaybackOrchestrator:
 							self.is_synthesizing_radio = is_synth
 							await broadcast_state()
 
-						ok, display_title, script, _radio_err = await self.radio_service.get_or_synthesize(
+						ok, display_title, script, radio_err = await self.radio_service.get_or_synthesize(
 							next_track_path=next_track_path,
 							bg_offset=bg_offset,
 							on_synthesis_status=_set_synthesizing_radio,
@@ -761,6 +764,9 @@ class PlaybackOrchestrator:
 							await self.play_track(self.radio_announcement_path)
 							await broadcast_state()
 							return
+						logger.warning(
+							f"🎙️ Carpincho Locutor: No se pudo sintetizar la locución radial ({radio_err}). Pasando al tema siguiente..."
+						)
 
 			next_path = self.queue_manager.pop_next()
 			if next_path is not None:
@@ -777,6 +783,9 @@ class PlaybackOrchestrator:
 					chosen = self._select_candidate_dj_track(unplayed)
 
 				if chosen:
+					logger.info(
+						f"🦦 DJ Carpincho salvó las papas con un clásico: {chosen['display_title']} {'(al toque)' if skipped_by_user or just_finished == self.radio_announcement_path else '(arranca en 10 segundos...)'}"
+					)
 					self.dj_next_track = chosen
 					await broadcast_state()
 

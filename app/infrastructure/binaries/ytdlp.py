@@ -166,6 +166,7 @@ class YtDlpAdapter:
 		bin_path = manager.find_binary("yt-dlp")
 		if not bin_path:
 			try:
+				logger.info("yt-dlp no encontrado para procesar link de YouTube. Intentando instalar...")
 				installed = await asyncio.to_thread(ensure_ytdlp)
 				if installed:
 					bin_path = installed
@@ -176,6 +177,7 @@ class YtDlpAdapter:
 			bin_path = "yt-dlp"
 
 		try:
+			logger.info(f"Che yt-dlp, averiguate la data de este link: {url}")
 			proc = await asyncio.create_subprocess_exec(
 				bin_path,
 				"--dump-json",
