@@ -1,141 +1,143 @@
 # 🦫 La Rockola del Carpincho
 
-> **A seamless, low-friction music player built for shared listening, lightweight local playback, and real-time remote control.**
+> **Un reproductor de música sin vueltas, pensado para escuchar en grupo, reproducir local sin consumir recursos y controlar todo en tiempo real desde el celu.**
 
-## 📋 Why?
+## 📋 ¿Por qué nació?
 
-Traditional desktop media players and modern streaming apps suffer from several recurring friction points:
+Los reproductores de escritorio tradicionales y las apps de streaming actuales suelen tener varias fricciones molestas:
 
-1. **Cumbersome Local Control:** Standard media players often feel bloated, resource-heavy, and clunky to navigate while multitasking.
-2. **Lack of Shared/Social Controls:** In social settings—like a gathering, party, or office—letting guests queue songs usually means passing a phone around, sharing unlocked screens, or constantly interrupting the host.
-3. **Complex Remote Management:** Managing music playback from across the room often requires installing bulky mobile apps, setting up complex media servers, or dealing with network pairing headaches.
+1. **Control local pesado:** Los reproductores clásicos suelen ser pesados, comen recursos a lo loco y son incómodos para manejar mientras laburás o hacés otra cosa.
+2. **Falta de control compartido:** En un asado, previa, juntada o en la oficina, si alguien quiere poner un tema tiene que pedir prestado el teléfono, desbloquear pantallas ajenas o joder todo el tiempo al que puso la música.
+3. **Manejo remoto engorroso:** Manejar la música desde el sillón o la cocina suele requerir bajarse apps pesadas, levantar servidores multimedia complejos o renegar con emparejamientos y configuraciones de red.
 
-## 💡 The Solution
+## 💡 La Solución
 
-**La Rockola del Carpincho** solves these challenges by combining a sleek desktop player interface with an instant remote control web interface:
+**La Rockola del Carpincho** resuelve todo esto combinando una interfaz de escritorio súper ágil con un control remoto web instantáneo:
 
-- **Instant Socket-Based Remote Control:** Control playback, manage queues, and browse music remotely from any device on the same local network without installing extra software.
-- **Social Queueing:** Allows friends and guests to easily add tracks to a shared queue from their phones using a simple, mobile-friendly interface.
-- **Lightweight & Fast Performance:** Built with Vue 3, Vite, and MPV integration to ensure minimal CPU/RAM usage while offering rich features like track searching, synchronized lyrics, context menus, and haptic feedback on mobile.
+- **Control remoto instantáneo por WebSockets:** Manejá la reproducción, organizá la cola y explorá tu biblioteca desde cualquier dispositivo conectado a la misma red local, sin instalar absolutamente nada.
+- **Modo Fogón (Cola Colaborativa):** Tus amigos e invitados pueden mandar temas a la cola directamente desde sus teléfonos con una interfaz limpia, rápida y mobile-friendly.
+- **Rendimiento liviano y al pie:** Construido sobre Vue 3, Vite y el motor MPV para garantizar un consumo mínimo de CPU y RAM, con búsqueda instantánea, letras sincronizadas (LRC), menús contextuales y respuesta háptica en el celular.
 
-## ✨ Key Features
+## ✨ Características Principales
 
-- **Full Track Management:** Browse, search, filter, and manage your local library and queues effortlessly.
-- **Campfire Mode:** Social queuing made easy—let anyone queue songs without giving up control of your master device.
-- **Synchronized Lyrics:** Integrated lyrics display for an immersive listening or sing-along experience.
-- **Precision Playback Controls:** Advanced playback adjustments, sliders, volume controls, and configurable keyboard shortcuts.
-- **Mobile-Optimized Remote UI:** Responsive control interface built with tactile controls and haptic feedback.
-- **MPV Native Player Integration:** Leverages MPV for rock-solid audio decoding and smooth window management.
+- **Gestión completa de temas:** Explorá, buscá, filtrá y administrá tu biblioteca local y tus listas de reproducción sin despeinarte.
+- **Modo Fogón:** Que cualquiera en la juntada sume canciones a la cola sin sacarte el control de la máquina principal.
+- **Letras Sincronizadas (LRC):** Visualización de letras en tiempo real para cantar los temas a coro.
+- **Controles de reproducción precisos:** Ajuste fino de volumen, barra de progreso interactiva y atajos de teclado configurables.
+- **Interfaz móvil táctil:** Diseñada para pantallas táctiles, con controles cómodos y respuesta háptica por vibración.
+- **Motor de audio nativo con MPV:** Usa MPV bajo el capó para decodificación de audio sólida como una roca y soporte de ventana flotante.
+- **Modo Radio con Locución:** Comentarios radiales automatizados en español rioplatense (con Edge-TTS), clima en vivo (wttr.in) y masterización con ducking en FFmpeg.
 
-## 🛠️ Tech Stack
+## 🛠️ Stack Tecnológico
 
-- **Backend Architecture:** Hexagonal Architecture (Ports and Adapters) with pure domain separation
-- **Backend Framework:** [FastAPI](https://fastapi.tiangolo.com/) + [Uvicorn](https://www.uvicorn.org/) (Python 3.10+)
-- **Audio Engine:** `mpv` via asynchronous JSON IPC sockets/pipes (`AsyncMpvController`)
-- **Desktop Integration:** D-Bus MPRIS v2 media controls (`dbus-next`)
-- **Radio & Speech:** Edge-TTS synthesis, FFmpeg dynamic audio graph mastering, and wttr.in weather forecast integration
-- **Database:** SQLite with Write-Ahead Logging (`WAL`), versioned migrations, and repository pattern
-- **Audio Tagging & Fingerprinting:** `mutagen` for ID3/Vorbis tags and `fpcalc` (Chromaprint) for audio reconciliation
-- **Frontend Framework:** [Vue 3](https://vuejs.org/) (Composition API with TypeScript & Vite)
-- **Styling:** Tailwind CSS + custom glassmorphic theme
-- **Real-time Networking:** Native WebSockets with incremental state diff broadcasting
+- **Arquitectura Backend:** Arquitectura Hexagonal (Puertos y Adaptadores) con separación estricta del dominio.
+- **Framework Backend:** [FastAPI](https://fastapi.tiangolo.com/) + [Uvicorn](https://www.uvicorn.org/) (Python 3.10+).
+- **Motor de Audio:** `mpv` controlado de forma asíncrona mediante sockets/pipes JSON IPC (`AsyncMpvController`).
+- **Integración con el Sistema:** Controles multimedia globales por D-Bus MPRIS v2 (`dbus-next`).
+- **Locución y Radio:** Síntesis con Edge-TTS, masterización dinámica mediante grafos de audio en FFmpeg y reporte meteorológico con wttr.in.
+- **Base de Datos:** SQLite con Write-Ahead Logging (`WAL`), migraciones versionadas y patrón Repository.
+- **Etiquetado y Huellas de Audio:** `mutagen` para tags ID3/Vorbis y `fpcalc` (Chromaprint) para reconciliación y detección de duplicados.
+- **Frontend SPA:** [Vue 3](https://vuejs.org/) (Composition API con TypeScript y Vite).
+- **Estilos:** Tailwind CSS con diseño glassmorphic moderno.
+- **Sincronización en Tiempo Real:** WebSockets nativos con difusión incremental de diffs de estado.
 
-## 📁 Project Structure
+## 📁 Estructura del Proyecto
 
-For an in-depth breakdown of layers, contracts, and communication sequences, see [ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Para ver el detalle completo de capas, contratos y secuencias de comunicación, consultá [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ```text
 La Rockola del Carpincho/
-├── app/                     # Clean Python backend (Hexagonal Architecture)
-│   ├── api/                 # Inbound adapters: REST endpoints, command router, WebSockets
-│   ├── cli/                 # Presentation: CLI entrypoint & interactive setup wizard
-│   ├── core/                # Dependency injection container, config, logging, network
-│   ├── domain/              # Pure business logic: playback orchestrator, queue, DJ, radio, library
-│   └── infrastructure/      # Outbound adapters: mpv IPC, mpris, sqlite repositories, ffmpeg mixer
-├── docs/                    # Project documentation & architectural designs
-├── src/                     # Modern Vue 3 + TypeScript SPA frontend
-│   ├── audio/               # Browser audio drivers (media session, keepalive)
-│   ├── components/          # UI tabs (ControlsTab, QueueTab, LibraryTab, FogonMode, modals)
-│   ├── composables/         # Reactive presentation composables (sockets, drag & drop, shortcuts)
-│   ├── stores/              # Reactive domain stores (playback, queue, library, radio, ui)
-│   └── types/               # Shared TypeScript type definitions
-├── tests/                   # Comprehensive automated test suites (pytest + vitest)
-│   ├── frontend/            # Vitest suites for Vue components and composables
-│   └── test_*.py            # Python test stages (infrastructure, domain, api, radio, audit)
-├── server.py                # Server entrypoint
-├── package.json             # Frontend dependencies and scripts
-└── vite.config.ts           # Vite configuration
+├── app/                     # Backend en Python (Arquitectura Hexagonal)
+│   ├── api/                 # Adaptadores de entrada: endpoints REST, despachador de comandos, WebSockets
+│   ├── cli/                 # Presentación CLI: punto de entrada y asistente interactivo
+│   ├── core/                # Contenedor de inyección de dependencias, configuración, logging y red
+│   ├── domain/              # Lógica pura de negocio: orquestador de reproducción, cola, DJ Carpincho, radio, biblioteca
+│   └── infrastructure/      # Adaptadores de salida: mpv IPC, mpris, repositorios SQLite, mezclador FFmpeg
+├── docs/                    # Documentación y guías arquitectónicas
+│   └── ARCHITECTURE.md      # Especificación técnica detallada y diagramas
+├── src/                     # Frontend SPA moderno en Vue 3 + TypeScript
+│   ├── audio/               # Drivers de audio para navegador (media session, keepalive)
+│   ├── components/          # Pestañas y vistas (ControlsTab, QueueTab, LibraryTab, FogonMode, modales)
+│   ├── composables/         # Lógica reactiva de presentación (sockets, drag & drop, atajos)
+│   ├── stores/              # Stores reactivas de dominio (playback, queue, library, radio, ui)
+│   └── types/               # Definiciones de tipos TypeScript compartidas
+├── tests/                   # Batería de pruebas automatizadas (pytest + vitest)
+│   ├── frontend/            # Pruebas de Vitest para componentes y composables
+│   └── test_*.py            # Etapas de pruebas de Python (infraestructura, dominio, API, radio, auditoría)
+├── server.py                # Punto de entrada principal del servidor
+├── package.json             # Dependencias y scripts del frontend
+└── vite.config.ts           # Configuración del empaquetador Vite
 ```
 
-## 🚀 Getting Started
+## 🚀 Puesta en Marcha
 
-The application coordinates the music library, database, and MPV player control while serving the Vue frontend.
+El servidor en Python coordina la biblioteca musical, la base de datos y el control de MPV, sirviendo al mismo tiempo la interfaz web en Vue.
 
-> **💡 Zero-Friction Standalone Releases (AppImage / Portable ZIP):**
-> Official release builds are completely self-contained. They come pre-bundled with core dependencies. If optional binaries like `ffmpeg`, `yt-dlp`, or `fpcalc` are missing, La Rockola automatically attempts to download and configure them in your user directory with graceful degradation if offline—no manual installation needed.
+> **💡 Versiones Portátiles y Releases Autónomos (AppImage / ZIP Portable):**
+> Las versiones oficiales de lanzamiento vienen listas para usar, con las dependencias esenciales ya incluidas. Si falta algún binario opcional como `ffmpeg`, `yt-dlp` o `fpcalc`, La Rockola intenta descargarlo y configurarlo automáticamente en tu carpeta de usuario (`~/.carpincho` o `%APPDATA%\Carpincho`) sin romper la reproducción en caso de estar sin internet.
 
-### 1. System Dependencies (Running from Source)
+### 1. Dependencias del Sistema (Ejecución desde Código Fuente)
 
-When running from source, La Rockola uses the exact same automated binary detection and auto-download engine. It searches local project directories, virtualenv scripts, the Carpincho data folder, and system `PATH`. If missing, it will automatically attempt to fetch them for you.
+Al correr desde el código fuente, La Rockola usa exactamente el mismo motor de resolución y auto-descarga de binarios. Busca en carpetas locales, entornos virtuales, la carpeta de Carpincho y el `PATH` del sistema. Si falta algo, intentará descargarlo por vos.
 
-Alternatively, you can manually install them via your package manager:
+Si preferís instalarlos manualmente con el gestor de paquetes de tu sistema operativo:
 
-- **MPV** (Required): Core audio playback engine (auto-downloaded on Windows/Linux if missing).
-- **FFmpeg & FFprobe** (Recommended): Required for radio announcements, mastering, and mood/BPM audio feature analysis.
-- **Chromaprint (`fpcalc`)** (Optional): Enables audio fingerprinting and duplicate/reconciliation detection.
-- **yt-dlp** (Optional): Enables streaming tracks and metadata extraction from YouTube and remote URLs.
+- **MPV** (Requerido): Motor de reproducción de audio (se auto-descarga en Windows y Linux si no está instalado).
+- **FFmpeg y FFprobe** (Recomendado): Necesario para las locuciones radiales, masterización y análisis de BPM/mood.
+- **Chromaprint (`fpcalc`)** (Opcional): Permite generar huellas acústicas para detectar duplicados y reconciliar archivos movidos.
+- **yt-dlp** (Opcional): Permite reproducir enlaces de YouTube y extraer metadatos de la web.
 
-**Manual Installation by OS:**
+**Instalación manual por sistema operativo:**
 
-- **Windows**: Run `winget install mpv yt-dlp Gyan.FFmpeg Chromaprint.fpcalc Python.Python.3 OpenJS.NodeJS`.
-- **macOS**: Run `brew install mpv ffmpeg chromaprint yt-dlp python node`.
-- **Linux**: Run `sudo apt update && sudo apt install mpv ffmpeg libchromaprint-tools yt-dlp python3 python3-pip nodejs npm` (or your distribution's equivalent).
+- **Windows**: `winget install mpv yt-dlp Gyan.FFmpeg Chromaprint.fpcalc Python.Python.3 OpenJS.NodeJS`
+- **macOS**: `brew install mpv ffmpeg chromaprint yt-dlp python node`
+- **Linux**: `sudo apt update && sudo apt install mpv ffmpeg libchromaprint-tools yt-dlp python3 python3-pip nodejs npm` (o el equivalente en tu distribución)
 
-### 2. Python Dependencies
+### 2. Dependencias de Python
 
-Install the Python packages via `pip`:
+Instalá los paquetes necesarios mediante `pip`:
 
 ```bash
 pip install fastapi uvicorn mutagen pydantic
 ```
 
-**Optional Python Packages:**
+**Paquetes opcionales de Python:**
 
-- `edge-tts`: Enables automated Argentine radio speaker commentary (`pip install edge-tts`).
-- `dbus-next`: Enables Linux system multimedia key control via MPRIS (`pip install dbus-next`).
+- `edge-tts`: Habilita la locución automática del Carpincho (`pip install edge-tts`).
+- `dbus-next`: Habilita el control por teclas multimedia en Linux vía MPRIS (`pip install dbus-next`).
 
-### 3. Running the Server
+### 3. Iniciar el Servidor
 
-Once your dependencies are installed, start the server:
+Una vez listas las dependencias, arrancá la aplicación:
 
 ```bash
 python server.py
 ```
 
-The server automatically compiles the frontend with Vite on first launch if `dist/index.html` is missing.
+El servidor compila automáticamente el frontend con Vite en el primer inicio si no existe `dist/index.html`.
 
-**Available CLI Options:**
+**Opciones principales de la línea de comandos (CLI):**
 
-- `--host`: Listen address (defaults to `0.0.0.0` for local network access).
-- `--port`: Server web port (defaults to `1729`).
-- `--dir`: Primary music library directory (defaults to `~/Music`).
-- `--dir2`: Optional secondary music library directory.
-- `--weather-location`: City/location for radio weather reports (e.g. `"Rosario, Argentina"`).
-- `--setup`: Force the interactive terminal configuration wizard.
-- `--no-interactive`: Skip the interactive wizard in automated environments.
-- `--rebuild-frontend`: Force recompilation of the frontend with Vite before starting.
-- `--open-browser` / `--no-browser`: Toggle automatic opening of the web player in your browser.
-- `--debug`: Enable verbose DEBUG level logging.
+- `--host`: Dirección de escucha (por defecto `0.0.0.0` para acceso en red local).
+- `--port`: Puerto web del servidor (por defecto `1729`).
+- `--dir`: Directorio principal de música (por defecto `~/Music`).
+- `--dir2`: Directorio secundario opcional de música.
+- `--weather-location`: Ciudad/ubicación para el reporte del clima en la radio (ej: `"Rosario, Argentina"`).
+- `--setup`: Lanza el asistente interactivo de configuración en la terminal.
+- `--no-interactive`: Omite el asistente interactivo en entornos desatendidos.
+- `--rebuild-frontend`: Fuerza la recompilación del frontend con Vite antes de iniciar.
+- `--open-browser` / `--no-browser`: Activa o desactiva la apertura automática del navegador.
+- `--debug`: Habilita logs detallados en nivel DEBUG.
 
-_Example:_
+_Ejemplo de uso:_
 
 ```bash
-python server.py --port 8080 --dir "C:\Users\UserName\Music"
+python server.py --port 8080 --dir "/home/usuario/Música"
 ```
 
-> **Note on using Port 80:** If you choose to set `--port 80` (the standard HTTP port) so you don't have to type a port number in your browser, your operating system will likely require administrator or root privileges to bind to it.
+> **Aviso sobre el Puerto 80:** Si elegís usar `--port 80` (el puerto estándar HTTP) para no tener que tipear el número de puerto en el navegador, tu sistema operativo va a requerir permisos de administrador o root para enlazarlo.
 >
-> - **Windows:** Run your command prompt or terminal as Administrator.
-> - **macOS/Linux:** Run the command with `sudo` (e.g., `sudo python server.py --port 80`). Alternatively, on Linux, to avoid running the entire server as root, you can use `authbind` (e.g., `authbind python server.py --port 80`) after configuring it for your user account.
+> - **Windows:** Ejecutá la consola o terminal como Administrador.
+> - **macOS / Linux:** Ejecutá con `sudo` (ej: `sudo python server.py --port 80`) o configurá `authbind` para tu usuario.
 
-4. Once the server is running, La Rockola automatically opens the player in your default browser using your local network IP (e.g., `http://192.168.X.Y:1729`). You can also start without opening the browser by passing `--no-browser`. To control the music from your phone or with friends, connect to the same Wi-Fi network and navigate to the local IP displayed in the console or scan the QR code located in the **Controles** tab. Run `python server.py --help` to see all available CLI options.
+4. Cuando el servidor arranca, abre automáticamente el reproductor en tu navegador predeterminado apuntando a la IP local (ej: `http://192.168.X.Y:1729`). Para controlar la música desde el celular o con amigos, conectate a la misma red Wi-Fi y entrá a la IP que figura en la consola o escaneá el código QR en la pestaña **Controles**. Para ver todas las opciones disponibles, ejecutá `python server.py --help`.
