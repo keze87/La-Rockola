@@ -59,12 +59,28 @@ def fetch_weather_json(
 				raw_body = resp.read()
 				try:
 					parsed = json.loads(raw_body.decode("utf-8", errors="ignore"))
-				except (json.JSONDecodeError, ValueError):
+				except (json.JSONDecodeError, ValueError) as jde:
+					logger.warning(f"Respuesta JSON malformada de wttr.in para '{lugar}': {jde}")
 					parsed = None
 
 				if isinstance(parsed, dict) and "current_condition" in parsed:
 					_WEATHER_CACHE[cache_key] = (time.time(), parsed)
 					return parsed
+				elif parsed is not None:
+					logger.warning(f"Estructura JSON inesperada o incompleta de wttr.in para '{lugar}'")
+			else:
+				logger.warning(f"Respuesta HTTP no exitosa de wttr.in ({resp.status}) para '{lugar}'")
+	except urllib.error.HTTPError as he:
+		if he.code == 429:
+			logger.warning(f"Límite de peticiones alcanzado (HTTP 429 Rate Limit) en wttr.in para '{lugar}'")
+		elif he.code == 503:
+			logger.warning(f"Servicio no disponible (HTTP 503 Service Unavailable) en wttr.in para '{lugar}'")
+		else:
+			logger.warning(f"Error HTTP {he.code} ({he.reason}) al consultar wttr.in para '{lugar}'")
+	except urllib.error.URLError as ue:
+		logger.warning(f"Fallo de red o conexión al consultar wttr.in para '{lugar}': {ue.reason}")
+	except TimeoutError as te:
+		logger.warning(f"Tiempo de espera agotado (timeout) consultando wttr.in para '{lugar}': {te}")
 	except Exception as e:
 		logger.warning(f"No se pudo consultar el clima en wttr.in para '{lugar}': {e}")
 

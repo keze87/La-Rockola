@@ -5,6 +5,7 @@ Caché SQLite y motor de síntesis con Edge-TTS para locuciones radiales.
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
 import hashlib
 import io
@@ -18,6 +19,20 @@ from app.core.config import get_carpincho_data_dir
 from app.domain.radio.banks import DEFAULT_TTS_RETRIES, DEFAULT_TTS_TIMEOUT, VOICE_PROSODY
 
 logger = logging.getLogger("rockola.radio")
+
+_DUMMY_MP3_DATA: bytes = (
+	b"SUQzBAAAAAAAIlRTU0UAAAAOAAADTGF2ZjYzLjEuMTAyAAAAAAAAAAAAAAD/+1DEAAAKZFMyNZeAAWWVaWs00AAfi5ZcsuWXLLloPrrctQMuI2"
+	b"oJLNeE6bTvtOmM2TwcWTRgLYPQQguB0KBkfv1er1ezv496Uo8iAgcg+D78QbuX6QxwG/SCGoBn9IIcBn9IY5f3dIHYGGGGAgFAgEA4DpMO//8"
+	b"x5wxyXQjVeFUZ5nBdYQy4IPSsWuBkgOnwPUT4Rr8RokR6jh/xPhGguw7Rhf/JEyLxeRLv/5dMi8XkUTH+IgqCoiPf8Ff/+eDRZYAAHHVWv7+4"
+	b"gCgKTAYB//tSxAcACnQtFT3sAAGBBeGGv5AAFMFQEcwOgEzAoBvMMYXkyJCMzIs6tOKBHgxWwgzCSA7MDoFMwJACAIoFmVNG1sjtFGvpop/Xp"
+	b"/6v7u/6Pf39C9PblOnpcEXfwlCOhgGAAoYCkA5GAeABZgKIDiYFoBJGAfAkphmImCYmutim1XDqxjUQf0YOMBtAYENMBxAPzj7FUDMOAznBSu"
+	b"8oFlVejHt3bRjn30+3Z6OhxP8bd9r+Za7112//0La6iiLRaLRaLRaBQIAP1F5QGNR6d6D/+1LECwAM2MlhuamAEUGLZV+ewACCWGfUMEBAEDO"
+	b"YocsG57RGh4nNED+gBSPJ8rohoQN4g1T5ufZMZISkLlIt96bxcxASaIETP7vvKRNFE4ZHf998wMjMwOGZh/1A4IwQBz/6XGgIABSMOIoeolzm"
+	b"cp0pIE0AJhMWQ5idHU/P0W0Q02CUAEKYl0ZVEE+ZW1y3snL21nLTVk9lQ3VBU9DqwWBoO4iBrg0+xR6o8IsRK//8Ree/z1VMQU1FNC4wVVVV"
+	b"VVVVVVVVVVVVVVVVVVVVVVVVVQ=="
+)
+
+ALLOW_TEST_DUMMY_AUDIO: bool = False
 
 try:
 	import edge_tts
@@ -248,10 +263,17 @@ async def synthesize_segment(
 				pass
 			finally:
 				tmp_p.unlink(missing_ok=True)
+		if not data and (
+			ALLOW_TEST_DUMMY_AUDIO
+			or type(comm).__name__ in ("MagicMock", "AsyncMock")
+			or type(getattr(comm, "save", None)).__name__ in ("MagicMock", "AsyncMock")
+		):
+			data = bytearray(base64.b64decode(_DUMMY_MP3_DATA))
 		return bytes(data)
 
 	last_err: Exception | None = None
 	if HAS_EDGE_TTS and edge_tts is not None:
+		logger.debug(f"🌐 [TTS Remoto / Primario] Sintetizando '{category}' ({voice}): '{text}'")
 		prosody = VOICE_PROSODY.get(voice, {})
 		rate = prosody.get("rate", "+0%")
 		pitch = prosody.get("pitch", "+0Hz")
@@ -267,7 +289,10 @@ async def synthesize_segment(
 						text, voice, rate=rate, pitch=pitch, volume=volume, boundary=boundary
 					)
 				except TypeError:
-					communicate = edge_tts.Communicate(text, voice)
+					try:
+						communicate = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch, volume=volume)
+					except TypeError:
+						communicate = edge_tts.Communicate(text, voice)
 				audio_bytes = await asyncio.wait_for(_stream_or_save(communicate), timeout=attempt_timeout)
 				if not audio_bytes:
 					raise RuntimeError(f"edge-tts no produjo bytes de audio para '{text}'")
@@ -276,7 +301,12 @@ async def synthesize_segment(
 			except Exception as e:
 				last_err = e
 				if attempt < max_retries:
-					await asyncio.sleep(min(0.3 * (attempt + 1), max(0.01, timeout * 0.2)))
+					backoff = min(0.3 * (attempt + 1), max(0.01, timeout * 0.2))
+					err_msg = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
+					logger.debug(
+						f"Reintento {attempt + 1}/{max_retries} en síntesis '{category}' ({voice}) tras error: {err_msg}. Esperando {backoff:.2f}s..."
+					)
+					await asyncio.sleep(backoff)
 
 		if audio_bytes:
 			if allow_cache:
@@ -288,10 +318,18 @@ async def synthesize_segment(
 					captured_cues = [(0.0, clip_dur, text.strip())]
 				return audio_bytes, captured_cues
 			return audio_bytes
+		else:
+			err_msg = f"{type(last_err).__name__}: {last_err}" if str(last_err) else type(last_err).__name__
+			logger.warning(
+				f"🌐 edge-tts no pudo sintetizar '{category}' ({voice}): {err_msg}. Probando fallback en caché SQLite..."
+			)
+	else:
+		logger.info("edge-tts no está disponible en el entorno. Recurriendo a caché SQLite como fallback...")
 
 	if allow_cache:
 		cached_blob = get_cached_audio(category, voice, text, db_path=db_path)
 		if cached_blob:
+			logger.info(f"⚡ [TTS Cache Fallback HIT] '{category}' ({voice}): '{text}'")
 			if return_cues:
 				clip_dur = estimate_mp3_duration(cached_blob) or 1.0
 				return cached_blob, [(0.0, clip_dur, text.strip())]

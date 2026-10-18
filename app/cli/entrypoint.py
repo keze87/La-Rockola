@@ -408,6 +408,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
 		default=os.environ.get("ROCKOLA_DEBUG", "").lower() in ("1", "true", "yes"),
 		help="Activa logs detallados en nivel DEBUG",
 	)
+	parser.add_argument(
+		"--rebuild-frontend",
+		dest="rebuild_frontend",
+		action="store_true",
+		default=False,
+		help="Fuerza la recompilación del frontend con Vite antes de iniciar el servidor",
+	)
 	return parser
 
 
@@ -480,7 +487,7 @@ def main() -> None:
 
 	if not getattr(sys, "frozen", False):
 		try:
-			build_frontend()
+			build_frontend(force=bool(getattr(args, "rebuild_frontend", False)))
 		except Exception as e:
 			logger.warning(f"No se pudo compilar el frontend automáticamente en el arranque: {e}")
 

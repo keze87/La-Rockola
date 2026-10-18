@@ -16,7 +16,7 @@ import pytest
 
 import server
 from app.cli import entrypoint as cli_entrypoint
-from app.core.container import AppContainer, set_container
+from app.core.container import AppContainer, get_container, set_container
 from app.domain.playback.orchestrator import PlaybackOrchestrator
 from app.domain.radio import service as radio_service_mod
 from app.domain.radio.banks import (
@@ -385,27 +385,31 @@ async def test_orchestrator_manager_proxy_and_dummy_mpv_send_fallback(
 ) -> None:
 	"""
 	Verifica:
-	1. Que app.domain.playback.orchestrator exponga el proxy `manager` para monkeypatching.
-	2. Que si `state.mpv` se reemplaza por un objeto dummy que solo tiene `_send` y `start`,
-	   los métodos de orquestador y comandos funcionen mediante fallback a `_send`.
+	1. Que _has_local_player consulte limpiamente container.ws_manager sin instanciarlo de prepo.
+	2. Que un objeto dummy adaptado con ensure_mpv_methods en test funcione correctamente.
 	"""
 	from types import SimpleNamespace
 
-	import app.domain.playback.orchestrator as orch_mod
 	from app.api.commands import handle_command_endpoint
 	from app.api.schemas import CommandRequest
+	from app.infrastructure.mpv.controller import ensure_mpv_methods
 
 	db_path = tmp_path / "proxy_mpv.db"
 	init_db(db_path)
 	orch = PlaybackOrchestrator(db_path=db_path)
-	set_container(AppContainer(db_path=db_path, orchestrator=orch))
+	container = get_container()
+	container.orchestrator = orch
 
-	assert hasattr(orch_mod, "manager")
+	# 1. Sin ws_manager en container, no hay local player
+	container.ws_manager = None
+	assert orch._has_local_player() is False
+
+	# 2. Con ws_manager en container
 	fake_mgr = SimpleNamespace(local_player_ws=MagicMock(send_json=AsyncMock()), broadcast_json=AsyncMock())
-	monkeypatch.setattr(orch_mod, "manager", fake_mgr)
+	container.ws_manager = fake_mgr
 	assert orch._has_local_player() is True
 
-	monkeypatch.setattr(orch_mod, "manager", SimpleNamespace(local_player_ws=None, broadcast_json=AsyncMock()))
+	container.ws_manager = SimpleNamespace(local_player_ws=None, broadcast_json=AsyncMock())
 	assert orch._has_local_player() is False
 
 	sent_payloads: list[str] = []
@@ -413,13 +417,14 @@ async def test_orchestrator_manager_proxy_and_dummy_mpv_send_fallback(
 	async def dummy_send(payload: str) -> None:
 		sent_payloads.append(payload)
 
-	dummy_mpv = SimpleNamespace(
+	raw_dummy_mpv = SimpleNamespace(
 		_send=dummy_send,
 		start=AsyncMock(),
 		is_running=True,
 		has_display=True,
 	)
-	orch.mpv = dummy_mpv  # type: ignore[assignment]
+	dummy_mpv = ensure_mpv_methods(raw_dummy_mpv)
+	orch.mpv = dummy_mpv
 
 	await orch.play_track("/musica/cancion.mp3")
 	assert any("loadfile" in p for p in sent_payloads)

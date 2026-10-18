@@ -465,7 +465,11 @@ def get_system_fortune(timeout: float = 2.0, max_attempts: int = 3) -> str | Non
 				cleaned = clean_fortune_text(res.stdout)
 				if is_spanish_text(cleaned) and is_valid_spoken_sentence(cleaned):
 					return cleaned
-		except Exception:
+			elif res.returncode != 0:
+				err_msg = res.stderr.strip()
+				logger.warning(f"Comando fortune falló con código {res.returncode}: {err_msg[:200]}")
+		except Exception as e:
+			logger.warning(f"Error consultando bases en español de fortune: {e}")
 			break
 	return None
 

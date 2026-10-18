@@ -36,29 +36,16 @@ from app.infrastructure.db.repositories import (
 )
 from app.infrastructure.media.tts_cache import HAS_EDGE_TTS
 from app.infrastructure.mpris.adapter import MPRISService
-from app.infrastructure.mpv.controller import AsyncMpvController, ensure_mpv_methods
+from app.infrastructure.mpv.controller import AsyncMpvController
 
 logger = logging.getLogger("RockolaCarpincho")
-
-
-class _ManagerProxy:
-	"""Proxy dinámico para acceder a ConnectionManager incluso cuando es monkeypatcheado."""
-
-	def __getattr__(self, name: str) -> Any:
-		return getattr(get_container().ensure_ws_manager(), name)
-
-	def __setattr__(self, name: str, value: Any) -> None:
-		setattr(get_container().ensure_ws_manager(), name, value)
-
-
-manager: Any = _ManagerProxy()
 
 
 async def broadcast_state(include_library: bool = False) -> None:
 	"""Envía por WebSocket el diff de estado a todos los clientes conectados."""
 	container = get_container()
 	state = container.ensure_orchestrator()
-	ws_mgr = globals().get("manager") or container.ensure_ws_manager()
+	ws_mgr = container.ensure_ws_manager()
 	if not state or not ws_mgr:
 		return
 	new_state = state.get_full_state_dict(include_library=include_library)
@@ -170,11 +157,11 @@ class PlaybackOrchestrator:
 
 	@property
 	def mpv(self) -> Any:
-		return ensure_mpv_methods(self._mpv)
+		return self._mpv
 
 	@mpv.setter
 	def mpv(self, val: Any) -> None:
-		self._mpv = ensure_mpv_methods(val)
+		self._mpv = val
 
 	async def _dispatch_mpris_command(self, cmd: str, **kwargs: Any) -> None:
 		"""Despacha comandos provenientes de D-Bus MPRIS hacia la tabla de comandos."""
@@ -343,7 +330,7 @@ class PlaybackOrchestrator:
 		self.radio_service.archive_max_files = val
 
 	def _has_local_player(self) -> bool:
-		ws_mgr = globals().get("manager") or get_container().ensure_ws_manager()
+		ws_mgr = get_container().ws_manager
 		return bool(ws_mgr and getattr(ws_mgr, "local_player_ws", None) is not None)
 
 	def get_full_state_dict(self, include_library: bool = False) -> dict[str, Any]:

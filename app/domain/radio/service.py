@@ -1119,10 +1119,14 @@ class RadioService:
 		pre_created_at = pre.get("created_at")
 		pre_age = (_time.time() - pre_created_at) if pre_created_at is not None else 0.0
 		if pre_age > RADIO_PREGENERATION_MAX_AGE_SECONDS:
+			logger.warning(
+				f"📻 Carpincho Locutor: Anuncio pregenerado descartado por antigüedad ({pre_age:.1f}s > {RADIO_PREGENERATION_MAX_AGE_SECONDS}s)."
+			)
 			return False, "", ""
 
 		pre_p = Path(pre["path"])
 		if not is_valid_mp3_file(pre_p):
+			logger.warning(f"📻 Carpincho Locutor: Anuncio pregenerado corrupto o inválido en '{pre_p}'.")
 			return False, "", ""
 
 		pre_mode = pre.get("outro_mode")
