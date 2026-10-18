@@ -29,83 +29,105 @@ Traditional desktop media players and modern streaming apps suffer from several 
 
 ## 🛠️ Tech Stack
 
-- **Frontend Framework:** [Vue 3](https://vuejs.org/) (Composition API with TypeScript)
-- **Build Tool:** [Vite](https://vitejs.dev/)
-- **Styling:** CSS3 / tailwindcss
-- **State & Logic:** Vue Composables Architecture
-- **Real-time Networking:** WebSockets (Real-time remote syncing)
-- **Audio Engine:** `mpv` integration
-- **Notifications:** `vue-sonner` toast notifications
-- **Backend Server:** Python 3 with FastAPI and Uvicorn
-- **Database:** SQLite (`DB/rockola.db` for history, favorites, and mood tracking)
+- **Backend Architecture:** Hexagonal Architecture (Ports and Adapters) with pure domain separation
+- **Backend Framework:** [FastAPI](https://fastapi.tiangolo.com/) + [Uvicorn](https://www.uvicorn.org/) (Python 3.10+)
+- **Audio Engine:** `mpv` via asynchronous JSON IPC sockets/pipes (`AsyncMpvController`)
+- **Desktop Integration:** D-Bus MPRIS v2 media controls (`dbus-next`)
+- **Radio & Speech:** Edge-TTS synthesis, FFmpeg dynamic audio graph mastering, and wttr.in weather forecast integration
+- **Database:** SQLite with Write-Ahead Logging (`WAL`), versioned migrations, and repository pattern
+- **Audio Tagging & Fingerprinting:** `mutagen` for ID3/Vorbis tags and `fpcalc` (Chromaprint) for audio reconciliation
+- **Frontend Framework:** [Vue 3](https://vuejs.org/) (Composition API with TypeScript & Vite)
+- **Styling:** Tailwind CSS + custom glassmorphic theme
+- **Real-time Networking:** Native WebSockets with incremental state diff broadcasting
 
 ## 📁 Project Structure
 
+For an in-depth breakdown of layers, contracts, and communication sequences, see [ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 ```text
 La Rockola del Carpincho/
-├── src/
-│   ├── assets/              # Static media assets
-│   ├── components/          # UI components and main player tabs
-│   │   └── ui/              # Reusable UI controls (sliders, buttons, track rows)
-│   ├── composables/         # Application logic & state management
-│   │   └── player/          # Specialized player, queue, socket & playback logic
-│   ├── types/               # TypeScript declarations and global types
-│   ├── App.vue              # Main App entry view
-│   ├── main.ts              # Vue app initialization
-│   └── style.css            # Global application styles
-├── public/                  # Public assets
-├── server.py                # Server / backend
-├── vite.config.ts           # Vite configuration
-└── package.json             # Dependencies and scripts
+├── app/                     # Clean Python backend (Hexagonal Architecture)
+│   ├── api/                 # Inbound adapters: REST endpoints, command router, WebSockets
+│   ├── cli/                 # Presentation: CLI entrypoint & interactive setup wizard
+│   ├── core/                # Dependency injection container, config, logging, network
+│   ├── domain/              # Pure business logic: playback orchestrator, queue, DJ, radio, library
+│   └── infrastructure/      # Outbound adapters: mpv IPC, mpris, sqlite repositories, ffmpeg mixer
+├── docs/                    # Project documentation & architectural designs
+├── src/                     # Modern Vue 3 + TypeScript SPA frontend
+│   ├── audio/               # Browser audio drivers (media session, keepalive)
+│   ├── components/          # UI tabs (ControlsTab, QueueTab, LibraryTab, FogonMode, modals)
+│   ├── composables/         # Reactive presentation composables (sockets, drag & drop, shortcuts)
+│   ├── stores/              # Reactive domain stores (playback, queue, library, radio, ui)
+│   └── types/               # Shared TypeScript type definitions
+├── tests/                   # Comprehensive automated test suites (pytest + vitest)
+│   ├── frontend/            # Vitest suites for Vue components and composables
+│   └── test_*.py            # Python test stages (infrastructure, domain, api, radio, audit)
+├── server.py                # Server entrypoint
+├── package.json             # Frontend dependencies and scripts
+└── vite.config.ts           # Vite configuration
 ```
 
 ## 🚀 Getting Started
 
-The application relies on a Python backend server that handles the music library, database, and MPV player control, while simultaneously serving the Vue frontend. The server script includes a helpful checker that will alert you if any dependencies are missing before starting.
+The application coordinates the music library, database, and MPV player control while serving the Vue frontend.
 
-### 1. System Dependencies
+> **💡 Zero-Friction Standalone Releases (AppImage / Portable ZIP):**
+> Official release builds are completely self-contained. They come pre-bundled with core dependencies. If optional binaries like `ffmpeg`, `yt-dlp`, or `fpcalc` are missing, La Rockola automatically attempts to download and configure them in your user directory with graceful degradation if offline—no manual installation needed.
 
-You must install the MPV media player on your system for the audio engine to work. And optionally, yt-dlp, if you want the ability to play tracks directly from YouTube or the internet.
+### 1. System Dependencies (Running from Source)
 
-- **Windows**: Run `winget install mpv yt-dlp Python.Python.3 OpenJS.NodeJS`.
-- **macOS**: Run `brew install mpv yt-dlp python node`.
-- **Linux**: Run `sudo apt update && sudo apt install mpv yt-dlp python3 python3-pip nodejs npm` (or your distribution's equivalent).
+When running from source, La Rockola uses the exact same automated binary detection and auto-download engine. It searches local project directories, virtualenv scripts, the Carpincho data folder, and system `PATH`. If missing, it will automatically attempt to fetch them for you.
+
+Alternatively, you can manually install them via your package manager:
+
+- **MPV** (Required): Core audio playback engine (auto-downloaded on Windows/Linux if missing).
+- **FFmpeg & FFprobe** (Recommended): Required for radio announcements, mastering, and mood/BPM audio feature analysis.
+- **Chromaprint (`fpcalc`)** (Optional): Enables audio fingerprinting and duplicate/reconciliation detection.
+- **yt-dlp** (Optional): Enables streaming tracks and metadata extraction from YouTube and remote URLs.
+
+**Manual Installation by OS:**
+
+- **Windows**: Run `winget install mpv yt-dlp Gyan.FFmpeg Chromaprint.fpcalc Python.Python.3 OpenJS.NodeJS`.
+- **macOS**: Run `brew install mpv ffmpeg chromaprint yt-dlp python node`.
+- **Linux**: Run `sudo apt update && sudo apt install mpv ffmpeg libchromaprint-tools yt-dlp python3 python3-pip nodejs npm` (or your distribution's equivalent).
 
 ### 2. Python Dependencies
 
-Ensure you have Python 3 installed. You can install the required Python packages using `pip`.
+Install the Python packages via `pip`:
 
-**Required Packages:**
+```bash
+pip install fastapi uvicorn mutagen pydantic
+```
 
-- `fastapi`: `pip install fastapi`.
-- `uvicorn`: `pip install uvicorn`.
-- `mutagen`: `pip install mutagen`.
-- `pydantic`: `pip install pydantic`.
+**Optional Python Packages:**
 
-**Optional Packages & Tools:**
-
-- `ffmpeg`: System binary (Enables mood and BPM analysis for your tracks).
-- `dbus-next`: `pip install dbus-next` (Required only on Linux to enable control via multimedia keys).
+- `edge-tts`: Enables automated Argentine radio speaker commentary (`pip install edge-tts`).
+- `dbus-next`: Enables Linux system multimedia key control via MPRIS (`pip install dbus-next`).
 
 ### 3. Running the Server
 
-Once your dependencies are installed, you can start the server. The script will automatically trigger the frontend build (`npm run build`) before launching.
-
-1. Open your terminal and navigate to the project directory.
-2. Run the server script:
+Once your dependencies are installed, start the server:
 
 ```bash
 python server.py
 ```
 
-3. **Customizing the run command:** The server accepts several arguments to customize your experience:
+The server automatically compiles the frontend with Vite on first launch if `dist/index.html` is missing.
 
-- `--host`: Sets the host address (defaults to `0.0.0.0` to be accessible on your local network).
-- `--port`: Sets the server port (defaults to `1729`).
-- `--dir`: Defines your primary music directory (defaults to `~/Music`).
-- `--dir2`: Defines an optional secondary music directory.
+**Available CLI Options:**
 
-_Example with arguments:_
+- `--host`: Listen address (defaults to `0.0.0.0` for local network access).
+- `--port`: Server web port (defaults to `1729`).
+- `--dir`: Primary music library directory (defaults to `~/Music`).
+- `--dir2`: Optional secondary music library directory.
+- `--weather-location`: City/location for radio weather reports (e.g. `"Rosario, Argentina"`).
+- `--setup`: Force the interactive terminal configuration wizard.
+- `--no-interactive`: Skip the interactive wizard in automated environments.
+- `--rebuild-frontend`: Force recompilation of the frontend with Vite before starting.
+- `--open-browser` / `--no-browser`: Toggle automatic opening of the web player in your browser.
+- `--debug`: Enable verbose DEBUG level logging.
+
+_Example:_
 
 ```bash
 python server.py --port 8080 --dir "C:\Users\UserName\Music"
