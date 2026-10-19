@@ -132,6 +132,38 @@ def get_cached_audio(
 	return None
 
 
+def get_cached_audio_by_category(
+	category: str,
+	voice: str = "",
+	db_path: Path | str | None = None,
+) -> bytes | None:
+	"""Recupera cualquier segmento de audio MP3 de la misma categoría desde la base SQLite como salvavidas."""
+	target_path = Path(db_path) if db_path else (get_carpincho_data_dir() / "tts_cache.db")
+	if not target_path.exists():
+		return None
+	try:
+		with contextlib.closing(sqlite3.connect(target_path, timeout=5.0)) as conn:
+			cur = conn.cursor()
+			if voice:
+				cur.execute(
+					"SELECT audio_blob FROM tts_cache WHERE category = ? AND voice = ? ORDER BY use_count DESC, last_used DESC LIMIT 1",
+					(category, voice),
+				)
+				row = cur.fetchone()
+				if row and row[0]:
+					return row[0]
+			cur.execute(
+				"SELECT audio_blob FROM tts_cache WHERE category = ? ORDER BY use_count DESC, last_used DESC LIMIT 1",
+				(category,),
+			)
+			row = cur.fetchone()
+			if row and row[0]:
+				return row[0]
+	except Exception as e:
+		logger.debug(f"Error consultando salvavidas de caché por categoría: {e}")
+	return None
+
+
 def save_cached_audio(
 	category: str,
 	voice: str,
@@ -217,6 +249,16 @@ def prune_tts_cache_db(
 	return deleted_count
 
 
+_tts_lock: asyncio.Lock | None = None
+
+
+def _get_tts_lock() -> asyncio.Lock:
+	global _tts_lock
+	if _tts_lock is None:
+		_tts_lock = asyncio.Lock()
+	return _tts_lock
+
+
 async def synthesize_segment(
 	text: str,
 	voice: str,
@@ -228,13 +270,24 @@ async def synthesize_segment(
 	boundary: str = "SentenceBoundary",
 	return_cues: bool = False,
 ) -> bytes | tuple[bytes, list[tuple[float, float, str]]]:
-	"""Sintetiza un parlamento radial mediante Edge-TTS con respaldo en caché SQLite."""
+	"""Sintetiza un parlamento radial mediante Edge-TTS con estrategia Cache-First y respaldo en SQLite."""
+	# 1. Estrategia Cache-First: si ya lo tenemos grabado en la base, lo servimos al toque
+	if allow_cache:
+		cached_blob = get_cached_audio(category, voice, text, db_path=db_path)
+		if cached_blob:
+			logger.debug(f"⚡ [TTS Cache HIT] '{category}' ({voice}): '{text}'")
+			if return_cues:
+				clip_dur = estimate_mp3_duration(cached_blob) or 1.0
+				return cached_blob, [(0.0, clip_dur, text.strip())]
+			return cached_blob
+
 	captured_cues: list[tuple[float, float, str]] = []
 
 	async def _stream_or_save(comm: object) -> bytes:
 		nonlocal captured_cues
 		captured_cues = []
 		data = bytearray()
+		stream_err: Exception | None = None
 		if hasattr(comm, "stream"):
 			try:
 				async for chunk in comm.stream():  # type: ignore[attr-defined]
@@ -248,8 +301,9 @@ async def synthesize_segment(
 							chunk_text = str(chunk.get("text", "")).strip()
 							if chunk_text:
 								captured_cues.append((offset_sec, offset_sec + duration_sec, chunk_text))
-			except Exception:
-				pass
+			except Exception as e:
+				stream_err = e
+
 		if not data and hasattr(comm, "save"):
 			with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_f:
 				tmp_p = Path(tmp_f.name)
@@ -259,16 +313,21 @@ async def synthesize_segment(
 					await res
 				if tmp_p.exists() and tmp_p.stat().st_size > 0:
 					data = bytearray(tmp_p.read_bytes())
-			except Exception:
-				pass
+			except Exception as save_e:
+				if stream_err is None:
+					stream_err = save_e
 			finally:
 				tmp_p.unlink(missing_ok=True)
+
 		if not data and (
 			ALLOW_TEST_DUMMY_AUDIO
 			or type(comm).__name__ in ("MagicMock", "AsyncMock")
 			or type(getattr(comm, "save", None)).__name__ in ("MagicMock", "AsyncMock")
 		):
 			data = bytearray(base64.b64decode(_DUMMY_MP3_DATA))
+		elif not data and stream_err is not None:
+			raise stream_err
+
 		return bytes(data)
 
 	last_err: Exception | None = None
@@ -293,7 +352,12 @@ async def synthesize_segment(
 						communicate = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch, volume=volume)
 					except TypeError:
 						communicate = edge_tts.Communicate(text, voice)
-				audio_bytes = await asyncio.wait_for(_stream_or_save(communicate), timeout=attempt_timeout)
+
+				# Serializamos las llamadas remotas para no desbordar los sockets de Microsoft
+				async with _get_tts_lock():
+					audio_bytes = await asyncio.wait_for(_stream_or_save(communicate), timeout=attempt_timeout)
+					await asyncio.sleep(0.08)
+
 				if not audio_bytes:
 					raise RuntimeError(f"edge-tts no produjo bytes de audio para '{text}'")
 				last_err = None
@@ -301,7 +365,10 @@ async def synthesize_segment(
 			except Exception as e:
 				last_err = e
 				if attempt < max_retries:
-					backoff = min(0.3 * (attempt + 1), max(0.01, timeout * 0.2))
+					is_rate_limit = "429" in str(e) or "handshake" in str(e).lower()
+					backoff = (
+						(1.0 * (2**attempt)) if is_rate_limit else min(0.3 * (attempt + 1), max(0.01, timeout * 0.2))
+					)
 					err_msg = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
 					logger.debug(
 						f"Reintento {attempt + 1}/{max_retries} en síntesis '{category}' ({voice}) tras error: {err_msg}. Esperando {backoff:.2f}s..."
@@ -328,6 +395,8 @@ async def synthesize_segment(
 
 	if allow_cache:
 		cached_blob = get_cached_audio(category, voice, text, db_path=db_path)
+		if not cached_blob:
+			cached_blob = get_cached_audio_by_category(category, voice, db_path=db_path)
 		if cached_blob:
 			logger.info(f"⚡ [TTS Cache Fallback HIT] '{category}' ({voice}): '{text}'")
 			if return_cues:

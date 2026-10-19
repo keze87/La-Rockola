@@ -771,36 +771,50 @@ async def create_radio_announcement(
 	full_script = " ".join(t[0].strip() for t in plan if t[0].strip())
 	display_title = f"Carpincho locutor: {full_script}"
 	speech_turns = group_plan_into_speech_turns(plan)
-
 	try:
-		margin = 5.0 if timeout >= 1.0 else max(0.05, timeout)
-		total_timeout = (timeout * max_retries) + margin
+		# El timeout total debe considerar la cantidad de turnos de habla
+		turn_count = max(1, len(speech_turns))
+		margin = 10.0 if timeout >= 1.0 else max(0.05, timeout)
+		total_timeout = (timeout * max(1, max_retries) * turn_count) + margin
 
-		async with asyncio.timeout(total_timeout):
-			async with asyncio.TaskGroup() as tg:
-				task_objs = [
-					tg.create_task(
-						synthesize_segment(
-							text=text,
-							voice=v,
-							category=category,
-							allow_cache=allow_cache,
-							timeout=timeout,
-							max_retries=max_retries,
-							db_path=db_path,
-							return_cues=True,
-						)
-					)
-					for text, v, category, allow_cache in speech_turns
-				]
-		raw_segments = [t.result() for t in task_objs]
+		tasks = [
+			synthesize_segment(
+				text=text,
+				voice=v,
+				category=category,
+				allow_cache=allow_cache,
+				timeout=timeout,
+				max_retries=max_retries,
+				db_path=db_path,
+				return_cues=True,
+			)
+			for text, v, category, allow_cache in speech_turns
+		]
+		raw_segments = await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=total_timeout)
 		segment_results: list[tuple[bytes, str, str, str, list[tuple[float, float, str]] | None]] = []
 		for i, res in enumerate(raw_segments):
+			if isinstance(res, Exception):
+				logger.warning(
+					f"📻 El Carpincho: no se pudo sintetizar el segmento '{speech_turns[i][2]}': {res}. Omitiendo para no frenar la locución..."
+				)
+				continue
 			if isinstance(res, tuple) and len(res) == 2:
 				seg_bytes, seg_cues = res
 			else:
 				seg_bytes, seg_cues = res, None  # type: ignore[assignment]
 			segment_results.append((seg_bytes, speech_turns[i][2], speech_turns[i][1], speech_turns[i][0], seg_cues))
+
+		if not segment_results:
+			exc_list = [r for r in raw_segments if isinstance(r, Exception)]
+			if exc_list:
+				nested_msgs = "; ".join(
+					f"{type(sub).__name__}: {sub}" if str(sub) else type(sub).__name__ for sub in exc_list
+				)
+				err_msg = f"Error de síntesis ({nested_msgs})"
+			else:
+				err_msg = "Ningún segmento de locución pudo ser sintetizado."
+			logger.warning(f"📻 El Carpincho: {err_msg}")
+			return RadioAnnouncementResult(ok=False, display_title="", script="", error=err_msg, outro_mode=outro_mode)
 
 		if is_dialogue:
 			logger.info(f"🎙️ Locución radial en cabina ({locutor_nombre} y {cohost_nombre}): '{full_script}'")

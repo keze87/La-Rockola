@@ -551,7 +551,8 @@ def select_radio_phrase(
 	ctx: RadioContext | None = None,
 ) -> tuple[RadioPhrase, bool]:
 	"""Selecciona una frase o fortuna radial explícita (RadioPhrase, es_del_sistema)."""
-	if force_system_fortune is not False and (force_system_fortune is True or random.random() < 1 / 6):
+	# Sorteo 50/50: mitad y mitad de probabilidad de meter una fortuna
+	if force_system_fortune is not False and (force_system_fortune is True or random.random() < 0.5):
 		sys_fort = get_system_fortune()
 		if sys_fort and is_spanish_text(sys_fort) and phrase_fits_context(sys_fort, ctx):
 			return RadioPhrase(sys_fort, "fortuna"), True

@@ -16,9 +16,9 @@ from app.infrastructure.media.mixer import (
 	mix_announcement_with_bg_track,
 )
 from app.infrastructure.media.tts_cache import (
-	HAS_EDGE_TTS,
 	get_cache_key,
 	get_cached_audio,
+	get_cached_audio_by_category,
 	init_tts_cache_db,
 	prune_tts_cache_db,
 	save_cached_audio,
@@ -36,6 +36,7 @@ __all__ = [
 	"get_audio_duration",
 	"get_cache_key",
 	"get_cached_audio",
+	"get_cached_audio_by_category",
 	"get_carpincho_cover_path",
 	"init_tts_cache_db",
 	"is_valid_mp3_file",
