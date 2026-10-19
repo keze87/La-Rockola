@@ -204,11 +204,11 @@ def save_cached_audio(
 
 
 def prune_tts_cache_db(
-	max_entries: int = 500,
-	max_age_days: float = 30.0,
+	max_entries: int = 5000,
+	max_age_days: float = 180.0,
 	db_path: Path | str | None = None,
 ) -> int:
-	"""Poda entradas obsoletas o excedentes de la caché SQLite de TTS."""
+	"""Poda entradas obsoletas o excedentes de la caché SQLite de TTS (ampliada para soportar precarga profunda)."""
 	target_path = Path(db_path) if db_path else (get_carpincho_data_dir() / "tts_cache.db")
 	if not target_path.exists():
 		return 0

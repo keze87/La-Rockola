@@ -83,8 +83,12 @@ def get_modular_hour_segments() -> list[str]:
 
 
 def get_modular_minute_segments() -> list[str]:
-	"""Genera la lista con los 12 segmentos modulares de minutos cada 5 minutos."""
-	return list(MINUTE_SEGMENTS)
+	"""Genera la lista con los segmentos modulares de minutos (1 a 59 minutos más expresiones cada 5 min)."""
+	mins = ["un minuto." if m == 1 else f"{m} minutos." for m in range(1, 60)]
+	for seg in MINUTE_SEGMENTS:
+		if seg not in mins:
+			mins.append(seg)
+	return mins
 
 
 def get_all_time_segments() -> list[str]:
@@ -101,9 +105,17 @@ def get_all_time_segments() -> list[str]:
 	return segments
 
 
-def get_all_degree_segments(min_deg: int = -5, max_deg: int = 42) -> list[str]:
+def get_all_degree_segments(min_deg: int = -10, max_deg: int = 45) -> list[str]:
 	"""Devuelve las frases de temperaturas en grados para locución modular del clima."""
-	return [format_temperature(d) for d in range(min_deg, max_deg + 1)]
+	segs: list[str] = []
+	for d in range(min_deg, max_deg + 1):
+		formatted = format_temperature(d)
+		if formatted not in segs:
+			segs.append(formatted)
+		direct = f"{d} grados"
+		if direct not in segs:
+			segs.append(direct)
+	return segs
 
 
 def get_all_weather_handoff_segments() -> list[str]:

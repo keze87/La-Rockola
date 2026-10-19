@@ -128,3 +128,36 @@ async def test_radio_pregeneration_pipeline_end_to_end(tmp_path: Path) -> None:
 		await svc.pregeneration_task
 		assert svc.pregenerated_announcement is not None
 		assert svc.pregenerated_announcement["display_title"] == "Carpincho en Vivo"
+
+
+def test_prune_tts_cache_db_large_capacity(tmp_path: Path) -> None:
+	"""Verifica que la capacidad por defecto de la caché sea de al menos 5000 entradas (evitando podas prematuras)."""
+	import inspect
+
+	sig = inspect.signature(tts_cache.prune_tts_cache_db)
+	max_entries_default = sig.parameters["max_entries"].default
+	assert max_entries_default >= 5000, f"max_entries default ({max_entries_default}) debe ser >= 5000"
+
+
+def test_collect_phrases_expands_placeholders_and_numbers() -> None:
+	"""Verifica que collect_phrases expanda todos los placeholders y prevea números y clima para uso offline."""
+	from scripts.preload_tts_cache import collect_phrases
+
+	items = collect_phrases()
+	assert len(items) > 1000, f"Debe recolectar un banco amplio (>1000), obtuvo {len(items)}"
+
+	# Ninguna frase debe tener placeholders crudos sin resolver
+	for cat, text in items:
+		assert "{" not in text and "}" not in text, f"Frase con placeholder sin resolver en [{cat}]: '{text}'"
+
+	# Debe incluir minutos modulares (al menos 1 a 59)
+	minutos = [txt for cat, txt in items if cat == "minuto"]
+	assert len(minutos) >= 59
+	assert any("un minuto." in m or "1 minuto." in m for m in minutos)
+	assert any("59 minutos." in m for m in minutos)
+
+	# Debe incluir números de temperatura y clima
+	clima_items = [txt for cat, txt in items if cat == "clima"]
+	assert len(clima_items) >= 40
+	assert any("bajo cero" in c for c in clima_items)
+	assert any("grados" in c for c in clima_items)

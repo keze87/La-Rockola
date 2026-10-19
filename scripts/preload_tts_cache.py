@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.domain.radio.banks import (
 	CARPINCHO_FORTUNES,
+	CARPINCHO_PHRASES,
 	DEFAULT_TTS_TIMEOUT,
 	RADIO_LEAD_INS,
 	VOICE_ELENA,
@@ -34,6 +35,9 @@ from app.domain.radio.banks import (
 	VOICE_TOMAS,
 	VOICE_VALENTINA,
 	VOICES,
+	WEATHER_LEAD_INS,
+	expand_phrase_variants,
+	get_all_weather_desc_phrases,
 )
 from app.domain.radio.dialogue import (
 	format_fortune_for_speech,
@@ -54,8 +58,10 @@ from app.infrastructure.media.tts_cache import (
 	HAS_EDGE_TTS,
 	get_cached_audio,
 	init_tts_cache_db,
+	prune_tts_cache_db,
 	synthesize_segment,
 )
+from app.infrastructure.weather.client import get_all_rain_descriptions
 
 logging.basicConfig(
 	level=logging.INFO,
@@ -68,71 +74,100 @@ logger = logging.getLogger("rockola.preload")
 def collect_phrases() -> list[tuple[str, str]]:
 	"""
 	Recolecta todas las frases a precargar estructuradas en tuplas (categoría, texto).
-	Incluye:
-	- Intros radiales
-	- Conectores / Lead-ins
-	- Fortunas y propagandas carpinchas (en texto plano sin comillas duras)
-	- Salidas radiales
+	Garantiza la expansión completa de placeholders y segmentos numéricos para uso offline:
+	- Intros radiales y separadores (con saludo expandido)
+	- Conectores / Lead-ins y avisos de clima (expandiendo variantes)
+	- Fortunas y frases de carpincho (avisos, alertas criollas, oyentes, sabiduría)
+	- Salidas radiales (continuas, pausas y recreos)
 	- 24 Horas especiales (minuto 0 en punto con impronta carpincha)
 	- 24 Segmentos de hora ("Las doce", "Las una", ... "Las once")
-	- 12 Segmentos de minutos cada 5 min ("en punto.", "y cinco.", ... "menos cinco.")
+	- 59 Segmentos de minutos (1 a 59 min) más expresiones cada 5 min
 	- Pases de cabina criollos y pases a clima personalizados con nombre de cohost
 	- Reacciones de cabina criollas, reacciones climáticas por condición y de fortuna
-	- Segmentos de temperatura en grados
+	- Segmentos de temperatura en grados (-10 a 45 °C) y descripciones climáticas
 	"""
 	items: list[tuple[str, str]] = []
 
 	# 1. Intros
 	for intro in get_all_intro_segments():
-		items.append(("intro", intro))
+		for variant in expand_phrase_variants(intro):
+			items.append(("intro", variant))
 
-	# 2. Conectores / Lead-ins
-	for lead in RADIO_LEAD_INS:
-		items.append(("lead_in", lead))
+	# 2. Conectores / Lead-ins (generales y de clima)
+	all_lead_ins = list(RADIO_LEAD_INS)
+	for wl in WEATHER_LEAD_INS:
+		if wl not in all_lead_ins:
+			all_lead_ins.append(wl)
+	for lead in all_lead_ins:
+		for variant in expand_phrase_variants(lead):
+			items.append(("lead_in", variant))
 
-	# 3. Fortunas y propagandas carpinchas (en texto plano sin comillas duras)
+	# 3. Fortunas y banco amplio de frases carpinchas
 	for fort in CARPINCHO_FORTUNES:
-		items.append(("fortuna", format_fortune_for_speech(fort)))
+		speech_fort = format_fortune_for_speech(fort)
+		for variant in expand_phrase_variants(speech_fort):
+			items.append(("fortuna", variant))
+
+	for phrase in CARPINCHO_PHRASES:
+		speech_phrase = format_fortune_for_speech(phrase.text)
+		for variant in expand_phrase_variants(speech_phrase):
+			items.append((phrase.category, variant))
+			if phrase.category != "fortuna":
+				items.append(("fortuna", variant))
 
 	# 4. Salidas / Despedidas
 	for outro in get_all_outro_segments():
-		items.append(("salida", outro))
+		for variant in expand_phrase_variants(outro):
+			items.append(("salida", variant))
 
 	# 5. Locuciones horarias completas (24 especiales en punto + todas las combinaciones hora/minuto)
 	for time_str in get_all_time_segments():
 		items.append(("hora", time_str))
 
-	# 6. Segmentos modulares de horas (0 a 23) importados desde radio_announcer (retrocompatibilidad)
+	# 6. Segmentos modulares de horas (0 a 23)
 	for hora_str in get_modular_hour_segments():
 		items.append(("hora", hora_str))
 
-	# 7. Segmentos modulares de minutos (1 a 59) importados desde radio_announcer (retrocompatibilidad)
+	# 7. Segmentos modulares de minutos (1 a 59 min y expresiones cada 5 min)
 	for minuto_str in get_modular_minute_segments():
 		items.append(("minuto", minuto_str))
 
 	# 8. Pases de cabina criollos
 	for handoff in get_all_handoff_segments():
-		items.append(("pase", handoff))
+		for variant in expand_phrase_variants(handoff):
+			items.append(("pase", variant))
 
 	# 9. Pases a clima dirigidos al cohost
 	for handoff_weather in get_all_weather_handoff_segments():
-		items.append(("pase", handoff_weather))
+		for variant in expand_phrase_variants(handoff_weather):
+			items.append(("pase", handoff_weather))
 
 	# 10. Reacciones de cabina criollas
 	for reaction in get_all_reaction_segments():
-		items.append(("reaccion", reaction))
+		for variant in expand_phrase_variants(reaction):
+			items.append(("reaccion", variant))
 
 	# 11. Reacciones de cabina por condición de clima
 	for reaction_weather in get_all_weather_reaction_segments():
-		items.append(("reaccion", reaction_weather))
+		for variant in expand_phrase_variants(reaction_weather):
+			items.append(("reaccion", variant))
 
 	# 12. Reacciones de cabina a la fortuna
 	for reaction_fortune in get_all_fortune_reaction_segments():
-		items.append(("reaccion", reaction_fortune))
+		for variant in expand_phrase_variants(reaction_fortune):
+			items.append(("reaccion", reaction_fortune))
 
-	# 13. Segmentos de temperatura en grados
-	for deg in get_all_degree_segments():
+	# 13. Clima: temperaturas modulares (-10 a 45 °C), descripciones de estado y lluvias
+	for deg in get_all_degree_segments(-10, 45):
 		items.append(("clima", deg))
+
+	for weather_desc in get_all_weather_desc_phrases():
+		for variant in expand_phrase_variants(weather_desc):
+			items.append(("clima", variant))
+
+	for rain_desc in get_all_rain_descriptions():
+		for variant in expand_phrase_variants(rain_desc):
+			items.append(("clima", variant))
 
 	# Deduplicar manteniendo orden
 	seen: set[tuple[str, str]] = set()
@@ -212,6 +247,7 @@ async def run_preload(
 	delay: float = 0.25,
 	max_retries: int = 3,
 	db_path: Path | None = None,
+	max_entries: int = 5000,
 ) -> None:
 	"""Orquesta la precarga de todos los elementos para las voces solicitadas."""
 	if not HAS_EDGE_TTS:
@@ -254,6 +290,9 @@ async def run_preload(
 			tasks.append(task)
 
 	await asyncio.gather(*tasks)
+
+	if max_entries > 0:
+		prune_tts_cache_db(max_entries=max_entries, db_path=target_db)
 
 	elapsed = time.time() - start_time
 	db_size_mb = target_db.stat().st_size / (1024 * 1024) if target_db.exists() else 0.0
@@ -302,6 +341,12 @@ def main():
 		default=None,
 		help="Ruta personalizada a la base de datos tts_cache.db (opcional).",
 	)
+	parser.add_argument(
+		"--max-entries",
+		type=int,
+		default=5000,
+		help="Capacidad máxima de la base de datos tts_cache.db (default: 5000).",
+	)
 
 	args = parser.parse_args()
 
@@ -338,6 +383,7 @@ def main():
 			delay=args.delay,
 			max_retries=args.retries,
 			db_path=target_db_path,
+			max_entries=args.max_entries,
 		)
 	)
 
