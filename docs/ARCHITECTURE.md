@@ -2,7 +2,7 @@
 
 La Rockola del Carpincho está diseñada siguiendo los principios de la **Arquitectura Hexagonal (Puertos y Adaptadores)**, con una separación estricta de responsabilidades y flujo unidireccional de datos. Esta estructura mantiene el núcleo de reproducción y la gestión de colas completamente aislados de efectos secundarios externos como motores de audio, sockets IPC, D-Bus y frameworks web.
 
-```
+```text
                     ┌─────────────────────────────────────────┐
                     │               CLI y Entrada             │
                     │   server.py / app.cli.entrypoint        │

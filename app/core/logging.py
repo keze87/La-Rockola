@@ -80,7 +80,7 @@ def configure_logging(debug: bool = False, level: str | int | None = None) -> lo
 	is_debug = target_level <= logging.DEBUG
 	logging.basicConfig(
 		level=target_level,
-		format="%(asctime)s - %(levelname)s - [%(funcName)s] %(message)s",
+		format="%(levelname)s - [%(funcName)s] %(message)s",
 		force=True,
 	)
 
