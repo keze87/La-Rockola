@@ -232,4 +232,50 @@ Dialogue: 0,0:00:20.00,0:00:25.00,Default,,0,0,0,,{\\kf100}Segunda {\\kf100}line
 		expect(portraitLines.length).toBeGreaterThanOrEqual(1);
 		expect(portraitLines.length).toBeLessThanOrEqual(3);
 	});
+
+	it('applies Apple Music depth-of-field blur on inactive lines and pure white glow on active syllables', async () => {
+		const assContent = `[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Hola {\\kf100}mundo
+Dialogue: 0,0:00:06.00,0:00:10.00,Default,,0,0,0,,{\\kf100}Segunda {\\kf100}frase
+`;
+
+		global.fetch = vi.fn().mockImplementation((url: string) => {
+			if (typeof url === 'string' && url.includes('/lrc')) {
+				return Promise.resolve({
+					ok: true,
+					text: () => Promise.resolve(assContent),
+				} as unknown as Response);
+			}
+			return Promise.resolve({
+				ok: true,
+				json: () => Promise.resolve({ status: 'ok' }),
+			} as unknown as Response);
+		});
+
+		const wrapper = mount(FogonMode);
+		currentTrackPath.value = '/music/glow_test.mp3';
+		await wrapper.vm.$nextTick();
+		await new Promise((resolve) => setTimeout(resolve, 15));
+		await wrapper.vm.$nextTick();
+
+		const { localTimePos } = await import('@/composables/player/state');
+		localTimePos.value = 1; // Primera línea activa
+		await wrapper.vm.$nextTick();
+
+		const scrollContainer = wrapper.find('.no-scrollbar');
+		const lines = scrollContainer.findAll('.whitespace-pre-wrap');
+		expect(lines.length).toBe(2);
+
+		// Línea activa: sin desenfoque (blur-none) y escala destacada
+		expect(lines[0].classes()).toContain('blur-none');
+		// Línea inactiva: con desenfoque de profundidad de campo (blur-[1.5px] o blur-sm)
+		expect(lines[1].classes()).toContain('blur-[1.5px]');
+
+		// La sílaba activa no debe tener subrayado tosco y debe tener resplandor blanco puro
+		const activeSyllable = lines[0].find('.inline-block');
+		expect(activeSyllable.exists()).toBe(true);
+		expect(activeSyllable.classes()).not.toContain('underline');
+		expect(activeSyllable.classes()).toContain('drop-shadow-[0_0_16px_rgba(255,255,255,1)]');
+	});
 });

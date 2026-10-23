@@ -184,18 +184,18 @@
 		});
 	});
 
-	// Estilo para cada sílaba en el modo karaoke según el momento de la canción (estilo Apple Music con toque carpincho)
+	// Estilo para cada sílaba en el modo karaoke según el momento de la canción (estilo Apple Music con resplandor luminoso)
 	function getSyllableClass(syl: LyricSyllable): string {
 		const pos = localTimePos.value;
 		if (pos >= syl.end) {
-			// Ya sonó: destacada con el dorado cálido carpincho
-			return 'text-carpincho-warning font-bold drop-shadow-sm transition-colors duration-150 inline';
+			// Ya sonó: blanco pleno nítido y brillante
+			return 'text-white font-black drop-shadow-sm transition-colors duration-150 inline';
 		} else if (pos >= syl.start && pos < syl.end) {
-			// Cantándose justo ahora: blanco puro con brillo y escala
-			return 'text-white font-black scale-105 drop-shadow-[0_0_12px_rgba(255,255,255,0.9)] underline decoration-carpincho-warning/50 transition-all duration-100 inline-block';
+			// Cantándose justo ahora: blanco puro con resplandor luminoso estilo Apple Music (sin subrayado tosco)
+			return 'text-white font-black scale-105 drop-shadow-[0_0_16px_rgba(255,255,255,1)] transition-all duration-100 inline-block';
 		}
-		// Futura: blanca suave para que sea legible pero sin distraer
-		return 'text-white/50 font-semibold transition-colors duration-150 inline';
+		// Futura: blanca translúcida para lectura anticipada tipo Apple Music
+		return 'text-white/30 font-bold transition-colors duration-150 inline';
 	}
 
 	// --- Propiedades computadas para simplificar el template ---
@@ -206,10 +206,6 @@
 	});
 
 	const { coverUrl: currentCoverUrl } = useCover(coverSource, { size: null });
-
-	const fogonBgStyle = computed(() =>
-		currentCoverUrl.value ? { backgroundImage: `url('${currentCoverUrl.value}')` } : { backgroundColor: '#1f1a17' }
-	);
 
 	const currentTrackInfo = computed(() => {
 		if (isSynthesizingRadio.value || (isPlayingRadioAnnouncement.value && !currentTrackPath.value)) {
@@ -355,12 +351,18 @@
 	<transition name="fogon">
 		<div
 			v-if="isFogonMode"
-			class="fixed inset-0 z-[10000] flex items-center justify-center overflow-hidden bg-black bg-cover bg-center p-4 text-white sm:p-6 md:p-10"
+			class="fixed inset-0 z-[10000] flex items-center justify-center overflow-hidden bg-black p-4 text-white sm:p-6 md:p-10"
 			:class="{ 'cursor-none [&_*]:cursor-none': isCursorInactive }"
-			:style="fogonBgStyle"
 		>
-			<!-- Capa de fondo oscurecida con desenfoque cinematográfico -->
-			<div class="pointer-events-none absolute inset-0 bg-black/75 backdrop-blur-2xl" />
+			<!-- Fondo ambiental saturado y desenfocado estilo Apple Music / blyrics -->
+			<div
+				v-if="currentCoverUrl"
+				class="pointer-events-none absolute inset-0 scale-135 bg-cover bg-center opacity-60 blur-[80px] saturate-200 transition-all duration-1000 md:blur-[110px]"
+				:style="{ backgroundImage: `url('${currentCoverUrl}')` }"
+			/>
+			<div
+				class="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,_rgba(0,0,0,0.3)_0%,_rgba(0,0,0,0.85)_100%)] backdrop-blur-xl"
+			/>
 
 			<!-- Botón flotante para cerrar el fogón (arriba a la derecha) -->
 			<button
@@ -379,7 +381,7 @@
 				class="relative z-20 flex h-full w-full max-w-7xl items-center justify-center transition-all duration-500"
 				:class="[
 					hasLyrics
-						? 'flex-col justify-between gap-6 md:flex-row md:items-center md:gap-12 lg:gap-16'
+						? 'flex-col justify-between md:flex-row md:items-center md:gap-12 lg:gap-16'
 						: 'mx-auto max-w-md flex-col justify-center text-center',
 				]"
 			>
@@ -388,161 +390,167 @@
 					class="flex w-full shrink-0 flex-col items-center transition-all duration-500"
 					:class="[
 						hasLyrics
-							? 'text-center md:w-[380px] md:items-start md:text-left lg:w-[440px] xl:w-[480px]'
+							? 'h-full justify-between py-2 text-center sm:py-4 md:h-auto md:w-[380px] md:items-start md:justify-center md:py-0 md:text-left lg:w-[440px] xl:w-[480px]'
 							: 'max-w-md text-center',
 					]"
 				>
-					<!-- Tapa del disco con sombra profunda, más grande en escritorio para balancear la vista -->
-					<div
-						class="bg-carpincho-bg flex shrink-0 items-center justify-center overflow-hidden rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.85)] transition-all duration-500"
-						:class="[
-							hasLyrics
-								? 'mb-4 h-48 w-48 sm:h-56 sm:w-56 md:mb-6 md:h-88 md:w-88 lg:h-[400px] lg:w-[400px] xl:h-[450px] xl:w-[450px]'
-								: 'mb-8 h-64 w-64 md:h-80 md:w-80',
-						]"
-					>
-						<FavoritableCover
-							v-if="coverSource"
-							:track="coverSource"
-							size="h-full w-full"
-							rounded="rounded-2xl"
-							:size-px="null"
-							:unload-when-hidden="false"
-							button-size="h-10 w-10 md:h-12 md:w-12"
-							button-icon-size="!text-xl md:!text-2xl"
-						/>
-						<i v-else class="material-icons text-carpincho-warning !text-[8rem]">album</i>
-					</div>
-
-					<!-- Info del tema -->
-					<h1
-						class="mb-1 w-full truncate font-black transition-all"
-						:class="hasLyrics ? 'text-2xl lg:text-3xl xl:text-4xl' : 'text-3xl'"
-					>
-						<span
-							v-if="currentTrackInfo.isComing"
-							class="text-carpincho-warning mb-1 block animate-pulse text-xs tracking-widest uppercase"
-						>
-							🦦 Se viene...
-						</span>
-						{{ currentTrackInfo.title }}
-					</h1>
-					<h2
-						class="text-carpincho-secondary w-full truncate font-medium"
-						:class="hasLyrics ? 'text-base lg:text-xl' : 'text-xl'"
-					>
-						{{ currentTrackInfo.artist }}
-					</h2>
-
-					<!-- Barra de progreso personalizada -->
-					<div
-						v-show="currentTrackPath"
-						class="text-carpincho-secondary mt-4 flex w-full items-center gap-3 text-xs font-medium select-none"
-					>
-						<span class="w-10 shrink-0 text-right">{{ formattedTimePos }}</span>
-
+					<!-- Bloque superior: Carátula e información de la canción -->
+					<div class="flex w-full flex-col items-center md:items-start">
+						<!-- Tapa del disco con sombra profunda, más grande y con esquinas redondeadas modernas -->
 						<div
-							class="group flex h-10 w-full cursor-pointer touch-none items-center"
-							@pointerdown="startSeek"
-							@pointermove="moveSeek"
-							@pointerup="endSeek"
-							@pointercancel="endSeek"
+							class="bg-carpincho-bg flex shrink-0 items-center justify-center overflow-hidden rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.85)] transition-all duration-500 md:rounded-3xl"
+							:class="[
+								hasLyrics
+									? 'mb-3 aspect-square h-52 max-h-[34vh] w-52 sm:h-64 sm:w-64 md:mb-6 md:h-88 md:max-h-none md:w-88 lg:h-[400px] lg:w-[400px] xl:h-[440px] xl:w-[440px]'
+									: 'mb-8 h-64 w-64 md:h-80 md:w-80',
+							]"
 						>
-							<div class="pointer-events-none relative h-1.5 w-full rounded-full bg-gray-600/50">
-								<div
-									class="bg-carpincho-warning absolute top-0 left-0 h-full rounded-full"
-									:style="{ width: progressPercent + '%' }"
-								/>
-								<div
-									class="bg-carpincho-warning absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full shadow transition-transform group-active:scale-125"
-									:style="{ left: progressPercent + '%', marginLeft: '-7px' }"
-								/>
-							</div>
+							<FavoritableCover
+								v-if="coverSource"
+								:track="coverSource"
+								size="h-full w-full"
+								rounded="rounded-2xl md:rounded-3xl"
+								:size-px="null"
+								:unload-when-hidden="false"
+								button-size="h-10 w-10 md:h-12 md:w-12"
+								button-icon-size="!text-xl md:!text-2xl"
+							/>
+							<i v-else class="material-icons text-carpincho-warning !text-[8rem]">album</i>
 						</div>
 
-						<span class="w-10 shrink-0">{{ formattedDuration }}</span>
+						<!-- Info del tema -->
+						<h1
+							class="mb-1 w-full truncate font-black transition-all"
+							:class="hasLyrics ? 'text-xl sm:text-2xl md:text-3xl xl:text-4xl' : 'text-3xl'"
+						>
+							<span
+								v-if="currentTrackInfo.isComing"
+								class="text-carpincho-warning mb-1 block animate-pulse text-xs tracking-widest uppercase"
+							>
+								🦦 Se viene...
+							</span>
+							{{ currentTrackInfo.title }}
+						</h1>
+						<h2
+							class="text-carpincho-secondary w-full truncate font-medium"
+							:class="hasLyrics ? 'text-sm sm:text-base md:text-lg lg:text-xl' : 'text-xl'"
+						>
+							{{ currentTrackInfo.artist }}
+						</h2>
 					</div>
 
-					<!-- Controles de reproducción -->
-					<div
-						class="relative z-30 mt-4 flex w-full items-center gap-4 sm:gap-6"
-						:class="hasLyrics ? 'justify-center md:justify-start' : 'justify-center'"
-					>
-						<button
-							aria-label="Ajustar volumen"
-							class="hover:text-carpincho-warning z-20 p-2 text-white transition active:scale-90"
-							@click="toggleVolumePopup"
+					<!-- Bloque medio: Barra de progreso y controles de reproducción -->
+					<div class="flex w-full flex-col items-center md:items-start">
+						<!-- Barra de progreso personalizada -->
+						<div
+							v-show="currentTrackPath"
+							class="text-carpincho-secondary flex w-full items-center gap-3 text-xs font-medium select-none"
 						>
-							<i class="material-icons !text-2xl sm:!text-3xl">{{ volIcon }}</i>
-						</button>
+							<span class="w-10 shrink-0 text-right">{{ formattedTimePos }}</span>
 
-						<button
-							aria-label="Pista anterior"
-							class="hover:text-carpincho-warning z-20 p-1 text-white transition active:scale-90"
-							@click="skipPrev"
-						>
-							<i class="material-icons !text-3xl sm:!text-4xl">skip_previous</i>
-						</button>
+							<div
+								class="group flex h-10 w-full cursor-pointer touch-none items-center"
+								@pointerdown="startSeek"
+								@pointermove="moveSeek"
+								@pointerup="endSeek"
+								@pointercancel="endSeek"
+							>
+								<div class="pointer-events-none relative h-1.5 w-full rounded-full bg-white/15">
+									<div
+										class="bg-carpincho-warning absolute top-0 left-0 h-full rounded-full"
+										:style="{ width: progressPercent + '%' }"
+									/>
+									<div
+										class="bg-carpincho-warning absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full shadow transition-transform group-active:scale-125"
+										:style="{ left: progressPercent + '%', marginLeft: '-7px' }"
+									/>
+								</div>
+							</div>
 
-						<button
-							:aria-label="isPlaying ? 'Pausar' : 'Reproducir'"
-							class="bg-carpincho-primary hover:bg-carpincho-secondary z-20 flex h-16 w-16 shrink-0 items-center justify-center rounded-full text-white shadow-[0_0_30px_rgba(166,124,82,0.4)] transition active:scale-90 sm:h-20 sm:w-20"
-							@click="togglePlay"
-						>
-							<i class="material-icons !text-4xl sm:!text-5xl">{{ playPauseIcon }}</i>
-						</button>
+							<span class="w-10 shrink-0">{{ formattedDuration }}</span>
+						</div>
 
-						<button
-							aria-label="Pista siguiente"
-							class="hover:text-carpincho-warning z-20 p-1 text-white transition active:scale-90"
-							@click="skipNext"
+						<!-- Controles de reproducción -->
+						<div
+							class="relative z-30 mt-2 flex w-full items-center gap-4 sm:gap-6"
+							:class="hasLyrics ? 'justify-center md:justify-start' : 'justify-center'"
 						>
-							<i class="material-icons !text-3xl sm:!text-4xl">skip_next</i>
-						</button>
+							<button
+								aria-label="Ajustar volumen"
+								class="hover:text-carpincho-warning z-20 p-2 text-white transition active:scale-90"
+								@click="toggleVolumePopup"
+							>
+								<i class="material-icons !text-2xl sm:!text-3xl">{{ volIcon }}</i>
+							</button>
 
-						<!-- Botón para frenar después de este tema -->
-						<button
-							:class="timerClass"
-							:title="timerTitle"
-							:aria-label="timerTitle"
-							@click="handleTimerToggle"
+							<button
+								aria-label="Pista anterior"
+								class="hover:text-carpincho-warning z-20 p-1 text-white transition active:scale-90"
+								@click="skipPrev"
+							>
+								<i class="material-icons !text-3xl sm:!text-4xl">skip_previous</i>
+							</button>
+
+							<button
+								:aria-label="isPlaying ? 'Pausar' : 'Reproducir'"
+								class="bg-carpincho-primary hover:bg-carpincho-secondary z-20 flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-white shadow-[0_0_30px_rgba(166,124,82,0.4)] transition active:scale-90 sm:h-16 sm:w-16 md:h-20 md:w-20"
+								@click="togglePlay"
+							>
+								<i class="material-icons !text-3xl sm:!text-4xl md:!text-5xl">{{ playPauseIcon }}</i>
+							</button>
+
+							<button
+								aria-label="Pista siguiente"
+								class="hover:text-carpincho-warning z-20 p-1 text-white transition active:scale-90"
+								@click="skipNext"
+							>
+								<i class="material-icons !text-3xl sm:!text-4xl">skip_next</i>
+							</button>
+
+							<!-- Botón para frenar después de este tema -->
+							<button
+								:class="timerClass"
+								:title="timerTitle"
+								:aria-label="timerTitle"
+								@click="handleTimerToggle"
+							>
+								<i class="material-icons !text-2xl sm:!text-3xl">timer</i>
+							</button>
+						</div>
+
+						<!-- Barra de volumen desplegable -->
+						<div
+							v-if="showFogonVolume"
+							class="relative z-40 mt-3 flex w-full items-center gap-4 px-2 text-gray-300 opacity-90 transition select-none hover:opacity-100"
 						>
-							<i class="material-icons !text-2xl sm:!text-3xl">timer</i>
-						</button>
+							<button aria-label="Silenciar" @click="toggleMute">
+								<i class="material-icons cursor-pointer text-sm hover:text-white">{{ muteIcon }}</i>
+							</button>
+
+							<DragSlider
+								:model-value="volume"
+								:max="110"
+								@update:model-value="handleVolumeUpdate"
+								@commit="handleVolumeCommit"
+							/>
+							<i class="material-icons text-sm" aria-hidden="true">volume_up</i>
+						</div>
 					</div>
 
-					<!-- Barra de volumen desplegable -->
-					<div
-						v-if="showFogonVolume"
-						class="relative z-40 mt-4 flex w-full items-center gap-4 px-2 text-gray-300 opacity-90 transition select-none hover:opacity-100"
-					>
-						<button aria-label="Silenciar" @click="toggleMute">
-							<i class="material-icons cursor-pointer text-sm hover:text-white">{{ muteIcon }}</i>
-						</button>
-
-						<DragSlider
-							:model-value="volume"
-							:max="110"
-							@update:model-value="handleVolumeUpdate"
-							@commit="handleVolumeCommit"
-						/>
-						<i class="material-icons text-sm" aria-hidden="true">volume_up</i>
-					</div>
-
-					<!-- MODO VERTICAL (Mobile / Portrait): Muestra únicamente 2 o 3 líneas centradas para no saturar -->
+					<!-- MODO VERTICAL (Mobile / Portrait): Muestra únicamente 2 o 3 líneas centradas con máscara y desenfoque -->
 					<div
 						v-if="hasLyrics"
-						class="lyrics-mask-vertical relative mt-6 flex h-[7.5rem] w-full max-w-sm flex-col items-center justify-center overflow-hidden px-2 text-center md:hidden"
+						class="lyrics-mask-vertical relative flex h-32 w-full max-w-sm flex-col items-center justify-center overflow-hidden px-2 text-center sm:h-40 md:hidden"
 					>
-						<div class="flex flex-col items-center justify-center space-y-2 select-none">
+						<div class="flex flex-col items-center justify-center space-y-3 select-none">
 							<div
 								v-for="(line, idx) in portraitLyricLines"
 								:key="'portrait-' + idx + '-' + line.time"
 								class="cursor-pointer whitespace-pre-wrap transition-all duration-300"
 								:class="[
 									isLineActive(line)
-										? 'scale-105 text-lg leading-snug font-black drop-shadow-md sm:text-xl'
-										: 'text-xs font-bold text-white/35 hover:text-white/60 sm:text-sm',
+										? 'scale-105 text-lg leading-snug font-black text-white blur-none drop-shadow-[0_0_16px_rgba(255,255,255,0.7)] sm:text-xl'
+										: 'text-xs font-semibold text-white/35 blur-[0.8px] hover:text-white/60 hover:blur-none sm:text-sm',
 								]"
 								@click="handleLineClick(line.time)"
 							>
@@ -557,7 +565,11 @@
 										</span>
 									</template>
 									<template v-else>
-										<span class="text-carpincho-warning">{{ line.text }}</span>
+										<span
+											class="font-black text-white drop-shadow-[0_0_16px_rgba(255,255,255,0.8)]"
+										>
+											{{ line.text }}
+										</span>
 									</template>
 								</template>
 								<template v-else>
@@ -571,11 +583,11 @@
 				<!-- COLUMNA DERECHA: Letras completas en flujo vertical estilo Apple Music / blyrics-am-theme (solo en escritorio) -->
 				<div
 					v-if="hasLyrics"
-					class="lyrics-mask relative hidden h-[75vh] w-full flex-1 flex-col justify-center overflow-hidden md:flex lg:h-[82vh]"
+					class="lyrics-mask relative hidden h-[78vh] w-full flex-1 flex-col justify-center overflow-hidden md:flex lg:h-[84vh]"
 				>
 					<div
 						ref="lyricsContainerRef"
-						class="no-scrollbar h-full w-full space-y-6 overflow-y-auto scroll-smooth px-4 py-[28vh] select-none md:space-y-8 md:px-10 lg:py-[35vh]"
+						class="no-scrollbar h-full w-full space-y-7 overflow-y-auto scroll-smooth px-6 py-[38vh] select-none md:space-y-8 md:px-12"
 						@scroll="handleUserScroll"
 						@wheel="handleUserScroll"
 						@touchmove="handleUserScroll"
@@ -584,11 +596,11 @@
 							v-for="(line, idx) in lyrics"
 							:key="idx + '-' + line.time"
 							:ref="(el) => (lineRefs[idx] = el as HTMLElement)"
-							class="cursor-pointer whitespace-pre-wrap transition-all duration-300"
+							class="cursor-pointer text-left whitespace-pre-wrap transition-all duration-400"
 							:class="[
 								isLineActive(line)
-									? 'origin-left scale-102 text-2xl leading-relaxed font-extrabold drop-shadow-[0_2px_15px_rgba(0,0,0,0.6)] sm:text-3xl lg:text-4xl'
-									: 'text-lg leading-relaxed font-bold text-white/30 hover:text-white/60 sm:text-xl lg:text-2xl',
+									? 'origin-left scale-[1.02] text-3xl leading-tight font-black tracking-tight text-white blur-none drop-shadow-[0_2px_24px_rgba(0,0,0,0.9)] sm:text-4xl lg:text-5xl'
+									: 'text-xl leading-snug font-extrabold tracking-tight text-white/30 blur-[1.5px] hover:text-white/70 hover:blur-none sm:text-2xl lg:text-3xl',
 							]"
 							@click="handleLineClick(line.time)"
 						>
@@ -603,7 +615,9 @@
 									</span>
 								</template>
 								<template v-else>
-									<span class="text-carpincho-warning">{{ line.text }}</span>
+									<span class="font-black text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.8)]">
+										{{ line.text }}
+									</span>
 								</template>
 							</template>
 							<template v-else>
