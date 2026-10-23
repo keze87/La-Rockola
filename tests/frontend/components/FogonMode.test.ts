@@ -151,10 +151,18 @@ Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Café {\\kf100}calien
 Dialogue: 0,0:00:01.00,0:00:06.00,Default,,0,0,0,,{\\kf100}Taza {\\kf100}llena
 `;
 
-		global.fetch = vi.fn().mockResolvedValue({
-			ok: true,
-			text: () => Promise.resolve(assContent),
-		} as unknown as Response);
+		global.fetch = vi.fn().mockImplementation((url: string) => {
+			if (typeof url === 'string' && url.includes('/lrc')) {
+				return Promise.resolve({
+					ok: true,
+					text: () => Promise.resolve(assContent),
+				} as unknown as Response);
+			}
+			return Promise.resolve({
+				ok: true,
+				json: () => Promise.resolve({ status: 'ok' }),
+			} as unknown as Response);
+		});
 
 		const wrapper = mount(FogonMode);
 
@@ -176,5 +184,45 @@ Dialogue: 0,0:00:01.00,0:00:06.00,Default,,0,0,0,,{\\kf100}Taza {\\kf100}llena
 		// Verificar que los spans de sílabas están presentes
 		const spans = wrapper.findAll('.whitespace-pre-wrap span');
 		expect(spans.length).toBeGreaterThanOrEqual(4);
+	});
+
+	it('supports Apple Music style vertical scrolling, fade mask and clicking lines to seek', async () => {
+		const assContent = `[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:10.00,0:00:15.00,Default,,0,0,0,,{\\kf100}Primera {\\kf100}linea
+Dialogue: 0,0:00:20.00,0:00:25.00,Default,,0,0,0,,{\\kf100}Segunda {\\kf100}linea
+`;
+
+		global.fetch = vi.fn().mockImplementation((url: string) => {
+			if (typeof url === 'string' && url.includes('/lrc')) {
+				return Promise.resolve({
+					ok: true,
+					text: () => Promise.resolve(assContent),
+				} as unknown as Response);
+			}
+			return Promise.resolve({
+				ok: true,
+				json: () => Promise.resolve({ status: 'ok' }),
+			} as unknown as Response);
+		});
+
+		const wrapper = mount(FogonMode);
+		currentTrackPath.value = '/music/seek_test.mp3';
+		await wrapper.vm.$nextTick();
+		await new Promise((resolve) => setTimeout(resolve, 15));
+		await wrapper.vm.$nextTick();
+
+		// Contenedor con máscara de desvanecimiento estilo Apple Music
+		const maskContainer = wrapper.find('.lyrics-mask');
+		expect(maskContainer.exists()).toBe(true);
+
+		// Contenedor con scrollbar oculta
+		const scrollContainer = wrapper.find('.no-scrollbar');
+		expect(scrollContainer.exists()).toBe(true);
+
+		// Click en la segunda línea
+		const lines = scrollContainer.findAll('.whitespace-pre-wrap');
+		expect(lines.length).toBe(2);
+		await lines[1].trigger('click');
 	});
 });
