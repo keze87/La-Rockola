@@ -205,7 +205,7 @@ def save_cached_audio(
 
 def prune_tts_cache_db(
 	max_entries: int = 5000,
-	max_age_days: float = 180.0,
+	max_age_days: float = 1800.0,
 	db_path: Path | str | None = None,
 ) -> int:
 	"""Poda entradas obsoletas o excedentes de la caché SQLite de TTS (ampliada para soportar precarga profunda)."""
