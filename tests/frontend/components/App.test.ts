@@ -113,4 +113,54 @@ describe('App.vue', () => {
 		const wrapper = mount(App);
 		expect(wrapper.text()).toContain('Silencio estampa. Poné algo, fiera.');
 	});
+
+	it('renders karaoke syllables and simultaneous lines in the headbar when ASS is loaded', async () => {
+		const assContent = `[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Mate {\\kf100}amargo
+Dialogue: 0,0:00:01.00,0:00:06.00,Default,,0,0,0,,{\\kf100}Bizcochitos {\\kf100}de grasa
+`;
+
+		global.fetch = vi.fn().mockImplementation((url: string) => {
+			if (typeof url === 'string' && url.includes('/lrc')) {
+				return Promise.resolve({
+					ok: true,
+					text: () => Promise.resolve(assContent),
+				} as unknown as Response);
+			}
+			return Promise.resolve({
+				ok: true,
+				json: () => Promise.resolve({ status: 'ok', data: [] }),
+			} as unknown as Response);
+		});
+
+		const { localTimePos } = await import('@/composables/player/state');
+		currentTrackPath.value = '/music/tarde.mp3';
+		trackMap.value['/music/tarde.mp3'] = {
+			path: '/music/tarde.mp3',
+			display_title: 'Tarde campera',
+			display_artist: 'Los Carpinchos',
+		};
+
+		const wrapper = mount(App);
+		await wrapper.vm.$nextTick();
+		await new Promise((resolve) => setTimeout(resolve, 15));
+		await wrapper.vm.$nextTick();
+
+		// At 2 seconds: both lines are active
+		localTimePos.value = 2;
+		await wrapper.vm.$nextTick();
+
+		// Nav bar header contains syllables and separator
+		const nav = wrapper.find('nav');
+		expect(nav.text()).toContain('Mate amargo');
+		expect(nav.text()).toContain('Bizcochitos de grasa');
+
+		// Spans with syllable styling should exist inside nav
+		const sylSpans = nav.findAll('.headbar-syllable');
+		expect(sylSpans.length).toBe(4);
+		const activeSyllable = sylSpans.find((s) => s.text().includes('de grasa'));
+		expect(activeSyllable).toBeDefined();
+		expect(activeSyllable!.classes()).toContain('text-white');
+	});
 });

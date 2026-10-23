@@ -3,7 +3,7 @@
 	import { Toaster } from 'vue-sonner';
 	import { apiUrl } from './composables/useApi';
 	import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts';
-	import { useLyrics } from './composables/useLyrics';
+	import { useLyrics, type LyricSyllable } from './composables/useLyrics';
 	import { usePlaybackControls } from './composables/usePlaybackControls';
 	import { usePlayer } from './composables/usePlayer';
 	import { useSliderFactory } from './composables/useSliderFactory';
@@ -71,7 +71,7 @@
 		}
 	);
 
-	const { currentLyricLine, loadLyrics } = useLyrics({ localTimePos });
+	const { currentLyricLine, activeLyricLines, loadLyrics } = useLyrics({ localTimePos });
 	watch(
 		currentTrackPath,
 		(newPath: string | null) => {
@@ -79,6 +79,20 @@
 		},
 		{ immediate: true }
 	);
+
+	// Estilo para cada sílaba en la barra superior (headbar) según el progreso de reproducción
+	function getHeadbarSyllableClass(syl: LyricSyllable): string {
+		const pos = localTimePos.value;
+		if (pos >= syl.end) {
+			// Ya sonó: bien destacada con el amarillo carpincho
+			return 'headbar-syllable text-carpincho-warning font-bold transition-colors duration-150 inline';
+		} else if (pos >= syl.start && pos < syl.end) {
+			// Cantándose en este instante: blanca con brillo para captar el ojo
+			return 'headbar-syllable text-white font-extrabold drop-shadow-[0_0_8px_rgba(233,196,106,0.9)] underline decoration-carpincho-warning/50 transition-all duration-100 inline-block';
+		}
+		// Futura: atenuada para dar efecto de lectura karaoke
+		return 'headbar-syllable text-gray-400/60 font-medium transition-colors duration-150 inline';
+	}
 
 	// Conectamos los atajos de teclado (espacio, flechas, f, l, t, n, p, m, esc...)
 	useKeyboardShortcuts();
@@ -163,6 +177,27 @@
 								: '[Avisando] Chusmeando temas, aguantá fiera... 🧉'
 						}}
 					</span>
+					<div
+						v-else-if="currentTrackPath && activeLyricLines.length > 0"
+						:key="activeLyricLines.map((l) => l.text).join('-')"
+						class="block w-full truncate text-left text-[0.95rem] font-medium whitespace-pre italic drop-shadow-sm"
+					>
+						<template v-for="(line, idx) in activeLyricLines" :key="idx + '-' + line.time">
+							<span v-if="idx > 0" class="text-carpincho-secondary/70 mx-1.5 font-normal not-italic">
+								/
+							</span>
+							<template v-if="line.syllables && line.syllables.length > 0">
+								<span
+									v-for="(syl, sIdx) in line.syllables"
+									:key="sIdx"
+									:class="getHeadbarSyllableClass(syl)"
+								>
+									{{ syl.text }}
+								</span>
+							</template>
+							<span v-else class="text-carpincho-warning">{{ line.text }}</span>
+						</template>
+					</div>
 					<span
 						v-else-if="currentTrackPath && currentLyricLine && currentLyricLine.trim() !== ''"
 						:key="currentLyricLine"
