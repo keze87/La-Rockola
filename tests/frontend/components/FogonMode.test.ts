@@ -224,5 +224,12 @@ Dialogue: 0,0:00:20.00,0:00:25.00,Default,,0,0,0,,{\\kf100}Segunda {\\kf100}line
 		const lines = scrollContainer.findAll('.whitespace-pre-wrap');
 		expect(lines.length).toBe(2);
 		await lines[1].trigger('click');
+
+		// Modo vertical muestra únicamente entre 2 y 3 líneas
+		const portraitContainer = wrapper.find('.lyrics-mask-vertical');
+		expect(portraitContainer.exists()).toBe(true);
+		const portraitLines = portraitContainer.findAll('.whitespace-pre-wrap');
+		expect(portraitLines.length).toBeGreaterThanOrEqual(1);
+		expect(portraitLines.length).toBeLessThanOrEqual(3);
 	});
 });

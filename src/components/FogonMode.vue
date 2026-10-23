@@ -120,6 +120,29 @@
 		return lyrics.value.findIndex((l) => l.time === firstActive.time);
 	});
 
+	// Para el modo vertical en pantallas chicas o celulares: mostramos solo 2 o 3 líneas
+	const portraitLyricLines = computed(() => {
+		if (!lyrics.value.length) return [];
+		if (activeLineIndex.value < 0) {
+			// Antes de que arranque el tema: mostramos los primeros 2 versos
+			return lyrics.value.slice(0, 2);
+		}
+		const activeIdx = activeLineIndex.value;
+		const activeCount = activeLyricLines.value.length;
+
+		// Si hay varias líneas activas a la vez (dueto/coros), mostramos las activas más la siguiente
+		if (activeCount > 1) {
+			const start = Math.max(0, activeIdx);
+			const end = Math.min(lyrics.value.length, activeIdx + activeCount + 1);
+			return lyrics.value.slice(start, end);
+		}
+
+		// Si hay una sola línea activa: anterior (si hay), actual y siguiente (2 o 3 líneas)
+		const start = Math.max(0, activeIdx - 1);
+		const end = Math.min(lyrics.value.length, activeIdx + 2);
+		return lyrics.value.slice(start, end);
+	});
+
 	function scrollToActiveLine(smooth = true) {
 		if (userIsScrolling.value || activeLineIndex.value < 0) return;
 		const activeEl = lineRefs.value[activeLineIndex.value];
@@ -365,16 +388,16 @@
 					class="flex w-full shrink-0 flex-col items-center transition-all duration-500"
 					:class="[
 						hasLyrics
-							? 'text-center md:w-[360px] md:items-start md:text-left lg:w-[420px]'
+							? 'text-center md:w-[380px] md:items-start md:text-left lg:w-[440px] xl:w-[480px]'
 							: 'max-w-md text-center',
 					]"
 				>
-					<!-- Tapa del disco con sombra profunda y esquinas redondeadas -->
+					<!-- Tapa del disco con sombra profunda, más grande en escritorio para balancear la vista -->
 					<div
 						class="bg-carpincho-bg flex shrink-0 items-center justify-center overflow-hidden rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.85)] transition-all duration-500"
 						:class="[
 							hasLyrics
-								? 'mb-4 h-48 w-48 sm:h-60 sm:w-60 md:mb-6 md:h-72 md:w-72 lg:h-84 lg:w-84'
+								? 'mb-4 h-48 w-48 sm:h-56 sm:w-56 md:mb-6 md:h-88 md:w-88 lg:h-[400px] lg:w-[400px] xl:h-[450px] xl:w-[450px]'
 								: 'mb-8 h-64 w-64 md:h-80 md:w-80',
 						]"
 					>
@@ -394,7 +417,7 @@
 					<!-- Info del tema -->
 					<h1
 						class="mb-1 w-full truncate font-black transition-all"
-						:class="hasLyrics ? 'text-2xl lg:text-3xl' : 'text-3xl'"
+						:class="hasLyrics ? 'text-2xl lg:text-3xl xl:text-4xl' : 'text-3xl'"
 					>
 						<span
 							v-if="currentTrackInfo.isComing"
@@ -505,16 +528,54 @@
 						/>
 						<i class="material-icons text-sm" aria-hidden="true">volume_up</i>
 					</div>
+
+					<!-- MODO VERTICAL (Mobile / Portrait): Muestra únicamente 2 o 3 líneas centradas para no saturar -->
+					<div
+						v-if="hasLyrics"
+						class="lyrics-mask-vertical relative mt-6 flex h-[7.5rem] w-full max-w-sm flex-col items-center justify-center overflow-hidden px-2 text-center md:hidden"
+					>
+						<div class="flex flex-col items-center justify-center space-y-2 select-none">
+							<div
+								v-for="(line, idx) in portraitLyricLines"
+								:key="'portrait-' + idx + '-' + line.time"
+								class="cursor-pointer whitespace-pre-wrap transition-all duration-300"
+								:class="[
+									isLineActive(line)
+										? 'scale-105 text-lg leading-snug font-black drop-shadow-md sm:text-xl'
+										: 'text-xs font-bold text-white/35 hover:text-white/60 sm:text-sm',
+								]"
+								@click="handleLineClick(line.time)"
+							>
+								<template v-if="isLineActive(line)">
+									<template v-if="line.syllables && line.syllables.length > 0">
+										<span
+											v-for="(syl, sIdx) in line.syllables"
+											:key="sIdx"
+											:class="getSyllableClass(syl)"
+										>
+											{{ syl.text }}
+										</span>
+									</template>
+									<template v-else>
+										<span class="text-carpincho-warning">{{ line.text }}</span>
+									</template>
+								</template>
+								<template v-else>
+									<span>{{ line.text }}</span>
+								</template>
+							</div>
+						</div>
+					</div>
 				</div>
 
-				<!-- COLUMNA DERECHA: Letras en flujo vertical estilo Apple Music / blyrics-am-theme -->
+				<!-- COLUMNA DERECHA: Letras completas en flujo vertical estilo Apple Music / blyrics-am-theme (solo en escritorio) -->
 				<div
 					v-if="hasLyrics"
-					class="lyrics-mask relative flex h-[45vh] w-full flex-1 flex-col justify-center overflow-hidden sm:h-[52vh] md:h-[78vh]"
+					class="lyrics-mask relative hidden h-[75vh] w-full flex-1 flex-col justify-center overflow-hidden md:flex lg:h-[82vh]"
 				>
 					<div
 						ref="lyricsContainerRef"
-						class="no-scrollbar h-full w-full space-y-6 overflow-y-auto scroll-smooth px-2 py-[24vh] select-none sm:px-6 md:space-y-8 md:px-10 md:py-[32vh]"
+						class="no-scrollbar h-full w-full space-y-6 overflow-y-auto scroll-smooth px-4 py-[28vh] select-none md:space-y-8 md:px-10 lg:py-[35vh]"
 						@scroll="handleUserScroll"
 						@wheel="handleUserScroll"
 						@touchmove="handleUserScroll"
@@ -588,5 +649,11 @@
 	.lyrics-mask {
 		mask-image: linear-gradient(to bottom, transparent 0%, black 14%, black 86%, transparent 100%);
 		-webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 14%, black 86%, transparent 100%);
+	}
+
+	/* Máscara de desvanecimiento para el modo vertical (2 o 3 líneas) */
+	.lyrics-mask-vertical {
+		mask-image: linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%);
+		-webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%);
 	}
 </style>
