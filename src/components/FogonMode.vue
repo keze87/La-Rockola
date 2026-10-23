@@ -1,6 +1,6 @@
 <script setup lang="ts">
 	import { computed, onUnmounted, ref, watch } from 'vue';
-	import { useLyrics } from '../composables/useLyrics';
+	import { useLyrics, type LyricSyllable } from '../composables/useLyrics';
 	import { useCover } from '../composables/useCover';
 	import { usePlaybackControls } from '../composables/usePlaybackControls';
 	import { usePlayer } from '../composables/usePlayer';
@@ -100,7 +100,21 @@
 	}
 
 	// Le pasamos la instancia global del reproductor al composable de letras para sincronizar localTimePos
-	const { currentLyricLine, loadLyrics } = useLyrics(player);
+	const { currentLyricLine, activeLyricLines, loadLyrics } = useLyrics(player);
+
+	// Estilo para cada sílaba en el modo karaoke según el momento de la canción
+	function getSyllableClass(syl: LyricSyllable): string {
+		const pos = localTimePos.value;
+		if (pos >= syl.end) {
+			// Ya sonó esta sílaba: la dejamos bien visible y marcada
+			return 'text-carpincho-warning font-bold drop-shadow-sm transition-colors duration-150 inline';
+		} else if (pos >= syl.start && pos < syl.end) {
+			// Está sonando justo ahora: le metemos brillo y escala
+			return 'text-carpincho-warning font-extrabold scale-105 drop-shadow-[0_0_8px_rgba(233,196,106,0.9)] underline decoration-carpincho-warning/40 transition-all duration-100 inline-block';
+		}
+		// Todavía no llegó su turno: atenuada para que se pueda leer pero sin robar cámara
+		return 'text-gray-400/60 font-medium transition-colors duration-150 inline';
+	}
 
 	// --- Propiedades computadas para simplificar el template ---
 	const coverSource = computed(() => {
@@ -396,17 +410,39 @@
 					<i class="material-icons text-sm" aria-hidden="true">volume_up</i>
 				</div>
 
-				<!-- Letras en tiempo real -->
-				<div class="mt-2 flex h-[6rem] w-full items-center justify-center overflow-hidden px-8">
-					<transition name="lyric" mode="out-in">
+				<!-- Letras en tiempo real (soporte palabra por palabra y múltiples líneas simultáneas) -->
+				<div
+					class="mt-2 flex max-h-[8rem] min-h-[6rem] w-full flex-col items-center justify-center overflow-y-auto px-8"
+				>
+					<transition-group name="lyric" tag="div" class="flex flex-col items-center justify-center gap-2">
+						<template v-if="activeLyricLines.length > 0">
+							<div
+								v-for="(line, idx) in activeLyricLines"
+								:key="idx + '-' + line.time"
+								class="text-center text-xl leading-relaxed font-bold whitespace-pre-wrap italic md:text-2xl"
+							>
+								<template v-if="line.syllables && line.syllables.length > 0">
+									<span
+										v-for="(syl, sIdx) in line.syllables"
+										:key="sIdx"
+										:class="getSyllableClass(syl)"
+									>
+										{{ syl.text }}
+									</span>
+								</template>
+								<template v-else>
+									<span class="text-carpincho-secondary">{{ line.text }}</span>
+								</template>
+							</div>
+						</template>
 						<p
-							v-if="currentLyricLine"
-							:key="currentLyricLine"
+							v-else-if="currentLyricLine && currentLyricLine.trim() !== ''"
+							key="fallback-lyric"
 							class="text-carpincho-secondary text-center text-xl font-bold italic md:text-2xl"
 						>
 							{{ currentLyricLine }}
 						</p>
-					</transition>
+					</transition-group>
 				</div>
 			</div>
 		</div>

@@ -143,4 +143,38 @@ describe('FogonMode.vue', () => {
 			vi.useRealTimers();
 		}
 	});
+
+	it('renders karaoke syllables and multiple simultaneous lines in fogon mode', async () => {
+		const assContent = `[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Café {\\kf100}caliente
+Dialogue: 0,0:00:01.00,0:00:06.00,Default,,0,0,0,,{\\kf100}Taza {\\kf100}llena
+`;
+
+		global.fetch = vi.fn().mockResolvedValue({
+			ok: true,
+			text: () => Promise.resolve(assContent),
+		} as unknown as Response);
+
+		const wrapper = mount(FogonMode);
+
+		// Trigger track change to load lyrics
+		currentTrackPath.value = '/music/test_karaoke.mp3';
+		await wrapper.vm.$nextTick();
+		// Await fetch promise
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		await wrapper.vm.$nextTick();
+
+		// At 2 seconds: both lines are active
+		const { localTimePos } = await import('@/composables/player/state');
+		localTimePos.value = 2;
+		await wrapper.vm.$nextTick();
+
+		expect(wrapper.text()).toContain('Café caliente');
+		expect(wrapper.text()).toContain('Taza llena');
+
+		// Verificar que los spans de sílabas están presentes
+		const spans = wrapper.findAll('.whitespace-pre-wrap span');
+		expect(spans.length).toBeGreaterThanOrEqual(4);
+	});
 });

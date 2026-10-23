@@ -1,25 +1,230 @@
 import { ref, computed, type Ref } from 'vue';
 import { apiUrl } from './useApi';
 
-interface LyricLine {
-	time: number;
+export interface LyricSyllable {
 	text: string;
+	start: number;
+	end: number;
+}
+
+export interface LyricLine {
+	time: number;
+	endTime?: number;
+	text: string;
+	syllables?: LyricSyllable[];
 }
 
 const lyrics = ref<LyricLine[]>([]);
 
+/**
+ * Parsea el tiempo del subtítulo ASS (h:mm:ss.cs o hh:mm:ss.cs) a segundos con coma.
+ */
+export function parseAssTime(timeStr: string): number {
+	if (!timeStr) return 0;
+	const parts = timeStr.trim().split(':');
+	if (parts.length === 3) {
+		const hours = parseFloat(parts[0]) || 0;
+		const minutes = parseFloat(parts[1]) || 0;
+		const seconds = parseFloat(parts[2]) || 0;
+		return Math.round((hours * 3600 + minutes * 60 + seconds) * 100) / 100;
+	} else if (parts.length === 2) {
+		const minutes = parseFloat(parts[0]) || 0;
+		const seconds = parseFloat(parts[1]) || 0;
+		return Math.round((minutes * 60 + seconds) * 100) / 100;
+	}
+	return Math.round((parseFloat(timeStr) || 0) * 100) / 100;
+}
+
+/**
+ * Divide la línea de ASS respetando que el último campo (Text) puede contener comas a rolete.
+ */
+export function splitAssFields(line: string, numFields: number): string[] {
+	const result: string[] = [];
+	let current = '';
+	let count = 0;
+	for (let i = 0; i < line.length; i++) {
+		const char = line[i];
+		if (char === ',' && count < numFields - 1) {
+			result.push(current.trim());
+			current = '';
+			count++;
+		} else {
+			current += char;
+		}
+	}
+	result.push(current);
+	return result;
+}
+
+/**
+ * Parsea el texto del evento de ASS para extraer texto limpio y los bloques \kf de sílabas.
+ */
+export function parseAssText(
+	rawText: string,
+	startTime: number,
+	endTime: number
+): { cleanText: string; syllables: LyricSyllable[] } {
+	// Limpiamos los saltos de línea de ASS y cualquier estilo entre llaves para el texto plano
+	const cleanText = rawText
+		.replace(/\\N/gi, ' ')
+		.replace(/\\h/gi, ' ')
+		.replace(/\{[^}]*\}/g, '')
+		.trim();
+
+	const tokenRegex = /(\{[^}]*\})|([^{]+)/g;
+	let match: RegExpExecArray | null;
+	let currentTime = startTime;
+	let pendingDuration = 0;
+	const syllables: LyricSyllable[] = [];
+
+	while ((match = tokenRegex.exec(rawText)) !== null) {
+		const tagBlock = match[1];
+		const textChunk = match[2];
+
+		if (tagBlock) {
+			// Soporta \kf, \ko, \k y \K seguidos por la duración en centésimas de segundo
+			const kMatch = /\\k[f|o]?(\d+)/i.exec(tagBlock) || /\\K(\d+)/.exec(tagBlock);
+			if (kMatch) {
+				pendingDuration = parseInt(kMatch[1], 10) / 100;
+			}
+		} else if (textChunk) {
+			const cleanChunk = textChunk.replace(/\\N/gi, ' ').replace(/\\h/gi, ' ');
+			if (cleanChunk.length > 0) {
+				const sylStart = Math.round(currentTime * 100) / 100;
+				const sylDuration = pendingDuration > 0 ? pendingDuration : Math.max(0, endTime - currentTime);
+				const sylEnd = Math.round((sylStart + sylDuration) * 100) / 100;
+
+				syllables.push({
+					text: cleanChunk,
+					start: sylStart,
+					end: sylEnd,
+				});
+
+				currentTime = sylEnd;
+				pendingDuration = 0;
+			}
+		}
+	}
+
+	return { cleanText, syllables };
+}
+
+/**
+ * Parsea un archivo de letras en formato ASS.
+ */
+export function parseAss(content: string): LyricLine[] {
+	// Limpiamos BOM si viene al principio del archivo
+	const cleanContent = content.replace(/^\uFEFF/, '');
+	const lines = cleanContent.split(/\r?\n/);
+	const parsed: LyricLine[] = [];
+	let inEvents = false;
+	let formatFields: string[] = [];
+
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i].trim();
+		if (!line) continue;
+
+		if (line.startsWith('[') && line.endsWith(']')) {
+			inEvents = line.toLowerCase() === '[events]';
+			continue;
+		}
+
+		if (!inEvents) continue;
+
+		if (line.toLowerCase().startsWith('format:')) {
+			formatFields = line
+				.substring(7)
+				.split(',')
+				.map((f) => f.trim().toLowerCase());
+			continue;
+		}
+
+		if (line.toLowerCase().startsWith('dialogue:')) {
+			const rawContent = line.substring(9).trim();
+			const startIndex = formatFields.indexOf('start') !== -1 ? formatFields.indexOf('start') : 1;
+			const endIndex = formatFields.indexOf('end') !== -1 ? formatFields.indexOf('end') : 2;
+			const textIndex =
+				formatFields.indexOf('text') !== -1
+					? formatFields.indexOf('text')
+					: formatFields.length > 0
+						? formatFields.length - 1
+						: 9;
+
+			const numFields = Math.max(textIndex + 1, 10);
+			const fields = splitAssFields(rawContent, numFields);
+
+			const startStr = fields[startIndex] ?? '';
+			const endStr = fields[endIndex] ?? '';
+			const rawText = fields[textIndex] ?? '';
+
+			const startTime = parseAssTime(startStr);
+			const endTime = parseAssTime(endStr);
+
+			const { cleanText, syllables } = parseAssText(rawText, startTime, endTime);
+
+			if (cleanText) {
+				parsed.push({
+					time: startTime,
+					endTime: endTime,
+					text: cleanText,
+					syllables: syllables.length > 0 ? syllables : undefined,
+				});
+			}
+		}
+	}
+
+	// Ordenamos siempre cronológicamente de menor a mayor
+	parsed.sort((a, b) => a.time - b.time);
+	return parsed;
+}
+
+/**
+ * Detecta si el texto corresponde a un archivo ASS o a un LRC común y corriente.
+ */
+export function isAssFormat(content: string): boolean {
+	return content.includes('[Events]') || content.includes('[Script Info]') || content.includes('[V4+ Styles]');
+}
+
 export function useLyrics(player: { localTimePos: Ref<number> }) {
+	const activeLyricLines = computed(() => {
+		if (!lyrics.value || !lyrics.value.length) return [];
+		const time = player.localTimePos.value;
+
+		// Devolvemos todas las líneas que estén reproduciéndose en este momento (duetos, coros, etc.)
+		return lyrics.value.filter((line, idx) => {
+			const start = line.time;
+			const nextLine = lyrics.value[idx + 1];
+			const end = line.endTime ?? (nextLine ? nextLine.time : start + 10);
+			return time >= start && time <= end;
+		});
+	});
+
 	const currentLyricLine = computed(() => {
 		if (!lyrics.value || !lyrics.value.length) return null;
 
-		const activeLine = ' ';
+		const active = activeLyricLines.value;
+		if (active.length > 0) {
+			const texts = active.map((l) => l.text).filter((t) => t && t !== ' ');
+			if (texts.length > 0) {
+				return texts.join(' / ');
+			}
+			return ' ';
+		}
+
+		// Si todavía no arrancó la primera estrofa, devolvemos espacio en blanco
+		if (player.localTimePos.value < lyrics.value[0].time) {
+			return ' ';
+		}
+
+		// Respaldo para temas con LRC donde la última línea queda flotando
 		for (let i = lyrics.value.length - 1; i >= 0; i--) {
 			// Sincroniza contra el localTimePos del reproductor
 			if (player.localTimePos.value >= lyrics.value[i].time) {
 				return lyrics.value[i].text;
 			}
 		}
-		return activeLine;
+
+		return ' ';
 	});
 
 	async function loadLyrics(path: string | null) {
@@ -31,7 +236,11 @@ export function useLyrics(player: { localTimePos: Ref<number> }) {
 
 			if (res.ok && typeof res.text === 'function') {
 				const text = await res.text();
-				parseLrc(text);
+				if (isAssFormat(text)) {
+					lyrics.value = parseAss(text);
+				} else {
+					parseLrc(text);
+				}
 			}
 		} catch (err) {
 			console.error('Pifió buscando las lyrics, maestro:', err);
@@ -100,5 +309,5 @@ export function useLyrics(player: { localTimePos: Ref<number> }) {
 		lyrics.value = finalParsed;
 	}
 
-	return { currentLyricLine, loadLyrics, lyrics };
+	return { currentLyricLine, activeLyricLines, loadLyrics, lyrics };
 }

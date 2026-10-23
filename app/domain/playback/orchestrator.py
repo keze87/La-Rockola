@@ -594,9 +594,13 @@ class PlaybackOrchestrator:
 		if str_path == self.radio_announcement_path and show_win:
 			sub_candidate = Path(str_path).with_suffix(".srt")
 			if not sub_candidate.is_file():
+				sub_candidate = Path(str_path).with_suffix(".ass")
+			if not sub_candidate.is_file():
 				sub_candidate = Path(str_path).with_suffix(".lrc")
 			if not sub_candidate.is_file() and self.radio_pregenerated_path:
 				pre_sub = Path(self.radio_pregenerated_path).with_suffix(".srt")
+				if not pre_sub.is_file():
+					pre_sub = Path(self.radio_pregenerated_path).with_suffix(".ass")
 				if not pre_sub.is_file():
 					pre_sub = Path(self.radio_pregenerated_path).with_suffix(".lrc")
 				if pre_sub.is_file():

@@ -147,16 +147,27 @@ def test_library_media_system_and_websocket_routes(tmp_path: Path, dummy_audio_f
 	assert lib_res.status_code == 200
 	assert len(lib_res.json()["data"]) == 1
 
-	# Stream y LRC
+	# Stream y Letras (.ass prioritario con respaldo en .lrc)
 	lrc_file = dummy_audio_file.with_suffix(".lrc")
 	lrc_file.write_text("[00:01.00] Cantando en el fogón\n", encoding="utf-8")
 
 	stream_res = client.get("/api/v1/stream", params={"path": str(dummy_audio_file)})
 	assert stream_res.status_code == 200
 
+	# Solo con .lrc presente
 	lrc_res = client.get("/api/v1/lrc", params={"path": str(dummy_audio_file)})
 	assert lrc_res.status_code == 200
 	assert "Cantando en el fogón" in lrc_res.text
+
+	# Con .ass presente (debe priorizar .ass sobre .lrc)
+	ass_file = dummy_audio_file.with_suffix(".ass")
+	ass_file.write_text(
+		"[Events]\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,{\\kf10}Letra {\\kf20}ASS\n", encoding="utf-8"
+	)
+	ass_res = client.get("/api/v1/lrc", params={"path": str(dummy_audio_file)})
+	assert ass_res.status_code == 200
+	assert "Letra" in ass_res.text
+	assert "ASS" in ass_res.text
 
 	# Capabilities
 	cap_res = client.get("/api/v1/system/capabilities")
