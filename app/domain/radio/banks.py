@@ -16,7 +16,7 @@ from typing import NamedTuple
 
 class RadioPhrase(NamedTuple):
 	text: str
-	category: str  # "fortuna" | "aviso" | "alerta_criolla" | "oyentes"
+	category: str  # "fortuna" | "aviso" | "alerta_criolla" | "oyentes" | "chismes"
 
 
 # ---------------------------------------------------------------------------
@@ -408,6 +408,37 @@ DEDICATORIAS_OYENTES: list[str] = [
 	'Nos escriben desde la obra: "En el parlante del corralón mezclamos folklore, cuarteto y heavy metal. Gracias por acompañar el desorden con La Rockola".',
 ]
 
+# ---------------------------------------------------------------------------
+# Chismes y vida secreta de los carpinchos
+# ---------------------------------------------------------------------------
+
+CHISMES_CARPINCHOS: list[str] = [
+	"Los carpinchos de Nordelta no fueron a recuperar tierras: fueron porque el pasto sintético importado es más suave para rascarse el lomo en la siesta.",
+	"Bajo los pilotes del Delta hay un túnel subacuático que conecta directo con una sala de masajes clandestina atendida por nutrias.",
+	"Hacen como que mastican pasto todo el día, pero a la medianoche arman vaquita clandestina y le encargan empanadas fritas de carne cortada a cuchillo al carribar de la costa.",
+	"Tienen un pacto secreto de no agresión con los yacarés: los carpinchos les prestan Netflix y los yacarés fingen ser una amenaza para espantar a los curiosos.",
+	"Esa cara de paz espiritual y meditación zen que ponen en las fotos es puro teatro: en realidad están calculando cuántos metros cuadrados de jardín le van a afanar al vecino.",
+	"Tienen anotada la clave del Wi-Fi de todos los countries de la zona ribereña y a la madrugada se bajan listas enteras de cumbia santafesina.",
+	"El verdadero motivo por el que dejan que los patos y las garzas se les sienten en el lomo es porque les cobran peaje en lombrices y semillas seleccionadas.",
+	"Los carpinchos tienen un torneo secreto de polo acuático que se juega entre los juncos y el árbitro siempre es un biguá comprado con mojarras.",
+	"Dicen que toman agua del arroyo, pero en el fondo de las cuevas tienen un alambique artesanal donde destilan licor de ceibo y contrabandean fernet con cola.",
+	"Practican natación sincronizada en las noches de luna llena, pero apenas se acerca una lancha se tiran de panza y fingen ser troncos a la deriva.",
+	"No son vegetarianos por convicción filosófica: son vegetarianos porque perdieron una apuesta histórica contra los caranchos en el verano del noventa y siete.",
+	"Tienen un grupo secreto de WhatsApp llamado 'Operación Pata Mojada' donde se pasan el mapa de las piletas climatizadas con menos cloro del barrio cerrado.",
+	"Entienden el español a la perfección, pero fingen cara de nada cuando les hablás para que no les pidas que ayuden a empujar el bote encallado.",
+	"El carpincho alfa de la manada no se elige por fuerza ni por tamaño: se elige al que mejor ceba los mates amargos sin lavar la yerba.",
+	"Tienen guardada una colección clandestina de reposeras y sombrillas que los turistas se 'olvidaron' en la orilla, ordenadas por marca y comodidad.",
+	"Hacen yoga acuático todas las mañanas a las cinco, pero juran ante la ley de la selva que son solo 'estiramientos involuntarios por el reuma'.",
+	"Existe un sindicato secreto de carpinchos del humedal que regula estrictamente no hacer nada productivo entre las doce del mediodía y las cinco de la tarde.",
+	"Se sabe de buena fuente que usan protector solar factor cincuenta disimulado con barro para que los demás animales no les digan coquetos.",
+	"Tienen una red de espionaje montada con las ranas para enterarse con tres días de anticipación de cuándo van a prender el fuego para un asado en la isla.",
+	"Finjen que no les importa la moda, pero entre ellos compiten a ver quién consigue la capa de arcilla ribereña con mejor brillo y exfoliación.",
+	"En el fondo de la laguna hay un depósito secreto con todas las ojotas que la gente pierde en verano; las usan de pantuflas para andar por el juncal.",
+	"El rumor más picante del Delta: los carpinchos no duermen la siesta porque tengan sueño, la duermen para que los humanos no sospechen que están planeando la toma definitiva del continente.",
+	"Tienen un tratado secreto con los mosquitos: a cambio de que no los piquen en la panza, los carpinchos les marcan dónde acampan los turistas porteños.",
+	"Se descubrió que los carpinchos más viejos tienen cuentas offshore en esteros del Iberá donde acumulan fajos de camalotes de alta pureza.",
+]
+
 CARPINCHO_SABIDURIA: list[str] = list(CARPINCHO_FORTUNES)
 
 CARPINCHO_ADS.extend(AVISOS_PARROQUIALES_Y_EXTRAVIOS)
@@ -415,6 +446,7 @@ CARPINCHO_FORTUNES.extend(TRANSITO_FLUVIAL_Y_CAMINOS)
 CARPINCHO_FORTUNES.extend(ALERTAS_INCOMODIDAD_CRIOLLA)
 CARPINCHO_FORTUNES.extend(DEDICATORIAS_OYENTES)
 CARPINCHO_FORTUNES.extend(CARPINCHO_ADS)
+CARPINCHO_FORTUNES.extend(CHISMES_CARPINCHOS)
 
 # Mapeo y colección de duplas explícitas (frase, categoría)
 CARPINCHO_PHRASES: list[RadioPhrase] = [
@@ -423,6 +455,7 @@ CARPINCHO_PHRASES: list[RadioPhrase] = [
 	*(RadioPhrase(t, "alerta_criolla") for t in TRANSITO_FLUVIAL_Y_CAMINOS),
 	*(RadioPhrase(t, "oyentes") for t in DEDICATORIAS_OYENTES),
 	*(RadioPhrase(t, "aviso") for t in CARPINCHO_ADS),
+	*(RadioPhrase(t, "chismes") for t in CHISMES_CARPINCHOS),
 ]
 
 PHRASE_TO_CATEGORY: dict[str, str] = {p.text: p.category for p in CARPINCHO_PHRASES}
@@ -530,14 +563,26 @@ LEAD_INS_ALERTAS: list[str] = [
 	"Reporte que nos envían desde los canales de navegación ribereños:",
 ]
 
+LEAD_INS_CHISMES: list[str] = [
+	"Atenti que se picó en el humedal... ¡momento de radio pasillo y chismes carpincheros!",
+	"Se filtró información clasificada de la madriguera; pará la oreja que esto quema:",
+	"Esto no te lo cuentan en ningún documental de fauna... escuchate este chisme secreto:",
+	"Radio conventillo ribereño: lo que los carpinchos no quieren que nadie sepa:",
+	"¡Escándalo en el bañado! Nos llegó data pesada y sin filtro directo del pajonal:",
+	"Ojo al piojo que rompemos el pacto de silencio de la laguna con esta bomba:",
+	"Se pudrió todo en la orilla: mirá la data confidencial que rescatamos del arroyo:",
+	"Desempolvamos el archivo prohibido del Delta... atendé a lo que salió a la luz:",
+]
+
 LEAD_INS_BY_CATEGORY: dict[str, list[str]] = {
 	"fortuna": LEAD_INS_FORTUNA,
 	"aviso": LEAD_INS_AVISOS,
 	"oyentes": LEAD_INS_OYENTES,
 	"alerta_criolla": LEAD_INS_ALERTAS,
+	"chismes": LEAD_INS_CHISMES,
 }
 
-RADIO_LEAD_INS: list[str] = LEAD_INS_FORTUNA + LEAD_INS_AVISOS + LEAD_INS_OYENTES + LEAD_INS_ALERTAS
+RADIO_LEAD_INS: list[str] = LEAD_INS_FORTUNA + LEAD_INS_AVISOS + LEAD_INS_OYENTES + LEAD_INS_ALERTAS + LEAD_INS_CHISMES
 
 RADIO_OUTROS: list[str] = [
 	"Dejamos de parlotear y que hable el bajo. ¡Mandale play!",
@@ -577,6 +622,21 @@ RADIO_OUTROS: list[str] = [
 	"Cambiamos de ritmo sin doblar la esquina y nos metemos de lleno en el próximo temazo. ¡Mandale play que la mezcla no frena!",
 	# "¡Para Maru que nos escucha desde casa, te deseamos que tengas un buen día! ¡Un carpinchazo de tema para vos; cambiame la música!",
 ]
+
+OUTROS_CHISMES: list[str] = [
+	"Bueno, cortamos con el conventillo antes de que nos manden una carta documento desde la madriguera. ¡Mandale play a la música!",
+	"Suficiente puterío de humedal por hoy, que los carpinchos se ponen nerviosos. ¡Subile al parlante y que tape los murmullos!",
+	"Dejamos los trapitos al sol por un rato y volvemos a lo que nos une: ¡metele ritmo y cumbia de la buena!",
+	"¡Basta de chismes y a bailar que la música no juzga a nadie! ¡Mandale play nomás!",
+	"Guardamos la lengua en remojo por un rato y que hable el bajo. ¡Que siga la fiesta en La Rockola!",
+	"Tapamos el puterío de la orilla con tremendo temazo. ¡Subile dos rayitas al volumen!",
+]
+
+RADIO_OUTROS.extend(OUTROS_CHISMES)
+
+OUTROS_BY_CATEGORY: dict[str, list[str]] = {
+	"chismes": OUTROS_CHISMES,
+}
 
 RADIO_OUTROS_PAUSE: list[str] = [
 	"Hacemos una pausita en la orilla para calentar el agua del mate y enseguida volvemos con más música.",
@@ -1422,14 +1482,26 @@ REACCIONES_ALERTAS: list[str] = [
 	"Mucha fuerza para la gente de la costa que le está haciendo frente a la correntada.",
 ]
 
+REACCIONES_CHISMES: list[str] = [
+	"¡Nooo, mirá de lo que me vengo a enterar! ¡Se me cayó un ídolo ribereño!",
+	"¡Esa no la tenía ni por asomo! Con razón siempre se hacían los distraídos...",
+	"¡Qué jugoso, por favor! Guardame el secreto que esto no puede salir de la cabina.",
+	"¡Naaa, qué fuerte! Si esto llega a oídos de los carpinchos de Nordelta se arma la podrida.",
+	"¡Qué papelón! Y uno que los tenía por animales serios, pachorrientos y respetables...",
+	"¡Me estás cargando! Mirá el semejante secreto que tenían encanutado bajo los camalotes...",
+	"¡Paren las rotativas! Con esto le cambiamos la historia a toda la cuenca del Paraná.",
+]
+
 REACCIONES_BY_CATEGORY: dict[str, list[str]] = {
 	"fortuna": REACCIONES_FORTUNA,
 	"aviso": REACCIONES_AVISOS,
 	"oyentes": REACCIONES_OYENTES,
 	"alerta_criolla": REACCIONES_ALERTAS,
+	"chismes": REACCIONES_CHISMES,
 }
 
 RADIO_REACTIONS: list[str] = [
+	*REACCIONES_CHISMES,
 	"¡Qué lo tiró, che!",
 	"Mirá vos, qué momento.",
 	"Lindo momento para unos buenos mates.",
@@ -2794,6 +2866,36 @@ def resolve_segment_category(text: str | tuple[str, str] | RadioPhrase) -> str:
 	):
 		return "aviso"
 
+	# 7. Prefijos y palabras clave de conventillo y chismes secretos de carpinchos
+	if any(
+		text_clean.startswith(p)
+		for p in (
+			"Radio pasillo",
+			"Secreto de la madriguera",
+			"Chisme carpincho",
+			"Conventillo ",
+			"Archivo prohibido",
+			"Bomba en el bañado",
+			"Se filtró ",
+			"El pacto de silencio",
+		)
+	) or any(
+		k in text_lower
+		for k in (
+			"nordelta",
+			"vida secreta",
+			"pacto de silencio",
+			"radio pasillo",
+			"conventillo",
+			"se filtró",
+			"chisme",
+			"chismes",
+			"madriguera clandestina",
+			"operación pata mojada",
+		)
+	):
+		return "chismes"
+
 	return "fortuna"
 
 
@@ -2805,6 +2907,15 @@ def get_lead_ins_for_category(category: str) -> list[str]:
 def get_reactions_for_category(category: str) -> list[str]:
 	"""Devuelve las reacciones de cabina pertinentes a la categoría del segmento."""
 	return REACCIONES_BY_CATEGORY.get(category, REACCIONES_FORTUNA)
+
+
+def get_outros_for_category(category: str, outro_mode: str = "continue") -> list[str]:
+	"""Devuelve el banco de cierres pertinentes a la categoría o según el modo de salida."""
+	if outro_mode == "pause":
+		return RADIO_OUTROS_PAUSE
+	if outro_mode == "break":
+		return RADIO_OUTROS_BREAK
+	return OUTROS_BY_CATEGORY.get(category, RADIO_OUTROS)
 
 
 def get_outros_for_mode(outro_mode: str = "continue") -> list[str]:

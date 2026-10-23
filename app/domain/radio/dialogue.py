@@ -13,6 +13,7 @@ from app.domain.radio.banks import (
 	DEFAULT_COHOST_NAME,
 	HOUR_NAMES,
 	MINUTE_SEGMENTS,
+	OUTROS_BY_CATEGORY,
 	PASES_A_CLIMA,
 	RADIO_HANDOFFS,
 	RADIO_INTROS,
@@ -32,6 +33,7 @@ from app.domain.radio.banks import (
 	expand_phrase_variants,
 	filter_by_context,
 	get_lead_ins_for_category,
+	get_outros_for_category,
 	get_outros_for_mode,
 	get_reactions_for_category,
 	render_phrase,
@@ -292,14 +294,17 @@ def build_radio_dialogue_plan(
 	if intro is None:
 		intro = weighted_choice_by_recency(filter_by_context(RADIO_INTROS, ctx), category="intro", db_path=db_path)
 
-	if outro is None:
-		outro_pool = get_outros_for_mode(outro_mode)
-		outro = weighted_choice_by_recency(filter_by_context(outro_pool, ctx), category="salida", db_path=db_path)
-
 	time_phrase = f"{hora_seg} {minuto_seg}".strip() if minuto_seg else hora_seg.strip()
 	fortune_text = format_fortune_for_speech(effective_fortuna)
 	seg_cat = resolve_segment_category(effective_fortuna)
 	cohost_name = VOICE_NAMES.get(cohost_voice, DEFAULT_COHOST_NAME)
+
+	if outro is None:
+		if outro_mode == "continue" and seg_cat in OUTROS_BY_CATEGORY:
+			outro_pool = get_outros_for_category(seg_cat, outro_mode)
+		else:
+			outro_pool = get_outros_for_mode(outro_mode)
+		outro = weighted_choice_by_recency(filter_by_context(outro_pool, ctx), category="salida", db_path=db_path)
 
 	rendered_intro = render_tracked_phrase(intro, ctx)
 	rendered_outro = render_tracked_phrase(outro, ctx)
@@ -435,7 +440,10 @@ def generate_modular_radio_script(
 	seg_cat = resolve_segment_category(fortuna)
 	cat_lead_ins = get_lead_ins_for_category(seg_cat)
 	lead_in = random.choice(filter_by_context(cat_lead_ins, ctx))
-	outro_pool = get_outros_for_mode(outro_mode)
+	if outro_mode == "continue" and seg_cat in OUTROS_BY_CATEGORY:
+		outro_pool = get_outros_for_category(seg_cat, outro_mode)
+	else:
+		outro_pool = get_outros_for_mode(outro_mode)
 	outro = render_phrase(random.choice(filter_by_context(outro_pool, ctx)), ctx)
 	hora_full = f"{hora_seg} {minuto_seg}" if minuto_seg else hora_seg
 	fort_speech = format_fortune_for_speech(fortuna)
