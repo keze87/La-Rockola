@@ -278,4 +278,40 @@ Dialogue: 0,0:00:06.00,0:00:10.00,Default,,0,0,0,,{\\kf100}Segunda {\\kf100}fras
 		expect(activeSyllable.classes()).not.toContain('underline');
 		expect(activeSyllable.classes()).toContain('drop-shadow-[0_0_16px_rgba(255,255,255,1)]');
 	});
+
+	it('uses centered layout with reduced vertical spacing on narrow screens', async () => {
+		const assContent = `[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Hola
+`;
+
+		global.fetch = vi.fn().mockImplementation((url: string) => {
+			if (typeof url === 'string' && url.includes('/lrc')) {
+				return Promise.resolve({
+					ok: true,
+					text: () => Promise.resolve(assContent),
+				} as unknown as Response);
+			}
+			return Promise.resolve({
+				ok: true,
+				json: () => Promise.resolve({ status: 'ok' }),
+			} as unknown as Response);
+		});
+
+		const wrapper = mount(FogonMode);
+		currentTrackPath.value = '/music/narrow_screen.mp3';
+		await wrapper.vm.$nextTick();
+		await new Promise((resolve) => setTimeout(resolve, 15));
+		await wrapper.vm.$nextTick();
+
+		// Contenedor principal debe centrar verticalmente en mobile sin desparramar con justify-between
+		const mainLayout = wrapper.find('.max-w-7xl');
+		expect(mainLayout.classes()).toContain('justify-center');
+		expect(mainLayout.classes()).not.toContain('justify-between');
+
+		// La columna del reproductor en móviles debe estar centrada verticalmente sin justify-between
+		const playerColumn = wrapper.find('.max-w-7xl > div');
+		expect(playerColumn.classes()).toContain('justify-center');
+		expect(playerColumn.classes()).not.toContain('justify-between');
+	});
 });

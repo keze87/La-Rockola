@@ -381,16 +381,16 @@
 				class="relative z-20 flex h-full w-full max-w-7xl items-center justify-center transition-all duration-500"
 				:class="[
 					hasLyrics
-						? 'flex-col justify-between md:flex-row md:items-center md:gap-12 lg:gap-16'
+						? 'flex-col justify-center md:flex-row md:items-center md:gap-12 lg:gap-16'
 						: 'mx-auto max-w-md flex-col justify-center text-center',
 				]"
 			>
 				<!-- COLUMNA IZQUIERDA: Carátula, info y controles del reproductor -->
 				<div
-					class="flex w-full shrink-0 flex-col items-center transition-all duration-500"
+					class="flex w-full shrink-0 flex-col items-center justify-center transition-all duration-500"
 					:class="[
 						hasLyrics
-							? 'h-full justify-between py-2 text-center sm:py-4 md:h-auto md:w-[380px] md:items-start md:justify-center md:py-0 md:text-left lg:w-[440px] xl:w-[480px]'
+							? 'text-center md:w-[380px] md:items-start md:text-left lg:w-[440px] xl:w-[480px]'
 							: 'max-w-md text-center',
 					]"
 				>
@@ -401,7 +401,7 @@
 							class="bg-carpincho-bg flex shrink-0 items-center justify-center overflow-hidden rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.85)] transition-all duration-500 md:rounded-3xl"
 							:class="[
 								hasLyrics
-									? 'mb-3 aspect-square h-52 max-h-[34vh] w-52 sm:h-64 sm:w-64 md:mb-6 md:h-88 md:max-h-none md:w-88 lg:h-[400px] lg:w-[400px] xl:h-[440px] xl:w-[440px]'
+									? 'mb-3 aspect-square h-48 w-48 sm:h-56 sm:w-56 md:mb-6 md:h-88 md:max-h-none md:w-88 lg:h-[400px] lg:w-[400px] xl:h-[440px] xl:w-[440px]'
 									: 'mb-8 h-64 w-64 md:h-80 md:w-80',
 							]"
 						>
@@ -420,7 +420,7 @@
 
 						<!-- Info del tema -->
 						<h1
-							class="mb-1 w-full truncate font-black transition-all"
+							class="mb-0.5 w-full truncate font-black transition-all"
 							:class="hasLyrics ? 'text-xl sm:text-2xl md:text-3xl xl:text-4xl' : 'text-3xl'"
 						>
 							<span
@@ -440,11 +440,11 @@
 					</div>
 
 					<!-- Bloque medio: Barra de progreso y controles de reproducción -->
-					<div class="flex w-full flex-col items-center md:items-start">
+					<div class="mt-2.5 flex w-full flex-col items-center sm:mt-3 md:mt-4 md:items-start">
 						<!-- Barra de progreso personalizada -->
 						<div
 							v-show="currentTrackPath"
-							class="text-carpincho-secondary flex w-full items-center gap-3 text-xs font-medium select-none"
+							class="text-carpincho-secondary flex w-full max-w-xs items-center gap-3 text-xs font-medium select-none sm:max-w-sm md:max-w-none"
 						>
 							<span class="w-10 shrink-0 text-right">{{ formattedTimePos }}</span>
 
@@ -472,7 +472,7 @@
 
 						<!-- Controles de reproducción -->
 						<div
-							class="relative z-30 mt-2 flex w-full items-center gap-4 sm:gap-6"
+							class="relative z-30 mt-1 flex w-full items-center gap-4 sm:mt-2 sm:gap-6 md:mt-4"
 							:class="hasLyrics ? 'justify-center md:justify-start' : 'justify-center'"
 						>
 							<button
@@ -540,16 +540,16 @@
 					<!-- MODO VERTICAL (Mobile / Portrait): Muestra únicamente 2 o 3 líneas centradas con máscara y desenfoque -->
 					<div
 						v-if="hasLyrics"
-						class="lyrics-mask-vertical relative flex h-32 w-full max-w-sm flex-col items-center justify-center overflow-hidden px-2 text-center sm:h-40 md:hidden"
+						class="lyrics-mask-vertical relative mt-3 flex h-24 w-full max-w-sm flex-col items-center justify-center overflow-hidden px-2 text-center sm:mt-4 sm:h-28 md:hidden"
 					>
-						<div class="flex flex-col items-center justify-center space-y-3 select-none">
+						<div class="flex flex-col items-center justify-center space-y-1.5 select-none sm:space-y-2">
 							<div
 								v-for="(line, idx) in portraitLyricLines"
 								:key="'portrait-' + idx + '-' + line.time"
 								class="cursor-pointer whitespace-pre-wrap transition-all duration-300"
 								:class="[
 									isLineActive(line)
-										? 'scale-105 text-lg leading-snug font-black text-white blur-none drop-shadow-[0_0_16px_rgba(255,255,255,0.7)] sm:text-xl'
+										? 'scale-105 text-base leading-snug font-black text-white blur-none drop-shadow-[0_0_16px_rgba(255,255,255,0.7)] sm:text-lg'
 										: 'text-xs font-semibold text-white/35 blur-[0.8px] hover:text-white/60 hover:blur-none sm:text-sm',
 								]"
 								@click="handleLineClick(line.time)"
