@@ -314,4 +314,28 @@ Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Hola
 		expect(playerColumn.classes()).toContain('justify-center');
 		expect(playerColumn.classes()).not.toContain('justify-between');
 	});
+
+	it('maintains symmetrical centered alignment on wide screens with or without lyrics or during DJ wait', async () => {
+		// Estado 1: Sin canción ("Silencio estampa")
+		currentTrackPath.value = null;
+		djCarpinchoEnabled.value = false;
+		djNextTrack.value = null;
+
+		const wrapper = mount(FogonMode);
+		const playerColumn = wrapper.find('.max-w-7xl > div');
+
+		// La columna debe estar centrada y no tener clases que tiren elementos a la izquierda (como md:items-start o md:text-left)
+		expect(playerColumn.classes()).toContain('items-center');
+		expect(playerColumn.classes()).toContain('text-center');
+		expect(playerColumn.classes()).not.toContain('md:items-start');
+		expect(playerColumn.classes()).not.toContain('md:text-left');
+
+		// Los controles deben estar centrados
+		const controlsRow = wrapper.find('.relative.z-30.flex.w-full.items-center');
+		expect(controlsRow.classes()).toContain('justify-center');
+		expect(controlsRow.classes()).not.toContain('md:justify-start');
+
+		// No debe mostrar texto fuera de lugar de "Sin letras sincronizadas" en estado detenido
+		expect(wrapper.text()).not.toContain('Sin letras sincronizadas');
+	});
 });

@@ -382,27 +382,23 @@
 				:class="[
 					hasLyrics
 						? 'flex-col justify-center md:flex-row md:items-center md:gap-12 lg:gap-16'
-						: 'mx-auto max-w-md flex-col justify-center text-center',
+						: 'mx-auto flex-col justify-center text-center',
 				]"
 			>
 				<!-- COLUMNA IZQUIERDA: Carátula, info y controles del reproductor -->
 				<div
-					class="flex w-full shrink-0 flex-col items-center justify-center transition-all duration-500"
-					:class="[
-						hasLyrics
-							? 'text-center md:w-[380px] md:items-start md:text-left lg:w-[440px] xl:w-[480px]'
-							: 'max-w-md text-center',
-					]"
+					class="flex w-full shrink-0 flex-col items-center justify-center text-center transition-all duration-500"
+					:class="[hasLyrics ? 'md:w-88 lg:w-[380px] xl:w-[420px]' : 'max-w-md']"
 				>
 					<!-- Bloque superior: Carátula e información de la canción -->
-					<div class="flex w-full flex-col items-center md:items-start">
+					<div class="flex w-full flex-col items-center text-center">
 						<!-- Tapa del disco con sombra profunda, más grande y con esquinas redondeadas modernas -->
 						<div
 							class="bg-carpincho-bg flex shrink-0 items-center justify-center overflow-hidden rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.85)] transition-all duration-500 md:rounded-3xl"
 							:class="[
 								hasLyrics
-									? 'mb-3 aspect-square h-48 w-48 sm:h-56 sm:w-56 md:mb-6 md:h-88 md:max-h-none md:w-88 lg:h-[400px] lg:w-[400px] xl:h-[440px] xl:w-[440px]'
-									: 'mb-8 h-64 w-64 md:h-80 md:w-80',
+									? 'mb-3 aspect-square h-48 w-48 sm:h-56 sm:w-56 md:mb-5 md:h-72 md:w-72 lg:h-88 lg:w-88 xl:h-[400px] xl:w-[400px]'
+									: 'mb-4 aspect-square h-56 w-56 sm:h-64 sm:w-64 md:mb-6 md:h-80 md:w-80 lg:h-88 lg:w-88',
 							]"
 						>
 							<FavoritableCover
@@ -420,8 +416,12 @@
 
 						<!-- Info del tema -->
 						<h1
-							class="mb-0.5 w-full truncate font-black transition-all"
-							:class="hasLyrics ? 'text-xl sm:text-2xl md:text-3xl xl:text-4xl' : 'text-3xl'"
+							class="mb-0.5 w-full truncate text-center font-black transition-all"
+							:class="
+								hasLyrics
+									? 'text-xl sm:text-2xl md:text-3xl xl:text-4xl'
+									: 'text-2xl sm:text-3xl md:text-4xl'
+							"
 						>
 							<span
 								v-if="currentTrackInfo.isComing"
@@ -432,15 +432,19 @@
 							{{ currentTrackInfo.title }}
 						</h1>
 						<h2
-							class="text-carpincho-secondary w-full truncate font-medium"
-							:class="hasLyrics ? 'text-sm sm:text-base md:text-lg lg:text-xl' : 'text-xl'"
+							class="text-carpincho-secondary w-full truncate text-center font-medium"
+							:class="
+								hasLyrics
+									? 'text-sm sm:text-base md:text-lg lg:text-xl'
+									: 'text-base sm:text-lg md:text-xl'
+							"
 						>
 							{{ currentTrackInfo.artist }}
 						</h2>
 					</div>
 
 					<!-- Bloque medio: Barra de progreso y controles de reproducción -->
-					<div class="mt-2.5 flex w-full flex-col items-center sm:mt-3 md:mt-4 md:items-start">
+					<div class="mt-2.5 flex w-full flex-col items-center text-center sm:mt-3 md:mt-4">
 						<!-- Barra de progreso personalizada -->
 						<div
 							v-show="currentTrackPath"
@@ -472,8 +476,7 @@
 
 						<!-- Controles de reproducción -->
 						<div
-							class="relative z-30 mt-1 flex w-full items-center gap-4 sm:mt-2 sm:gap-6 md:mt-4"
-							:class="hasLyrics ? 'justify-center md:justify-start' : 'justify-center'"
+							class="relative z-30 mt-1 flex w-full items-center justify-center gap-4 sm:mt-2 sm:gap-6 md:mt-4"
 						>
 							<button
 								aria-label="Ajustar volumen"
@@ -521,7 +524,7 @@
 						<!-- Barra de volumen desplegable -->
 						<div
 							v-if="showFogonVolume"
-							class="relative z-40 mt-3 flex w-full items-center gap-4 px-2 text-gray-300 opacity-90 transition select-none hover:opacity-100"
+							class="relative z-40 mt-3 flex w-full max-w-xs items-center gap-4 px-2 text-gray-300 opacity-90 transition select-none hover:opacity-100 sm:max-w-sm md:max-w-none"
 						>
 							<button aria-label="Silenciar" @click="toggleMute">
 								<i class="material-icons cursor-pointer text-sm hover:text-white">{{ muteIcon }}</i>
@@ -535,6 +538,14 @@
 							/>
 							<i class="material-icons text-sm" aria-hidden="true">volume_up</i>
 						</div>
+
+						<!-- Mensaje sutil si hay tema sonando pero no tiene letras asociadas -->
+						<!-- <p
+							v-if="currentTrackPath && !hasLyrics && !currentTrackInfo.isComing"
+							class="mt-3 text-xs text-white/35 italic select-none"
+						>
+							Sin letras sincronizadas para este tema
+						</p> -->
 					</div>
 
 					<!-- MODO VERTICAL (Mobile / Portrait): Muestra únicamente 2 o 3 líneas centradas con máscara y desenfoque -->
@@ -625,11 +636,6 @@
 							</template>
 						</div>
 					</div>
-				</div>
-
-				<!-- En caso de que no haya letras cargadas -->
-				<div v-else class="mt-4 flex h-[4rem] w-full items-center justify-center text-sm text-gray-500 italic">
-					<span>Sin letras sincronizadas para este tema</span>
 				</div>
 			</div>
 		</div>
