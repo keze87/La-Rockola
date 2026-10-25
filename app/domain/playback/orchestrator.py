@@ -656,6 +656,8 @@ class PlaybackOrchestrator:
 	) -> str:
 		if should_pause or (current_track_path is not None and self.pause_after_path == current_track_path):
 			return "pause"
+		if not self.queue and self.dj_carpincho_enabled and self.tracks_cache:
+			return "dj"
 		has_next = bool(self.queue or (self.dj_carpincho_enabled and self.tracks_cache))
 		return "continue" if has_next else "break"
 
@@ -731,7 +733,7 @@ class PlaybackOrchestrator:
 					else:
 						outro_mode = self._get_expected_radio_outro_mode(should_pause=should_pause)
 						next_track_path = None
-						if outro_mode == "continue":
+						if outro_mode in ("continue", "dj"):
 							if self.queue:
 								next_track_path = self.queue[0]
 							elif self.dj_next_track:

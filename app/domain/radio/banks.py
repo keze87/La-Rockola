@@ -632,11 +632,20 @@ OUTROS_CHISMES: list[str] = [
 	"Tapamos el puterío de la orilla con tremendo temazo. ¡Subile dos rayitas al volumen!",
 ]
 
-RADIO_OUTROS.extend(OUTROS_CHISMES)
-
 OUTROS_BY_CATEGORY: dict[str, list[str]] = {
 	"chismes": OUTROS_CHISMES,
 }
+
+RADIO_OUTROS_DJ: list[str] = [
+	"No dejaron nada en la fila, pero no pasa nada: el DJ Carpincho toma el control de las bandejas y te manda esta joyita.",
+	"Se vació la lista, pero entra el DJ Carpincho a tirar magia en la consola. ¡A ver con qué temazo nos sorprende!",
+	"Nadie eligió tema, así que dejamos la cabina en manos del DJ Carpincho. ¡Mandale play a lo que eligió!",
+	"Tranqui que la música no para: cuando la cola se queda vacía, el DJ Carpincho se pone la diez y musicaliza el humedal.",
+	"Se terminaron los pedidos de la gente, pero el DJ Carpincho ya tiene preparada la próxima bomba en las bandejas. ¡Escuchate esto!",
+	"Bolsillos vacíos en la cola de temas, pero el DJ Carpincho no te deja a pata nunca: ¡metió mano en la batea y sacó este cañonazo!",
+	"Como nadie pidió nada, le dimos vía libre al DJ Carpincho para que haga de las suyas en la consola. ¡Subile al parlante!",
+	"¡Paso al DJ Carpincho! Cuando la audiencia no pide, él manda música de la buena. ¡A bailar con esto que viene!",
+]
 
 RADIO_OUTROS_PAUSE: list[str] = [
 	"Hacemos una pausita en la orilla para calentar el agua del mate y enseguida volvemos con más música.",
@@ -2915,13 +2924,19 @@ def get_outros_for_category(category: str, outro_mode: str = "continue") -> list
 		return RADIO_OUTROS_PAUSE
 	if outro_mode == "break":
 		return RADIO_OUTROS_BREAK
+	if outro_mode == "dj":
+		return RADIO_OUTROS_DJ
+	if category == "chismes":
+		return OUTROS_CHISMES
 	return OUTROS_BY_CATEGORY.get(category, RADIO_OUTROS)
 
 
 def get_outros_for_mode(outro_mode: str = "continue") -> list[str]:
-	"""Devuelve el banco de cierres radiales acorde al modo ('continue', 'pause' o 'break')."""
+	"""Devuelve el banco de cierres radiales acorde al modo ('continue', 'pause', 'break' o 'dj')."""
 	if outro_mode == "pause":
 		return RADIO_OUTROS_PAUSE
 	if outro_mode == "break":
 		return RADIO_OUTROS_BREAK
+	if outro_mode == "dj":
+		return RADIO_OUTROS_DJ
 	return RADIO_OUTROS

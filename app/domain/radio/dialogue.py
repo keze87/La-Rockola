@@ -13,12 +13,13 @@ from app.domain.radio.banks import (
 	DEFAULT_COHOST_NAME,
 	HOUR_NAMES,
 	MINUTE_SEGMENTS,
-	OUTROS_BY_CATEGORY,
+	OUTROS_CHISMES,
 	PASES_A_CLIMA,
 	RADIO_HANDOFFS,
 	RADIO_INTROS,
 	RADIO_OUTROS,
 	RADIO_OUTROS_BREAK,
+	RADIO_OUTROS_DJ,
 	RADIO_OUTROS_PAUSE,
 	RADIO_REACTIONS,
 	REACCIONES_CLIMA,
@@ -34,7 +35,6 @@ from app.domain.radio.banks import (
 	filter_by_context,
 	get_lead_ins_for_category,
 	get_outros_for_category,
-	get_outros_for_mode,
 	get_reactions_for_category,
 	render_phrase,
 	resolve_segment_category,
@@ -159,7 +159,7 @@ def get_all_intro_segments() -> list[str]:
 
 def get_all_outro_segments() -> list[str]:
 	res: list[str] = []
-	for outro in (*RADIO_OUTROS, *RADIO_OUTROS_PAUSE, *RADIO_OUTROS_BREAK):
+	for outro in (*RADIO_OUTROS, *RADIO_OUTROS_PAUSE, *RADIO_OUTROS_BREAK, *OUTROS_CHISMES, *RADIO_OUTROS_DJ):
 		for variant in expand_phrase_variants(outro):
 			if variant not in res:
 				res.append(variant)
@@ -300,10 +300,7 @@ def build_radio_dialogue_plan(
 	cohost_name = VOICE_NAMES.get(cohost_voice, DEFAULT_COHOST_NAME)
 
 	if outro is None:
-		if outro_mode == "continue" and seg_cat in OUTROS_BY_CATEGORY:
-			outro_pool = get_outros_for_category(seg_cat, outro_mode)
-		else:
-			outro_pool = get_outros_for_mode(outro_mode)
+		outro_pool = get_outros_for_category(seg_cat, outro_mode)
 		outro = weighted_choice_by_recency(filter_by_context(outro_pool, ctx), category="salida", db_path=db_path)
 
 	rendered_intro = render_tracked_phrase(intro, ctx)
@@ -440,10 +437,7 @@ def generate_modular_radio_script(
 	seg_cat = resolve_segment_category(fortuna)
 	cat_lead_ins = get_lead_ins_for_category(seg_cat)
 	lead_in = random.choice(filter_by_context(cat_lead_ins, ctx))
-	if outro_mode == "continue" and seg_cat in OUTROS_BY_CATEGORY:
-		outro_pool = get_outros_for_category(seg_cat, outro_mode)
-	else:
-		outro_pool = get_outros_for_mode(outro_mode)
+	outro_pool = get_outros_for_category(seg_cat, outro_mode)
 	outro = render_phrase(random.choice(filter_by_context(outro_pool, ctx)), ctx)
 	hora_full = f"{hora_seg} {minuto_seg}" if minuto_seg else hora_seg
 	fort_speech = format_fortune_for_speech(fortuna)

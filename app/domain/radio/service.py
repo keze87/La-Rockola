@@ -31,7 +31,9 @@ from app.domain.radio.banks import (
 	VOICES,
 	build_radio_context,
 	filter_by_context,
+	get_outros_for_category,
 	get_outros_for_mode,
+	resolve_segment_category,
 )
 from app.domain.radio.dialogue import (
 	build_radio_dialogue_plan,
@@ -745,7 +747,8 @@ async def create_radio_announcement(
 
 	intro = weighted_choice_by_recency(filter_by_context(RADIO_INTROS, ctx), category="intro", db_path=db_path)
 	hora_seg, minuto_seg, _ = get_modular_time_segments(effective_dt)
-	outro_pool = get_outros_for_mode(outro_mode)
+	seg_cat = resolve_segment_category(fortuna)
+	outro_pool = get_outros_for_category(seg_cat, outro_mode)
 	outro = weighted_choice_by_recency(filter_by_context(outro_pool, ctx), category="salida", db_path=db_path)
 
 	is_dialogue = dialogue_mode if dialogue_mode is not None else (random.random() < 0.85)
