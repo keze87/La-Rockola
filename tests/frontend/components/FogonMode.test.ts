@@ -322,6 +322,17 @@ Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Hola
 		const portraitLyrics = wrapper.find('.lyrics-mask-vertical');
 		expect(portraitLyrics.classes()).toContain('w-full');
 		expect(portraitLyrics.classes()).toContain('flex-1');
+
+		// El título queda clavado en el centro vertical de la pantalla dividiendo el espacio en dos bloques flex-1 simétricos
+		const topCoverSection = coverWrapper.element.parentElement;
+		expect(topCoverSection?.classList.contains('flex-1')).toBe(true);
+
+		const trackInfoSection = wrapper.find('.fogon-track-info');
+		expect(trackInfoSection.exists()).toBe(true);
+		expect(trackInfoSection.classes()).toContain('shrink-0');
+
+		const bottomSection = portraitLyrics.element.parentElement;
+		expect(bottomSection?.classList.contains('flex-1')).toBe(true);
 	});
 
 	it('maintains symmetrical centered alignment on wide screens with or without lyrics or during DJ wait', async () => {
