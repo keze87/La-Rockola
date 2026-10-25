@@ -12,7 +12,7 @@
 	const player = usePlayer();
 	const {
 		currentTrackPath,
-		djCarpinchoEnabled,
+		djBaraEnabled,
 		djNextTrack,
 		duration,
 		haptic,
@@ -201,7 +201,7 @@
 	// --- Propiedades computadas para simplificar el template ---
 	const coverSource = computed(() => {
 		if (currentTrackPath.value) return currentTrackPath.value;
-		if (djCarpinchoEnabled.value && djNextTrack.value?.path) return djNextTrack.value.path;
+		if (djBaraEnabled.value && djNextTrack.value?.path) return djNextTrack.value.path;
 		return null;
 	});
 
@@ -225,7 +225,7 @@
 			};
 		}
 
-		if (djCarpinchoEnabled.value && djNextTrack.value) {
+		if (djBaraEnabled.value && djNextTrack.value) {
 			return {
 				title: djNextTrack.value.display_title || djNextTrack.value.title,
 				artist: djNextTrack.value.display_artist || djNextTrack.value.artist,
@@ -385,19 +385,23 @@
 						: 'mx-auto flex-col justify-center text-center',
 				]"
 			>
-				<!-- COLUMNA IZQUIERDA: Carátula, info y controles del reproductor -->
+				<!-- COLUMNA IZQUIERDA: Carátula, info y controles del reproductor (centrado simétrico impecable) -->
 				<div
 					class="flex w-full shrink-0 flex-col items-center justify-center text-center transition-all duration-500"
-					:class="[hasLyrics ? 'md:w-88 lg:w-[380px] xl:w-[420px]' : 'max-w-md']"
+					:class="[
+						hasLyrics
+							? 'h-full py-2 sm:py-4 md:h-auto md:w-88 md:py-0 lg:w-[380px] xl:w-[420px]'
+							: 'max-w-md',
+					]"
 				>
 					<!-- Bloque superior: Carátula e información de la canción -->
-					<div class="flex w-full flex-col items-center text-center">
-						<!-- Tapa del disco con sombra profunda, más grande y con esquinas redondeadas modernas -->
+					<div class="flex w-full shrink-0 flex-col items-center text-center">
+						<!-- Tapa del disco con sombra profunda, 90% del ancho en móviles (estrictamente cuadrada) y tamaño balanceado en escritorio -->
 						<div
 							class="bg-carpincho-bg flex shrink-0 items-center justify-center overflow-hidden rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.85)] transition-all duration-500 md:rounded-3xl"
 							:class="[
 								hasLyrics
-									? 'mb-3 aspect-square h-48 w-48 sm:h-56 sm:w-56 md:mb-5 md:h-72 md:w-72 lg:h-88 lg:w-88 xl:h-[400px] xl:w-[400px]'
+									? 'mb-4 aspect-square h-[90vw] max-h-[380px] w-[90vw] max-w-[380px] sm:mb-5 md:mb-5 md:h-auto md:max-h-none md:w-full md:max-w-none'
 									: 'mb-4 aspect-square h-56 w-56 sm:h-64 sm:w-64 md:mb-6 md:h-80 md:w-80 lg:h-88 lg:w-88',
 							]"
 						>
@@ -416,7 +420,7 @@
 
 						<!-- Info del tema -->
 						<h1
-							class="mb-0.5 w-full truncate text-center font-black transition-all"
+							class="mb-1 w-full truncate text-center font-black transition-all"
 							:class="
 								hasLyrics
 									? 'text-xl sm:text-2xl md:text-3xl xl:text-4xl'
@@ -443,12 +447,12 @@
 						</h2>
 					</div>
 
-					<!-- Bloque medio: Barra de progreso y controles de reproducción -->
-					<div class="mt-2.5 flex w-full flex-col items-center text-center sm:mt-3 md:mt-4">
+					<!-- Bloque medio: Barra de progreso y controles de reproducción con mayor holgura vertical -->
+					<div class="mt-4 flex w-full shrink-0 flex-col items-center text-center sm:mt-5 md:mt-4">
 						<!-- Barra de progreso personalizada -->
 						<div
 							v-show="currentTrackPath"
-							class="text-carpincho-secondary flex w-full max-w-xs items-center gap-3 text-xs font-medium select-none sm:max-w-sm md:max-w-none"
+							class="text-carpincho-secondary flex w-[90vw] max-w-[380px] items-center gap-3 text-xs font-medium select-none md:w-full md:max-w-none"
 						>
 							<span class="w-10 shrink-0 text-right">{{ formattedTimePos }}</span>
 
@@ -474,9 +478,9 @@
 							<span class="w-10 shrink-0">{{ formattedDuration }}</span>
 						</div>
 
-						<!-- Controles de reproducción -->
+						<!-- Controles de reproducción centrados con más aire -->
 						<div
-							class="relative z-30 mt-1 flex w-full items-center justify-center gap-4 sm:mt-2 sm:gap-6 md:mt-4"
+							class="relative z-30 mt-2 flex w-full items-center justify-center gap-5 sm:mt-3 sm:gap-7 md:mt-4"
 						>
 							<button
 								aria-label="Ajustar volumen"
@@ -548,19 +552,19 @@
 						</p> -->
 					</div>
 
-					<!-- MODO VERTICAL (Mobile / Portrait): Muestra únicamente 2 o 3 líneas centradas con máscara y desenfoque -->
+					<!-- MODO VERTICAL (Mobile / Portrait): Ocupa el 100% del ancho y toda la altura debajo de los controles con espacio confortable -->
 					<div
 						v-if="hasLyrics"
-						class="lyrics-mask-vertical relative mt-3 flex h-24 w-full max-w-sm flex-col items-center justify-center overflow-hidden px-2 text-center sm:mt-4 sm:h-28 md:hidden"
+						class="lyrics-mask-vertical relative mt-4 mb-2 flex min-h-0 w-full flex-1 flex-col items-center justify-center overflow-hidden px-4 text-center sm:mt-5 md:hidden"
 					>
-						<div class="flex flex-col items-center justify-center space-y-1.5 select-none sm:space-y-2">
+						<div class="flex flex-col items-center justify-center space-y-2.5 select-none sm:space-y-4">
 							<div
 								v-for="(line, idx) in portraitLyricLines"
 								:key="'portrait-' + idx + '-' + line.time"
 								class="cursor-pointer whitespace-pre-wrap transition-all duration-300"
 								:class="[
 									isLineActive(line)
-										? 'scale-105 text-base leading-snug font-black text-white blur-none drop-shadow-[0_0_16px_rgba(255,255,255,0.7)] sm:text-lg'
+										? 'scale-105 text-lg leading-relaxed font-black text-white blur-none drop-shadow-[0_0_16px_rgba(255,255,255,0.7)] sm:text-xl'
 										: 'text-xs font-semibold text-white/35 blur-[0.8px] hover:text-white/60 hover:blur-none sm:text-sm',
 								]"
 								@click="handleLineClick(line.time)"

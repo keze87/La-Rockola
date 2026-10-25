@@ -110,8 +110,7 @@ export function useSocket() {
 						if (state.current_track !== undefined) currentTrackPath.value = state.current_track;
 						if (state.has_local_player !== undefined)
 							hasLocalPlayer.value = Boolean(state.has_local_player);
-						if (state.dj_carpincho_enabled !== undefined)
-							djBaraEnabled.value = state.dj_carpincho_enabled;
+						if (state.dj_carpincho_enabled !== undefined) djBaraEnabled.value = state.dj_carpincho_enabled;
 						if (state.dj_next_track !== undefined) djNextTrack.value = state.dj_next_track;
 						if (state.dj_safe_mode !== undefined) djSafeModeEnabled.value = state.dj_safe_mode;
 						if (state.duration !== undefined) duration.value = state.duration;

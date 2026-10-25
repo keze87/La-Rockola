@@ -300,7 +300,7 @@
 
 			<!-- DJ Bara PLACEHOLDER -->
 			<DjBanner
-				:dj-carpincho-enabled="djBaraEnabled"
+				:dj-bara-enabled="djBaraEnabled"
 				:queue-length="queueState.length"
 				:dj-next-track="djNextTrack"
 				:track-grid-class="trackGridClass"

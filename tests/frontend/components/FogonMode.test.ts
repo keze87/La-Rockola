@@ -3,7 +3,7 @@ import { mount } from '@vue/test-utils';
 import FogonMode from '@/components/FogonMode.vue';
 import {
 	currentTrackPath,
-	djCarpinchoEnabled,
+	djBaraEnabled,
 	djNextTrack,
 	isFogonMode,
 	isPaused,
@@ -16,7 +16,7 @@ describe('FogonMode.vue', () => {
 		isFogonMode.value = true;
 		currentTrackPath.value = '/music/cancion.flac';
 		isPaused.value = false;
-		djCarpinchoEnabled.value = false;
+		djBaraEnabled.value = false;
 		djNextTrack.value = null;
 		volume.value = 80;
 		trackMap.value = {
@@ -51,7 +51,7 @@ describe('FogonMode.vue', () => {
 
 	it('renders DJ next track preview when stopped but DJ is active', () => {
 		currentTrackPath.value = null;
-		djCarpinchoEnabled.value = true;
+		djBaraEnabled.value = true;
 		djNextTrack.value = {
 			path: '/music/dj_track.mp3',
 			title: 'Jijiji',
@@ -313,12 +313,21 @@ Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Hola
 		const playerColumn = wrapper.find('.max-w-7xl > div');
 		expect(playerColumn.classes()).toContain('justify-center');
 		expect(playerColumn.classes()).not.toContain('justify-between');
+
+		// En pantallas estrechas, la carátula usa el 90% del ancho y las letras ocupan el 100% del ancho y toda la altura debajo de los controles
+		const coverWrapper = wrapper.find('.bg-carpincho-bg');
+		expect(coverWrapper.classes()).toContain('w-[90vw]');
+		expect(coverWrapper.classes()).toContain('h-[90vw]');
+
+		const portraitLyrics = wrapper.find('.lyrics-mask-vertical');
+		expect(portraitLyrics.classes()).toContain('w-full');
+		expect(portraitLyrics.classes()).toContain('flex-1');
 	});
 
 	it('maintains symmetrical centered alignment on wide screens with or without lyrics or during DJ wait', async () => {
 		// Estado 1: Sin canción ("Silencio estampa")
 		currentTrackPath.value = null;
-		djCarpinchoEnabled.value = false;
+		djBaraEnabled.value = false;
 		djNextTrack.value = null;
 
 		const wrapper = mount(FogonMode);
