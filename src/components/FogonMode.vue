@@ -394,10 +394,10 @@
 							: 'max-w-md',
 					]"
 				>
-					<!-- Bloque superior: Carátula del álbum (centrada en la mitad superior en móviles) -->
+					<!-- Bloque superior: Carátula del álbum (centrada en el 60% superior en móviles) -->
 					<div
 						class="flex w-full items-center justify-center text-center"
-						:class="[hasLyrics ? 'min-h-0 flex-1 md:h-auto md:flex-none md:shrink-0' : 'shrink-0']"
+						:class="[hasLyrics ? 'min-h-0 flex-[6] md:h-auto md:flex-none md:shrink-0' : 'shrink-0']"
 					>
 						<!-- Tapa del disco con sombra profunda, 90% del ancho en móviles (estrictamente cuadrada) y tamaño balanceado en escritorio -->
 						<div
@@ -456,12 +456,12 @@
 						</h2>
 					</div>
 
-					<!-- Bloque inferior: Barra de progreso, controles y letras móviles equilibrados en la mitad inferior -->
+					<!-- Bloque inferior: Barra de progreso, controles y letras móviles equilibrados en el 40% inferior -->
 					<div
 						class="flex w-full flex-col items-center text-center"
 						:class="[
 							hasLyrics
-								? 'min-h-0 flex-1 justify-between md:h-auto md:flex-none md:shrink-0 md:justify-center'
+								? 'min-h-0 flex-[4] justify-between md:h-auto md:flex-none md:shrink-0 md:justify-center'
 								: 'mt-4 shrink-0 sm:mt-5 md:mt-4',
 						]"
 					>
