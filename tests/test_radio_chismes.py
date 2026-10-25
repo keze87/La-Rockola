@@ -127,7 +127,7 @@ class TestRadioChismesSuite:
 		assert all(o not in OUTROS_CHISMES for o in outros_fortuna)
 
 	def test_07_dj_carpincho_outro_mode_and_phrases(self) -> None:
-		"""Deben existir outros para DJ Carpincho y get_outros_for_mode('dj') debe devolverlos."""
+		"""Deben existir outros para DJ Bara y get_outros_for_mode('dj') debe devolverlos."""
 		from app.domain.radio.banks import RADIO_OUTROS_DJ, get_outros_for_mode
 
 		assert len(RADIO_OUTROS_DJ) >= 5
@@ -137,7 +137,7 @@ class TestRadioChismesSuite:
 		assert get_outros_for_category("fortuna", outro_mode="dj") == RADIO_OUTROS_DJ
 
 	def test_08_orchestrator_returns_dj_outro_mode_when_queue_empty_and_dj_enabled(self, tmp_path: Path) -> None:
-		"""PlaybackOrchestrator debe retornar outro_mode='dj' si no hay cola pero DJ Carpincho está activo."""
+		"""PlaybackOrchestrator debe retornar outro_mode='dj' si no hay cola pero DJ Bara está activo."""
 		from app.domain.playback.orchestrator import PlaybackOrchestrator
 
 		db_path = tmp_path / "orch_dj.db"
@@ -147,14 +147,14 @@ class TestRadioChismesSuite:
 		orch.tracks_cache = [{"path": "/music/t1.mp3", "title": "Tema 1"}]
 		orch.dj_carpincho_enabled = True
 
-		# Sin canciones elegidas en la cola pero con DJ Carpincho activo
+		# Sin canciones elegidas en la cola pero con DJ Bara activo
 		assert orch._get_expected_radio_outro_mode() == "dj"
 
 		# Con canciones elegidas en la cola
 		orch.queue = ["/music/t2.mp3"]
 		assert orch._get_expected_radio_outro_mode() == "continue"
 
-		# Con cola vacía y sin DJ Carpincho
+		# Con cola vacía y sin DJ Bara
 		orch.queue = []
 		orch.dj_carpincho_enabled = False
 		assert orch._get_expected_radio_outro_mode() == "break"

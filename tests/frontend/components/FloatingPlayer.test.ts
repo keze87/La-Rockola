@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import FloatingPlayer from '@/components/FloatingPlayer.vue';
-import { currentTrackPath, isPaused, queueState, trackMap, djCarpinchoEnabled } from '@/composables/player/state';
+import { currentTrackPath, isPaused, queueState, trackMap, djBaraEnabled } from '@/composables/player/state';
 
 describe('FloatingPlayer.vue', () => {
 	beforeEach(() => {
@@ -9,7 +9,7 @@ describe('FloatingPlayer.vue', () => {
 		isPaused.value = false;
 		queueState.value = [];
 		trackMap.value = {};
-		djCarpinchoEnabled.value = false;
+		djBaraEnabled.value = false;
 	});
 
 	it('renders queue prompt when stopped and queue is empty', () => {

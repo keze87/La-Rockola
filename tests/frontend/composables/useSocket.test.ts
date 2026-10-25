@@ -3,7 +3,7 @@ import { useSocket } from '@/composables/player/useSocket';
 import {
 	currentTrackPath,
 	currentTracks,
-	djCarpinchoEnabled,
+	djBaraEnabled,
 	djNextTrack,
 	djSafeModeEnabled,
 	duration,
@@ -66,7 +66,7 @@ describe('useSocket.ts', () => {
 		currentTrackPath.value = null;
 		currentTracks.value = [];
 		originalTracks.value = [];
-		djCarpinchoEnabled.value = false;
+		djBaraEnabled.value = false;
 		djNextTrack.value = null;
 		djSafeModeEnabled.value = false;
 		duration.value = 0;
@@ -223,7 +223,7 @@ describe('useSocket.ts', () => {
 		capturedOptions.onMessage(null, { data: JSON.stringify(payload) });
 
 		expect(currentTrackPath.value).toBe('/music/spinetta.mp3');
-		expect(djCarpinchoEnabled.value).toBe(true);
+		expect(djBaraEnabled.value).toBe(true);
 		expect(radioModeEnabled.value).toBe(true);
 		expect(isSynthesizingRadio.value).toBe(true);
 		expect(isPlayingRadioAnnouncement.value).toBe(true);

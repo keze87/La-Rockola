@@ -117,7 +117,7 @@ describe('usePlaybackControls.ts', () => {
 			expect.objectContaining({ body: JSON.stringify({ cmd: 'set_volume', vollevel: 70 }) })
 		);
 
-		await controls.toggleDjCarpincho(true);
+		await controls.toggleDjBara(true);
 		expect(fetchMock).toHaveBeenCalledWith(
 			'/command',
 			expect.objectContaining({ body: JSON.stringify({ cmd: 'toggle_dj_carpincho', state: true }) })

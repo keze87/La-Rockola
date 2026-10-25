@@ -1,7 +1,7 @@
 """
-Paquete del selector DJ Carpincho.
+Paquete del selector DJ Bara.
 """
 
-from app.domain.dj.selector import DjCarpinchoSelector
+from app.domain.dj.selector import DjBaraSelector
 
-__all__ = ["DjCarpinchoSelector"]
+__all__ = ["DjBaraSelector"]

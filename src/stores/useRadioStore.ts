@@ -1,9 +1,9 @@
-// Store de dominio para DJ Carpincho, Modo Radio, ubicación climática y capacidades del servidor.
+// Store de dominio para DJ Bara, Modo Radio, ubicación climática y capacidades del servidor.
 
 import { ref } from 'vue';
 import type { Track } from '../types';
 
-export const djCarpinchoEnabled = ref<boolean>(false);
+export const djBaraEnabled = ref<boolean>(false);
 export const djNextTrack = ref<Track | null>(null);
 export const djSafeModeEnabled = ref<boolean>(false);
 
@@ -17,7 +17,7 @@ export const hasFfmpeg = ref<boolean>(false);
 
 export function useRadioStore() {
 	return {
-		djCarpinchoEnabled,
+		djBaraEnabled,
 		djNextTrack,
 		djSafeModeEnabled,
 		radioModeEnabled,

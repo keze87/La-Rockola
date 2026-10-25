@@ -165,7 +165,7 @@ describe('useLocalPlayback', () => {
 	});
 
 	it('prefetches next track when listening locally with queued or DJ track', async () => {
-		const { queueState, djCarpinchoEnabled, djNextTrack } = await import('@/composables/player/state');
+		const { queueState, djBaraEnabled, djNextTrack } = await import('@/composables/player/state');
 		const fetchMock = vi.fn().mockResolvedValue({ ok: true });
 		global.fetch = fetchMock;
 
@@ -184,7 +184,7 @@ describe('useLocalPlayback', () => {
 		// Test DJ next track prefetch when queue is empty
 		fetchMock.mockClear();
 		queueState.value = [];
-		djCarpinchoEnabled.value = true;
+		djBaraEnabled.value = true;
 		djNextTrack.value = { path: '/music/dj_upcoming.mp3' };
 		await nextTick();
 

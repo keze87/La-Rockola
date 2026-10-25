@@ -22,7 +22,7 @@ import { bindMediaSessionHandlers, syncMediaSessionMetadata, syncMediaSessionPos
 import { getSilentBlobUrl } from '../../audio/morseKeepalive';
 import {
 	currentTrackPath,
-	djCarpinchoEnabled,
+	djBaraEnabled,
 	djNextTrack,
 	duration,
 	isDraggingSeek,
@@ -306,7 +306,7 @@ export function useLocalPlayback() {
 				let nextPath: string | null = null;
 				if (queueState.value.length > 0) {
 					nextPath = queueState.value[0];
-				} else if (djCarpinchoEnabled.value && djNextTrack.value) {
+				} else if (djBaraEnabled.value && djNextTrack.value) {
 					nextPath = djNextTrack.value.path;
 				}
 

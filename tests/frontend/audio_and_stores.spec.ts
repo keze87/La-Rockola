@@ -123,8 +123,8 @@ describe('Stage 4 — Modular Audio Engine & Domain Stores', () => {
 		library.librarySearchQuery.value = 'chacarera';
 		expect(library.librarySearchQuery.value).toBe('chacarera');
 
-		radio.djCarpinchoEnabled.value = true;
-		expect(radio.djCarpinchoEnabled.value).toBe(true);
+		radio.djBaraEnabled.value = true;
+		expect(radio.djBaraEnabled.value).toBe(true);
 
 		ui.activeTab.value = 'queue';
 		expect(ui.activeTab.value).toBe('queue');

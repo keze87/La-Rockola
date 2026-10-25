@@ -15,7 +15,7 @@
 
 	const {
 		currentTrackPath,
-		djCarpinchoEnabled,
+		djBaraEnabled,
 		djNextTrack,
 		getTrackInfo,
 		haptic,
@@ -286,7 +286,7 @@
 
 			<!-- EMPTY STATE -->
 			<div
-				v-if="unifiedQueue.length === 0 && !djCarpinchoEnabled"
+				v-if="unifiedQueue.length === 0 && !djBaraEnabled"
 				id="empty-queue-full-state"
 				:class="['border-carpincho-border border-b', trackGridClass]"
 			>
@@ -298,9 +298,9 @@
 				</div>
 			</div>
 
-			<!-- DJ CARPINCHO PLACEHOLDER -->
+			<!-- DJ Bara PLACEHOLDER -->
 			<DjBanner
-				:dj-carpincho-enabled="djCarpinchoEnabled"
+				:dj-carpincho-enabled="djBaraEnabled"
 				:queue-length="queueState.length"
 				:dj-next-track="djNextTrack"
 				:track-grid-class="trackGridClass"

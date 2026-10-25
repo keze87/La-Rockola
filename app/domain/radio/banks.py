@@ -637,14 +637,14 @@ OUTROS_BY_CATEGORY: dict[str, list[str]] = {
 }
 
 RADIO_OUTROS_DJ: list[str] = [
-	"No dejaron nada en la fila, pero no pasa nada: el DJ Carpincho toma el control de las bandejas y te manda esta joyita.",
-	"Se vació la lista, pero entra el DJ Carpincho a tirar magia en la consola. ¡A ver con qué temazo nos sorprende!",
-	"Nadie eligió tema, así que dejamos la cabina en manos del DJ Carpincho. ¡Mandale play a lo que eligió!",
-	"Tranqui que la música no para: cuando la cola se queda vacía, el DJ Carpincho se pone la diez y musicaliza el humedal.",
-	"Se terminaron los pedidos de la gente, pero el DJ Carpincho ya tiene preparada la próxima bomba en las bandejas. ¡Escuchate esto!",
-	"Bolsillos vacíos en la cola de temas, pero el DJ Carpincho no te deja a pata nunca: ¡metió mano en la batea y sacó este cañonazo!",
-	"Como nadie pidió nada, le dimos vía libre al DJ Carpincho para que haga de las suyas en la consola. ¡Subile al parlante!",
-	"¡Paso al DJ Carpincho! Cuando la audiencia no pide, él manda música de la buena. ¡A bailar con esto que viene!",
+	"No dejaron nada en la fila, pero no pasa nada: el DiJei Bara toma el control de las bandejas y te manda esta joyita.",
+	"Se vació la lista, pero entra el DiJei Bara a tirar magia en la consola. ¡A ver con qué temazo nos sorprende!",
+	"Nadie eligió tema, así que dejamos la cabina en manos del DiJei Bara. ¡Bailá con lo que eligió!",
+	"Tranqui que la música no para: cuando la cola se queda vacía, el DiJei Bara se pone la diez y musicaliza el humedal.",
+	"Se terminaron los pedidos de la gente, pero el DiJei Bara ya tiene preparada la próxima bomba en las bandejas. ¡Escucháte esto!",
+	"Bolsillos vacíos en la cola de temas, pero el DiJei Bara no te deja a pata nunca: ¡metió mano en la batea y sacó este cañonazo!",
+	"Como nadie pidió nada, le dimos vía libre al DiJei Bara para que haga de las suyas en la consola. ¡Subíle al parlante!",
+	"¡Paso al DiJei Bara! Cuando la audiencia no pide, él manda música de la buena. ¡A bailar con esto que viene!",
 ]
 
 RADIO_OUTROS_PAUSE: list[str] = [

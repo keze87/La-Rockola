@@ -2,7 +2,7 @@
 	import type { Track } from '../../types';
 
 	defineProps<{
-		djCarpinchoEnabled: boolean;
+		djBaraEnabled: boolean;
 		queueLength: number;
 		djNextTrack: Track | null;
 		trackGridClass: string;
@@ -11,7 +11,7 @@
 
 <template>
 	<div
-		v-if="djCarpinchoEnabled"
+		v-if="djBaraEnabled"
 		:class="['border-carpincho-border bg-carpincho-panel/50 items-center border-b', trackGridClass]"
 	>
 		<div class="flex justify-center p-4">
@@ -24,9 +24,9 @@
 			{{
 				queueLength === 0
 					? djNextTrack
-						? 'DJ Carpincho eligió: ' + (djNextTrack.display_title || djNextTrack.title)
+						? 'DJ Bara eligió: ' + (djNextTrack.display_title || djNextTrack.title)
 						: 'Eligiendo...'
-					: 'Al vaciarse la fila, entra el DJ Carpincho'
+					: 'Al vaciarse la fila, entra el DJ Bara'
 			}}
 		</div>
 

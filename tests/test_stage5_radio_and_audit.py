@@ -512,11 +512,11 @@ async def test_restored_diagnostic_logs_in_orchestrator_commands_and_library(
 		orch.history = ["/musica/tema.mp3"]
 		orch.dj_carpincho_enabled = True
 		await orch.play_next(skipped_by_user=True)
-		assert any("DJ Carpincho se quedó sin temas nuevos esta sesión." in r.message for r in caplog.records)
+		assert any("DJ Bara se quedó sin temas nuevos esta sesión." in r.message for r in caplog.records)
 
 		caplog.clear()
 		await handle_command_endpoint(CommandRequest(cmd="toggle_dj_carpincho"))
-		assert any("DJ Carpincho cambiado a:" in r.message for r in caplog.records)
+		assert any("DJ Bara cambiado a:" in r.message for r in caplog.records)
 
 		caplog.clear()
 		monkeypatch.setattr("app.core.config.get_config_path", lambda *_a: tmp_path / "cfg.json")

@@ -51,7 +51,7 @@ La Rockola del Carpincho/
 │   ├── api/                 # Adaptadores de entrada: endpoints REST, despachador de comandos, WebSockets
 │   ├── cli/                 # Presentación CLI: punto de entrada y asistente interactivo
 │   ├── core/                # Contenedor de inyección de dependencias, configuración, logging y red
-│   ├── domain/              # Lógica pura de negocio: orquestador de reproducción, cola, DJ Carpincho, radio, biblioteca
+│   ├── domain/              # Lógica pura de negocio: orquestador de reproducción, cola, DJ Bara, radio, biblioteca
 │   └── infrastructure/      # Adaptadores de salida: mpv IPC, mpris, repositorios SQLite, mezclador FFmpeg
 ├── docs/                    # Documentación y guías arquitectónicas
 │   └── ARCHITECTURE.md      # Especificación técnica detallada y diagramas

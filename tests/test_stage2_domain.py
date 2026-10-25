@@ -1,6 +1,6 @@
 """
 Tests unitarios (TDD) para la capa de Dominio (Stage 2).
-Verifica QueueManager, DjCarpinchoSelector, LibraryDomain (hasher, mood, scanner),
+Verifica QueueManager, DjBaraSelector, LibraryDomain (hasher, mood, scanner),
 RadioDomain (nlp, dialogue, service) y PlaybackOrchestrator.
 """
 
@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
-from app.domain.dj.selector import DjCarpinchoSelector
+from app.domain.dj.selector import DjBaraSelector
 from app.domain.library.hasher import compare_fps, generate_smart_hash, parse_fp
 from app.domain.library.models import parse_duration_str
 from app.domain.library.mood import calculate_mood_scores
@@ -77,8 +77,8 @@ def test_queue_manager_operations() -> None:
 
 
 def test_dj_carpincho_selector() -> None:
-	"""Verifica la preselección del DJ Carpincho en modo normal y modo seguro."""
-	dj = DjCarpinchoSelector()
+	"""Verifica la preselección del DJ Bara en modo normal y modo seguro."""
+	dj = DjBaraSelector()
 	dj.enabled = True
 	dj.safe_mode = True
 

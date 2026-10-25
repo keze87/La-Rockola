@@ -4,7 +4,7 @@ import ControlsTab from '@/components/ControlsTab.vue';
 import QRCode from 'qrcode.vue';
 import {
 	currentTracks,
-	djCarpinchoEnabled,
+	djBaraEnabled,
 	djSafeModeEnabled,
 	hasEdgeTts,
 	hasFfmpeg,
@@ -32,7 +32,7 @@ describe('ControlsTab.vue', () => {
 		global.fetch = fetchMock;
 
 		currentTracks.value = [];
-		djCarpinchoEnabled.value = false;
+		djBaraEnabled.value = false;
 		djSafeModeEnabled.value = false;
 		hasEdgeTts.value = true;
 		hasFfmpeg.value = true;
@@ -63,7 +63,7 @@ describe('ControlsTab.vue', () => {
 		expect(wrapper.text()).toContain('Más Manija');
 		expect(wrapper.text()).toContain('Mezcladito (A lo loco)');
 		expect(wrapper.text()).toContain('La Joda');
-		expect(wrapper.text()).toContain('DJ Carpincho');
+		expect(wrapper.text()).toContain('DJ Bara');
 		expect(wrapper.text()).toContain('Carpincho locutor');
 		expect(wrapper.text()).toContain('Escuchar acá');
 	});
@@ -111,11 +111,11 @@ describe('ControlsTab.vue', () => {
 		);
 	});
 
-	it('toggles DJ Carpincho mode when toggle is clicked', async () => {
+	it('toggles DJ Bara mode when toggle is clicked', async () => {
 		const wrapper = mount(ControlsTab);
 
 		const toggles = wrapper.findAllComponents({ name: 'ToggleRow' });
-		const djToggle = toggles.find((t) => t.props('title') === 'DJ Carpincho');
+		const djToggle = toggles.find((t) => t.props('title') === 'DJ Bara');
 		expect(djToggle).toBeDefined();
 
 		const switchBtn = djToggle!.find('button');

@@ -15,13 +15,13 @@
 		fullscreen,
 		setMute,
 		stop,
-		toggleDjCarpincho: toggleDjCmd,
+		toggleDjBara: toggleDjCmd,
 		toggleDjSafeMode: toggleSafeCmd,
 		toggleRadioMode: toggleRadioCmd,
 	} = usePlaybackControls();
 
 	const {
-		djCarpinchoEnabled,
+		djBaraEnabled,
 		djSafeModeEnabled,
 		haptic,
 		hasEdgeTts,
@@ -103,8 +103,8 @@
 	});
 
 	// --- Interruptores ---
-	function toggleDjCarpincho() {
-		toggleDjCmd(!djCarpinchoEnabled.value);
+	function toggleDjBara() {
+		toggleDjCmd(!djBaraEnabled.value);
 		haptic();
 	}
 
@@ -239,16 +239,16 @@
 		/>
 
 		<ToggleRow
-			:model-value="djCarpinchoEnabled"
+			:model-value="djBaraEnabled"
 			icon="shuffle"
-			title="DJ Carpincho"
+			title="DJ Bara"
 			description="Tira un tema random nuevo si se vacía la fila"
 			active-class="bg-carpincho-success"
-			@update:model-value="toggleDjCarpincho"
+			@update:model-value="toggleDjBara"
 		/>
 
 		<ToggleRow
-			v-show="djCarpinchoEnabled"
+			v-show="djBaraEnabled"
 			:model-value="djSafeModeEnabled"
 			icon="favorite"
 			title="Carpincho seguro"

@@ -4,7 +4,7 @@ import QueueTab from '@/components/QueueTab.vue';
 import TrackRow from '@/components/ui/TrackRow.vue';
 import {
 	currentTrackPath,
-	djCarpinchoEnabled,
+	djBaraEnabled,
 	djNextTrack,
 	historyState,
 	isPaused,
@@ -24,7 +24,7 @@ describe('QueueTab.vue', () => {
 		global.fetch = fetchMock;
 
 		currentTrackPath.value = null;
-		djCarpinchoEnabled.value = false;
+		djBaraEnabled.value = false;
 		djNextTrack.value = null;
 		historyState.value = [];
 		isPaused.value = false;
@@ -494,18 +494,18 @@ describe('QueueTab.vue', () => {
 		);
 	});
 
-	it('renders DJ Carpincho placeholder when enabled', () => {
-		djCarpinchoEnabled.value = true;
+	it('renders DJ Bara placeholder when enabled', () => {
+		djBaraEnabled.value = true;
 		djNextTrack.value = {
 			path: '/music/dj.mp3',
 			display_title: 'Selección del DJ',
-			display_artist: 'DJ Carpincho',
+			display_artist: 'DJ Bara',
 			title: 'Selección del DJ',
-			artist: 'DJ Carpincho',
+			artist: 'DJ Bara',
 		};
 
 		const wrapper = mount(QueueTab);
-		expect(wrapper.text()).toContain('DJ Carpincho eligió: Selección del DJ');
+		expect(wrapper.text()).toContain('DJ Bara eligió: Selección del DJ');
 	});
 
 	it('handles move to first, move to last, and delete queue item buttons', async () => {

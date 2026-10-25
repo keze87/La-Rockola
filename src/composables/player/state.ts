@@ -38,7 +38,7 @@ export {
 } from '../../stores/useLibraryStore';
 
 export {
-	djCarpinchoEnabled,
+	djBaraEnabled,
 	djNextTrack,
 	djSafeModeEnabled,
 	hasEdgeTts,

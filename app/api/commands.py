@@ -147,7 +147,7 @@ async def _cmd_toggle_favorite(state: PlaybackOrchestrator, req: CommandRequest,
 
 async def _cmd_toggle_dj_carpincho(state: PlaybackOrchestrator, _req: CommandRequest, _mgr: Any) -> None:
 	state.dj_carpincho_enabled = not state.dj_carpincho_enabled
-	logger.info(f"DJ Carpincho cambiado a: {state.dj_carpincho_enabled}")
+	logger.info(f"DJ Bara cambiado a: {state.dj_carpincho_enabled}")
 	if state.dj_carpincho_enabled and not state.current_track:
 		await state.play_next(skipped_by_user=True)
 	else:

@@ -8,7 +8,7 @@
 
 	const {
 		currentTrackPath,
-		djCarpinchoEnabled,
+		djBaraEnabled,
 		djNextTrack,
 		getTrackInfo,
 		haptic,
@@ -28,12 +28,12 @@
 			return `${t.display_title} - ${t.display_artist}`;
 		}
 
-		if (djCarpinchoEnabled.value && djNextTrack.value) {
+		if (djBaraEnabled.value && djNextTrack.value) {
 			const t = djNextTrack.value;
 			return `${t.display_title || t.title} - ${t.display_artist || t.artist}`;
 		}
 
-		if (djCarpinchoEnabled.value) return 'DJ Carpincho eligiendo...';
+		if (djBaraEnabled.value) return 'DJ Bara eligiendo...';
 
 		return currentTrackPath.value ? 'Termina este y nos re vimos' : "Agregá algo pa' escuchar";
 	});
@@ -41,7 +41,7 @@
 	const upNextPath = computed(() => {
 		if (queueState.value.length > 0) return queueState.value[0];
 
-		if (djCarpinchoEnabled.value && djNextTrack.value) return djNextTrack.value?.path;
+		if (djBaraEnabled.value && djNextTrack.value) return djNextTrack.value?.path;
 
 		return null;
 	});
@@ -69,7 +69,7 @@
 					@error="onCoverError"
 				/>
 				<i
-					v-else-if="djCarpinchoEnabled && queueState.length === 0"
+					v-else-if="djBaraEnabled && queueState.length === 0"
 					class="material-icons text-carpincho-warning animate-pulse !text-[2rem]"
 				>
 					auto_awesome
@@ -82,7 +82,7 @@
 					{{
 						queueState.length > 0
 							? 'Próximo Temazo'
-							: djCarpinchoEnabled
+							: djBaraEnabled
 								? djNextTrack
 									? '🦦 Arranca en unos segundos...'
 									: 'Eligiendo...'

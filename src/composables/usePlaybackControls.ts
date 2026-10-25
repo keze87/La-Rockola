@@ -45,7 +45,7 @@ export function usePlaybackControls() {
 		setVolume: (vollevel: number) => execute('set_volume', { vollevel }),
 		skip: () => execute('skip'),
 		stop: () => execute('stop'),
-		toggleDjCarpincho: (state: boolean) => execute('toggle_dj_carpincho', { state }),
+		toggleDjBara: (state: boolean) => execute('toggle_dj_carpincho', { state }),
 		toggleDjSafeMode: (state: boolean) => execute('toggle_dj_safe_mode', { state }),
 		toggleRadioMode: (state?: boolean) => execute('toggle_radio_mode', { state }),
 		setWeatherLocation: (location: string) =>

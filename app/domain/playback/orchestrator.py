@@ -1,6 +1,6 @@
 """
 Orquestador de reproducción (PlaybackOrchestrator).
-Coordina la fila (QueueManager), el DJ Carpincho (DjCarpinchoSelector),
+Coordina la fila (QueueManager), el DJ Bara (DjBaraSelector),
 la biblioteca (LibraryService), el Modo Radio (RadioService), MPV y MPRIS
 bajo el principio de responsabilidad única.
 """
@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.container import get_container
-from app.domain.dj.selector import DjCarpinchoSelector
+from app.domain.dj.selector import DjBaraSelector
 from app.domain.library.models import get_track_duration_seconds
 from app.domain.library.mood import is_mood_available
 from app.domain.library.service import LibraryService, get_cover_art_uri
@@ -76,7 +76,7 @@ class PlaybackOrchestrator:
 
 		# Componentes de dominio delegados
 		self.queue_manager = QueueManager()
-		self.dj_selector = DjCarpinchoSelector()
+		self.dj_selector = DjBaraSelector()
 
 		# Repositorios de persistencia
 		self.favorites_repo = FavoritesRepository(db_path=self.db_path)
@@ -235,7 +235,7 @@ class PlaybackOrchestrator:
 	def pause_after_path(self, val: str | None) -> None:
 		self.queue_manager.pause_after_path = val
 
-	# Propiedades delegadas a DjCarpinchoSelector
+	# Propiedades delegadas a DjBaraSelector
 	@property
 	def dj_carpincho_enabled(self) -> bool:
 		return self.dj_selector.enabled
@@ -802,7 +802,7 @@ class PlaybackOrchestrator:
 
 				if chosen:
 					logger.info(
-						f"🦦 DJ Carpincho salvó las papas con un clásico: {chosen['display_title']} {'(al toque)' if skipped_by_user or just_finished == self.radio_announcement_path else '(arranca en 10 segundos...)'}"
+						f"🦦 DJ Bara salvó las papas con un clásico: {chosen['display_title']} {'(al toque)' if skipped_by_user or just_finished == self.radio_announcement_path else '(arranca en 10 segundos...)'}"
 					)
 					self.dj_next_track = chosen
 					await broadcast_state()
@@ -845,7 +845,7 @@ class PlaybackOrchestrator:
 					await broadcast_state()
 					return
 				else:
-					logger.info("DJ Carpincho se quedó sin temas nuevos esta sesión.")
+					logger.info("DJ Bara se quedó sin temas nuevos esta sesión.")
 					self.dj_carpincho_enabled = False
 					await self.stop_playback()
 			else:

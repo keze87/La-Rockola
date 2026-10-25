@@ -1,5 +1,5 @@
 """
-Selector inteligente y modo seguro para DJ Carpincho.
+Selector inteligente y modo seguro para DJ Bara.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from typing import Any
 logger = logging.getLogger("RockolaCarpincho")
 
 
-class DjCarpinchoSelector:
+class DjBaraSelector:
 	"""Gestiona la selección automática de canciones, el modo seguro y el countdown de 10s."""
 
 	def __init__(self) -> None:
@@ -31,7 +31,7 @@ class DjCarpinchoSelector:
 			if curr is not self.countdown_task:
 				self.countdown_task.cancel()
 				self.countdown_task = None
-				logger.info("Countdown del DJ Carpincho cancelado por nueva acción del usuario.")
+				logger.info("Countdown del DJ Bara cancelado por nueva acción del usuario.")
 				return True
 		return False
 
@@ -75,9 +75,7 @@ class DjCarpinchoSelector:
 			if chosen:
 				self.next_track = chosen
 				is_fav = path_to_id.get(chosen["path"]) in favorites
-				logger.info(
-					f"🦦 DJ Carpincho pre-eligió: {chosen['display_title']} (Favorito: {'Sí' if is_fav else 'No'})"
-				)
+				logger.info(f"🦦 DJ Bara pre-eligió: {chosen['display_title']} (Favorito: {'Sí' if is_fav else 'No'})")
 				return chosen
 		self.next_track = None
 		return None

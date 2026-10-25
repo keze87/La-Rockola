@@ -17,7 +17,7 @@ La Rockola del Carpincho está diseñada siguiendo los principios de la **Arquit
                     │            Núcleo de Dominio            │
                     │ app.domain.playback.PlaybackOrchestrator│
                     │  ├── QueueManager                       │
-                    │  ├── DjCarpinchoSelector                │
+                    │  ├── DjBaraSelector                     │
                     │  ├── RadioService                       │
                     │  └── LibraryService                     │
                     └──────────┬───────────────────┬──────────┘
@@ -56,7 +56,7 @@ La Rockola del Carpincho está diseñada siguiendo los principios de la **Arquit
 │   │   ├── logging.py                         # Configuración estandarizada de logs con salida coloreada
 │   │   └── network.py                         # Resolución de IP local y armado de URLs del servidor
 │   ├── domain/                                # Reglas puras de negocio y orquestadores del dominio
-│   │   ├── dj/                                # Selección autónoma de canciones de DJ Carpincho
+│   │   ├── dj/                                # Selección autónoma de canciones de DJ Bara
 │   │   │   └── selector.py                    # Reglas de transición, coincidencia por estado de ánimo y anti-repetición
 │   │   ├── library/                           # Modelos de canciones, escaneo de carpetas y extracción de audio
 │   │   │   ├── hasher.py                      # Hasheo rápido de archivos en bloques
@@ -139,7 +139,7 @@ La Rockola del Carpincho está diseñada siguiendo los principios de la **Arquit
 ├── tests/                                     # Batería de pruebas automatizadas
 │   ├── frontend/                              # Pruebas en Vitest para componentes y composables Vue
 │   ├── test_stage1_infrastructure.py          # Repositorios, hasher, migraciones y socket IPC
-│   ├── test_stage2_domain.py                  # Orquestador de reproducción, cola y DJ Carpincho
+│   ├── test_stage2_domain.py                  # Orquestador de reproducción, cola y DJ Bara
 │   ├── test_stage3_api_and_cli.py             # Endpoints FastAPI, sincronización WS y parser CLI
 │   ├── test_stage4_regressions.py             # D-Bus MPRIS, generadores de base de datos y seguridad Zip-slip
 │   ├── test_stage5_radio_and_audit.py         # Cadena de masterización de radio, diálogo y NLP
@@ -159,7 +159,7 @@ La capa de dominio contiene todas las reglas de negocio y máquinas de estado de
 
 - **`PlaybackOrchestrator`**: Es la raíz de agregación que sincroniza los temas, gestiona las transiciones de fin de archivo (EOF), coordina la pregeneración en segundo plano y despacha las actualizaciones de estado.
 - **`QueueManager`**: Encapsula las operaciones sobre la cola (encolar, desencolar, mezclar aleatoriamente, historial de reproducción, saltos directos y pausa tras el tema actual).
-- **`DjCarpinchoSelector`**: Selector autónomo de canciones que pondera las pistas según la frecuencia de reproducción, etiquetas de estado de ánimo (energía, valencia) y variedad de géneros.
+- **`DjBaraSelector`**: Selector autónomo de canciones que pondera las pistas según la frecuencia de reproducción, etiquetas de estado de ánimo (energía, valencia) y variedad de géneros.
 - **`RadioService`**: Gestiona la máquina de estados de locución radial, generación de diálogos dinámicos, reporte del clima y síntesis anticipada en segundo plano.
 - **`LibraryService`**: Escanea el sistema de archivos, calcula hashes (`hasher.py`), extrae metadatos con Mutagen y delega el análisis acústico (`mood.py`).
 

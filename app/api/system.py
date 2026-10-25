@@ -26,7 +26,7 @@ router = APIRouter(tags=["System"])
 
 @router.api_route("/weather/preview", methods=["GET", "HEAD"])
 async def preview_weather(location: str = Query(..., description="Ciudad o localidad a consultar")) -> JSONResponse:
-	"""Consulta wttr.in para obtener el clima actual y la frase armada de DJ Carpincho."""
+	"""Consulta wttr.in para obtener el clima actual y la frase armada de DJ Bara."""
 	loc_clean = location.strip() if location else ""
 	if not loc_clean:
 		return JSONResponse(status_code=400, content={"ok": False, "error": "Ubicación vacía"})

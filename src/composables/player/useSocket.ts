@@ -5,7 +5,7 @@ import { useWebSocket } from '@vueuse/core';
 import {
 	currentTrackPath,
 	currentTracks,
-	djCarpinchoEnabled,
+	djBaraEnabled,
 	djNextTrack,
 	djSafeModeEnabled,
 	duration,
@@ -111,7 +111,7 @@ export function useSocket() {
 						if (state.has_local_player !== undefined)
 							hasLocalPlayer.value = Boolean(state.has_local_player);
 						if (state.dj_carpincho_enabled !== undefined)
-							djCarpinchoEnabled.value = state.dj_carpincho_enabled;
+							djBaraEnabled.value = state.dj_carpincho_enabled;
 						if (state.dj_next_track !== undefined) djNextTrack.value = state.dj_next_track;
 						if (state.dj_safe_mode !== undefined) djSafeModeEnabled.value = state.dj_safe_mode;
 						if (state.duration !== undefined) duration.value = state.duration;
