@@ -90,8 +90,15 @@ async def serve_cover(
 				return FileResponse(carpincho_img, media_type=mime)
 
 			frontend_dir, dist_dir, _ = get_dist_dirs()
-			candidates = [dist_dir / "favicon.png", frontend_dir / "public" / "favicon.png"]
+			candidates = [
+				dist_dir / "radio.jpg",
+				frontend_dir / "public" / "radio.jpg",
+				dist_dir / "favicon.png",
+				frontend_dir / "public" / "favicon.png",
+			]
 			if hasattr(sys, "_MEIPASS"):
+				candidates.insert(0, Path(sys._MEIPASS) / "public" / "radio.jpg")
+				candidates.insert(1, Path(sys._MEIPASS) / "dist" / "radio.jpg")
 				candidates.append(Path(sys._MEIPASS) / "public" / "favicon.png")
 
 			for cand in candidates:
@@ -99,7 +106,8 @@ async def serve_cover(
 					if size and size > 0 and HAS_PIL:
 						c_data, c_mime = _resize_cover(cand.read_bytes(), size)
 						return Response(content=c_data, media_type=c_mime)
-					return FileResponse(cand, media_type="image/png")
+					cand_mime = "image/png" if cand.suffix.lower() == ".png" else "image/jpeg"
+					return FileResponse(cand, media_type=cand_mime)
 
 		if not os.path.exists(path):
 			return Response(status_code=404)

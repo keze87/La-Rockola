@@ -216,8 +216,8 @@
 	const currentTrackInfo = computed(() => {
 		if (isSynthesizingRadio.value || (isPlayingRadioAnnouncement.value && !currentTrackPath.value)) {
 			return {
-				title: 'El locutor carpincho se está preparando...',
-				artist: 'Carpincho Locutor 🎙️',
+				title: 'Acomodando los micrófonos...',
+				artist: 'Transmisión de Cabina 🎙️',
 				isComing: true,
 			};
 		}
@@ -225,8 +225,8 @@
 		if (isPlayingRadioAnnouncement.value) {
 			const info = currentTrackPath.value ? player.getTrackInfo(currentTrackPath.value) : null;
 			return {
-				title: info?.display_title || 'Locución radial',
-				artist: info?.display_artist || 'Carpincho Locutor 🎙️',
+				title: info?.display_title || 'Acomodando los micrófonos...',
+				artist: info?.display_artist || 'Transmisión de Cabina 🎙️',
 				isComing: false,
 			};
 		}

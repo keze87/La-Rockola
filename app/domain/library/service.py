@@ -42,6 +42,9 @@ def get_cover_art_uri(path: str, state_ref: Any = None) -> str:
 			if carpincho_p and carpincho_p.is_file():
 				return f"file://{carpincho_p.resolve()}"
 			root_dir = Path(__file__).resolve().parents[3]
+			radio_p = root_dir / "public" / "radio.jpg"
+			if radio_p.is_file():
+				return f"file://{radio_p.resolve()}"
 			fav_p = root_dir / "public" / "favicon.png"
 			if fav_p.is_file():
 				return f"file://{fav_p.resolve()}"

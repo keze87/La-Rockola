@@ -425,7 +425,8 @@ Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Hola
 		isPlayingRadioAnnouncement.value = false;
 
 		const wrapper = mount(FogonMode);
-		expect(wrapper.text()).toContain('El locutor carpincho se está preparando...');
+		expect(wrapper.text()).toContain('Acomodando los micrófonos...');
+		expect(wrapper.text()).toContain('Transmisión de Cabina 🎙️');
 		expect(wrapper.text()).not.toContain('Silencio estampa');
 
 		isSynthesizingRadio.value = false;
@@ -433,7 +434,7 @@ Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Hola
 		currentTrackPath.value = '/tmp/radio_announcement.mp3';
 
 		const wrapper2 = mount(FogonMode);
-		expect(wrapper2.text()).toContain('Locución radial');
+		expect(wrapper2.text()).toContain('Acomodando los micrófonos...');
 		expect(wrapper2.text()).not.toContain('Silencio estampa');
 	});
 

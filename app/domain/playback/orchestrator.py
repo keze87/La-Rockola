@@ -758,12 +758,25 @@ class PlaybackOrchestrator:
 								self.is_synthesizing_radio = is_synth
 								await broadcast_state()
 
-							ok, display_title, script, radio_err = await self.radio_service.get_or_synthesize(
+							synth_res = await self.radio_service.get_or_synthesize(
 								next_track_path=next_track_path,
 								bg_offset=bg_offset,
 								on_synthesis_status=_set_synthesizing_radio,
 								outro_mode=outro_mode,
 							)
+
+							if hasattr(synth_res, "ok") and hasattr(synth_res, "display_title"):
+								ok = synth_res.ok
+								display_title = synth_res.display_title
+								script = synth_res.script
+								radio_err = synth_res.error
+								display_artist = getattr(synth_res, "display_artist", None) or "Transmisión de Cabina 🎙️"
+							else:
+								ok = synth_res[0]
+								display_title = synth_res[1]
+								script = synth_res[2]
+								radio_err = synth_res[3] if len(synth_res) > 3 else None
+								display_artist = synth_res[4] if len(synth_res) > 4 else "Transmisión de Cabina 🎙️"
 
 							if ok:
 								self._reset_radio_schedule()
@@ -771,7 +784,7 @@ class PlaybackOrchestrator:
 								self.url_metadata[self.radio_announcement_path] = {
 									"path": self.radio_announcement_path,
 									"display_title": display_title,
-									"display_artist": "Carpincho Locutor 🎙️",
+									"display_artist": display_artist,
 									"album": "La Rockola del Carpincho",
 									"duration_str": "0:12",
 								}
@@ -787,7 +800,7 @@ class PlaybackOrchestrator:
 								await broadcast_state()
 								return
 							logger.warning(
-								f"🎙️ Carpincho Locutor: No se pudo sintetizar la locución radial ({radio_err}). Pasando al tema siguiente..."
+								f"🎙️ Transmisión de Cabina: No se pudo sintetizar la locución radial ({radio_err}). Pasando al tema siguiente..."
 							)
 					finally:
 						if self.is_synthesizing_radio:

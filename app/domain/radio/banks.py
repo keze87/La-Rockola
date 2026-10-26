@@ -73,12 +73,12 @@ DEFAULT_TTS_TIMEOUT: float = 12.0
 DEFAULT_TTS_RETRIES: int = 3
 DEFAULT_BG_VOLUME: float = 0.1
 
-DEFAULT_RADIO_ARTIST: str = "Carpincho Locutor 🎙️"
+DEFAULT_RADIO_ARTIST: str = "Transmisión de Cabina 🎙️"
 DEFAULT_RADIO_ALBUM: str = "La Rockola del Carpincho"
-DEFAULT_RADIO_TITLE: str = "Locución radial"
+DEFAULT_RADIO_TITLE: str = "Acomodando los micrófonos..."
 DEFAULT_COHOST_NAME: str = "compadre"
-DEFAULT_HOST_NAME: str = "Carpincho Locutor"
-DEFAULT_COHOST_DISPLAY_NAME: str = "Carpincho Co-conductor"
+DEFAULT_HOST_NAME: str = "Transmisión de Cabina"
+DEFAULT_COHOST_DISPLAY_NAME: str = "Co-conductor"
 
 # ---------------------------------------------------------------------------
 # Fortunas del Carpincho y Avisos Publicitarios

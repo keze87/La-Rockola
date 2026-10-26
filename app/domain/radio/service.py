@@ -87,17 +87,19 @@ class RadioAnnouncementResult:
 	outro_mode: str = "continue"
 	host_voice: str = ""
 	stem_segments: list[Any] | None = None
+	display_artist: str = "Transmisión de Cabina 🎙️"
 
 	def __iter__(self):
 		yield self.ok
 		yield self.display_title
 		yield self.script if self.ok else (self.error or "")
+		yield self.display_artist
 
 	def __getitem__(self, index: int):
 		return tuple(self)[index]
 
 	def __len__(self) -> int:
-		return 3
+		return 4
 
 
 def _recent_temp_c(now_ts: float, db_path: Path | str | None = None, max_age: float = 3 * 3600.0) -> int | None:
@@ -772,7 +774,11 @@ async def create_radio_announcement(
 	)
 
 	full_script = " ".join(t[0].strip() for t in plan if t[0].strip())
-	display_title = f"Carpincho locutor: {full_script}"
+	display_title = full_script
+	if is_dialogue and cohost_nombre:
+		display_artist = f"{locutor_nombre} y {cohost_nombre} 🎙️"
+	else:
+		display_artist = f"{locutor_nombre} 🎙️"
 	speech_turns = group_plan_into_speech_turns(plan)
 	try:
 		# El timeout total debe considerar la cantidad de turnos de habla
@@ -835,7 +841,7 @@ async def create_radio_announcement(
 			bg_volume,
 			cover_image_path,
 			display_title,
-			locutor_nombre,
+			display_artist,
 			timeout,
 		)
 		if not ok:
@@ -866,6 +872,7 @@ async def create_radio_announcement(
 			outro_mode=outro_mode,
 			host_voice=host_voice,
 			stem_segments=stem_segs,
+			display_artist=display_artist,
 		)
 
 	except Exception as e:
@@ -934,7 +941,16 @@ async def replace_announcement_outro(
 
 		combined_segments = [*stem_segments, (outro_bytes, "salida", effective_voice, outro_text, outro_cues)]
 		full_script = " ".join(s[3].strip() for s in combined_segments if len(s) >= 4 and s[3].strip())
-		display_title = f"Carpincho locutor: {full_script}"
+		display_title = full_script
+
+		voices_in_segs = {s[2] for s in combined_segments if len(s) >= 3 and s[2] in VOICE_NAMES}
+		if len(voices_in_segs) > 1:
+			locutores = [VOICE_NAMES[v] for v in VOICES if v in voices_in_segs]
+			display_artist = f"{' y '.join(locutores)} 🎙️"
+		elif voices_in_segs:
+			display_artist = f"{VOICE_NAMES.get(next(iter(voices_in_segs)), locutor_nombre)} 🎙️"
+		else:
+			display_artist = f"{locutor_nombre} 🎙️"
 
 		loop = asyncio.get_running_loop()
 		ok = await loop.run_in_executor(
@@ -947,7 +963,7 @@ async def replace_announcement_outro(
 			bg_volume,
 			cover_image_path,
 			display_title,
-			locutor_nombre,
+			display_artist,
 			timeout,
 		)
 		if not ok:
@@ -970,6 +986,7 @@ async def replace_announcement_outro(
 			outro_mode=outro_mode,
 			host_voice=effective_voice,
 			stem_segments=list(stem_segments),
+			display_artist=display_artist,
 		)
 	except Exception as e:
 		err_msg = f"Error cambiando el cierre radial ({type(e).__name__}: {e})"
@@ -1054,6 +1071,7 @@ class RadioService:
 					self.pregenerated_announcement = {
 						"path": str(target_path),
 						"display_title": res.display_title,
+						"display_artist": res.display_artist,
 						"script": res.script,
 						"created_at": _time.time(),
 						"outro_mode": res.outro_mode,
@@ -1074,6 +1092,7 @@ class RadioService:
 		title: str,
 		next_track_path: str | None = None,
 		bg_offset: float = 0.0,
+		display_artist: str = DEFAULT_RADIO_ARTIST,
 	) -> bool:
 		"""Superpone la cortina musical en caliente sobre la voz pregenerada."""
 		from app.infrastructure.media.mixer import get_carpincho_cover_path
@@ -1097,7 +1116,7 @@ class RadioService:
 						out_file,
 						cover_p,
 						title,
-						"Carpincho Locutor 🎙️",
+						display_artist,
 						"La Rockola del Carpincho",
 					)
 					mixed_ok = True
@@ -1137,17 +1156,18 @@ class RadioService:
 		pre_age = (_time.time() - pre_created_at) if pre_created_at is not None else 0.0
 		if pre_age > RADIO_PREGENERATION_MAX_AGE_SECONDS:
 			logger.warning(
-				f"📻 Carpincho Locutor: Anuncio pregenerado descartado por antigüedad ({pre_age:.1f}s > {RADIO_PREGENERATION_MAX_AGE_SECONDS}s)."
+				f"📻 Transmisión de Cabina: Anuncio pregenerado descartado por antigüedad ({pre_age:.1f}s > {RADIO_PREGENERATION_MAX_AGE_SECONDS}s)."
 			)
 			return False, "", ""
 
 		pre_p = Path(pre["path"])
 		if not is_valid_mp3_file(pre_p):
-			logger.warning(f"📻 Carpincho Locutor: Anuncio pregenerado corrupto o inválido en '{pre_p}'.")
+			logger.warning(f"📻 Transmisión de Cabina: Anuncio pregenerado corrupto o inválido en '{pre_p}'.")
 			return False, "", ""
 
 		pre_mode = pre.get("outro_mode")
 		stem_segments = pre.get("stem_segments")
+		pre_artist = pre.get("display_artist", DEFAULT_RADIO_ARTIST)
 		if pre_mode is not None and pre_mode != outro_mode and stem_segments:
 			swapped_res = await replace_announcement_outro(
 				stem_segments=stem_segments,
@@ -1160,6 +1180,7 @@ class RadioService:
 				db_path=self.db_path,
 			)
 			if swapped_res.ok:
+				pre["display_artist"] = swapped_res.display_artist
 				return True, swapped_res.display_title, swapped_res.script
 
 		if await self.apply_hot_mix_to_announcement(
@@ -1168,6 +1189,7 @@ class RadioService:
 			pre["display_title"],
 			next_track_path=next_track_path,
 			bg_offset=bg_offset,
+			display_artist=pre_artist,
 		):
 			return True, pre["display_title"], pre.get("script", "")
 		return False, "", ""
@@ -1180,15 +1202,16 @@ class RadioService:
 		location: str | None = None,
 		announcement_path: Path | str | None = None,
 		outro_mode: str = "continue",
-	) -> tuple[bool, str, str, str | None]:
+	) -> tuple[bool, str, str, str | None, str]:
 		"""Obtiene la locución pregenerada o sintetiza una fresca en caliente."""
 		if not self.is_available:
-			return False, "", "", "Servicio de radio no disponible"
+			return False, "", "", "Servicio de radio no disponible", DEFAULT_RADIO_ARTIST
 
 		target_ann_path = Path(announcement_path) if announcement_path else self.announcement_path
 		target_loc = location or self.weather_location
 		ok = False
 		display_title = ""
+		display_artist = DEFAULT_RADIO_ARTIST
 		script = ""
 		radio_err: str | None = None
 
@@ -1202,6 +1225,7 @@ class RadioService:
 			ok, display_title, script = await self._consume_pregenerated(
 				pre, target_ann_path, next_track_path, bg_offset, outro_mode
 			)
+			display_artist = pre.get("display_artist", DEFAULT_RADIO_ARTIST)
 			if not ok and on_synthesis_status:
 				res_notify = on_synthesis_status(False)
 				if asyncio.iscoroutine(res_notify):
@@ -1209,7 +1233,7 @@ class RadioService:
 
 		if not ok and self.pregeneration_task and not self.pregeneration_task.done():
 			try:
-				logger.info("📻 Carpincho Locutor: Esperando finalización de pregeneración en curso...")
+				logger.info("📻 Transmisión de Cabina: Esperando finalización de pregeneración en curso...")
 				if on_synthesis_status:
 					res_notify = on_synthesis_status(True)
 					if asyncio.iscoroutine(res_notify):
@@ -1221,6 +1245,7 @@ class RadioService:
 					ok, display_title, script = await self._consume_pregenerated(
 						pre, target_ann_path, next_track_path, bg_offset, outro_mode
 					)
+					display_artist = pre.get("display_artist", DEFAULT_RADIO_ARTIST)
 			except Exception as wait_e:
 				logger.debug(f"Espera de pregeneración agotada o falló: {wait_e}")
 			finally:
@@ -1230,7 +1255,7 @@ class RadioService:
 						await res_notify
 
 		if not ok:
-			logger.info("🎙️ Carpincho Locutor: Sintetizando locución fresca...")
+			logger.info("🎙️ Transmisión de Cabina: Sintetizando locución fresca...")
 			if on_synthesis_status:
 				res_notify = on_synthesis_status(True)
 				if asyncio.iscoroutine(res_notify):
@@ -1247,6 +1272,7 @@ class RadioService:
 				)
 				ok = res.ok
 				display_title = res.display_title
+				display_artist = res.display_artist
 				script = res.script
 				radio_err = res.error
 			except Exception as e:
@@ -1258,7 +1284,7 @@ class RadioService:
 					if asyncio.iscoroutine(res_notify):
 						await res_notify
 
-		return ok, display_title, script, radio_err
+		return ok, display_title, script, radio_err, display_artist
 
 	def prune_radio_archive(self, archive_dir: Path | None = None, max_files: int = 50) -> int:
 		"""Elimina guiones históricos viejos del directorio de archivo."""

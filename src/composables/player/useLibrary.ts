@@ -26,8 +26,8 @@ export function useLibrary() {
 		if (path.includes('radio_announcement')) {
 			return {
 				path,
-				display_title: 'Locución radial',
-				display_artist: 'Carpincho Locutor 🎙️',
+				display_title: 'Acomodando los micrófonos...',
+				display_artist: 'Transmisión de Cabina 🎙️',
 			};
 		}
 
