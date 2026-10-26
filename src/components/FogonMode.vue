@@ -428,7 +428,7 @@
 
 					<!-- Bloque central: Información del tema clavado en el centro vertical de la pantalla en móviles -->
 					<div
-						class="fogon-track-info flex w-full shrink-0 flex-col items-center text-center"
+						class="fogon-track-info flex w-full shrink-0 flex-col items-center pt-3 text-center sm:pt-3"
 						:class="[hasLyrics ? 'my-2 sm:my-3 md:my-0' : '']"
 					>
 						<!-- Info del tema -->
@@ -574,9 +574,9 @@
 						<!-- MODO VERTICAL (Mobile / Portrait): Ocupa el 100% del ancho y se posiciona cercano a los controles -->
 						<div
 							v-if="hasLyrics"
-							class="lyrics-mask-vertical relative mt-2 flex min-h-0 w-full flex-1 flex-col items-center justify-start overflow-hidden px-4 pt-1 text-center md:hidden"
+							class="lyrics-mask-vertical relative mt-2 flex min-h-0 w-full flex-1 flex-col items-center justify-center overflow-hidden px-4 text-center md:hidden"
 						>
-							<div class="flex flex-col items-center justify-start space-y-2 select-none sm:space-y-3">
+							<div class="flex flex-col items-center justify-center space-y-2.5 select-none sm:space-y-4">
 								<div
 									v-for="(line, idx) in portraitLyricLines"
 									:key="'portrait-' + idx + '-' + line.time"
