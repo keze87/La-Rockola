@@ -351,7 +351,7 @@
 	<transition name="fogon">
 		<div
 			v-if="isFogonMode"
-			class="fixed inset-0 z-[10000] flex items-center justify-center overflow-hidden bg-black p-4 text-white sm:p-6 md:p-10"
+			class="fogon-container fixed inset-0 z-[10000] flex items-center justify-center overflow-hidden bg-black p-4 text-white sm:p-6 md:p-10"
 			:class="{ 'cursor-none [&_*]:cursor-none': isCursorInactive }"
 		>
 			<!-- Fondo ambiental saturado y desenfocado estilo Apple Music / blyrics -->
@@ -378,7 +378,7 @@
 
 			<!-- Contenedor principal expandido (estilo Apple Music / blyrics) -->
 			<div
-				class="relative z-20 flex h-full w-full max-w-7xl items-center justify-center transition-all duration-500"
+				class="fogon-main-layout relative z-20 flex h-full w-full max-w-7xl items-center justify-center transition-all duration-500"
 				:class="[
 					hasLyrics
 						? 'flex-col justify-center md:flex-row md:items-center md:gap-12 lg:gap-16'
@@ -387,7 +387,7 @@
 			>
 				<!-- COLUMNA IZQUIERDA: Carátula, info y controles del reproductor (centrado simétrico impecable) -->
 				<div
-					class="flex w-full shrink-0 flex-col items-center justify-center text-center transition-all duration-500"
+					class="fogon-player-column flex w-full shrink-0 flex-col items-center justify-center text-center transition-all duration-500"
 					:class="[
 						hasLyrics
 							? 'h-full py-2 sm:py-4 md:h-auto md:w-88 md:py-0 lg:w-[380px] xl:w-[420px]'
@@ -405,7 +405,7 @@
 					>
 						<!-- Tapa del disco con sombra profunda, 90% del ancho en móviles (estrictamente cuadrada) y tamaño balanceado en escritorio -->
 						<div
-							class="bg-carpincho-bg flex shrink-0 items-center justify-center overflow-hidden rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.85)] transition-all duration-500 md:rounded-3xl"
+							class="fogon-cover-wrapper bg-carpincho-bg flex shrink-0 items-center justify-center overflow-hidden rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.85)] transition-all duration-500 md:rounded-3xl"
 							:class="[
 								hasLyrics
 									? 'aspect-square h-[90vw] max-h-[380px] max-h-full w-[90vw] max-w-[380px] md:mb-5 md:h-auto md:max-h-none md:w-full md:max-w-none'
@@ -428,12 +428,12 @@
 
 					<!-- Bloque central: Información del tema clavado en el centro vertical de la pantalla en móviles -->
 					<div
-						class="fogon-track-info flex w-full shrink-0 flex-col items-center pt-3 text-center sm:pt-3"
+						class="fogon-track-info flex w-full shrink-0 flex-col items-center text-center"
 						:class="[hasLyrics ? 'my-2 sm:my-3 md:my-0' : '']"
 					>
 						<!-- Info del tema -->
 						<h1
-							class="mb-1 w-full truncate text-center font-black transition-all"
+							class="fogon-title mb-1 w-full truncate text-center font-black transition-all"
 							:class="
 								hasLyrics
 									? 'text-xl sm:text-2xl md:text-3xl xl:text-4xl'
@@ -449,7 +449,7 @@
 							{{ currentTrackInfo.title }}
 						</h1>
 						<h2
-							class="text-carpincho-secondary w-full truncate text-center font-medium"
+							class="fogon-artist text-carpincho-secondary w-full truncate text-center font-medium"
 							:class="
 								hasLyrics
 									? 'text-sm sm:text-base md:text-lg lg:text-xl'
@@ -471,7 +471,7 @@
 					>
 						<!-- Sub-bloque de barra de progreso y controles -->
 						<div
-							class="flex w-full shrink-0 flex-col items-center text-center"
+							class="fogon-controls-wrapper flex w-full shrink-0 flex-col items-center text-center"
 							:class="[hasLyrics ? 'pt-1 md:mt-4 md:pt-0' : '']"
 						>
 							<!-- Barra de progreso personalizada -->
@@ -505,7 +505,7 @@
 
 							<!-- Controles de reproducción centrados con más aire -->
 							<div
-								class="relative z-30 mt-2 flex w-full items-center justify-center gap-5 sm:mt-3 sm:gap-7 md:mt-4"
+								class="fogon-controls-row relative z-30 mt-2 flex w-full items-center justify-center gap-5 sm:mt-3 sm:gap-7 md:mt-4"
 							>
 								<button
 									aria-label="Ajustar volumen"
@@ -525,7 +525,7 @@
 
 								<button
 									:aria-label="isPlaying ? 'Pausar' : 'Reproducir'"
-									class="bg-carpincho-primary hover:bg-carpincho-secondary z-20 flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-white shadow-[0_0_30px_rgba(166,124,82,0.4)] transition active:scale-90 sm:h-16 sm:w-16 md:h-20 md:w-20"
+									class="fogon-play-btn bg-carpincho-primary hover:bg-carpincho-secondary z-20 flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-white shadow-[0_0_30px_rgba(166,124,82,0.4)] transition active:scale-90 sm:h-16 sm:w-16 md:h-20 md:w-20"
 									@click="togglePlay"
 								>
 									<i class="material-icons !text-3xl sm:!text-4xl md:!text-5xl">
@@ -574,9 +574,9 @@
 						<!-- MODO VERTICAL (Mobile / Portrait): Ocupa el 100% del ancho y se posiciona cercano a los controles -->
 						<div
 							v-if="hasLyrics"
-							class="lyrics-mask-vertical relative mt-2 flex min-h-0 w-full flex-1 flex-col items-center justify-center overflow-hidden px-4 text-center md:hidden"
+							class="lyrics-mask-vertical relative mt-2 flex min-h-0 w-full flex-1 flex-col items-center justify-start overflow-hidden px-4 pt-1 text-center md:hidden"
 						>
-							<div class="flex flex-col items-center justify-center space-y-2.5 select-none sm:space-y-4">
+							<div class="flex flex-col items-center justify-start space-y-2 select-none sm:space-y-3">
 								<div
 									v-for="(line, idx) in portraitLyricLines"
 									:key="'portrait-' + idx + '-' + line.time"
@@ -618,11 +618,11 @@
 				<!-- COLUMNA DERECHA: Letras completas en flujo vertical estilo Apple Music / blyrics-am-theme (solo en escritorio) -->
 				<div
 					v-if="hasLyrics"
-					class="lyrics-mask relative hidden h-[78vh] w-full flex-1 flex-col justify-center overflow-hidden md:flex lg:h-[84vh]"
+					class="lyrics-mask fogon-lyrics-container relative hidden h-[78vh] w-full flex-1 flex-col justify-center overflow-hidden md:flex lg:h-[84vh]"
 				>
 					<div
 						ref="lyricsContainerRef"
-						class="no-scrollbar h-full w-full space-y-7 overflow-y-auto scroll-smooth px-6 py-[38vh] select-none md:space-y-8 md:px-12"
+						class="fogon-lyrics-scroll no-scrollbar h-full w-full space-y-7 overflow-y-auto scroll-smooth px-6 py-[38vh] select-none md:space-y-8 md:px-12"
 						@scroll="handleUserScroll"
 						@wheel="handleUserScroll"
 						@touchmove="handleUserScroll"
@@ -699,5 +699,82 @@
 	.lyrics-mask-vertical {
 		mask-image: linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%);
 		-webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%);
+	}
+
+	/* Soporte adaptativo para dispositivos móviles en apaisado / pantallas de altura reducida */
+	@media (max-height: 550px) {
+		.fogon-container {
+			padding: 0.5rem 1.25rem !important;
+		}
+
+		.fogon-main-layout {
+			gap: 1.5rem !important;
+		}
+
+		.fogon-player-column {
+			width: 44% !important;
+			max-width: 320px !important;
+			height: 100% !important;
+			justify-content: center !important;
+		}
+
+		.fogon-cover-wrapper {
+			max-height: 38vh !important;
+			max-width: 38vh !important;
+			width: auto !important;
+			margin-bottom: 0.35rem !important;
+			border-radius: 1rem !important;
+		}
+
+		.fogon-track-info {
+			padding-top: 0 !important;
+			margin-top: 0 !important;
+			margin-bottom: 0 !important;
+		}
+
+		.fogon-title {
+			font-size: 1rem !important;
+			line-height: 1.25 !important;
+			margin-bottom: 0 !important;
+		}
+
+		.fogon-artist {
+			font-size: 0.75rem !important;
+		}
+
+		.fogon-controls-wrapper {
+			margin-top: 0.25rem !important;
+			padding-top: 0 !important;
+		}
+
+		.fogon-controls-row {
+			margin-top: 0.25rem !important;
+			gap: 0.75rem !important;
+		}
+
+		.fogon-play-btn {
+			height: 2.75rem !important;
+			width: 2.75rem !important;
+		}
+
+		.fogon-play-btn i {
+			font-size: 1.75rem !important;
+		}
+
+		.fogon-lyrics-container {
+			height: 88vh !important;
+		}
+
+		.fogon-lyrics-scroll {
+			padding-top: 22vh !important;
+			padding-bottom: 22vh !important;
+			padding-left: 1rem !important;
+			padding-right: 1rem !important;
+		}
+
+		.fogon-lyrics-scroll > div {
+			margin-top: 0.75rem !important;
+			font-size: 1.125rem !important;
+		}
 	}
 </style>

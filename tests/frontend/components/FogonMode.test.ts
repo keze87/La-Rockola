@@ -363,4 +363,38 @@ Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Hola
 		// No debe mostrar texto fuera de lugar de "Sin letras sincronizadas" en estado detenido
 		expect(wrapper.text()).not.toContain('Sin letras sincronizadas');
 	});
+
+	it('provides responsive landscape classes and compact styling for short viewports', async () => {
+		const assContent = `[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Hola {\\kf100}mundo
+`;
+		global.fetch = vi.fn().mockImplementation((url: string) => {
+			if (typeof url === 'string' && url.includes('/lrc')) {
+				return Promise.resolve({
+					ok: true,
+					text: () => Promise.resolve(assContent),
+				} as unknown as Response);
+			}
+			return Promise.resolve({
+				ok: true,
+				json: () => Promise.resolve({ status: 'ok' }),
+			} as unknown as Response);
+		});
+
+		const wrapper = mount(FogonMode);
+		currentTrackPath.value = '/music/test_landscape.mp3';
+		await wrapper.vm.$nextTick();
+		await new Promise((resolve) => setTimeout(resolve, 15));
+		await wrapper.vm.$nextTick();
+
+		const container = wrapper.find('.fogon-container');
+		expect(container.exists()).toBe(true);
+
+		const coverWrapper = wrapper.find('.fogon-cover-wrapper');
+		expect(coverWrapper.exists()).toBe(true);
+
+		const lyricsScroll = wrapper.find('.fogon-lyrics-scroll');
+		expect(lyricsScroll.exists()).toBe(true);
+	});
 });
