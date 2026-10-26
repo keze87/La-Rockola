@@ -204,7 +204,7 @@ def save_cached_audio(
 
 
 def prune_tts_cache_db(
-	max_entries: int = 5000,
+	max_entries: int = 9000,
 	max_age_days: float = 1800.0,
 	db_path: Path | str | None = None,
 ) -> int:

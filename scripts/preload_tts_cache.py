@@ -247,7 +247,7 @@ async def run_preload(
 	delay: float = 0.25,
 	max_retries: int = 3,
 	db_path: Path | None = None,
-	max_entries: int = 5000,
+	max_entries: int = 9000,
 ) -> None:
 	"""Orquesta la precarga de todos los elementos para las voces solicitadas."""
 	if not HAS_EDGE_TTS:
@@ -344,8 +344,8 @@ def main():
 	parser.add_argument(
 		"--max-entries",
 		type=int,
-		default=5000,
-		help="Capacidad máxima de la base de datos tts_cache.db (default: 5000).",
+		default=9000,
+		help="Capacidad máxima de la base de datos tts_cache.db (default: 9000).",
 	)
 
 	args = parser.parse_args()

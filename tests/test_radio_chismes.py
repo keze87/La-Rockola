@@ -133,7 +133,7 @@ class TestRadioChismesSuite:
 		assert len(RADIO_OUTROS_DJ) >= 5
 		for o in RADIO_OUTROS_DJ:
 			assert any(
-				k in o.lower() for k in ("dj", "dijei", "bara", "carpincho", "bandejas", "batea", "consola", "cabina")
+				k in o.lower() for k in ("dj", "diyei", "bara", "carpincho", "bandejas", "batea", "consola", "cabina")
 			)
 		assert get_outros_for_mode("dj") == RADIO_OUTROS_DJ
 		assert get_outros_for_category("fortuna", outro_mode="dj") == RADIO_OUTROS_DJ

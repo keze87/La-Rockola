@@ -587,7 +587,7 @@ RADIO_LEAD_INS: list[str] = LEAD_INS_FORTUNA + LEAD_INS_AVISOS + LEAD_INS_OYENTE
 RADIO_OUTROS: list[str] = [
 	"Dejamos de parlotear y que hable el bajo. ¡Mandále play!",
 	"Acomodá el lomo en la orilla que este tema arranca al palo.",
-	"Menos charla y más cumbia. ¡Cambiame la música!",
+	"Menos charla y más cumbia. ¡Cambiáme la música!",
 	"¡Subíle al parlante antes de que nos tape la marea!",
 	"Se viene un clásico de aquellos... ¡hacéte un espacio y bailá!",
 	"Frenamos la charla pero la música no para. ¡Escucháte esto!",
@@ -637,14 +637,14 @@ OUTROS_BY_CATEGORY: dict[str, list[str]] = {
 }
 
 RADIO_OUTROS_DJ: list[str] = [
-	"No dejaron nada en la fila, pero no pasa nada: el DiJei Bara toma el control de las bandejas y te manda esta joyita.",
-	"Se vació la lista, pero entra el DiJei Bara a tirar magia en la consola. ¡A ver con qué temazo nos sorprende!",
-	"Nadie eligió tema, así que dejamos la cabina en manos del DiJei Bara. ¡Bailá con lo que eligió!",
-	"Tranqui que la música no para: cuando la cola se queda vacía, el DiJei Bara se pone la diez y musicaliza el humedal.",
-	"Se terminaron los pedidos de la gente, pero el DiJei Bara ya tiene preparada la próxima bomba en las bandejas. ¡Escucháte esto!",
-	"Bolsillos vacíos en la cola de temas, pero el DiJei Bara no te deja a pata nunca: ¡metió mano en la batea y sacó este cañonazo!",
-	"Como nadie pidió nada, le dimos vía libre al DiJei Bara para que haga de las suyas en la consola. ¡Subíle al parlante!",
-	"¡Paso al DiJei Bara! Cuando la audiencia no pide, él manda música de la buena. ¡A bailar con esto que viene!",
+	"No dejaron nada en la fila, pero no pasa nada: el DiYei Bara toma el control de las bandejas y te manda esta joyita.",
+	"Se vació la lista, pero entra el DiYei Bara a tirar magia en la consola. ¡A ver con qué temazo nos sorprende!",
+	"Nadie eligió tema, así que dejamos la cabina en manos del DiYei Bara. ¡Bailá con lo que eligió!",
+	"Tranqui que la música no para: cuando la cola se queda vacía, el DiYei Bara se pone la diez y musicaliza el humedal.",
+	"Se terminaron los pedidos de la gente, pero el DiYei Bara ya tiene preparada la próxima bomba en las bandejas. ¡Escucháte esto!",
+	"Bolsillos vacíos en la cola de temas, pero el DiYei Bara no te deja a pata nunca: ¡metió mano en la batea y sacó este cañonazo!",
+	"Como nadie pidió nada, le dimos vía libre al DiYei Bara para que haga de las suyas en la consola. ¡Subíle al parlante!",
+	"¡Paso al DiYei Bara! Cuando la audiencia no pide, él manda música de la buena. ¡A bailar con esto que viene!",
 ]
 
 RADIO_OUTROS_PAUSE: list[str] = [

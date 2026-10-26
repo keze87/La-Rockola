@@ -131,12 +131,12 @@ async def test_radio_pregeneration_pipeline_end_to_end(tmp_path: Path) -> None:
 
 
 def test_prune_tts_cache_db_large_capacity(tmp_path: Path) -> None:
-	"""Verifica que la capacidad por defecto de la caché sea de al menos 5000 entradas (evitando podas prematuras)."""
+	"""Verifica que la capacidad por defecto de la caché sea de al menos 9000 entradas (evitando podas prematuras)."""
 	import inspect
 
 	sig = inspect.signature(tts_cache.prune_tts_cache_db)
 	max_entries_default = sig.parameters["max_entries"].default
-	assert max_entries_default >= 5000, f"max_entries default ({max_entries_default}) debe ser >= 5000"
+	assert max_entries_default >= 9000, f"max_entries default ({max_entries_default}) debe ser >= 9000"
 
 
 def test_collect_phrases_expands_placeholders_and_numbers() -> None:
