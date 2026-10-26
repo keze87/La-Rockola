@@ -160,3 +160,47 @@ class TestRadioChismesSuite:
 		orch.queue = []
 		orch.dj_carpincho_enabled = False
 		assert orch._get_expected_radio_outro_mode() == "break"
+
+	async def test_09_radio_preparation_maintains_synthesizing_state_without_silence_gap(
+		self, tmp_path: Path, monkeypatch
+	) -> None:
+		"""Verifica que orch.is_synthesizing_radio esté en True durante la preparación de la radio evitando silencio estampa."""
+		from unittest.mock import AsyncMock
+
+		import app.domain.radio.service as radio_service_mod
+		from app.core.container import AppContainer, set_container
+		from app.domain.playback.orchestrator import PlaybackOrchestrator
+
+		db_path = tmp_path / "orch_synth.db"
+		init_db(db_path)
+		orch = PlaybackOrchestrator(db_path=db_path)
+		orch.mpv.start = AsyncMock()
+		orch.mpv.load_file = AsyncMock()
+		orch.mpv.set_force_window = AsyncMock()
+		orch.current_track = "/musica/tema1.mp3"
+		orch.queue = ["/musica/tema2.mp3"]
+		orch.radio_mode_enabled = True
+		orch.last_radio_time = 0.0
+		orch.radio_time_until_next = 1.0
+		set_container(AppContainer(db_path=db_path, orchestrator=orch))
+
+		monkeypatch.setattr(radio_service_mod, "check_internet_async", AsyncMock(return_value=True))
+
+		state_during_prep: dict[str, bool] = {}
+
+		async def mock_get_or_synthesize(*args, **kwargs):
+			# Durante la preparación de la radio, is_synthesizing_radio DEBE estar en True
+			state_during_prep["is_synthesizing"] = orch.is_synthesizing_radio
+			state_during_prep["has_current_track"] = orch.current_track is not None
+			return True, "Locución radial", "Guión de prueba", None
+
+		monkeypatch.setattr(orch.radio_service, "get_or_synthesize", mock_get_or_synthesize)
+
+		await orch.play_next(skipped_by_user=False)
+
+		# Durante get_or_synthesize, debió estar en True (evitando que el frontend muestre 'Silencio estampa')
+		assert state_during_prep.get("is_synthesizing") is True
+		# Al terminar de preparar, debe pasar a reproducir la locución
+		assert orch.is_synthesizing_radio is False
+		assert orch.is_playing_radio_announcement is True
+		assert orch.current_track == orch.radio_announcement_path

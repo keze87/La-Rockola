@@ -222,6 +222,15 @@
 			};
 		}
 
+		if (isPlayingRadioAnnouncement.value) {
+			const info = currentTrackPath.value ? player.getTrackInfo(currentTrackPath.value) : null;
+			return {
+				title: info?.display_title || 'Locución radial',
+				artist: info?.display_artist || 'Carpincho Locutor 🎙️',
+				isComing: false,
+			};
+		}
+
 		if (currentTrackPath.value) {
 			const info = player.getTrackInfo(currentTrackPath.value);
 			return {

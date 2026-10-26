@@ -1195,9 +1195,17 @@ class RadioService:
 		if self.pregenerated_announcement:
 			pre = self.pregenerated_announcement
 			self.pregenerated_announcement = None
+			if on_synthesis_status:
+				res_notify = on_synthesis_status(True)
+				if asyncio.iscoroutine(res_notify):
+					await res_notify
 			ok, display_title, script = await self._consume_pregenerated(
 				pre, target_ann_path, next_track_path, bg_offset, outro_mode
 			)
+			if not ok and on_synthesis_status:
+				res_notify = on_synthesis_status(False)
+				if asyncio.iscoroutine(res_notify):
+					await res_notify
 
 		if not ok and self.pregeneration_task and not self.pregeneration_task.done():
 			try:
@@ -1216,7 +1224,7 @@ class RadioService:
 			except Exception as wait_e:
 				logger.debug(f"Espera de pregeneración agotada o falló: {wait_e}")
 			finally:
-				if on_synthesis_status:
+				if not ok and on_synthesis_status:
 					res_notify = on_synthesis_status(False)
 					if asyncio.iscoroutine(res_notify):
 						await res_notify
@@ -1245,7 +1253,7 @@ class RadioService:
 				ok = False
 				radio_err = f"{type(e).__name__}: {e}"
 			finally:
-				if on_synthesis_status:
+				if not ok and on_synthesis_status:
 					res_notify = on_synthesis_status(False)
 					if asyncio.iscoroutine(res_notify):
 						await res_notify

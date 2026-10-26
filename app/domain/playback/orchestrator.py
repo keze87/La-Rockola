@@ -724,67 +724,75 @@ class PlaybackOrchestrator:
 					self.radio_pregeneration_task is not None and not self.radio_pregeneration_task.done()
 				)
 				if self.is_radio_due() or has_pregenerated:
-					check_net_fn = getattr(radio_service_mod, "check_internet_async", check_internet_async)
-					if not await check_net_fn(timeout=0.8):
-						self._reset_radio_schedule()
-						logger.warning(
-							"📻 Carpincho Locutor: no hay conexión a internet disponible. Omitiendo locución radial para no demorar la reproducción."
-						)
-					else:
-						outro_mode = self._get_expected_radio_outro_mode(should_pause=should_pause)
-						next_track_path = None
-						if outro_mode in ("continue", "dj"):
-							if self.queue:
-								next_track_path = self.queue[0]
-							elif self.dj_next_track:
-								next_track_path = self.dj_next_track.get("path")
-							elif self.dj_carpincho_enabled and self.tracks_cache:
-								self._pick_dj_next()
-								if self.dj_next_track:
-									next_track_path = self.dj_next_track.get("path")
-
-						bg_offset = 0.0
-						if next_track_path:
-							total_dur = get_track_duration_seconds(next_track_path, self.tracks_cache)
-							if total_dur > 10.0:
-								bg_offset = total_dur / 2.0
-							elif total_dur > 0:
-								bg_offset = total_dur * 0.4
-
-						async def _set_synthesizing_radio(is_synth: bool) -> None:
-							self.is_synthesizing_radio = is_synth
-							await broadcast_state()
-
-						ok, display_title, script, radio_err = await self.radio_service.get_or_synthesize(
-							next_track_path=next_track_path,
-							bg_offset=bg_offset,
-							on_synthesis_status=_set_synthesizing_radio,
-							outro_mode=outro_mode,
-						)
-
-						if ok:
+					self.is_synthesizing_radio = True
+					await broadcast_state()
+					try:
+						check_net_fn = getattr(radio_service_mod, "check_internet_async", check_internet_async)
+						if not await check_net_fn(timeout=0.8):
 							self._reset_radio_schedule()
-							self.is_playing_radio_announcement = True
-							self.url_metadata[self.radio_announcement_path] = {
-								"path": self.radio_announcement_path,
-								"display_title": display_title,
-								"display_artist": "Carpincho Locutor 🎙️",
-								"album": "La Rockola del Carpincho",
-								"duration_str": "0:12",
-							}
-							self._archive_radio_announcement(
-								self.radio_announcement_path,
-								script_text=script,
-								display_title=display_title,
+							logger.warning(
+								"📻 Carpincho Locutor: no hay conexión a internet disponible. Omitiendo locución radial para no demorar la reproducción."
 							)
-							if should_pause:
-								self.pause_after_path = self.radio_announcement_path
-							await self.play_track(self.radio_announcement_path)
+						else:
+							outro_mode = self._get_expected_radio_outro_mode(should_pause=should_pause)
+							next_track_path = None
+							if outro_mode in ("continue", "dj"):
+								if self.queue:
+									next_track_path = self.queue[0]
+								elif self.dj_next_track:
+									next_track_path = self.dj_next_track.get("path")
+								elif self.dj_carpincho_enabled and self.tracks_cache:
+									self._pick_dj_next()
+									if self.dj_next_track:
+										next_track_path = self.dj_next_track.get("path")
+
+							bg_offset = 0.0
+							if next_track_path:
+								total_dur = get_track_duration_seconds(next_track_path, self.tracks_cache)
+								if total_dur > 10.0:
+									bg_offset = total_dur / 2.0
+								elif total_dur > 0:
+									bg_offset = total_dur * 0.4
+
+							async def _set_synthesizing_radio(is_synth: bool) -> None:
+								self.is_synthesizing_radio = is_synth
+								await broadcast_state()
+
+							ok, display_title, script, radio_err = await self.radio_service.get_or_synthesize(
+								next_track_path=next_track_path,
+								bg_offset=bg_offset,
+								on_synthesis_status=_set_synthesizing_radio,
+								outro_mode=outro_mode,
+							)
+
+							if ok:
+								self._reset_radio_schedule()
+								self.is_playing_radio_announcement = True
+								self.url_metadata[self.radio_announcement_path] = {
+									"path": self.radio_announcement_path,
+									"display_title": display_title,
+									"display_artist": "Carpincho Locutor 🎙️",
+									"album": "La Rockola del Carpincho",
+									"duration_str": "0:12",
+								}
+								self._archive_radio_announcement(
+									self.radio_announcement_path,
+									script_text=script,
+									display_title=display_title,
+								)
+								if should_pause:
+									self.pause_after_path = self.radio_announcement_path
+								self.is_synthesizing_radio = False
+								await self.play_track(self.radio_announcement_path)
+								await broadcast_state()
+								return
+							logger.warning(
+								f"🎙️ Carpincho Locutor: No se pudo sintetizar la locución radial ({radio_err}). Pasando al tema siguiente..."
+							)
+					finally:
+						if self.is_synthesizing_radio:
+							self.is_synthesizing_radio = False
 							await broadcast_state()
-							return
-						logger.warning(
-							f"🎙️ Carpincho Locutor: No se pudo sintetizar la locución radial ({radio_err}). Pasando al tema siguiente..."
-						)
 
 			next_path = self.queue_manager.pop_next()
 			if next_path is not None:

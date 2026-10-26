@@ -10,6 +10,7 @@ import {
 	trackMap,
 	volume,
 } from '@/composables/player/state';
+import { isSynthesizingRadio, isPlayingRadioAnnouncement } from '@/stores/useRadioStore';
 
 describe('FogonMode.vue', () => {
 	beforeEach(() => {
@@ -416,6 +417,24 @@ Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Hola
 
 		// No debe mostrar texto fuera de lugar de "Sin letras sincronizadas" en estado detenido
 		expect(wrapper.text()).not.toContain('Sin letras sincronizadas');
+	});
+
+	it('does not render "Silencio estampa" when isSynthesizingRadio is true or when isPlayingRadioAnnouncement is true', () => {
+		currentTrackPath.value = null;
+		isSynthesizingRadio.value = true;
+		isPlayingRadioAnnouncement.value = false;
+
+		const wrapper = mount(FogonMode);
+		expect(wrapper.text()).toContain('El locutor carpincho se está preparando...');
+		expect(wrapper.text()).not.toContain('Silencio estampa');
+
+		isSynthesizingRadio.value = false;
+		isPlayingRadioAnnouncement.value = true;
+		currentTrackPath.value = '/tmp/radio_announcement.mp3';
+
+		const wrapper2 = mount(FogonMode);
+		expect(wrapper2.text()).toContain('Locución radial');
+		expect(wrapper2.text()).not.toContain('Silencio estampa');
 	});
 
 	it('provides responsive landscape classes and compact styling for short viewports', async () => {

@@ -108,6 +108,10 @@
 		if (isSynthesizingRadio.value || (isPlayingRadioAnnouncement.value && !currentTrackPath.value)) {
 			return 'El locutor carpincho se está preparando... 🎙️';
 		}
+		if (isPlayingRadioAnnouncement.value) {
+			const t = currentTrackPath.value ? getTrackInfo(currentTrackPath.value) : null;
+			return `${t?.display_artist || 'Carpincho Locutor 🎙️'} - ${t?.display_title || 'Locución radial'}`;
+		}
 		if (!currentTrackPath.value) return 'Silencio estampa. Poné algo, fiera.';
 
 		const t = getTrackInfo(currentTrackPath.value);
