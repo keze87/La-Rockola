@@ -120,26 +120,26 @@
 		return lyrics.value.findIndex((l) => l.time === firstActive.time);
 	});
 
-	// Para el modo vertical en pantallas chicas o celulares: mostramos solo 2 o 3 líneas
+	// Para el modo vertical en pantallas chicas o celulares: mostramos hasta 4 líneas (1 previa + 1 activa + 2 siguientes)
 	const portraitLyricLines = computed(() => {
 		if (!lyrics.value.length) return [];
 		if (activeLineIndex.value < 0) {
-			// Antes de que arranque el tema: mostramos los primeros 2 versos
-			return lyrics.value.slice(0, 2);
+			// Antes de que arranque el tema: mostramos los primeros 3 versos
+			return lyrics.value.slice(0, 3);
 		}
 		const activeIdx = activeLineIndex.value;
 		const activeCount = activeLyricLines.value.length;
 
-		// Si hay varias líneas activas a la vez (dueto/coros), mostramos las activas más la siguiente
+		// Si hay varias líneas activas a la vez (dueto/coros), mostramos las activas más las siguientes
 		if (activeCount > 1) {
 			const start = Math.max(0, activeIdx);
-			const end = Math.min(lyrics.value.length, activeIdx + activeCount + 1);
+			const end = Math.min(lyrics.value.length, activeIdx + activeCount + 2);
 			return lyrics.value.slice(start, end);
 		}
 
-		// Si hay una sola línea activa: anterior (si hay), actual y siguiente (2 o 3 líneas)
+		// Si hay una sola línea activa: anterior (si hay), actual y siguientes (hasta 4 líneas)
 		const start = Math.max(0, activeIdx - 1);
-		const end = Math.min(lyrics.value.length, activeIdx + 2);
+		const end = Math.min(lyrics.value.length, activeIdx + 3);
 		return lyrics.value.slice(start, end);
 	});
 
@@ -394,10 +394,14 @@
 							: 'max-w-md',
 					]"
 				>
-					<!-- Bloque superior: Carátula del álbum (centrada en el 60% superior en móviles) -->
+					<!-- Bloque superior: Carátula del álbum bajada hacia el título central en móviles -->
 					<div
-						class="flex w-full items-center justify-center text-center"
-						:class="[hasLyrics ? 'min-h-0 flex-[6] md:h-auto md:flex-none md:shrink-0' : 'shrink-0']"
+						class="flex w-full flex-col items-center text-center"
+						:class="[
+							hasLyrics
+								? 'min-h-0 flex-[6] justify-end pb-1 sm:pb-2 md:h-auto md:flex-none md:shrink-0 md:justify-center md:pb-0'
+								: 'shrink-0 justify-center',
+						]"
 					>
 						<!-- Tapa del disco con sombra profunda, 90% del ancho en móviles (estrictamente cuadrada) y tamaño balanceado en escritorio -->
 						<div
@@ -456,12 +460,12 @@
 						</h2>
 					</div>
 
-					<!-- Bloque inferior: Barra de progreso, controles y letras móviles equilibrados en el 40% inferior -->
+					<!-- Bloque inferior: Barra de progreso, controles y letras móviles acercados hacia el centro -->
 					<div
 						class="flex w-full flex-col items-center text-center"
 						:class="[
 							hasLyrics
-								? 'min-h-0 flex-[4] justify-between md:h-auto md:flex-none md:shrink-0 md:justify-center'
+								? 'min-h-0 flex-[4] justify-start md:h-auto md:flex-none md:shrink-0 md:justify-center'
 								: 'mt-4 shrink-0 sm:mt-5 md:mt-4',
 						]"
 					>
@@ -567,12 +571,12 @@
 							</div>
 						</div>
 
-						<!-- MODO VERTICAL (Mobile / Portrait): Ocupa el 100% del ancho y toda la altura debajo de los controles con espacio confortable -->
+						<!-- MODO VERTICAL (Mobile / Portrait): Ocupa el 100% del ancho y se posiciona cercano a los controles -->
 						<div
 							v-if="hasLyrics"
-							class="lyrics-mask-vertical relative my-auto flex min-h-0 w-full flex-1 flex-col items-center justify-center overflow-hidden px-4 text-center md:hidden"
+							class="lyrics-mask-vertical relative mt-2 flex min-h-0 w-full flex-1 flex-col items-center justify-start overflow-hidden px-4 pt-1 text-center md:hidden"
 						>
-							<div class="flex flex-col items-center justify-center space-y-2.5 select-none sm:space-y-4">
+							<div class="flex flex-col items-center justify-start space-y-2 select-none sm:space-y-3">
 								<div
 									v-for="(line, idx) in portraitLyricLines"
 									:key="'portrait-' + idx + '-' + line.time"

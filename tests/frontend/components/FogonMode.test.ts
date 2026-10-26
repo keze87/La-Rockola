@@ -225,12 +225,12 @@ Dialogue: 0,0:00:20.00,0:00:25.00,Default,,0,0,0,,{\\kf100}Segunda {\\kf100}line
 		expect(lines.length).toBe(2);
 		await lines[1].trigger('click');
 
-		// Modo vertical muestra únicamente entre 2 y 3 líneas
+		// Modo vertical muestra hasta 4 líneas (1 previa, 1 activa, 2 siguientes)
 		const portraitContainer = wrapper.find('.lyrics-mask-vertical');
 		expect(portraitContainer.exists()).toBe(true);
 		const portraitLines = portraitContainer.findAll('.whitespace-pre-wrap');
 		expect(portraitLines.length).toBeGreaterThanOrEqual(1);
-		expect(portraitLines.length).toBeLessThanOrEqual(3);
+		expect(portraitLines.length).toBeLessThanOrEqual(4);
 	});
 
 	it('applies Apple Music depth-of-field blur on inactive lines and pure white glow on active syllables', async () => {
@@ -323,16 +323,21 @@ Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Hola
 		expect(portraitLyrics.classes()).toContain('w-full');
 		expect(portraitLyrics.classes()).toContain('flex-1');
 
-		// El título queda posicionado al ~60% vertical dividiendo el espacio en proporción 6:4
+		// La carátula baja hacia el título (flex-col items-center justify-end)
 		const topCoverSection = coverWrapper.element.parentElement;
 		expect(topCoverSection?.classList.contains('flex-[6]')).toBe(true);
+		expect(topCoverSection?.classList.contains('justify-end')).toBe(true);
+		expect(topCoverSection?.classList.contains('flex-col')).toBe(true);
 
 		const trackInfoSection = wrapper.find('.fogon-track-info');
 		expect(trackInfoSection.exists()).toBe(true);
 		expect(trackInfoSection.classes()).toContain('shrink-0');
 
+		// Las letras suben hacia los controles (justify-start)
 		const bottomSection = portraitLyrics.element.parentElement;
 		expect(bottomSection?.classList.contains('flex-[4]')).toBe(true);
+		expect(bottomSection?.classList.contains('justify-start')).toBe(true);
+		expect(portraitLyrics.classes()).toContain('justify-start');
 	});
 
 	it('maintains symmetrical centered alignment on wide screens with or without lyrics or during DJ wait', async () => {
