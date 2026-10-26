@@ -233,7 +233,7 @@ Dialogue: 0,0:00:20.00,0:00:25.00,Default,,0,0,0,,{\\kf100}Segunda {\\kf100}line
 		expect(portraitLines.length).toBeLessThanOrEqual(4);
 	});
 
-	it('applies Apple Music depth-of-field blur on inactive lines and pure white glow on active syllables', async () => {
+	it('uses lightweight Carpincho styling without per-line blur filters and highlights sung syllables in warm gold', async () => {
 		const assContent = `[Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Hola {\\kf100}mundo
@@ -260,23 +260,77 @@ Dialogue: 0,0:00:06.00,0:00:10.00,Default,,0,0,0,,{\\kf100}Segunda {\\kf100}fras
 		await wrapper.vm.$nextTick();
 
 		const { localTimePos } = await import('@/composables/player/state');
-		localTimePos.value = 1; // Primera línea activa
+		localTimePos.value = 1.5; // Primera sílaba ya cantada (0-1s), segunda activa (1-2s)
 		await wrapper.vm.$nextTick();
+
+		const container = wrapper.find('.fogon-container');
+		expect(container.classes()).toContain('bg-carpincho-panel');
+		expect(container.classes()).toContain('text-carpincho-text');
+		expect(container.classes()).toContain('overscroll-contain');
+		expect(wrapper.find('.backdrop-blur-xl').exists()).toBe(false);
 
 		const scrollContainer = wrapper.find('.no-scrollbar');
 		const lines = scrollContainer.findAll('.whitespace-pre-wrap');
 		expect(lines.length).toBe(2);
 
-		// Línea activa: sin desenfoque (blur-none) y escala destacada
-		expect(lines[0].classes()).toContain('blur-none');
-		// Línea inactiva: con desenfoque de profundidad de campo (blur-[1.5px] o blur-sm)
-		expect(lines[1].classes()).toContain('blur-[1.5px]');
+		// Línea inactiva: jerarquía de opacidad cálida sin filtro blur pesado por línea
+		expect(lines[1].classes()).not.toContain('blur-[1.5px]');
+		expect(lines[1].classes()).toContain('text-carpincho-text/35');
 
-		// La sílaba activa no debe tener subrayado tosco y debe tener resplandor blanco puro
+		// Primera sílaba ya cantada: dorado mate carpincho
+		const syllables = lines[0].findAll('span');
+		expect(syllables[0].classes()).toContain('text-carpincho-warning');
+
+		// Segunda sílaba activa: brillo cálido sin subrayado tosco
 		const activeSyllable = lines[0].find('.inline-block');
 		expect(activeSyllable.exists()).toBe(true);
 		expect(activeSyllable.classes()).not.toContain('underline');
-		expect(activeSyllable.classes()).toContain('drop-shadow-[0_0_16px_rgba(255,255,255,1)]');
+		expect(activeSyllable.classes()).toContain('drop-shadow-[0_0_10px_rgba(233,196,106,0.75)]');
+	});
+
+	it('scrolls only the lyrics container without calling scrollIntoView or shifting background ancestors', async () => {
+		const assContent = `[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,0:00:02.00,Default,,0,0,0,,{\\kf100}Inicio
+Dialogue: 0,0:00:03.00,0:00:06.00,Default,,0,0,0,,{\\kf100}Final {\\kf100}del {\\kf100}tema
+`;
+
+		global.fetch = vi.fn().mockImplementation((url: string) => {
+			if (typeof url === 'string' && url.includes('/lrc')) {
+				return Promise.resolve({
+					ok: true,
+					text: () => Promise.resolve(assContent),
+				} as unknown as Response);
+			}
+			return Promise.resolve({
+				ok: true,
+				json: () => Promise.resolve({ status: 'ok' }),
+			} as unknown as Response);
+		});
+
+		const scrollIntoViewSpy = vi.fn();
+		Element.prototype.scrollIntoView = scrollIntoViewSpy;
+
+		const wrapper = mount(FogonMode);
+		currentTrackPath.value = '/music/scroll_isolation.mp3';
+		await wrapper.vm.$nextTick();
+		await new Promise((resolve) => setTimeout(resolve, 15));
+		await wrapper.vm.$nextTick();
+
+		const lyricsScroll = wrapper.find('.fogon-lyrics-scroll');
+		expect(lyricsScroll.exists()).toBe(true);
+		expect(lyricsScroll.classes()).toContain('overscroll-contain');
+
+		const scrollToSpy = vi.fn();
+		lyricsScroll.element.scrollTo = scrollToSpy;
+
+		const { localTimePos } = await import('@/composables/player/state');
+		localTimePos.value = 4; // Activa la última línea
+		await wrapper.vm.$nextTick();
+		await wrapper.vm.$nextTick();
+
+		expect(scrollIntoViewSpy).not.toHaveBeenCalled();
+		expect(scrollToSpy).toHaveBeenCalled();
 	});
 
 	it('uses centered layout with reduced vertical spacing on narrow screens', async () => {

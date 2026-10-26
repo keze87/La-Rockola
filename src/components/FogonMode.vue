@@ -146,11 +146,17 @@
 	function scrollToActiveLine(smooth = true) {
 		if (userIsScrolling.value || activeLineIndex.value < 0) return;
 		const activeEl = lineRefs.value[activeLineIndex.value];
-		if (activeEl && lyricsContainerRef.value) {
-			activeEl.scrollIntoView({
-				behavior: smooth ? 'smooth' : 'auto',
-				block: 'center',
-			});
+		const container = lyricsContainerRef.value;
+		if (activeEl && container) {
+			const targetTop = Math.max(0, activeEl.offsetTop - container.clientHeight / 2 + activeEl.clientHeight / 2);
+			if (typeof container.scrollTo === 'function') {
+				container.scrollTo({
+					top: targetTop,
+					behavior: smooth ? 'smooth' : 'auto',
+				});
+			} else {
+				container.scrollTop = targetTop;
+			}
 		}
 	}
 
@@ -184,18 +190,18 @@
 		});
 	});
 
-	// Estilo para cada sílaba en el modo karaoke según el momento de la canción (estilo Apple Music con resplandor luminoso)
+	// Estilo para cada sílaba en el modo karaoke según el momento de la canción (cohesivo con la impronta carpincha)
 	function getSyllableClass(syl: LyricSyllable): string {
 		const pos = localTimePos.value;
 		if (pos >= syl.end) {
-			// Ya sonó: blanco pleno nítido y brillante
-			return 'text-white font-black drop-shadow-sm transition-colors duration-150 inline';
+			// Ya sonó: dorado mate dulce
+			return 'text-carpincho-warning font-black transition-colors duration-150 inline';
 		} else if (pos >= syl.start && pos < syl.end) {
-			// Cantándose justo ahora: blanco puro con resplandor luminoso estilo Apple Music (sin subrayado tosco)
-			return 'text-white font-black scale-105 drop-shadow-[0_0_16px_rgba(255,255,255,1)] transition-all duration-100 inline-block';
+			// Cantándose justo ahora: blanco destacado con halo cálido moderado y sin subrayado tosco
+			return 'text-white font-black scale-105 drop-shadow-[0_0_10px_rgba(233,196,106,0.75)] transition-transform duration-100 inline-block';
 		}
-		// Futura: blanca translúcida para lectura anticipada tipo Apple Music
-		return 'text-white/30 font-bold transition-colors duration-150 inline';
+		// Futura: tono crema carpincho atenuado para lectura anticipada
+		return 'text-carpincho-text/40 font-bold transition-colors duration-150 inline';
 	}
 
 	// --- Propiedades computadas para simplificar el template ---
@@ -205,7 +211,7 @@
 		return null;
 	});
 
-	const { coverUrl: currentCoverUrl } = useCover(coverSource, { size: null });
+	const { coverUrl: currentCoverUrl } = useCover(coverSource, { size: 256 });
 
 	const currentTrackInfo = computed(() => {
 		if (isSynthesizingRadio.value || (isPlayingRadioAnnouncement.value && !currentTrackPath.value)) {
@@ -351,23 +357,23 @@
 	<transition name="fogon">
 		<div
 			v-if="isFogonMode"
-			class="fogon-container fixed inset-0 z-[10000] flex items-center justify-center overflow-hidden bg-black p-4 text-white sm:p-6 md:p-10"
+			class="fogon-container bg-carpincho-panel text-carpincho-text fixed inset-0 z-[10000] flex items-center justify-center overflow-hidden overscroll-contain p-4 sm:p-6 md:p-10"
 			:class="{ 'cursor-none [&_*]:cursor-none': isCursorInactive }"
 		>
-			<!-- Fondo ambiental saturado y desenfocado estilo Apple Music / blyrics -->
+			<!-- Fondo ambiental cálido y liviano cohesivo con la estética carpincha -->
 			<div
 				v-if="currentCoverUrl"
-				class="pointer-events-none absolute inset-0 scale-135 bg-cover bg-center opacity-60 blur-[80px] saturate-200 transition-all duration-1000 md:blur-[110px]"
+				class="pointer-events-none absolute inset-0 scale-110 bg-cover bg-center opacity-25 blur-2xl saturate-150 transition-opacity duration-700"
 				:style="{ backgroundImage: `url('${currentCoverUrl}')` }"
 			/>
 			<div
-				class="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,_rgba(0,0,0,0.3)_0%,_rgba(0,0,0,0.85)_100%)] backdrop-blur-xl"
+				class="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,_rgba(43,38,34,0.35)_0%,_rgba(31,26,23,0.92)_100%)]"
 			/>
 
 			<!-- Botón flotante para cerrar el fogón (arriba a la derecha) -->
 			<button
 				aria-label="Cerrar vista de fogón"
-				class="absolute top-4 right-4 z-40 p-2 text-gray-400 transition hover:scale-110 hover:text-white active:scale-95 md:top-8 md:right-8"
+				class="text-carpincho-text/70 hover:text-carpincho-warning absolute top-4 right-4 z-40 p-2 transition hover:scale-110 active:scale-95 md:top-8 md:right-8"
 				@click="closeFogon"
 			>
 				<i class="material-icons !text-4xl">keyboard_arrow_down</i>
@@ -403,9 +409,9 @@
 								: 'shrink-0 justify-center',
 						]"
 					>
-						<!-- Tapa del disco con sombra profunda, 90% del ancho en móviles (estrictamente cuadrada) y tamaño balanceado en escritorio -->
+						<!-- Tapa del disco con marco carpincho, 90% del ancho en móviles (estrictamente cuadrada) y tamaño balanceado en escritorio -->
 						<div
-							class="fogon-cover-wrapper bg-carpincho-bg flex shrink-0 items-center justify-center overflow-hidden rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.85)] transition-all duration-500 md:rounded-3xl"
+							class="fogon-cover-wrapper bg-carpincho-bg border-carpincho-border/60 flex shrink-0 items-center justify-center overflow-hidden rounded-2xl border shadow-2xl transition-all duration-500 md:rounded-3xl"
 							:class="[
 								hasLyrics
 									? 'aspect-square h-[90vw] max-h-[380px] w-[90vw] max-w-[380px] md:mb-5 md:h-auto md:max-h-none md:w-full md:max-w-none'
@@ -555,7 +561,7 @@
 							<!-- Barra de volumen desplegable -->
 							<div
 								v-if="showFogonVolume"
-								class="relative z-40 mt-3 flex w-full max-w-xs items-center gap-4 px-2 text-gray-300 opacity-90 transition select-none hover:opacity-100 sm:max-w-sm md:max-w-none"
+								class="bg-carpincho-bg/95 border-carpincho-border text-carpincho-text relative z-40 mt-3 flex w-full max-w-xs items-center gap-4 rounded-full border px-4 py-1.5 opacity-95 shadow-lg transition select-none hover:opacity-100 sm:max-w-sm md:max-w-none"
 							>
 								<button aria-label="Silenciar" @click="toggleMute">
 									<i class="material-icons cursor-pointer text-sm hover:text-white">{{ muteIcon }}</i>
@@ -580,11 +586,11 @@
 								<div
 									v-for="(line, idx) in portraitLyricLines"
 									:key="'portrait-' + idx + '-' + line.time"
-									class="cursor-pointer whitespace-pre-wrap transition-all duration-300"
+									class="cursor-pointer whitespace-pre-wrap transition-[color,opacity,transform] duration-300"
 									:class="[
 										isLineActive(line)
-											? 'scale-105 text-lg leading-relaxed font-black text-white blur-none drop-shadow-[0_0_16px_rgba(255,255,255,0.7)] sm:text-xl'
-											: 'text-xs font-semibold text-white/35 blur-[0.8px] hover:text-white/60 hover:blur-none sm:text-sm',
+											? 'scale-105 text-lg leading-relaxed font-black text-white sm:text-xl'
+											: 'text-carpincho-text/35 hover:text-carpincho-text/75 text-xs font-semibold sm:text-sm',
 									]"
 									@click="handleLineClick(line.time)"
 								>
@@ -599,9 +605,7 @@
 											</span>
 										</template>
 										<template v-else>
-											<span
-												class="font-black text-white drop-shadow-[0_0_16px_rgba(255,255,255,0.8)]"
-											>
+											<span class="text-carpincho-warning font-black">
 												{{ line.text }}
 											</span>
 										</template>
@@ -615,14 +619,14 @@
 					</div>
 				</div>
 
-				<!-- COLUMNA DERECHA: Letras completas en flujo vertical estilo Apple Music / blyrics-am-theme (solo en escritorio) -->
+				<!-- COLUMNA DERECHA: Letras completas en flujo vertical con estética Carpincha (solo en escritorio / apaisado) -->
 				<div
 					v-if="hasLyrics"
 					class="lyrics-mask fogon-lyrics-container relative hidden h-[78vh] w-full flex-1 flex-col justify-center overflow-hidden md:flex lg:h-[84vh]"
 				>
 					<div
 						ref="lyricsContainerRef"
-						class="fogon-lyrics-scroll no-scrollbar h-full w-full space-y-7 overflow-y-auto scroll-smooth px-6 py-[38vh] select-none md:space-y-8 md:px-12"
+						class="fogon-lyrics-scroll no-scrollbar h-full w-full space-y-7 overflow-y-auto overscroll-contain scroll-smooth px-6 py-[38vh] select-none md:space-y-8 md:px-12"
 						@scroll="handleUserScroll"
 						@wheel="handleUserScroll"
 						@touchmove="handleUserScroll"
@@ -631,11 +635,11 @@
 							v-for="(line, idx) in lyrics"
 							:key="idx + '-' + line.time"
 							:ref="(el) => (lineRefs[idx] = el as HTMLElement)"
-							class="cursor-pointer text-left whitespace-pre-wrap transition-all duration-400"
+							class="cursor-pointer text-left whitespace-pre-wrap transition-[color,opacity,transform] duration-300"
 							:class="[
 								isLineActive(line)
-									? 'origin-left scale-[1.02] text-3xl leading-tight font-black tracking-tight text-white blur-none drop-shadow-[0_2px_24px_rgba(0,0,0,0.9)] sm:text-4xl lg:text-5xl'
-									: 'text-xl leading-snug font-extrabold tracking-tight text-white/30 blur-[1.5px] hover:text-white/70 hover:blur-none sm:text-2xl lg:text-3xl',
+									? 'origin-left scale-[1.02] text-3xl leading-tight font-black tracking-tight text-white sm:text-4xl lg:text-5xl'
+									: 'text-carpincho-text/35 hover:text-carpincho-text/75 text-xl leading-snug font-extrabold tracking-tight sm:text-2xl lg:text-3xl',
 							]"
 							@click="handleLineClick(line.time)"
 						>
@@ -650,7 +654,7 @@
 									</span>
 								</template>
 								<template v-else>
-									<span class="font-black text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.8)]">
+									<span class="text-carpincho-warning font-black">
 										{{ line.text }}
 									</span>
 								</template>
@@ -669,15 +673,12 @@
 <style scoped>
 	.fogon-enter-active,
 	.fogon-leave-active {
-		transition:
-			opacity 0.5s,
-			backdrop-filter 0.5s;
+		transition: opacity 0.35s ease-out;
 	}
 
 	.fogon-enter-from,
 	.fogon-leave-to {
 		opacity: 0;
-		backdrop-filter: blur(0);
 	}
 
 	/* Ocultar barra de scroll en el contenedor de letras */
@@ -689,13 +690,13 @@
 		scrollbar-width: none;
 	}
 
-	/* Máscara de desvanecimiento suave superior e inferior estilo Apple Music */
+	/* Máscara de desvanecimiento suave superior e inferior */
 	.lyrics-mask {
 		mask-image: linear-gradient(to bottom, transparent 0%, black 14%, black 86%, transparent 100%);
 		-webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 14%, black 86%, transparent 100%);
 	}
 
-	/* Máscara de desvanecimiento para el modo vertical (2 o 3 líneas) */
+	/* Máscara de desvanecimiento para el modo vertical */
 	.lyrics-mask-vertical {
 		mask-image: linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%);
 		-webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%);
@@ -773,8 +774,8 @@
 		}
 
 		.fogon-lyrics-scroll {
-			padding-top: 22vh !important;
-			padding-bottom: 22vh !important;
+			padding-top: 40vh !important;
+			padding-bottom: 40vh !important;
 			padding-left: 1rem !important;
 			padding-right: 1rem !important;
 		}
