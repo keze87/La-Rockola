@@ -393,6 +393,7 @@ Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Hola {\\kf100}mundo
 
 		const coverWrapper = wrapper.find('.fogon-cover-wrapper');
 		expect(coverWrapper.exists()).toBe(true);
+		expect(coverWrapper.classes()).not.toContain('max-h-full');
 
 		const lyricsScroll = wrapper.find('.fogon-lyrics-scroll');
 		expect(lyricsScroll.exists()).toBe(true);

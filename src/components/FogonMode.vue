@@ -408,7 +408,7 @@
 							class="fogon-cover-wrapper bg-carpincho-bg flex shrink-0 items-center justify-center overflow-hidden rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.85)] transition-all duration-500 md:rounded-3xl"
 							:class="[
 								hasLyrics
-									? 'aspect-square h-[90vw] max-h-[380px] max-h-full w-[90vw] max-w-[380px] md:mb-5 md:h-auto md:max-h-none md:w-full md:max-w-none'
+									? 'aspect-square h-[90vw] max-h-[380px] w-[90vw] max-w-[380px] md:mb-5 md:h-auto md:max-h-none md:w-full md:max-w-none'
 									: 'mb-4 aspect-square h-56 w-56 sm:h-64 sm:w-64 md:mb-6 md:h-80 md:w-80 lg:h-88 lg:w-88',
 							]"
 						>
@@ -719,11 +719,18 @@
 		}
 
 		.fogon-cover-wrapper {
+			height: 38vh !important;
+			width: 38vh !important;
 			max-height: 38vh !important;
 			max-width: 38vh !important;
-			width: auto !important;
+			aspect-ratio: 1 / 1 !important;
+			flex-shrink: 0 !important;
 			margin-bottom: 0.35rem !important;
 			border-radius: 1rem !important;
+		}
+
+		.fogon-cover-wrapper i {
+			font-size: 3.5rem !important;
 		}
 
 		.fogon-track-info {
