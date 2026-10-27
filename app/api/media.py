@@ -80,7 +80,13 @@ async def serve_cover(
 		size = None
 
 	try:
-		if state and hasattr(state, "is_radio_announcement") and state.is_radio_announcement(path):
+		is_announcement = False
+		if state and hasattr(state, "is_radio_announcement"):
+			is_announcement = state.is_radio_announcement(path)
+		elif path and Path(path).name in ("radio_announcement.mp3", "radio_pregenerated.mp3"):
+			is_announcement = True
+
+		if is_announcement:
 			carpincho_img = get_carpincho_cover_path()
 			if not carpincho_img or not carpincho_img.is_file():
 				frontend_dir, dist_dir, _ = get_dist_dirs()

@@ -134,7 +134,38 @@ async def serve_index():
 	html_path = dist_dir / "index.html"
 	if not html_path.exists():
 		return {"error": f"Falta el archivo {html_path}, se me cayó el mate encima"}
-	return FileResponse(html_path)
+	headers = {
+		"Cache-Control": "no-cache, no-store, must-revalidate",
+		"Pragma": "no-cache",
+		"Expires": "0",
+	}
+	return FileResponse(html_path, headers=headers)
+
+
+async def serve_radio_jpg(request: Request = None):  # type: ignore[assignment]
+	frontend_dir, dist_dir, _ = get_dist_dirs()
+	radio_path = dist_dir / "radio.jpg"
+	if not radio_path.exists():
+		radio_path = frontend_dir / "public" / "radio.jpg"
+	if not radio_path.exists() and hasattr(sys, "_MEIPASS"):
+		radio_path = Path(sys._MEIPASS) / "public" / "radio.jpg"
+
+	if not radio_path.exists():
+		return {"error": f"No encuentro la portada de radio en {radio_path}"}
+
+	stat = radio_path.stat()
+	etag = f'"{int(stat.st_mtime)}-{stat.st_size}"'
+	cache_headers = {
+		"ETag": etag,
+		"Cache-Control": "public, max-age=86400, stale-while-revalidate=3600",
+	}
+
+	if request:
+		if_none_match = request.headers.get("if-none-match")
+		if if_none_match and etag in if_none_match:
+			return Response(status_code=304, headers=cache_headers)
+
+	return FileResponse(radio_path, media_type="image/jpeg", headers=cache_headers)
 
 
 async def serve_favicon(request: Request = None):  # type: ignore[assignment]
@@ -194,6 +225,7 @@ def create_app() -> FastAPI:
 	app.add_api_route("/", serve_index, methods=["GET"])
 	app.add_api_route("/favicon.ico", serve_favicon, methods=["GET"], include_in_schema=False)
 	app.add_api_route("/favicon.png", serve_favicon, methods=["GET"], include_in_schema=False)
+	app.add_api_route("/radio.jpg", serve_radio_jpg, methods=["GET"], include_in_schema=False)
 	app.add_api_websocket_route("/ws", websocket_endpoint)
 
 	return app

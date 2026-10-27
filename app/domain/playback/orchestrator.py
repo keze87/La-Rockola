@@ -11,7 +11,6 @@ import asyncio
 import logging
 import os
 import random
-import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -412,10 +411,7 @@ class PlaybackOrchestrator:
 			if pregenerated_p and Path(str_path).resolve() == Path(pregenerated_p).resolve():
 				return True
 			p = Path(str_path)
-			if (
-				p.name in ("radio_announcement.mp3", "radio_pregenerated.mp3")
-				and p.parent.resolve() == Path(tempfile.gettempdir()).resolve()
-			):
+			if p.name in ("radio_announcement.mp3", "radio_pregenerated.mp3"):
 				return True
 		except Exception:
 			pass

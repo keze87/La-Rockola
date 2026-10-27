@@ -80,6 +80,7 @@ class TestRadioLocutoresAndCover:
 		from app.main import app
 
 		client = TestClient(app)
+		# Ruta absoluta típica en /tmp
 		res = client.get("/cover?path=/tmp/radio_announcement.mp3&size=512")
 		assert res.status_code == 200
 		assert res.headers["content-type"].startswith("image/jpeg")
@@ -87,8 +88,40 @@ class TestRadioLocutoresAndCover:
 		assert "cache-control" in res.headers
 		assert len(res.content) > 1000
 
+		# Ruta relativa enviada por el front como fallback ('radio_announcement.mp3')
+		res_rel = client.get("/cover?path=radio_announcement.mp3&size=512")
+		assert res_rel.status_code == 200
+		assert res_rel.headers["content-type"].startswith("image/jpeg")
+		assert "etag" in res_rel.headers
+		assert "cache-control" in res_rel.headers
+		assert len(res_rel.content) > 1000
+
 	def test_05_default_radio_title_is_transmision_de_cabina(self) -> None:
 		"""Verifica que el título oficial de la radio sea 'Transmisión de Cabina'."""
 		from app.domain.radio.banks import DEFAULT_RADIO_TITLE
 
 		assert DEFAULT_RADIO_TITLE == "Transmisión de Cabina"
+
+	def test_06_direct_radio_jpg_endpoint(self) -> None:
+		"""Verifica que /radio.jpg sirva la imagen directamente con cabeceras de caché."""
+		from starlette.testclient import TestClient
+
+		from app.main import app
+
+		client = TestClient(app)
+		res = client.get("/radio.jpg")
+		assert res.status_code == 200
+		assert res.headers["content-type"] == "image/jpeg"
+		assert "etag" in res.headers
+		assert "cache-control" in res.headers
+
+	def test_07_serve_index_has_no_cache_headers(self) -> None:
+		"""Verifica que / (index.html) tenga cabeceras para prevenir que el browser cachee un bundle obsoleto."""
+		from starlette.testclient import TestClient
+
+		from app.main import app
+
+		client = TestClient(app)
+		res = client.get("/")
+		assert res.status_code == 200
+		assert "no-cache" in res.headers.get("cache-control", "")
