@@ -13,12 +13,16 @@ from app.domain.radio.banks import (
 	CHISMES_CARPINCHOS,
 	LEAD_INS_BY_CATEGORY,
 	LEAD_INS_CHISMES,
+	LEAD_INS_NOVELA,
+	NOVELA_VECINAL,
 	OUTROS_BY_CATEGORY,
 	OUTROS_CHISMES,
+	OUTROS_NOVELA,
 	PHRASE_TO_CATEGORY,
 	RADIO_OUTROS,
 	REACCIONES_BY_CATEGORY,
 	REACCIONES_CHISMES,
+	REACCIONES_NOVELA,
 	VOICE_ELENA,
 	VOICE_TOMAS,
 	RadioPhrase,
@@ -213,28 +217,81 @@ class TestRadioChismesSuite:
 		assert orch.is_playing_radio_announcement is True
 		assert orch.current_track == orch.radio_announcement_path
 
-	def test_10_telenovela_personajes_ficticios_y_bancos_expandidos(self) -> None:
+	def test_10_categoria_novela_separada_de_chismes(self, tmp_path: Path) -> None:
 		"""
-		Verifica la expansión del banco de chismes con la trama no lineal de personajes ficticios
-		(Don Anselmo, Doña Gladys, Pocho, Romina, Profesor Rodolfo, Gordo Walter)
-		y el aumento de reacciones, outros y lead-ins correspondientes.
+		Verifica que la trama de personajes ficticios ('novela') esté completamente separada
+		de los chismes ribereños estándar ('chismes'), contando con sus propios bancos
+		de frases, lead-ins, reacciones, outros y enrutamiento en el plan de diálogo.
 		"""
-		# El banco general debe haberse ampliado fuertemente (al menos 48 chismes en total)
-		assert len(CHISMES_CARPINCHOS) >= 48
+		# Los bancos de frases deben estar claramente separados
+		assert len(CHISMES_CARPINCHOS) >= 20
+		assert len(NOVELA_VECINAL) >= 25
 
-		# Verificamos ampliación de repertorio radial
-		assert len(LEAD_INS_CHISMES) >= 12
-		assert len(REACCIONES_CHISMES) >= 12
-		assert len(OUTROS_CHISMES) >= 12
-
-		# Verificamos presencia de los personajes ficticios interconectados
-		chismes_texto = " ".join(CHISMES_CARPINCHOS)
-		for personaje in ("Anselmo", "Gladys", "Pocho", "Romina", "Rodolfo", "Walter"):
-			assert personaje in chismes_texto
-			# Cada personaje debe tener al menos 3 apariciones en diferentes chismes
-			conteo = sum(1 for c in CHISMES_CARPINCHOS if personaje in c)
-			assert conteo >= 3, f"Personaje {personaje} debe aparecer en al menos 3 chismes para tejer la historia"
-
-		# Verificamos que las frases de la trama se resuelvan como chismes
+		# Mapeo en CARPINCHO_PHRASES: chismes -> 'chismes', novela -> 'novela'
+		phrases_dict = {p.text: p.category for p in CARPINCHO_PHRASES}
 		for frase in CHISMES_CARPINCHOS:
-			assert resolve_segment_category(frase) == "chismes"
+			assert phrases_dict[frase] == "chismes"
+		for frase in NOVELA_VECINAL:
+			assert phrases_dict[frase] == "novela"
+
+		# Verificamos que lead-ins, reacciones y outros estén aislados por categoría
+		assert len(LEAD_INS_NOVELA) >= 5
+		assert len(REACCIONES_NOVELA) >= 5
+		assert len(OUTROS_NOVELA) >= 5
+
+		assert LEAD_INS_BY_CATEGORY.get("novela") == LEAD_INS_NOVELA
+		assert REACCIONES_BY_CATEGORY.get("novela") == REACCIONES_NOVELA
+		assert OUTROS_BY_CATEGORY.get("novela") == OUTROS_NOVELA
+
+		assert get_lead_ins_for_category("novela") == LEAD_INS_NOVELA
+		assert get_reactions_for_category("novela") == REACCIONES_NOVELA
+		assert get_outros_for_category("novela") == OUTROS_NOVELA
+
+		# No debe haber contaminación cruzada entre reacciones/outros de chismes y de novela
+		assert set(REACCIONES_CHISMES).isdisjoint(set(REACCIONES_NOVELA))
+		assert set(OUTROS_CHISMES).isdisjoint(set(OUTROS_NOVELA))
+
+		# Presencia de personajes ficticios en la novela no lineal
+		novela_texto = " ".join(NOVELA_VECINAL)
+		for personaje in ("Anselmo", "Gladys", "Pocho", "Romina", "Rodolfo", "Walter"):
+			assert personaje in novela_texto
+			conteo = sum(1 for f in NOVELA_VECINAL if personaje in f)
+			assert conteo >= 3, f"Personaje {personaje} debe aparecer en al menos 3 episodios"
+
+		# Resolución semántica: pertenencia directa y heurísticas
+		assert resolve_segment_category(CHISMES_CARPINCHOS[0]) == "chismes"
+		assert resolve_segment_category(NOVELA_VECINAL[0]) == "novela"
+		assert resolve_segment_category(RadioPhrase("Texto cualquiera", "novela")) == "novela"
+		assert resolve_segment_category("Capítulo prohibido de la esquina: Doña Gladys no lo perdona.") == "novela"
+		assert resolve_segment_category("En el taller de Pocho se descubrió la verdad de Anselmo.") == "novela"
+
+		# Plan de diálogo estructurado para novela
+		db_path = tmp_path / "test_novela.db"
+		init_db(db_path)
+		sample_novela = RadioPhrase(NOVELA_VECINAL[0], "novela")
+		plan = build_radio_dialogue_plan(
+			intro="¡Al aire La Rockola!",
+			hora_seg="Las cinco",
+			minuto_seg="de la tarde",
+			fortuna=sample_novela,
+			host_voice=VOICE_TOMAS,
+			cohost_voice=VOICE_ELENA,
+			dialogue_mode=True,
+			db_path=db_path,
+			dt=datetime(2026, 10, 23, 17, 0),
+		)
+		categorias = [cat for _t, _v, cat, _a in plan]
+		textos = [t for t, _v, _c, _a in plan]
+
+		assert "lead_in" in categorias
+		assert "reaccion" in categorias
+		assert "salida" in categorias
+
+		idx_leadin = categorias.index("lead_in")
+		assert any(textos[idx_leadin].startswith(li.split("{")[0].strip()) for li in LEAD_INS_NOVELA)
+
+		idx_reaccion = categorias.index("reaccion")
+		assert any(textos[idx_reaccion].startswith(r.split("{")[0].strip()) for r in REACCIONES_NOVELA)
+
+		idx_salida = categorias.index("salida")
+		assert any(textos[idx_salida].startswith(o.split("{")[0].strip()) for o in OUTROS_NOVELA)

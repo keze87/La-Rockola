@@ -16,7 +16,7 @@ from typing import NamedTuple
 
 class RadioPhrase(NamedTuple):
 	text: str
-	category: str  # "fortuna" | "aviso" | "alerta_criolla" | "oyentes" | "chismes"
+	category: str  # "fortuna" | "aviso" | "alerta_criolla" | "oyentes" | "chismes" | "novela"
 
 
 # ---------------------------------------------------------------------------
@@ -405,15 +405,15 @@ DEDICATORIAS_OYENTES: list[str] = [
 	'Mensaje de la muchachada: "Ponete una cumbia santafesina de las viejas para los muchachos que están pintando el paredón del fondo".',
 	'Mensajito al WhatsApp: "Locutor, amo este descontrol de temas, pasaste de Los Redondos a Gilda y en el taller no sabemos si poguear o bailar apretado".',
 	'Audio de oyente: "Acá el camionero Jorge en la ruta, con la mente a mil y la radio saltando de una zamba a un rock de los 80 sin pedir permiso. ¡Espectacular!".',
-	'Nos escriben desde la obra: "En el parlante del corralón mezclamos folklore, cuarteto y heavy metal. Gracias por acompañar el desorden con La Rockola".',
+	'Nos escriben desde la obra: "En el parlante del corralón mezclamos folklore, cuarteto y metal pesado. Gracias por acompañar el desorden con La Rockola".',
 ]
 
 # ---------------------------------------------------------------------------
 # Chismes y radiopasillo: vida secreta del humedal y telenovela vecinal
 # ---------------------------------------------------------------------------
 
-# Chismes clásicos de fauna ribereña y madrigueras
-CHISMES_HUMEDAL: list[str] = [
+# Chismes clásicos de fauna ribereña y madrigueras (categoría 'chismes')
+CHISMES_CARPINCHOS: list[str] = [
 	"Los carpinchos de Nordelta no fueron a recuperar tierras: fueron porque el pasto sintético importado es más suave para rascarse el lomo en la siesta.",
 	"Bajo los pilotes del Delta hay un túnel subacuático que conecta directo con una sala de masajes clandestina atendida por nutrias.",
 	"Hacen como que mastican pasto todo el día, pero a la medianoche arman vaquita clandestina y le encargan empanadas fritas de carne cortada a cuchillo al carribar de la costa.",
@@ -440,8 +440,8 @@ CHISMES_HUMEDAL: list[str] = [
 	"Se descubrió que los carpinchos más viejos tienen cuentas offshore en esteros del Iberá donde acumulan fajos de camalotes de alta pureza.",
 ]
 
-# Telenovela vecinal no lineal: personajes recurrentes con drama, secretos y misterio barrial
-CHISMES_VECINALES: list[str] = [
+# Telenovela vecinal no lineal: personajes recurrentes con drama, secretos y misterio barrial (categoría 'novela')
+NOVELA_VECINAL: list[str] = [
 	"Dicen que Don Anselmo no le habla a Doña Gladys desde el baile de primavera del 98, pero todas las mañanas le compra el diario en el almacén y le deja vuelto de más a propósito.",
 	"El mecánico Pocho le cambió cuatro veces los amortiguadores al Renault 12 de Romina en un mes; el auto anda joya, pero el taller queda justo frente a la peluquería.",
 	"Doña Gladys instaló tres cámaras de seguridad en el almacén diciendo que es por prevención, pero una apunta directo a la puerta del taller de Pocho y la otra a la quinta de Anselmo.",
@@ -474,8 +474,8 @@ CHISMES_VECINALES: list[str] = [
 	"Doña Gladys le perdonó la cuenta del fiado a Don Anselmo por primera vez en treinta años, pero le exigió a cambio que le arregle la persiana del almacén y le devuelva la lata de cartas que le sacó a Pocho.",
 ]
 
-# Banco unificado de chismes para la programación radial
-CHISMES_CARPINCHOS: list[str] = [*CHISMES_HUMEDAL, *CHISMES_VECINALES]
+# Alias histórico de compatibilidad
+CHISMES_VECINALES: list[str] = NOVELA_VECINAL
 
 CARPINCHO_SABIDURIA: list[str] = list(CARPINCHO_FORTUNES)
 
@@ -485,6 +485,7 @@ CARPINCHO_FORTUNES.extend(ALERTAS_INCOMODIDAD_CRIOLLA)
 CARPINCHO_FORTUNES.extend(DEDICATORIAS_OYENTES)
 CARPINCHO_FORTUNES.extend(CARPINCHO_ADS)
 CARPINCHO_FORTUNES.extend(CHISMES_CARPINCHOS)
+CARPINCHO_FORTUNES.extend(NOVELA_VECINAL)
 
 # Mapeo y colección de duplas explícitas (frase, categoría)
 CARPINCHO_PHRASES: list[RadioPhrase] = [
@@ -494,6 +495,7 @@ CARPINCHO_PHRASES: list[RadioPhrase] = [
 	*(RadioPhrase(t, "oyentes") for t in DEDICATORIAS_OYENTES),
 	*(RadioPhrase(t, "aviso") for t in CARPINCHO_ADS),
 	*(RadioPhrase(t, "chismes") for t in CHISMES_CARPINCHOS),
+	*(RadioPhrase(t, "novela") for t in NOVELA_VECINAL),
 ]
 
 PHRASE_TO_CATEGORY: dict[str, str] = {p.text: p.category for p in CARPINCHO_PHRASES}
@@ -610,6 +612,9 @@ LEAD_INS_CHISMES: list[str] = [
 	"Ojo al piojo que rompemos el pacto de silencio de la laguna con esta bomba:",
 	"Se pudrió todo en la orilla: mirá la data confidencial que rescatamos del arroyo:",
 	"Desempolvamos el archivo prohibido del Delta... atendé a lo que salió a la luz:",
+]
+
+LEAD_INS_NOVELA: list[str] = [
 	"¡Atención vecindario! Se picó en el almacén y volaron los trapitos al sol... pará la oreja:",
 	"Radio pasillo barrial al rojo vivo: lo que Doña Gladys y Don Anselmo no querían que se filtre:",
 	"Se desató la telenovela en la esquina; atendé este chisme que no tiene desperdicio:",
@@ -624,9 +629,12 @@ LEAD_INS_BY_CATEGORY: dict[str, list[str]] = {
 	"oyentes": LEAD_INS_OYENTES,
 	"alerta_criolla": LEAD_INS_ALERTAS,
 	"chismes": LEAD_INS_CHISMES,
+	"novela": LEAD_INS_NOVELA,
 }
 
-RADIO_LEAD_INS: list[str] = LEAD_INS_FORTUNA + LEAD_INS_AVISOS + LEAD_INS_OYENTES + LEAD_INS_ALERTAS + LEAD_INS_CHISMES
+RADIO_LEAD_INS: list[str] = (
+	LEAD_INS_FORTUNA + LEAD_INS_AVISOS + LEAD_INS_OYENTES + LEAD_INS_ALERTAS + LEAD_INS_CHISMES + LEAD_INS_NOVELA
+)
 
 RADIO_OUTROS: list[str] = [
 	"Dejamos de parlotear y que hable el bajo. ¡Mandale play!",
@@ -674,6 +682,9 @@ OUTROS_CHISMES: list[str] = [
 	"¡Basta de chismes y a bailar que la música no juzga a nadie! ¡Mandale play nomás!",
 	"Guardamos la lengua en remojo por un rato y que hable el bajo. ¡Que siga la fiesta en La Rockola!",
 	"Tapamos el puterío de la orilla con tremendo temazo. ¡Subile dos rayitas al volumen!",
+]
+
+OUTROS_NOVELA: list[str] = [
 	"Bueno, tapamos el conventillo con una buena cumbia antes de que caiga el escribano. ¡Mandale play!",
 	"Cortamos la novela por acá que se nos enfría el agua del mate. ¡Subile al parlante y a bailar!",
 	"Mucho puterío por hoy, muchachos; que hable la música que es la única que no miente. ¡Meté tema!",
@@ -685,6 +696,7 @@ OUTROS_CHISMES: list[str] = [
 
 OUTROS_BY_CATEGORY: dict[str, list[str]] = {
 	"chismes": OUTROS_CHISMES,
+	"novela": OUTROS_NOVELA,
 }
 
 RADIO_OUTROS_DJ: list[str] = [
@@ -1550,6 +1562,9 @@ REACCIONES_CHISMES: list[str] = [
 	"¡Qué papelón! Y uno que los tenía por animales serios, pachorrientos y respetables...",
 	"¡Me estás cargando! Mirá el semejante secreto que tenían encanutado bajo los camalotes...",
 	"¡Paren las rotativas! Con esto le cambiamos la historia a toda la cuenca del Paraná.",
+]
+
+REACCIONES_NOVELA: list[str] = [
 	"¡Naaa, qué novela mexicana! ¡Decime que esto sigue en el próximo bloque!",
 	"¡Me vuelvo loco! ¡Esto es más turbio que mate de tres días! ¡Qué conventillo!",
 	"¡Paren todo! ¡No me podés tirar esa bomba y quedarte tan pancho en el control!",
@@ -1566,10 +1581,12 @@ REACCIONES_BY_CATEGORY: dict[str, list[str]] = {
 	"oyentes": REACCIONES_OYENTES,
 	"alerta_criolla": REACCIONES_ALERTAS,
 	"chismes": REACCIONES_CHISMES,
+	"novela": REACCIONES_NOVELA,
 }
 
 RADIO_REACTIONS: list[str] = [
 	*REACCIONES_CHISMES,
+	*REACCIONES_NOVELA,
 	"¡Qué lo tiró, che!",
 	"Mirá vos, qué momento.",
 	"Lindo momento para unos buenos mates.",
@@ -2934,7 +2951,34 @@ def resolve_segment_category(text: str | tuple[str, str] | RadioPhrase) -> str:
 	):
 		return "aviso"
 
-	# 7. Prefijos y palabras clave de conventillo, radiopasillo y chismes
+	# 7. Prefijos y palabras clave de telenovela vecinal y radioteatro
+	if any(
+		text_clean.startswith(p)
+		for p in (
+			"Capítulo ",
+			"Telenovela",
+			"Radioteatro",
+			"Novela vecinal",
+			"¡Atención vecindario",
+			"Bomba vecinal",
+			"Crónica prohibida",
+			"Se desató la telenovela",
+		)
+	) or any(
+		k in text_lower
+		for k in (
+			"doña gladys",
+			"don anselmo",
+			"taller de pocho",
+			"gordo walter",
+			"profesor rodolfo",
+			"telenovela",
+			"radioteatro",
+		)
+	):
+		return "novela"
+
+	# 8. Prefijos y palabras clave de fauna ribereña y chismes de madriguera
 	if any(
 		text_clean.startswith(p)
 		for p in (
@@ -2946,10 +2990,6 @@ def resolve_segment_category(text: str | tuple[str, str] | RadioPhrase) -> str:
 			"Bomba en el bañado",
 			"Se filtró ",
 			"El pacto de silencio",
-			"¡Atención vecindario",
-			"Bomba vecinal",
-			"Crónica prohibida",
-			"Se desató la telenovela",
 		)
 	) or any(
 		k in text_lower
@@ -2965,12 +3005,6 @@ def resolve_segment_category(text: str | tuple[str, str] | RadioPhrase) -> str:
 			"chismes",
 			"madriguera clandestina",
 			"operación pata mojada",
-			"doña gladys",
-			"don anselmo",
-			"taller de pocho",
-			"gordo walter",
-			"profesor rodolfo",
-			"telenovela",
 		)
 	):
 		return "chismes"
@@ -2998,6 +3032,8 @@ def get_outros_for_category(category: str, outro_mode: str = "continue") -> list
 		return RADIO_OUTROS_DJ
 	if category == "chismes":
 		return OUTROS_CHISMES
+	if category == "novela":
+		return OUTROS_NOVELA
 	return OUTROS_BY_CATEGORY.get(category, RADIO_OUTROS)
 
 
