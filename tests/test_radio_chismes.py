@@ -26,6 +26,7 @@ from app.domain.radio.banks import (
 	VOICE_ELENA,
 	VOICE_TOMAS,
 	RadioPhrase,
+	expand_phrase_variants,
 	get_lead_ins_for_category,
 	get_outros_for_category,
 	get_reactions_for_category,
@@ -295,3 +296,44 @@ class TestRadioChismesSuite:
 
 		idx_salida = categorias.index("salida")
 		assert any(textos[idx_salida].startswith(o.split("{")[0].strip()) for o in OUTROS_NOVELA)
+
+	def test_11_preload_tts_cache_incluye_todos_los_bancos(self) -> None:
+		"""
+		Verifica que el script de precarga (collect_phrases) contemple la totalidad
+		de las frases de chismes y novela (frases principales, lead-ins, reacciones y outros),
+		así como todos los bancos de OUTROS_BY_CATEGORY y REACCIONES_BY_CATEGORY.
+		"""
+		from app.domain.radio.dialogue import apply_rioplatense_tts_phonetics, format_fortune_for_speech
+		from scripts.preload_tts_cache import collect_phrases
+
+		items = collect_phrases()
+		item_texts = {txt for _cat, txt in items}
+
+		# 1. Frases principales de chismes y novela
+		for phrase in CHISMES_CARPINCHOS:
+			formatted = format_fortune_for_speech(phrase)
+			phonetic = apply_rioplatense_tts_phonetics(formatted)
+			assert phonetic in item_texts, f"Chisme faltante en preload: {phrase}"
+
+		for phrase in NOVELA_VECINAL:
+			formatted = format_fortune_for_speech(phrase)
+			phonetic = apply_rioplatense_tts_phonetics(formatted)
+			assert phonetic in item_texts, f"Novela faltante en preload: {phrase}"
+
+		# 2. Lead-ins de chismes y novela
+		for lead in (*LEAD_INS_CHISMES, *LEAD_INS_NOVELA):
+			phonetic = apply_rioplatense_tts_phonetics(lead)
+			assert phonetic in item_texts, f"Lead-in faltante en preload: {lead}"
+
+		# 3. Outros de chismes y novela (y de todas las categorías de outros)
+		for cat, outros in OUTROS_BY_CATEGORY.items():
+			for outro in outros:
+				phonetic = apply_rioplatense_tts_phonetics(outro)
+				assert phonetic in item_texts, f"Outro de [{cat}] faltante en preload: {outro}"
+
+		# 4. Reacciones de chismes y novela (y de todas las categorías de reacciones)
+		for cat, reactions in REACCIONES_BY_CATEGORY.items():
+			for reaction in reactions:
+				for variant in expand_phrase_variants(reaction):
+					phonetic = apply_rioplatense_tts_phonetics(variant)
+					assert phonetic in item_texts, f"Reacción de [{cat}] faltante en preload: {variant}"

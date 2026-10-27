@@ -14,7 +14,7 @@ from app.domain.radio.banks import (
 	DEFAULT_COHOST_NAME,
 	HOUR_NAMES,
 	MINUTE_SEGMENTS,
-	OUTROS_CHISMES,
+	OUTROS_BY_CATEGORY,
 	PASES_A_CLIMA,
 	RADIO_HANDOFFS,
 	RADIO_INTROS,
@@ -23,6 +23,7 @@ from app.domain.radio.banks import (
 	RADIO_OUTROS_DJ,
 	RADIO_OUTROS_PAUSE,
 	RADIO_REACTIONS,
+	REACCIONES_BY_CATEGORY,
 	REACCIONES_CLIMA,
 	REACCIONES_FORTUNA,
 	SPECIAL_HOURS,
@@ -278,7 +279,12 @@ def get_all_intro_segments() -> list[str]:
 
 def get_all_outro_segments() -> list[str]:
 	res: list[str] = []
-	for outro in (*RADIO_OUTROS, *RADIO_OUTROS_PAUSE, *RADIO_OUTROS_BREAK, *OUTROS_CHISMES, *RADIO_OUTROS_DJ):
+	all_outros: list[str] = [*RADIO_OUTROS, *RADIO_OUTROS_PAUSE, *RADIO_OUTROS_BREAK, *RADIO_OUTROS_DJ]
+	for cat_outros in OUTROS_BY_CATEGORY.values():
+		for outro in cat_outros:
+			if outro not in all_outros:
+				all_outros.append(outro)
+	for outro in all_outros:
 		for variant in expand_phrase_variants(outro):
 			if variant not in res:
 				res.append(variant)
@@ -296,7 +302,12 @@ def get_all_handoff_segments() -> list[str]:
 
 def get_all_reaction_segments() -> list[str]:
 	res: list[str] = []
-	for r in RADIO_REACTIONS:
+	all_reactions: list[str] = list(RADIO_REACTIONS)
+	for cat_reactions in REACCIONES_BY_CATEGORY.values():
+		for r in cat_reactions:
+			if r not in all_reactions:
+				all_reactions.append(r)
+	for r in all_reactions:
 		for variant in expand_phrase_variants(r):
 			if variant not in res:
 				res.append(variant)
