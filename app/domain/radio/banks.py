@@ -409,10 +409,11 @@ DEDICATORIAS_OYENTES: list[str] = [
 ]
 
 # ---------------------------------------------------------------------------
-# Chismes y vida secreta de los carpinchos
+# Chismes y radiopasillo: vida secreta del humedal y telenovela vecinal
 # ---------------------------------------------------------------------------
 
-CHISMES_CARPINCHOS: list[str] = [
+# Chismes clásicos de fauna ribereña y madrigueras
+CHISMES_HUMEDAL: list[str] = [
 	"Los carpinchos de Nordelta no fueron a recuperar tierras: fueron porque el pasto sintético importado es más suave para rascarse el lomo en la siesta.",
 	"Bajo los pilotes del Delta hay un túnel subacuático que conecta directo con una sala de masajes clandestina atendida por nutrias.",
 	"Hacen como que mastican pasto todo el día, pero a la medianoche arman vaquita clandestina y le encargan empanadas fritas de carne cortada a cuchillo al carribar de la costa.",
@@ -438,6 +439,43 @@ CHISMES_CARPINCHOS: list[str] = [
 	"Tienen un tratado secreto con los mosquitos: a cambio de que no los piquen en la panza, los carpinchos les marcan dónde acampan los turistas porteños.",
 	"Se descubrió que los carpinchos más viejos tienen cuentas offshore en esteros del Iberá donde acumulan fajos de camalotes de alta pureza.",
 ]
+
+# Telenovela vecinal no lineal: personajes recurrentes con drama, secretos y misterio barrial
+CHISMES_VECINALES: list[str] = [
+	"Dicen que Don Anselmo no le habla a Doña Gladys desde el baile de primavera del 98, pero todas las mañanas le compra el diario en el almacén y le deja vuelto de más a propósito.",
+	"El mecánico Pocho le cambió cuatro veces los amortiguadores al Renault 12 de Romina en un mes; el auto anda joya, pero el taller queda justo frente a la peluquería.",
+	"Doña Gladys instaló tres cámaras de seguridad en el almacén diciendo que es por prevención, pero una apunta directo a la puerta del taller de Pocho y la otra a la quinta de Anselmo.",
+	"El Gordo Walter juró por su madre que la rifa del lechón parroquial fue transparente, pero en la fosa del taller de Pocho encontraron diez talonarios con el mismo número ganador.",
+	"El profesor Rodolfo dice que viaja todos los inviernos a un congreso de filosofía en Europa, pero Romina le vio una etiqueta de equipaje de una pensión de San Clemente del Tuyú.",
+	"Romina jura que encontró una lata de galletitas oxidada escondida en el foso del taller de Pocho, llena de cartas de amor en manuscrito... y la letra redondita es inconfundiblemente de Doña Gladys.",
+	"Don Anselmo amenaza con lotear el terreno baldío de la esquina para poner un criadero de chanchos solo para arruinarle la cancha de paddle que quiere armar el Gordo Walter.",
+	"El profesor Rodolfo tiene anotada una deuda de doce cajas de vino en cartón en la libreta de fiado de Doña Gladys, bajo el alias de 'Gastos protocolares de investigación'.",
+	"Pocho se apareció en la peluquería de Romina pidiendo turno para hacerse claritos en el pelo, pero se quedó tres horas tomando mate mientras ella le contaba el puterío de las clientas.",
+	"Doña Gladys asegura tener el boleto de compraventa del terreno baldío firmado en una servilleta de cantina por el abuelo de Don Anselmo tras una partida de truco de cinco horas.",
+	"El Gordo Walter suspendió el clásico de la liga de veteranos a los diez minutos del segundo tiempo porque Don Anselmo le gritó desde el alambrado que sabía con quién cenó el viernes.",
+	"Aseguran que Don Anselmo fue a la farmacia a comprar tintura para las canas a las nueve de la noche, y le rogó al farmacéutico que no le comente nada a Gladys ni por todo el oro del mundo.",
+	"En el barrio todos sospechan que el profesor Rodolfo no sabe una sola palabra de francés, y que los poemas que le recita a Doña Gladys en el almacén son letras traducidas de Leo Mattioli.",
+	"Pocho fue visto a las tres de la madrugada midiendo con cinta métrica el baldío en disputa junto al Gordo Walter, mientras Don Anselmo los relojeaba con una linterna desde el techo.",
+	"Romina le confesó a su mejor clienta que Doña Gladys guarda en la trastienda del almacén una foto carnet de Don Anselmo de cuando tenía bigote fino y andaba en motoneta.",
+	"El Gordo Walter se comprometió a donar los trofeos del campeonato de bochas, pero cuando abrieron las cajas en el club eran piezas viejas de embrague pulidas que le sobraron a Pocho.",
+	"Doña Gladys jura que no le guarda rencor a Don Anselmo, pero cada vez que él pide fiambre le corta la paleta con la máquina al grosor de una baldosa.",
+	"El profesor Rodolfo le dejó una propina sospechosamente generosa a Romina en la peluquería para que borre el rumor de que lo vieron cantando cuarteto arriba de una mesa en el buffet del club.",
+	"Don Anselmo mandó a soldar un portón de hierro de tres metros en el baldío con la ayuda clandestina de Pocho, a espaldas del Gordo Walter y sin permiso municipal.",
+	"Doña Gladys le prohibió la entrada al almacén al Gordo Walter luego de descubrir que el lechón de la rifa que ganó su cuñado en realidad era una pata de ternera congelada que vencía en 2021.",
+	"Pocho le armó un silenciador especial al escape del auto de Romina para que no haga ruido cuando pasa despacito por la puerta de la casa de Don Anselmo a deshoras.",
+	"El profesor Rodolfo y Don Anselmo casi se van a las manos en la plaza central discutiendo por quién de los dos sacó a bailar primero a Gladys en los carnavales del 84.",
+	"Romina descubrió que la llave duplicada del galpón del baldío la tiene el Gordo Walter escondida adentro del botiquín del club deportivo, envuelta en una media de fútbol.",
+	"Doña Gladys le bajó la persiana en la cara al profesor Rodolfo cuando este intentó pagarle tres meses de yerba y galletitas de agua con un supuesto poema inédito autografiado.",
+	"Don Anselmo jura que es sordo de la oreja izquierda para no contestarle los saludos al Gordo Walter, pero cuando Romina menciona la palabra 'herencia' en la cocina, escucha hasta un suspiro.",
+	"En el barrio es un secreto a voces: la caja fuerte que Pocho tiene tapada con lonas en el fondo del taller no guarda guita de autos, guarda el archivo histórico con las quejas vecinales que Doña Gladys fue acumulando durante cuarenta años.",
+	"El Gordo Walter fue visto escapando en bicicleta playera del patio de Don Anselmo con dos plantas de tomates cherries bajo el brazo y una pala de punta.",
+	"Romina y Pocho fueron fotografiados tomando un helado de dos bochas en la costanera del pueblo vecino, creyendo que nadie los veía... pero en la mesa de al lado estaba Doña Gladys con anteojos oscuros.",
+	"El profesor Rodolfo juró que donará su biblioteca personal al pueblo, siempre y cuando Don Anselmo admita públicamente que el truco con el que le ganó la copa de plata en el 92 fue con señas falsas.",
+	"Doña Gladys le perdonó la cuenta del fiado a Don Anselmo por primera vez en treinta años, pero le exigió a cambio que le arregle la persiana del almacén y le devuelva la lata de cartas que le sacó a Pocho.",
+]
+
+# Banco unificado de chismes para la programación radial
+CHISMES_CARPINCHOS: list[str] = [*CHISMES_HUMEDAL, *CHISMES_VECINALES]
 
 CARPINCHO_SABIDURIA: list[str] = list(CARPINCHO_FORTUNES)
 
@@ -572,6 +610,12 @@ LEAD_INS_CHISMES: list[str] = [
 	"Ojo al piojo que rompemos el pacto de silencio de la laguna con esta bomba:",
 	"Se pudrió todo en la orilla: mirá la data confidencial que rescatamos del arroyo:",
 	"Desempolvamos el archivo prohibido del Delta... atendé a lo que salió a la luz:",
+	"¡Atención vecindario! Se picó en el almacén y volaron los trapitos al sol... pará la oreja:",
+	"Radio pasillo barrial al rojo vivo: lo que Doña Gladys y Don Anselmo no querían que se filtre:",
+	"Se desató la telenovela en la esquina; atendé este chisme que no tiene desperdicio:",
+	"¡Bomba vecinal! Rompemos el secreto de sumario barrial con esta primicia exclusiva:",
+	"Conventillo de alto voltaje: lo que pasa a espaldas de todo el mundo y recién ahora nos enteramos:",
+	"¡Agarrate que esto quema! Crónica prohibida del barrio que te va a dejar recalculando:",
 ]
 
 LEAD_INS_BY_CATEGORY: dict[str, list[str]] = {
@@ -630,6 +674,13 @@ OUTROS_CHISMES: list[str] = [
 	"¡Basta de chismes y a bailar que la música no juzga a nadie! ¡Mandale play nomás!",
 	"Guardamos la lengua en remojo por un rato y que hable el bajo. ¡Que siga la fiesta en La Rockola!",
 	"Tapamos el puterío de la orilla con tremendo temazo. ¡Subile dos rayitas al volumen!",
+	"Bueno, tapamos el conventillo con una buena cumbia antes de que caiga el escribano. ¡Mandale play!",
+	"Cortamos la novela por acá que se nos enfría el agua del mate. ¡Subile al parlante y a bailar!",
+	"Mucho puterío por hoy, muchachos; que hable la música que es la única que no miente. ¡Meté tema!",
+	"Bajamos el telón de este capítulo antes de que se arme batalla campal en la esquina. ¡Que suene ese temazo!",
+	"Dejamos a los vecinos resolviendo sus quilombos y nosotros a lo nuestro: ¡música bien al palo!",
+	"¡Basta de ventilar secretos ajenos! Cambiame la música que la pista está que arde.",
+	"Cerramos la persiana del radiopasillo por este bloque; ¡a mover el esqueleto con lo que viene!",
 ]
 
 OUTROS_BY_CATEGORY: dict[str, list[str]] = {
@@ -1499,6 +1550,14 @@ REACCIONES_CHISMES: list[str] = [
 	"¡Qué papelón! Y uno que los tenía por animales serios, pachorrientos y respetables...",
 	"¡Me estás cargando! Mirá el semejante secreto que tenían encanutado bajo los camalotes...",
 	"¡Paren las rotativas! Con esto le cambiamos la historia a toda la cuenca del Paraná.",
+	"¡Naaa, qué novela mexicana! ¡Decime que esto sigue en el próximo bloque!",
+	"¡Me vuelvo loco! ¡Esto es más turbio que mate de tres días! ¡Qué conventillo!",
+	"¡Paren todo! ¡No me podés tirar esa bomba y quedarte tan pancho en el control!",
+	"¡Qué escándalo vecinal! Si Doña Gladys se entera de que sabemos esto, nos clausura la radio.",
+	"¡Se pudrió todo en el barrio! Con vecinos así, ¿quién necesita enemigos?",
+	"¡Esa sí que no la vi venir! Andá a buscarla al ángulo con semejante revelación.",
+	"¡Qué bochorno, por favor! Mirá la doble vida que se mandaban y nosotros sin enterarnos.",
+	"¡Esto es cine total! ¡Qué radioteatro nos estamos armando en plena cabina!",
 ]
 
 REACCIONES_BY_CATEGORY: dict[str, list[str]] = {
@@ -2875,7 +2934,7 @@ def resolve_segment_category(text: str | tuple[str, str] | RadioPhrase) -> str:
 	):
 		return "aviso"
 
-	# 7. Prefijos y palabras clave de conventillo y chismes secretos de carpinchos
+	# 7. Prefijos y palabras clave de conventillo, radiopasillo y chismes
 	if any(
 		text_clean.startswith(p)
 		for p in (
@@ -2887,6 +2946,10 @@ def resolve_segment_category(text: str | tuple[str, str] | RadioPhrase) -> str:
 			"Bomba en el bañado",
 			"Se filtró ",
 			"El pacto de silencio",
+			"¡Atención vecindario",
+			"Bomba vecinal",
+			"Crónica prohibida",
+			"Se desató la telenovela",
 		)
 	) or any(
 		k in text_lower
@@ -2895,12 +2958,19 @@ def resolve_segment_category(text: str | tuple[str, str] | RadioPhrase) -> str:
 			"vida secreta",
 			"pacto de silencio",
 			"radio pasillo",
+			"radiopasillo",
 			"conventillo",
 			"se filtró",
 			"chisme",
 			"chismes",
 			"madriguera clandestina",
 			"operación pata mojada",
+			"doña gladys",
+			"don anselmo",
+			"taller de pocho",
+			"gordo walter",
+			"profesor rodolfo",
+			"telenovela",
 		)
 	):
 		return "chismes"

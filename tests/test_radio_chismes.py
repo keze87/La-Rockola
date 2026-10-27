@@ -212,3 +212,29 @@ class TestRadioChismesSuite:
 		assert orch.is_synthesizing_radio is False
 		assert orch.is_playing_radio_announcement is True
 		assert orch.current_track == orch.radio_announcement_path
+
+	def test_10_telenovela_personajes_ficticios_y_bancos_expandidos(self) -> None:
+		"""
+		Verifica la expansión del banco de chismes con la trama no lineal de personajes ficticios
+		(Don Anselmo, Doña Gladys, Pocho, Romina, Profesor Rodolfo, Gordo Walter)
+		y el aumento de reacciones, outros y lead-ins correspondientes.
+		"""
+		# El banco general debe haberse ampliado fuertemente (al menos 48 chismes en total)
+		assert len(CHISMES_CARPINCHOS) >= 48
+
+		# Verificamos ampliación de repertorio radial
+		assert len(LEAD_INS_CHISMES) >= 12
+		assert len(REACCIONES_CHISMES) >= 12
+		assert len(OUTROS_CHISMES) >= 12
+
+		# Verificamos presencia de los personajes ficticios interconectados
+		chismes_texto = " ".join(CHISMES_CARPINCHOS)
+		for personaje in ("Anselmo", "Gladys", "Pocho", "Romina", "Rodolfo", "Walter"):
+			assert personaje in chismes_texto
+			# Cada personaje debe tener al menos 3 apariciones en diferentes chismes
+			conteo = sum(1 for c in CHISMES_CARPINCHOS if personaje in c)
+			assert conteo >= 3, f"Personaje {personaje} debe aparecer en al menos 3 chismes para tejer la historia"
+
+		# Verificamos que las frases de la trama se resuelvan como chismes
+		for frase in CHISMES_CARPINCHOS:
+			assert resolve_segment_category(frase) == "chismes"
