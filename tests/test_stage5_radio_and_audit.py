@@ -436,6 +436,38 @@ class TestRadioContextualAndCoherenceSuite:
 			category="aviso",
 		)
 
+	def test_08g_radio_modular_architecture_imports_and_facade(self) -> None:
+		"""Verifica que los nuevos submódulos de dominio y bancos de frases expongan sus contratos y banks.py actúe de fachada."""
+		from app.domain.radio.classification import RadioPhrase, resolve_segment_category
+		from app.domain.radio.context import RadioContext, build_radio_context, phrase_fits_context
+		from app.domain.radio.phrase_banks.advertisements import CARPINCHO_ADS
+		from app.domain.radio.phrase_banks.fortunes import CARPINCHO_SABIDURIA
+		from app.domain.radio.phrase_banks.gossip import CHISMES_CARPINCHOS
+		from app.domain.radio.phrase_banks.listeners import DEDICATORIAS_OYENTES
+		from app.domain.radio.phrase_banks.soap_opera import NOVELA_VECINAL
+		from app.domain.radio.phrase_banks.weather import WEATHER_DESC_PHRASES
+		from app.domain.radio.segments import RADIO_INTROS, get_lead_ins_for_category
+		from app.domain.radio.templates import render_phrase
+		from app.domain.radio.voices import VOICE_TOMAS
+
+		# 1. Comprobamos existencia y tipos directos de los submódulos especializados
+		assert isinstance(CARPINCHO_SABIDURIA, list) and len(CARPINCHO_SABIDURIA) > 0
+		assert isinstance(CARPINCHO_ADS, list) and len(CARPINCHO_ADS) > 0
+		assert isinstance(DEDICATORIAS_OYENTES, list) and len(DEDICATORIAS_OYENTES) > 0
+		assert isinstance(CHISMES_CARPINCHOS, list) and len(CHISMES_CARPINCHOS) > 0
+		assert isinstance(NOVELA_VECINAL, list) and len(NOVELA_VECINAL) > 0
+		assert isinstance(WEATHER_DESC_PHRASES, dict) and "sunny" in WEATHER_DESC_PHRASES
+		assert VOICE_TOMAS == "es-AR-TomasNeural"
+
+		# 2. Funciones de lógica de dominio en sus módulos propios
+		phrase = RadioPhrase("El carpincho medita en el agua.", "fortuna")
+		assert resolve_segment_category(phrase) == "fortuna"
+		ctx = build_radio_context(datetime(2026, 10, 17, 10, 0))
+		assert isinstance(ctx, RadioContext)
+		assert phrase_fits_context("Arrancando la mañana con todo.", ctx) is True
+		assert len(get_lead_ins_for_category("fortuna")) > 0
+		assert isinstance(render_phrase(RADIO_INTROS[0], ctx), str)
+
 	def test_09_lead_in_and_reaction_coherence_for_fortune(self, tmp_path: Path) -> None:
 		db_path = tmp_path / "coherence.db"
 		init_db(db_path)

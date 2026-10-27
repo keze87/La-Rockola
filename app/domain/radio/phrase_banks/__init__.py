@@ -1,0 +1,63 @@
+"""
+Bancos de frases estructurados por temática y propósito radial.
+"""
+
+from __future__ import annotations
+
+from app.domain.radio.phrase_banks.advertisements import (
+	AVISOS_PARROQUIALES_Y_EXTRAVIOS,
+	CARPINCHO_ADS,
+)
+from app.domain.radio.phrase_banks.fortunes import (
+	CARPINCHO_FORTUNES,
+	CARPINCHO_SABIDURIA,
+)
+from app.domain.radio.phrase_banks.gossip import (
+	CHISMES_CARPINCHOS,
+)
+from app.domain.radio.phrase_banks.listeners import (
+	ALERTAS_INCOMODIDAD_CRIOLLA,
+	DEDICATORIAS_OYENTES,
+	SEPARADORES_Y_SLOGANS,
+	TRANSITO_FLUVIAL_Y_CAMINOS,
+)
+from app.domain.radio.phrase_banks.soap_opera import (
+	NOVELA_VECINAL,
+)
+from app.domain.radio.phrase_banks.weather import (
+	DEFAULT_WEATHER_LOCATION,
+	PRECIPITATING_CATEGORIES,
+	RAIN_BOTH_DAYS,
+	RAIN_DESCRIPTIONS,
+	RAIN_NO_RAIN,
+	RAIN_TODAY_ONLY,
+	RAIN_TOMORROW_ONLY,
+	WEATHER_CODE_TO_CATEGORY,
+	WEATHER_DESC_PHRASES,
+	WEATHER_DESC_TO_CATEGORY,
+	WEATHER_RAIN_THRESHOLD,
+)
+
+__all__ = [
+	"ALERTAS_INCOMODIDAD_CRIOLLA",
+	"AVISOS_PARROQUIALES_Y_EXTRAVIOS",
+	"CARPINCHO_ADS",
+	"CARPINCHO_FORTUNES",
+	"CARPINCHO_SABIDURIA",
+	"CHISMES_CARPINCHOS",
+	"DEDICATORIAS_OYENTES",
+	"DEFAULT_WEATHER_LOCATION",
+	"NOVELA_VECINAL",
+	"PRECIPITATING_CATEGORIES",
+	"RAIN_BOTH_DAYS",
+	"RAIN_DESCRIPTIONS",
+	"RAIN_NO_RAIN",
+	"RAIN_TODAY_ONLY",
+	"RAIN_TOMORROW_ONLY",
+	"SEPARADORES_Y_SLOGANS",
+	"TRANSITO_FLUVIAL_Y_CAMINOS",
+	"WEATHER_CODE_TO_CATEGORY",
+	"WEATHER_DESC_PHRASES",
+	"WEATHER_DESC_TO_CATEGORY",
+	"WEATHER_RAIN_THRESHOLD",
+]
