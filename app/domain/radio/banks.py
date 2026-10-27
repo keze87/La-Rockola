@@ -84,7 +84,7 @@ DEFAULT_COHOST_DISPLAY_NAME: str = "Co-conductor"
 # Fortunas del Carpincho y Avisos Publicitarios
 # ---------------------------------------------------------------------------
 
-CARPINCHO_FORTUNES: list[str] = [
+CARPINCHO_SABIDURIA: list[str] = [
 	"Che, no te apurés; el agua siempre llega a la orilla.",
 	"Posta: el secreto del éxito carpincho es mate caliente, buena música y cero drama.",
 	"Un carpinchazo de tema te arregla cualquier lunes; comprobado científicamente.",
@@ -209,6 +209,9 @@ CARPINCHO_FORTUNES: list[str] = [
 	"Me preguntan por privado de qué especie es el Carpincho de la Rockola. Es de la especie que sabe disfrutar de la buena música, chamigo.",
 	# "Gisella, ya salió el Gerardo el Magias 3, con Gerardo de Revilla y su caballo maravilloso. ¡No te lo pierdas!",
 ]
+
+# Alias explícito de compatibilidad: las fortunas son pura sabiduría, sin mezclar otras categorías
+CARPINCHO_FORTUNES: list[str] = CARPINCHO_SABIDURIA
 
 CARPINCHO_ADS: list[str] = [
 	"Espacio publicitario: Yerba Mate El Carpincho Mimoso, estacionada dos años en laguna natural. Un mate que te acaricia el alma.",
@@ -474,15 +477,7 @@ NOVELA_VECINAL: list[str] = [
 	"Doña Gladys le perdonó la cuenta del fiado a Don Anselmo por primera vez en treinta años, pero le exigió a cambio que le arregle la persiana del almacén y le devuelva la lata de cartas que le sacó a Pocho.",
 ]
 
-CARPINCHO_SABIDURIA: list[str] = list(CARPINCHO_FORTUNES)
-
 CARPINCHO_ADS.extend(AVISOS_PARROQUIALES_Y_EXTRAVIOS)
-CARPINCHO_FORTUNES.extend(TRANSITO_FLUVIAL_Y_CAMINOS)
-CARPINCHO_FORTUNES.extend(ALERTAS_INCOMODIDAD_CRIOLLA)
-CARPINCHO_FORTUNES.extend(DEDICATORIAS_OYENTES)
-CARPINCHO_FORTUNES.extend(CARPINCHO_ADS)
-CARPINCHO_FORTUNES.extend(CHISMES_CARPINCHOS)
-CARPINCHO_FORTUNES.extend(NOVELA_VECINAL)
 
 # Mapeo y colección de duplas explícitas (frase, categoría)
 CARPINCHO_PHRASES: list[RadioPhrase] = [

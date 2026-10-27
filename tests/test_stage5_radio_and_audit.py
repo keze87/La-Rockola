@@ -304,6 +304,30 @@ class TestRadioContextualAndCoherenceSuite:
 		script_parts = generate_modular_radio_script(dt=datetime(2026, 10, 17, 9, 0))
 		assert len(script_parts) == 9
 
+	def test_08d_carpincho_fortunes_contains_only_wisdom_and_not_other_categories(self) -> None:
+		"""Verifica que CARPINCHO_FORTUNES contenga exclusivamente sabiduría y no mute con avisos, alertas ni chismes."""
+		from app.domain.radio.banks import (
+			ALERTAS_INCOMODIDAD_CRIOLLA,
+			CARPINCHO_ADS,
+			CARPINCHO_FORTUNES,
+			CARPINCHO_SABIDURIA,
+			CHISMES_CARPINCHOS,
+			NOVELA_VECINAL,
+			TRANSITO_FLUVIAL_Y_CAMINOS,
+		)
+
+		assert CARPINCHO_FORTUNES == CARPINCHO_SABIDURIA
+		# Ninguna frase de otras categorías debe estar en CARPINCHO_FORTUNES
+		for category_bank in (
+			ALERTAS_INCOMODIDAD_CRIOLLA,
+			CARPINCHO_ADS,
+			CHISMES_CARPINCHOS,
+			NOVELA_VECINAL,
+			TRANSITO_FLUVIAL_Y_CAMINOS,
+		):
+			for phrase in category_bank:
+				assert phrase not in CARPINCHO_FORTUNES
+
 	def test_09_lead_in_and_reaction_coherence_for_fortune(self, tmp_path: Path) -> None:
 		db_path = tmp_path / "coherence.db"
 		init_db(db_path)
