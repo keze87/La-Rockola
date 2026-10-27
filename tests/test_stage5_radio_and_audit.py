@@ -8,7 +8,7 @@ y compilación automática del frontend en el arranque CLI.
 from __future__ import annotations
 
 import subprocess
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -658,6 +658,109 @@ class TestRadioContextualAndCoherenceSuite:
 		# 4. El corpus completo no debe tener errores de validación
 		issues = validate_radio_banks()
 		assert issues == [], f"Errores en validación automática: {issues}"
+
+	def test_08l_no_dead_or_unreachable_phrases(self) -> None:
+		"""Comprueba que no existan frases muertas o inalcanzables en ningún banco radial.
+
+		Verifica formalmente (análisis de código muerto) que cada frase en todos los bancos
+		(CARPINCHO_PHRASES, intros, lead-ins, outros, pases a clima, reacciones y descripciones climáticas)
+		tenga al menos un contexto radial válido en el que pueda ser emitida al aire.
+		"""
+		from app.domain.radio.banks import (
+			CARPINCHO_PHRASES,
+			PASES_A_CLIMA,
+			RADIO_INTROS,
+			RADIO_LEAD_INS,
+			RADIO_OUTROS,
+			RADIO_REACTIONS,
+			WEATHER_DESC_PHRASES,
+			WEATHER_LEAD_INS,
+		)
+		from app.domain.radio.context import _split_item, build_radio_context, phrase_fits_context
+		from app.domain.radio.segments import (
+			LEAD_INS_BY_CATEGORY,
+			OUTROS_BY_CATEGORY,
+			REACCIONES_BY_CATEGORY,
+		)
+
+		# Generamos una matriz completa y diversa de contextos válidos de ejecución
+		sample_contexts = []
+		for hour in [0, 3, 6, 9, 12, 15, 18, 21]:
+			for weekday_idx in range(7):  # Lunes (0) a Domingo (6)
+				base_monday = datetime(2026, 10, 19, hour, 0)
+				dt = base_monday + timedelta(days=weekday_idx)
+				# Estaciones y temperaturas variadas
+				for month in [1, 4, 7, 10]:  # Verano, Otoño, Invierno, Primavera
+					dt_m = dt.replace(month=month)
+					for temp in [None, 32.0, 5.0, 20.0]:
+						sample_contexts.append(build_radio_context(dt_m, temp_c=temp))
+
+		# 1. Comprobamos alcanzabilidad de CARPINCHO_PHRASES
+		dead_phrases = []
+		for item in CARPINCHO_PHRASES:
+			text, cat = _split_item(item, None)
+			reachable = any(phrase_fits_context(text, ctx, cat) for ctx in sample_contexts)
+			if not reachable:
+				dead_phrases.append(f"[{cat}] {text}")
+
+		assert not dead_phrases, f"Se encontraron frases muertas/inalcanzables en CARPINCHO_PHRASES: {dead_phrases}"
+
+		# 2. Comprobamos alcanzabilidad de intros, lead-ins, outros, pases y reacciones
+		single_banks: dict[str, tuple[str, ...]] = {
+			"RADIO_INTROS": RADIO_INTROS,
+			"RADIO_LEAD_INS": RADIO_LEAD_INS,
+			"RADIO_OUTROS": RADIO_OUTROS,
+			"PASES_A_CLIMA": PASES_A_CLIMA,
+			"RADIO_REACTIONS": RADIO_REACTIONS,
+			"WEATHER_LEAD_INS": WEATHER_LEAD_INS,
+		}
+
+		for bank_name, bank_items in single_banks.items():
+			unreachable = [
+				phrase for phrase in bank_items if not any(phrase_fits_context(phrase, ctx) for ctx in sample_contexts)
+			]
+			assert not unreachable, f"Frases muertas encontradas en {bank_name}: {unreachable}"
+
+		# 3. Comprobamos bancos clasificados por categoría
+		categorized_banks = [
+			("LEAD_INS_BY_CATEGORY", LEAD_INS_BY_CATEGORY),
+			("OUTROS_BY_CATEGORY", OUTROS_BY_CATEGORY),
+			("REACCIONES_BY_CATEGORY", REACCIONES_BY_CATEGORY),
+		]
+		for cat_bank_name, cat_dict in categorized_banks:
+			for cat, items in cat_dict.items():
+				unreachable = [
+					phrase
+					for phrase in items
+					if not any(phrase_fits_context(phrase, ctx, cat) for ctx in sample_contexts)
+				]
+				assert not unreachable, f"Frases muertas en {cat_bank_name} para categoría '{cat}': {unreachable}"
+
+		# 4. Comprobamos descripciones meteorológicas
+		for cond, phrases in WEATHER_DESC_PHRASES.items():
+			unreachable = [
+				phrase
+				for phrase in phrases
+				if not any(phrase_fits_context(phrase, ctx, "clima") for ctx in sample_contexts)
+			]
+			assert not unreachable, f"Frases de clima muertas para condición '{cond}': {unreachable}"
+
+		# 5. Comprobamos selección activa mediante select_radio_phrase en runtime
+		from app.domain.radio.nlp import select_radio_phrase
+
+		for ctx in sample_contexts[::10]:
+			phrase, is_sys = select_radio_phrase(force_system_fortune=False, ctx=ctx)
+			assert is_sys is False
+			assert phrase.text and len(phrase.text) > 0
+			assert phrase.category in [
+				"fortuna",
+				"aviso",
+				"alerta_criolla",
+				"transito",
+				"oyentes",
+				"chismes",
+				"novela",
+			]
 
 	def test_09_lead_in_and_reaction_coherence_for_fortune(self, tmp_path: Path) -> None:
 		db_path = tmp_path / "coherence.db"

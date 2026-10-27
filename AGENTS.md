@@ -41,6 +41,21 @@ Whenever changes are about to be made, first create the tests, make sure they fa
 - Code comments must be in Argentine spanish
 - Documentation, guides, and README files must be in Spanish
 
+### 📻 Línea Editorial Radial y Variedad de Humor
+
+El humor de la radio funciona cuando suena como un lugar coherente, con identidad ribereña y personajes vivos. Para no desgastar el dial:
+
+- **Evitar la fórmula fija**: No abusar del chiste recurrente de "mate + carpincho en el agua + fiaca/no hacer nada". La variedad temática mantiene viva la sorpresa.
+- **Diversificación de mecanismos cómicos**:
+    - **Anuncios secos y solemnes (Deadpan)**: Informaciones leídas con seriedad absoluta que contrastan con lo absurdo de la situación.
+    - **Avisos burocráticos absurdos**: Notificaciones oficiales del pueblo, edictos municipales, resoluciones comunales, expedientes de catastro y actas del concejo deliberante.
+    - **Dedicatorias de oyentes genuinas**: Mensajes verosímiles de la vida real en el delta y el conurbano (trabajadores de peaje, frigoríficos, talleres mecánicos, cooperativas eléctricas).
+    - **Radiopasillo y radioteatro con personajes recurrentes**: Continuidad narrativa con vecinos conocidos (Don Anselmo, Doña Gladys, Cacho de la gomería, Pocho el botero, Romualdo, el comisario jubilado).
+    - **Interrupciones surrealistas y transiciones secas**: Interferencias crípticas breves, avisos de cabina y pases directos al hueso sin vueltas entre canciones.
+- **No monopolizar con carpinchos**: Darle aire al pueblo, a los vecinos y al ecosistema completo de la cuenca.
+- **Añadir variedad**: Priorizar enriquecer y diversificar el repertorio antes que podar contenido. Todas las frases en los bancos deben ser alcanzables y auditadas contra código muerto.
+- **Precarga**: Revisar que las frases nuevas se puedan precargar.
+
 ---
 
 ## ✅ Mandatory Verification & Quality Standards
