@@ -146,7 +146,12 @@ export function useLocalPlayback() {
 		});
 
 		useEventListener(localPlayerRef, 'playing', () => clearTrackChanging());
-		useEventListener(localPlayerRef, 'error', () => clearTrackChanging());
+		useEventListener(localPlayerRef, 'error', () => {
+			clearTrackChanging();
+			if (listenLocally.value && currentTrackPath.value) {
+				_sendLocalPlayerUpdate({ song_ended: true });
+			}
+		});
 
 		useEventListener(localPlayerRef, 'pause', () => {
 			const lp = localPlayerRef.value;

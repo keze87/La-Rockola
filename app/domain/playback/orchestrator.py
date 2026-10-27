@@ -489,6 +489,11 @@ class PlaybackOrchestrator:
 			self.url_metadata[url] = meta
 			self.id_to_current_path[url] = url
 			self.path_to_id[url] = url
+			# Si el tema actual es este link y todavía no teníamos la duración, la seteamos de una
+			if self.current_track == url and not self.duration:
+				dur = meta.get("duration")
+				if dur:
+					self.duration = float(dur)
 			logger.info(f"Data fresquita conseguida: {meta.get('artist')} - {meta.get('title')}")
 			await broadcast_state()
 

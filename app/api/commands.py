@@ -91,8 +91,12 @@ async def _cmd_add_url(state: PlaybackOrchestrator, req: CommandRequest, _mgr: A
 		state.queue.append(req.path)
 		state._pick_dj_next()
 		if not state.current_track and not getattr(state, "is_synthesizing_radio", False):
+			# Si la cola estaba vacía y no sonaba nada, esperamos a tener los metadatos listos
+			# antes de mandar a reproducir, organizando el flujo asíncrono y evitando colisiones
+			await state.fetch_yt_dlp_metadata(req.path)
 			await state.play_next(skipped_by_user=True)
-		asyncio.create_task(state.fetch_yt_dlp_metadata(req.path))
+		else:
+			asyncio.create_task(state.fetch_yt_dlp_metadata(req.path))
 
 
 async def _cmd_jump(state: PlaybackOrchestrator, req: CommandRequest, _mgr: Any) -> None:

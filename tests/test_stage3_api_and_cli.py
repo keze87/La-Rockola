@@ -113,6 +113,12 @@ def test_declarative_command_dispatch_and_endpoints(tmp_path: Path, dummy_audio_
 	client.post("/api/v1/command", json={"cmd": "move_queue_item", "index": 0, "new_index": 1})
 	assert orch.queue == ["/music/c.mp3", "/music/b.mp3"]
 
+	# Add URL esperando metadatos cuando no hay tema sonando
+	orch.current_track = None
+	with patch.object(orch, "fetch_yt_dlp_metadata", new=AsyncMock()) as mock_fetch:
+		client.post("/api/v1/command", json={"cmd": "add_url", "path": "https://www.youtube.com/watch?v=xyz"})
+		mock_fetch.assert_awaited_once_with("https://www.youtube.com/watch?v=xyz")
+
 	# Favoritos, DJ y Radio
 	client.post("/api/v1/command", json={"cmd": "toggle_favorite", "path": track_str})
 	assert "hash_1" in orch.favorites

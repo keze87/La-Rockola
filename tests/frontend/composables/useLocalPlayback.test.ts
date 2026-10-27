@@ -204,4 +204,19 @@ describe('useLocalPlayback', () => {
 			expect.objectContaining({ headers: { Range: 'bytes=0-4194303' } })
 		);
 	});
+
+	it('advances to next track when local audio element encounters an error while listening locally', () => {
+		const wsSendMock = vi.fn();
+		setWsSend(wsSendMock);
+		listenLocally.value = true;
+		currentTrackPath.value = 'https://www.youtube.com/watch?v=broken';
+		useLocalPlayback();
+
+		mockAudioEl.dispatchEvent(new Event('error'));
+
+		expect(wsSendMock).toHaveBeenCalled();
+		const sent = JSON.parse(wsSendMock.mock.calls[0][0]);
+		expect(sent.type).toBe('local_player_update');
+		expect(sent.song_ended).toBe(true);
+	});
 });
