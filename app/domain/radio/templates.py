@@ -50,9 +50,13 @@ def get_weather_desc_phrase(
 		category = "clear_night"
 	options = WEATHER_DESC_PHRASES.get(category, WEATHER_DESC_PHRASES["default"])
 	if ctx is not None:
-		# Evita "tarde templada" de madrugada o "sol radiante" de noche
-		filtered_opts = filter_by_context(options, ctx)
-		options = filtered_opts if filtered_opts else WEATHER_DESC_PHRASES["default"]
+		# Filtramos con category="clima" para activar las reglas de sol, tarde y meteorología
+		filtered_opts = filter_by_context(options, ctx, category="clima")
+		if not filtered_opts:
+			# Fallback seguro: filtramos también el banco por defecto con category="clima"
+			fallback_filtered = filter_by_context(WEATHER_DESC_PHRASES["default"], ctx, category="clima")
+			filtered_opts = fallback_filtered if fallback_filtered else list(WEATHER_DESC_PHRASES["default"])
+		options = filtered_opts
 	if variant_idx is not None:
 		return options[variant_idx % len(options)]
 	return random.choice(options)

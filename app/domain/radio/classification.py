@@ -135,10 +135,6 @@ def resolve_segment_category(text: str | tuple[str, str] | RadioPhrase, default:
 	if text_clean in PHRASE_TO_CATEGORY:
 		return PHRASE_TO_CATEGORY[text_clean]
 
-	# 2. Citas literarias o filosóficas con atribución de autor (e.g. '— Heráclito', '— Proverbio')
-	if " — " in text_clean or "— " in text_clean or re.search(r"—\s*[A-ZÁÉÍÓÚÑ]", text_clean):
-		return "fortuna"
-
 	text_lower = text_clean.lower()
 
 	# 3. Prefijos explícitos de avisos comerciales y comunitarios
@@ -304,5 +300,9 @@ def resolve_segment_category(text: str | tuple[str, str] | RadioPhrase, default:
 		)
 	):
 		return "chismes"
+
+	# 9. Citas literarias o filosóficas con atribución de autor (e.g. '— Heráclito', '— Proverbio')
+	if " — " in text_clean or "— " in text_clean or re.search(r"—\s*[A-ZÁÉÍÓÚÑ]", text_clean):
+		return "fortuna"
 
 	return default

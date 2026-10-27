@@ -762,6 +762,73 @@ class TestRadioContextualAndCoherenceSuite:
 				"novela",
 			]
 
+	def test_08m_weather_desc_phrase_respects_category_and_contextual_rules(self) -> None:
+		"""Verifica que get_weather_desc_phrase aplique category='clima' para ejecutar reglas de franja (sol/tarde)."""
+		from app.domain.radio.context import build_radio_context
+		from app.domain.radio.templates import get_weather_desc_phrase
+
+		night_ctx = build_radio_context(datetime(2026, 10, 17, 23, 0))  # Noche
+		# Para partly_cloudy de noche, las frases que mencionan 'sol' deben ser filtradas por la regla de 'sol' en clima
+		for _ in range(20):
+			phrase = get_weather_desc_phrase(desc="partly cloudy", ctx=night_ctx)
+			assert "sol" not in phrase.lower(), f"Se coló mención de sol de noche en descripción de clima: '{phrase}'"
+
+	def test_08n_resolve_segment_category_with_em_dash_priority(self) -> None:
+		"""Verifica que la raya ' — ' no rompa la clasificación de avisos, novelas ni oyentes."""
+		from app.domain.radio.classification import resolve_segment_category
+
+		# Avisos con raya de separación
+		assert resolve_segment_category("Espacio publicitario: Ferretería Pocho — Todo para el isleño") == "aviso"
+		assert resolve_segment_category("Aviso parroquial: Se rifa un lechón — A beneficio de la capilla") == "aviso"
+		# Novela con raya
+		assert resolve_segment_category("Capítulo 4: Don Anselmo — El misterio del sauce") == "novela"
+		# Oyentes con raya
+		assert resolve_segment_category("WhatsApp de oyentes: Saludos a Pocho — El botero de la isla") == "oyentes"
+		# Citas de autor reales con atribución sí deben ser fortuna
+		assert resolve_segment_category("El agua fluye siempre hacia el mar. — Heráclito") == "fortuna"
+		assert resolve_segment_category("Quien no rema contra la corriente, encalla. — Proverbio Isleño") == "fortuna"
+
+	def test_08o_validate_radio_banks_strict_in_suite(self) -> None:
+		"""Verifica que validate_radio_banks(strict=True) se ejecute sin excepciones en la suite de pruebas."""
+		from app.domain.radio.validation import validate_radio_banks
+
+		# strict=True no debe arrojar ValueError en el corpus de producción
+		issues = validate_radio_banks(strict=True)
+		assert issues == []
+
+	def test_08p_tts_variants_independent_matrix(self) -> None:
+		"""Comprueba las combinaciones independientes de copiloto, género del destinatario, momento y saludo."""
+		from app.domain.radio.context import MOMENTO_POR_FRANJA, build_radio_context
+		from app.domain.radio.templates import render_phrase
+		from app.domain.radio.voices import VOICE_ELENA, VOICE_TOMAS
+
+		sample_hours = [
+			(7, "Buen día"),
+			(13, "Buenas tardes"),
+			(16, "Buenas tardes"),
+			(22, "Buenas noches"),
+		]
+		template = "{saludo} {vocativo} {companero}, qué linda está {momento} con {cohost}."
+
+		for hour, expected_saludo in sample_hours:
+			ctx = build_radio_context(datetime(2026, 10, 17, hour, 0))
+			expected_momento = MOMENTO_POR_FRANJA[ctx.franja]
+			for voice, exp_vocativo, exp_comp in [
+				(VOICE_TOMAS, "compadre", "compañero"),
+				(VOICE_ELENA, "comadre", "compañera"),
+			]:
+				rendered = render_phrase(
+					template,
+					ctx=ctx,
+					addressee_voice=voice,
+					cohost_name="Tomás" if voice == VOICE_ELENA else "Elena",
+				)
+				assert "{" not in rendered and "}" not in rendered
+				assert expected_saludo in rendered
+				assert expected_momento in rendered
+				assert exp_vocativo in rendered
+				assert exp_comp in rendered
+
 	def test_09_lead_in_and_reaction_coherence_for_fortune(self, tmp_path: Path) -> None:
 		db_path = tmp_path / "coherence.db"
 		init_db(db_path)
