@@ -20,6 +20,7 @@ from app.domain.radio.banks import (
 	OUTROS_NOVELA,
 	PHRASE_TO_CATEGORY,
 	RADIO_OUTROS,
+	RADIO_REACTIONS,
 	REACCIONES_BY_CATEGORY,
 	REACCIONES_CHISMES,
 	REACCIONES_NOVELA,
@@ -123,13 +124,35 @@ class TestRadioChismesSuite:
 		assert any(textos[idx_salida].startswith(o.split("{")[0].strip()) for o in OUTROS_CHISMES)
 
 	def test_06_outro_no_termina_con_chisme_si_no_es_chisme(self) -> None:
-		"""Los outros generales de RADIO_OUTROS no deben contener frases de chismes."""
+		"""Los outros y reacciones generales o de otras categorías no deben contener chismes ni novela."""
 		for outro_chisme in OUTROS_CHISMES:
 			assert outro_chisme not in RADIO_OUTROS
+		for outro_novela in OUTROS_NOVELA:
+			assert outro_novela not in RADIO_OUTROS
 
-		# Para una fortuna estándar, el outro no debe pertenecer a OUTROS_CHISMES
+		for reaccion_chisme in REACCIONES_CHISMES:
+			assert reaccion_chisme not in RADIO_REACTIONS
+		for reaccion_novela in REACCIONES_NOVELA:
+			assert reaccion_novela not in RADIO_REACTIONS
+
+		# Para una fortuna estándar, el outro y la reacción no deben pertenecer a chismes ni novela
 		outros_fortuna = get_outros_for_category("fortuna", outro_mode="continue")
-		assert all(o not in OUTROS_CHISMES for o in outros_fortuna)
+		assert all(o not in OUTROS_CHISMES and o not in OUTROS_NOVELA for o in outros_fortuna)
+
+		reacciones_fortuna = get_reactions_for_category("fortuna")
+		assert all(r not in REACCIONES_CHISMES and r not in REACCIONES_NOVELA for r in reacciones_fortuna)
+
+		# Chismes solo tiene frases de chismes, no de novela
+		outros_chismes = get_outros_for_category("chismes", outro_mode="continue")
+		assert all(o not in OUTROS_NOVELA for o in outros_chismes)
+		reacciones_chismes = get_reactions_for_category("chismes")
+		assert all(r not in REACCIONES_NOVELA for r in reacciones_chismes)
+
+		# Novela solo tiene frases de novela, no de chismes
+		outros_novela = get_outros_for_category("novela", outro_mode="continue")
+		assert all(o not in OUTROS_CHISMES for o in outros_novela)
+		reacciones_novela = get_reactions_for_category("novela")
+		assert all(r not in REACCIONES_CHISMES for r in reacciones_novela)
 
 	def test_07_dj_carpincho_outro_mode_and_phrases(self) -> None:
 		"""Deben existir outros para DJ Bara y get_outros_for_mode('dj') debe devolverlos."""

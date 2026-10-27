@@ -1585,8 +1585,6 @@ REACCIONES_BY_CATEGORY: dict[str, list[str]] = {
 }
 
 RADIO_REACTIONS: list[str] = [
-	*REACCIONES_CHISMES,
-	*REACCIONES_NOVELA,
 	"¡Qué lo tiró, che!",
 	"Mirá vos, qué momento.",
 	"Lindo momento para unos buenos mates.",
