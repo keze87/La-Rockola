@@ -153,6 +153,14 @@ describe('useSocket.ts', () => {
 		});
 		expect(startLpSpy).toHaveBeenCalledWith('/music/song.mp3');
 
+		// 1b. Accepted with remote URL
+		startLpSpy.mockClear();
+		currentTrackPath.value = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+		capturedOptions.onMessage(null, {
+			data: JSON.stringify({ type: 'local_player_claim_result', ok: true }),
+		});
+		expect(startLpSpy).toHaveBeenCalledWith('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+
 		// 2. Rejected
 		listenLocally.value = true;
 		capturedOptions.onMessage(null, {

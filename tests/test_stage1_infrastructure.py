@@ -226,3 +226,42 @@ def test_media_mixer_and_tts_cache(tmp_path: Path) -> None:
 	save_cached_audio(key, "Hola carpincho", "es-AR-TomasNeural", valid_mp3, db_path=cache_db)
 	cached = get_cached_audio(key, db_path=cache_db)
 	assert cached == valid_mp3
+
+
+@pytest.mark.asyncio
+async def test_ytdlp_adapter_get_stream_url_and_caching() -> None:
+	"""Verifica la obtención de la URL directa de audio con yt-dlp -g -f ba/b y su caché en memoria."""
+	from app.infrastructure.binaries.ytdlp import YtDlpAdapter
+
+	adapter = YtDlpAdapter()
+	sample_yt_url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+	fake_stream_url = "https://rr2---sn-googlevideo.com/videoplayback?expire=12345"
+
+	mock_proc = AsyncMock()
+	mock_proc.returncode = 0
+	mock_proc.communicate.return_value = (fake_stream_url.encode("utf-8") + b"\n", b"")
+
+	with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec:
+		# 1. Primera llamada: debe ejecutar yt-dlp con -g -f ba/b
+		url = await adapter.get_stream_url(sample_yt_url)
+		assert url == fake_stream_url
+		mock_exec.assert_called_once()
+		args = mock_exec.call_args[0]
+		assert "-g" in args
+		assert "-f" in args
+		assert "ba/b" in args
+		assert sample_yt_url in args
+
+		# 2. Segunda llamada: debe retornar desde la caché en memoria sin invocar subproceso
+		mock_exec.reset_mock()
+		url_cached = await adapter.get_stream_url(sample_yt_url)
+		assert url_cached == fake_stream_url
+		mock_exec.assert_not_called()
+
+	# 3. Llamada con error: debe retornar None
+	mock_fail = AsyncMock()
+	mock_fail.returncode = 1
+	mock_fail.communicate.return_value = (b"", b"Error 404")
+	with patch("asyncio.create_subprocess_exec", return_value=mock_fail):
+		fail_url = await adapter.get_stream_url("https://www.youtube.com/watch?v=fail")
+		assert fail_url is None

@@ -89,6 +89,17 @@ describe('useLocalPlayback', () => {
 		expect(mockAudioEl.load).toHaveBeenCalled();
 	});
 
+	it('starts local player when track is an external URL and listenLocally is true', async () => {
+		useLocalPlayback();
+		listenLocally.value = true;
+		const ytUrl = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+		currentTrackPath.value = ytUrl;
+		await nextTick();
+
+		expect(mockAudioEl.src).toContain(encodeURIComponent(ytUrl));
+		expect(mockAudioEl.load).toHaveBeenCalled();
+	});
+
 	it('_stopLocalPlayer pauses and cleans up audio element', () => {
 		useLocalPlayback();
 

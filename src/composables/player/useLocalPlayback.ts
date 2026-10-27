@@ -215,7 +215,7 @@ export function useLocalPlayback() {
 			markTrackChanging();
 			if (listenLocally.value) {
 				lp.loop = false;
-				if (newPath && !newPath.startsWith('http')) _startLocalPlayer(newPath);
+				if (newPath) _startLocalPlayer(newPath);
 				else _stopLocalPlayer();
 			} else {
 				if (newPath) {
@@ -246,7 +246,7 @@ export function useLocalPlayback() {
 			if (val) {
 				sendRaw({ type: 'local_player_claim' });
 				lp.loop = false;
-				if (currentTrackPath.value && !currentTrackPath.value.startsWith('http')) {
+				if (currentTrackPath.value) {
 					_startLocalPlayer(currentTrackPath.value);
 				}
 			} else {

@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -154,9 +155,62 @@ def update_ytdlp(bin_path: str | None = None, log_fn: Callable[[str], None] = de
 class YtDlpAdapter:
 	"""Adaptador de infraestructura para extraer metadatos remotos mediante yt-dlp."""
 
+	def __init__(self) -> None:
+		# Caché en memoria para no recalcular yt-dlp -g en cada seek o rango HTTP (URL, timestamp)
+		self._stream_url_cache: dict[str, tuple[str, float]] = {}
+
 	@property
 	def is_available(self) -> bool:
 		return manager.find_binary("yt-dlp") is not None
+
+	async def get_stream_url(self, url: str) -> str | None:
+		"""Extrae la URL directa del flujo de audio mediante yt-dlp -g -f ba/b con caché en memoria."""
+		import asyncio
+
+		now = time.time()
+		if url in self._stream_url_cache:
+			cached_url, ts = self._stream_url_cache[url]
+			if now - ts < 7200:
+				return cached_url
+
+		bin_path = manager.find_binary("yt-dlp")
+		if not bin_path:
+			try:
+				logger.info("yt-dlp no encontrado para extraer stream directo. Intentando instalar...")
+				installed = await asyncio.to_thread(ensure_ytdlp)
+				if installed:
+					bin_path = installed
+			except Exception as e:
+				logger.error(f"No se pudo instalar yt-dlp al vuelo: {e}")
+
+		if not bin_path:
+			bin_path = "yt-dlp"
+
+		try:
+			logger.info(f"Pidiéndole a yt-dlp el enlace directo para la radio/cliente: {url}")
+			proc = await asyncio.create_subprocess_exec(
+				bin_path,
+				"-g",
+				"-f",
+				"ba/b",
+				"--no-warnings",
+				"--no-playlist",
+				url,
+				stdout=asyncio.subprocess.PIPE,
+				stderr=asyncio.subprocess.DEVNULL,
+				env=manager.get_clean_env(),
+			)
+			stdout, _ = await proc.communicate()
+			if proc.returncode == 0 and stdout:
+				lines = stdout.decode("utf-8", errors="ignore").strip().splitlines()
+				for line in lines:
+					clean_line = line.strip()
+					if clean_line.startswith(("http://", "https://")):
+						self._stream_url_cache[url] = (clean_line, now)
+						return clean_line
+		except Exception as e:
+			logger.error(f"Se empacó yt-dlp sacando el stream directo de {url}: {e}")
+		return None
 
 	async def fetch_metadata(self, url: str) -> dict[str, object] | None:
 		"""Extrae y formatea metadatos de YouTube u otras plataformas para La Rockola."""

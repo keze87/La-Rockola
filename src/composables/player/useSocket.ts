@@ -82,7 +82,7 @@ export function useSocket() {
 					if (data.type === 'local_player_claim_result') {
 						if (data.ok) {
 							// El servidor aceptó nuestro rol — arrancar el reproductor local (el servidor silencia MPV directamente)
-							if (currentTrackPath.value && !currentTrackPath.value.startsWith('http')) {
+							if (currentTrackPath.value) {
 								_startLocalPlayer(currentTrackPath.value);
 							}
 						} else {

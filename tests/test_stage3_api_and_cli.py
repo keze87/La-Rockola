@@ -5,7 +5,7 @@ Tests de integración y entrega (TDD) para la capa API REST, WebSocket, Middlewa
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -153,6 +153,21 @@ def test_library_media_system_and_websocket_routes(tmp_path: Path, dummy_audio_f
 
 	stream_res = client.get("/api/v1/stream", params={"path": str(dummy_audio_file)})
 	assert stream_res.status_code == 200
+
+	# Stream de URL remota con yt-dlp: debe retornar 307 Temporary Redirect a la URL directa
+	sample_yt = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+	fake_stream = "https://rr2---sn-googlevideo.com/videoplayback?expire=99999"
+	# Registramos la URL en el orquestador
+	orch.path_to_id[sample_yt] = sample_yt
+
+	with patch.object(orch.ytdlp_service, "get_stream_url", new=AsyncMock(return_value=fake_stream)):
+		url_stream_res = client.get("/api/v1/stream", params={"path": sample_yt}, follow_redirects=False)
+		assert url_stream_res.status_code == 307
+		assert url_stream_res.headers.get("location") == fake_stream
+
+	with patch.object(orch.ytdlp_service, "get_stream_url", new=AsyncMock(return_value=None)):
+		fail_stream_res = client.get("/api/v1/stream", params={"path": sample_yt}, follow_redirects=False)
+		assert fail_stream_res.status_code == 502
 
 	# Solo con .lrc presente
 	lrc_res = client.get("/api/v1/lrc", params={"path": str(dummy_audio_file)})

@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 from fastapi import APIRouter, Query, Request, Response
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from mutagen import File as MutagenFile
 
 from app.core.config import get_dist_dirs
@@ -199,8 +199,27 @@ async def stream_audio(path: str = Query(..., description="Ruta de la canción a
 	is_radio = state.is_radio_announcement(path) if (state and hasattr(state, "is_radio_announcement")) else False
 	path_to_id = getattr(state, "path_to_id", {}) if state else {}
 	tracks_cache = getattr(state, "tracks_cache", []) if state else []
-	if not is_radio and path not in path_to_id and not any(t.get("path") == path for t in tracks_cache):
+	queue = getattr(state, "queue", []) if state else []
+	current_track = getattr(state, "current_track", None) if state else None
+
+	is_known = (
+		is_radio
+		or path in path_to_id
+		or any(t.get("path") == path for t in tracks_cache)
+		or path == current_track
+		or path in queue
+	)
+	if not is_known:
 		return Response(status_code=404)
+
+	# Si es una URL externa (YouTube / web), resolvemos el flujo de audio con yt-dlp y redirigimos
+	if path.startswith(("http://", "https://")):
+		ytdlp_srv = getattr(state, "ytdlp_service", None)
+		if ytdlp_srv and hasattr(ytdlp_srv, "get_stream_url"):
+			direct_url = await ytdlp_srv.get_stream_url(path)
+			if direct_url:
+				return RedirectResponse(url=direct_url, status_code=307)
+		return Response(status_code=502)
 
 	if not os.path.exists(path):
 		return Response(status_code=404)
