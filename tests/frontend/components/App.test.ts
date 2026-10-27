@@ -130,7 +130,17 @@ Dialogue: 0,0:00:01.00,0:00:06.00,Default,,0,0,0,,{\\kf100}Bizcochitos {\\kf100}
 			}
 			return Promise.resolve({
 				ok: true,
-				json: () => Promise.resolve({ status: 'ok', data: [] }),
+				json: () =>
+					Promise.resolve({
+						status: 'ok',
+						data: [
+							{
+								path: '/music/test_gaps.mp3',
+								display_title: 'Canción del Río',
+								display_artist: 'El Carpincho',
+							},
+						],
+					}),
 			} as unknown as Response);
 		});
 
@@ -162,5 +172,74 @@ Dialogue: 0,0:00:01.00,0:00:06.00,Default,,0,0,0,,{\\kf100}Bizcochitos {\\kf100}
 		const activeSyllable = sylSpans.find((s) => s.text().includes('de grasa'));
 		expect(activeSyllable).toBeDefined();
 		expect(activeSyllable!.classes()).toContain('text-white');
+	});
+
+	it('shows carpincho emoji for short gaps and reverts to track title for long gaps in headbar', async () => {
+		const assContent = `[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:02.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Verso {\\kf100}uno
+Dialogue: 0,0:00:06.50,0:00:09.00,Default,,0,0,0,,{\\kf100}Verso {\\kf100}dos
+Dialogue: 0,0:00:20.00,0:00:24.00,Default,,0,0,0,,{\\kf100}Verso {\\kf100}tres
+`;
+
+		global.fetch = vi.fn().mockImplementation((url: string) => {
+			if (typeof url === 'string' && url.includes('/lrc')) {
+				return Promise.resolve({
+					ok: true,
+					text: () => Promise.resolve(assContent),
+				} as unknown as Response);
+			}
+			return Promise.resolve({
+				ok: true,
+				json: () =>
+					Promise.resolve({
+						status: 'ok',
+						data: [
+							{
+								path: '/music/test_gaps.mp3',
+								display_title: 'Canción del Río',
+								display_artist: 'El Carpincho',
+							},
+						],
+					}),
+			} as unknown as Response);
+		});
+
+		const { localTimePos } = await import('@/composables/player/state');
+		currentTrackPath.value = '/music/test_gaps.mp3';
+		trackMap.value['/music/test_gaps.mp3'] = {
+			path: '/music/test_gaps.mp3',
+			display_title: 'Canción del Río',
+			display_artist: 'El Carpincho',
+		};
+
+		const wrapper = mount(App);
+		await wrapper.vm.$nextTick();
+		await new Promise((resolve) => setTimeout(resolve, 15));
+		await wrapper.vm.$nextTick();
+
+		const nav = wrapper.find('nav');
+
+		// Durante verso uno (3s)
+		localTimePos.value = 3;
+		await wrapper.vm.$nextTick();
+		expect(nav.text()).toContain('Verso uno');
+
+		// Silencio corto (5s a 6.5s -> 1.5s gap): en 5.5s debe mostrar '🦦' y NO repetir 'Verso uno'
+		localTimePos.value = 5.5;
+		await wrapper.vm.$nextTick();
+		expect(nav.text()).toContain('🦦');
+		expect(nav.text()).not.toContain('Verso uno');
+
+		// Durante verso dos (7s)
+		localTimePos.value = 7;
+		await wrapper.vm.$nextTick();
+		expect(nav.text()).toContain('Verso dos');
+
+		// Silencio largo (9s a 20s -> 11s gap): en 12s debe volver al título de la canción
+		localTimePos.value = 12;
+		await wrapper.vm.$nextTick();
+		expect(nav.text()).toContain('El Carpincho - Canción del Río');
+		expect(nav.text()).not.toContain('Verso dos');
 	});
 });

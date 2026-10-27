@@ -190,11 +190,15 @@ export function useLyrics(player: { localTimePos: Ref<number> }) {
 		if (!lyrics.value || !lyrics.value.length) return [];
 		const time = player.localTimePos.value;
 
-		// Devolvemos todas las líneas que estén reproduciéndose en este momento (duetos, coros, etc.)
+		// Devolvemos todas las líneas reales que estén reproduciéndose en este momento (duetos, coros, etc.)
 		return lyrics.value.filter((line, idx) => {
+			if (!line.text || line.text.trim() === '' || line.text === ' ' || line.text === '🦦') {
+				return false;
+			}
 			const start = line.time;
 			const nextLine = lyrics.value[idx + 1];
-			const end = line.endTime ?? (nextLine ? nextLine.time : start + 10);
+			const rawEnd = line.endTime ?? (nextLine ? Math.min(nextLine.time, start + 8) : start + 8);
+			const end = nextLine && nextLine.time - rawEnd < 1.0 && nextLine.time >= rawEnd ? nextLine.time : rawEnd;
 			return time >= start && time <= end;
 		});
 	});
@@ -204,26 +208,82 @@ export function useLyrics(player: { localTimePos: Ref<number> }) {
 
 		const active = activeLyricLines.value;
 		if (active.length > 0) {
-			const texts = active.map((l) => l.text).filter((t) => t && t !== ' ');
+			const texts = active.map((l) => l.text).filter((t) => t && t.trim() !== '' && t !== ' ' && t !== '🦦');
 			if (texts.length > 0) {
 				return texts.join(' / ');
 			}
 			return ' ';
 		}
 
-		// Si todavía no arrancó la primera estrofa, devolvemos espacio en blanco
-		if (player.localTimePos.value < lyrics.value[0].time) {
+		const time = player.localTimePos.value;
+
+		// Si todavía no arrancó la primera estrofa
+		if (time < lyrics.value[0].time) {
+			const gap = lyrics.value[0].time;
+			if (gap >= 1.0 && gap < 2.0) {
+				return '🦦';
+			}
 			return ' ';
 		}
 
-		// Respaldo para temas con LRC donde la última línea queda flotando
+		// Encontramos el último verso que empezó en o antes de `time`
+		let lastIdx = -1;
 		for (let i = lyrics.value.length - 1; i >= 0; i--) {
-			// Sincroniza contra el localTimePos del reproductor
-			if (player.localTimePos.value >= lyrics.value[i].time) {
-				return lyrics.value[i].text;
+			if (time >= lyrics.value[i].time) {
+				lastIdx = i;
+				break;
 			}
 		}
 
+		if (lastIdx === -1) {
+			return ' ';
+		}
+
+		const prevLine = lyrics.value[lastIdx];
+
+		// Si la línea explícita en lyrics es un marcador de silencio de LRC
+		if (prevLine.text === '🦦') {
+			return '🦦';
+		}
+		if (prevLine.text === ' ' || !prevLine.text.trim()) {
+			return ' ';
+		}
+
+		// Buscamos la siguiente línea de letra real
+		let nextLine: LyricLine | null = null;
+		for (let j = lastIdx + 1; j < lyrics.value.length; j++) {
+			if (
+				lyrics.value[j].text &&
+				lyrics.value[j].text.trim() !== '' &&
+				lyrics.value[j].text !== ' ' &&
+				lyrics.value[j].text !== '🦦'
+			) {
+				nextLine = lyrics.value[j];
+				break;
+			}
+		}
+
+		const prevEnd = prevLine.endTime ?? (nextLine ? Math.min(nextLine.time, prevLine.time + 8) : prevLine.time + 8);
+
+		// Si todavía estamos dentro de la ventana de reproducción del verso (ej. LRC sin endTime)
+		if (time <= prevEnd) {
+			return prevLine.text;
+		}
+
+		// La línea ya terminó de cantarse. Evaluamos la brecha de silencio hasta la próxima línea
+		if (nextLine) {
+			const gap = nextLine.time - prevEnd;
+			if (gap >= 2.0) {
+				// Silencio largo: volvemos al título de la canción
+				return ' ';
+			} else if (gap >= 1.0) {
+				// Silencio corto: mostramos el emoji carpincho
+				return '🦦';
+			}
+			return ' ';
+		}
+
+		// Si no hay siguiente línea (outro del tema tras la última estrofa)
 		return ' ';
 	});
 

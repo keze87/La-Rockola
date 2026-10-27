@@ -191,8 +191,59 @@ Dialogue: 0,0:00:12.00,0:00:16.00,Default,,0,0,0,,{\\kf50}Segunda {\\kf50}voz
 		expect(activeLyricLines.value.length).toBe(1);
 		expect(activeLyricLines.value[0].text).toBe('Segunda voz');
 
-		// At 17s: ninguna está activa
+		// At 17s: ninguna está activa (outro tras el dueto, debe retornar silencio ' ' y no repetir 'Segunda voz')
 		localTimePos.value = 17;
 		expect(activeLyricLines.value.length).toBe(0);
+		expect(currentLyricLine.value).toBe(' ');
+	});
+
+	it('returns silence for long gaps and carpincho emoji for short gaps in ASS lyrics', async () => {
+		const localTimePos = ref(0);
+		const { lyrics, activeLyricLines, currentLyricLine, loadLyrics } = useLyrics({ localTimePos });
+
+		const assGaps = `[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:05.00,0:00:10.00,Default,,0,0,0,,{\\kf100}Primera {\\kf100}frase
+Dialogue: 0,0:00:11.50,0:00:15.00,Default,,0,0,0,,{\\kf100}Segunda {\\kf100}frase
+Dialogue: 0,0:00:25.00,0:00:30.00,Default,,0,0,0,,{\\kf100}Tercera {\\kf100}frase
+`;
+
+		global.fetch = vi.fn().mockResolvedValue({
+			ok: true,
+			text: () => Promise.resolve(assGaps),
+		} as unknown as Response);
+
+		await loadLyrics('/music/gaps.mp3');
+		expect(lyrics.value.length).toBe(3);
+
+		// Durante la primera frase (5s - 10s)
+		localTimePos.value = 7;
+		expect(activeLyricLines.value.length).toBe(1);
+		expect(currentLyricLine.value).toBe('Primera frase');
+
+		// Silencio corto entre frase 1 y 2 (10s a 11.5s -> gap = 1.5s): debe mostrar '🦦' y NO repetir la frase completa
+		localTimePos.value = 10.5;
+		expect(activeLyricLines.value.length).toBe(0);
+		expect(currentLyricLine.value).toBe('🦦');
+
+		// Durante la segunda frase (11.5s - 15s)
+		localTimePos.value = 13;
+		expect(activeLyricLines.value.length).toBe(1);
+		expect(currentLyricLine.value).toBe('Segunda frase');
+
+		// Silencio largo entre frase 2 y 3 (15s a 25s -> gap = 10s): debe mostrar silencio ' ' para volver al título
+		localTimePos.value = 18;
+		expect(activeLyricLines.value.length).toBe(0);
+		expect(currentLyricLine.value).toBe(' ');
+
+		// Durante la tercera frase (25s - 30s)
+		localTimePos.value = 27;
+		expect(activeLyricLines.value.length).toBe(1);
+		expect(currentLyricLine.value).toBe('Tercera frase');
+
+		// Tras finalizar la última frase (30s+ -> outro): silencio ' ' para volver al título
+		localTimePos.value = 32;
+		expect(activeLyricLines.value.length).toBe(0);
+		expect(currentLyricLine.value).toBe(' ');
 	});
 });

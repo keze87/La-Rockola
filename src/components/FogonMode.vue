@@ -124,8 +124,19 @@
 	const portraitLyricLines = computed(() => {
 		if (!lyrics.value.length) return [];
 		if (activeLineIndex.value < 0) {
-			// Antes de que arranque el tema: mostramos los primeros 3 versos
-			return lyrics.value.slice(0, 3);
+			const pos = player.localTimePos.value;
+			if (pos < lyrics.value[0].time) {
+				// Antes de que arranque el tema: mostramos los primeros 3 versos
+				return lyrics.value.slice(0, 3);
+			}
+			// En silencios intermedios: mostramos en torno al próximo verso o el último
+			const upcomingIdx = lyrics.value.findIndex((l) => l.time > pos);
+			if (upcomingIdx !== -1) {
+				const start = Math.max(0, upcomingIdx - 1);
+				const end = Math.min(lyrics.value.length, upcomingIdx + 3);
+				return lyrics.value.slice(start, end);
+			}
+			return lyrics.value.slice(-3);
 		}
 		const activeIdx = activeLineIndex.value;
 		const activeCount = activeLyricLines.value.length;
