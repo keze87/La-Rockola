@@ -460,9 +460,9 @@ def assemble_announcement_audio(
 
 					if block_cues:
 						for cs, ce, ct in block_cues:
-							cues.append((current_time + cs, current_time + ce, ct))
+							cues.append((current_time + cs, current_time + ce, clean_subtitle_text(ct)))
 					elif block_text:
-						cues.append((current_time, current_time + dur, block_text))
+						cues.append((current_time, current_time + dur, clean_subtitle_text(block_text)))
 					current_time += dur
 
 					if i == len(blocks) - 1:
@@ -611,9 +611,9 @@ def assemble_announcement_audio(
 				seg_cues = seg[4]
 				if seg_cues:
 					for cs, ce, ct in seg_cues:
-						cues.append((curr_offset + cs, curr_offset + ce, ct))
+						cues.append((curr_offset + cs, curr_offset + ce, clean_subtitle_text(ct)))
 				elif seg[3]:
-					cues.append((curr_offset, curr_offset + dur_fb, seg[3]))
+					cues.append((curr_offset, curr_offset + dur_fb, clean_subtitle_text(seg[3])))
 				curr_offset += dur_fb
 
 		def _save_subtitles() -> None:

@@ -579,3 +579,11 @@ def get_radio_fortune(db_path: Path | str | None = None, ctx: RadioContext | Non
 	"""Devuelve una frase o fortuna garantizada en español."""
 	fortuna, _ = select_fortune(db_path=db_path, ctx=ctx)
 	return fortuna
+
+
+def __getattr__(name: str) -> Any:
+	if name in ("apply_rioplatense_tts_phonetics", "clean_subtitle_text"):
+		from app.domain.radio import dialogue
+
+		return getattr(dialogue, name)
+	raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

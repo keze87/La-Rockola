@@ -7,8 +7,6 @@ from __future__ import annotations
 
 import re
 
-import pytest
-
 from app.domain.radio.banks import (
 	CARPINCHO_FORTUNES,
 	CARPINCHO_PHRASES,
@@ -143,9 +141,9 @@ def test_banks_orthography_clean_without_forced_enclitic_accents() -> None:
 		"tiráme",
 	]
 	for word in forced_accents:
-		assert not re.search(
-			rf"\b{word}\b", full_corpus, re.IGNORECASE
-		), f"Se encontró tilde forzada '{word}' en los bancos de frases"
+		assert not re.search(rf"\b{word}\b", full_corpus, re.IGNORECASE), (
+			f"Se encontró tilde forzada '{word}' en los bancos de frases"
+		)
 
 
 def test_clean_subtitle_text_reverts_phonetics() -> None:
@@ -156,3 +154,24 @@ def test_clean_subtitle_text_reverts_phonetics() -> None:
 	assert clean_subtitle_text("¡Mandále play y subíle dos rayitas!") == "¡Mandale play y subile dos rayitas!"
 	assert clean_subtitle_text("cambiámela") == "cambiamela"
 
+
+def test_preload_tts_cache_applies_voseo_phonetics() -> None:
+	"""Verifica que el script de precarga (collect_phrases) aplique la fonética rioplatense completa."""
+	from scripts.preload_tts_cache import collect_phrases
+
+	items = collect_phrases()
+	assert len(items) > 50
+
+	# 1. En el audio sintetizado, DJ debe estar convertido a DiYei para que Edge-TTS lo lea en criollo
+	for cat, text in items:
+		assert not re.search(r"\bDJ\b", text), f"Se encontró 'DJ' sin normalizar a 'DiYei' en [{cat}]: '{text}'"
+
+	# 2. Las formas verbales de voseo deben tener su tilde prosódica aplicada en el script de precarga
+	# para que coincida exactamente con lo que el orquestador solicita a synthesize_segment en tiempo de ejecución
+	intros = [text for cat, text in items if cat == "intro"]
+	assert any("cebáte" in intro and "dejáte" in intro for intro in intros), (
+		"Las intros precargadas deben contener 'cebáte' y 'dejáte' con fonética prosódica"
+	)
+	assert not any(re.search(r"\bcebate\b", intro) for intro in intros), (
+		"No debe haber 'cebate' sin acentuar en las intros precargadas"
+	)

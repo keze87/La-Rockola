@@ -40,6 +40,7 @@ from app.domain.radio.banks import (
 	get_all_weather_desc_phrases,
 )
 from app.domain.radio.dialogue import (
+	apply_rioplatense_tts_phonetics,
 	format_fortune_for_speech,
 	get_all_degree_segments,
 	get_all_fortune_reaction_segments,
@@ -140,7 +141,7 @@ def collect_phrases() -> list[tuple[str, str]]:
 	# 9. Pases a clima dirigidos al cohost
 	for handoff_weather in get_all_weather_handoff_segments():
 		for variant in expand_phrase_variants(handoff_weather):
-			items.append(("pase", handoff_weather))
+			items.append(("pase", variant))
 
 	# 10. Reacciones de cabina criollas
 	for reaction in get_all_reaction_segments():
@@ -155,7 +156,7 @@ def collect_phrases() -> list[tuple[str, str]]:
 	# 12. Reacciones de cabina a la fortuna
 	for reaction_fortune in get_all_fortune_reaction_segments():
 		for variant in expand_phrase_variants(reaction_fortune):
-			items.append(("reaccion", reaction_fortune))
+			items.append(("reaccion", variant))
 
 	# 13. Clima: temperaturas modulares (-10 a 45 °C), descripciones de estado y lluvias
 	for deg in get_all_degree_segments(-10, 45):
@@ -169,14 +170,15 @@ def collect_phrases() -> list[tuple[str, str]]:
 		for variant in expand_phrase_variants(rain_desc):
 			items.append(("clima", variant))
 
-	# Deduplicar manteniendo orden
+	# Deduplicar manteniendo orden y aplicando fonética rioplatense (voseo prosódico y DJ -> DiYei)
 	seen: set[tuple[str, str]] = set()
 	unique_items: list[tuple[str, str]] = []
 	for cat, txt in items:
-		key = (cat, txt)
+		phonetic_txt = apply_rioplatense_tts_phonetics(txt)
+		key = (cat, phonetic_txt)
 		if key not in seen:
 			seen.add(key)
-			unique_items.append((cat, txt))
+			unique_items.append((cat, phonetic_txt))
 
 	return unique_items
 
