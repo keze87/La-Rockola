@@ -44,7 +44,7 @@ from app.domain.radio.banks import (
 from app.domain.radio.nlp import (
 	_normalize_phrase_key,
 	render_tracked_phrase,
-	select_fortune,
+	select_radio_phrase,
 	weighted_choice_by_recency,
 )
 from app.infrastructure.weather.client import format_temperature
@@ -569,8 +569,9 @@ def generate_modular_radio_script(
 	intro_candidates = filter_by_context(RADIO_INTROS, ctx) or list(RADIO_INTROS)
 	intro = render_phrase(random.choice(intro_candidates), ctx)
 	hora_seg, minuto_seg, _ = get_modular_time_segments(dt)
-	fortuna, is_system_fortune = select_fortune(force_system_fortune, ctx=ctx)
-	seg_cat = resolve_segment_category(fortuna)
+	phrase, is_system_fortune = select_radio_phrase(force_system_fortune, ctx=ctx)
+	fortuna = phrase.text
+	seg_cat = phrase.category
 	cat_lead_ins = get_lead_ins_for_category(seg_cat)
 	filtered_lead_ins = filter_by_context(cat_lead_ins, ctx) or list(cat_lead_ins)
 	lead_in = random.choice(filtered_lead_ins)

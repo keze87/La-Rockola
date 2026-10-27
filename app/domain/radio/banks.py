@@ -615,6 +615,14 @@ LEAD_INS_NOVELA: list[str] = [
 	"¡Agarrate que esto quema! Crónica prohibida del barrio que te va a dejar recalculando:",
 ]
 
+LEAD_INS_UNKNOWN: list[str] = [
+	"Atenti a lo que compartimos en el aire de La Rockola.",
+	"Pará la oreja a lo que llega a la transmisión.",
+	"Seguimos rodando y te dejamos este mensaje en el dial.",
+	"Mirá lo que tenemos para vos en este momento.",
+	"Un mensaje que llega navegando por la frecuencia.",
+]
+
 LEAD_INS_BY_CATEGORY: dict[str, list[str]] = {
 	"fortuna": LEAD_INS_FORTUNA,
 	"aviso": LEAD_INS_AVISOS,
@@ -622,10 +630,17 @@ LEAD_INS_BY_CATEGORY: dict[str, list[str]] = {
 	"alerta_criolla": LEAD_INS_ALERTAS,
 	"chismes": LEAD_INS_CHISMES,
 	"novela": LEAD_INS_NOVELA,
+	"unknown": LEAD_INS_UNKNOWN,
 }
 
 RADIO_LEAD_INS: list[str] = (
-	LEAD_INS_FORTUNA + LEAD_INS_AVISOS + LEAD_INS_OYENTES + LEAD_INS_ALERTAS + LEAD_INS_CHISMES + LEAD_INS_NOVELA
+	LEAD_INS_FORTUNA
+	+ LEAD_INS_AVISOS
+	+ LEAD_INS_OYENTES
+	+ LEAD_INS_ALERTAS
+	+ LEAD_INS_CHISMES
+	+ LEAD_INS_NOVELA
+	+ LEAD_INS_UNKNOWN
 )
 
 RADIO_OUTROS: list[str] = [
@@ -1568,6 +1583,14 @@ REACCIONES_NOVELA: list[str] = [
 	"¡Esto es cine total! ¡Qué radioteatro nos estamos armando en plena cabina!",
 ]
 
+REACCIONES_UNKNOWN: list[str] = [
+	"¡Clarito como el agua de la orilla!",
+	"¡Tal cual, ni más ni menos!",
+	"¡Así se habla en el litoral!",
+	"¡Impecable, mensaje recibido!",
+	"¡Directo y al pie, como tiene que ser!",
+]
+
 REACCIONES_BY_CATEGORY: dict[str, list[str]] = {
 	"fortuna": REACCIONES_FORTUNA,
 	"aviso": REACCIONES_AVISOS,
@@ -1575,6 +1598,7 @@ REACCIONES_BY_CATEGORY: dict[str, list[str]] = {
 	"alerta_criolla": REACCIONES_ALERTAS,
 	"chismes": REACCIONES_CHISMES,
 	"novela": REACCIONES_NOVELA,
+	"unknown": REACCIONES_UNKNOWN,
 }
 
 RADIO_REACTIONS: list[str] = [
@@ -2810,16 +2834,20 @@ def expand_phrase_variants(template: str) -> list[str]:
 	return list(_expand_phrase_variants_cached(template))
 
 
-def resolve_segment_category(text: str | tuple[str, str] | RadioPhrase) -> str:
+def resolve_segment_category(text: str | tuple[str, str] | RadioPhrase, default: str = "unknown") -> str:
 	"""
 	Clasifica el contenido radial en su categoría semántica:
 	- 'oyentes': dedicatorias y pedidos de oyentes por WhatsApp/audio.
 	- 'aviso': tanda publicitaria comercial, avisos parroquiales y tránsito fluvial.
 	- 'alerta_criolla': reportes satíricos de clima extremo, mosquitos y viento norte.
+	- 'chismes': secretos, fauna ribereña y radio pasillo.
+	- 'novela': culebrón vecinal por capítulos y radioteatro.
 	- 'fortuna': refranes, proverbios, máximas y reflexiones filosóficas.
+	- 'unknown': contenido externo o ambiguo no reconocido (evita asumir erróneamente 'fortuna').
 
 	Soporta duplas explícitas (RadioPhrase o tuple) retornando su categoría directamente,
 	y mapeo O(1) vía PHRASE_TO_CATEGORY para frases de los bancos internos.
+	Si no coincide con mapeos explícitos ni reglas heurísticas, retorna `default`.
 	"""
 	if isinstance(text, (tuple, RadioPhrase)):
 		if len(text) >= 2 and text[1]:
@@ -2827,7 +2855,7 @@ def resolve_segment_category(text: str | tuple[str, str] | RadioPhrase) -> str:
 		text = text[0] if len(text) >= 1 else ""
 
 	if not text or not isinstance(text, str):
-		return "fortuna"
+		return default
 	text_clean = text.strip()
 
 	# 1. Pertenencia directa a mapeo explícito de bancos
@@ -3004,17 +3032,17 @@ def resolve_segment_category(text: str | tuple[str, str] | RadioPhrase) -> str:
 	):
 		return "chismes"
 
-	return "fortuna"
+	return default
 
 
 def get_lead_ins_for_category(category: str) -> list[str]:
 	"""Devuelve los lead-ins pertinentes a la categoría del segmento."""
-	return LEAD_INS_BY_CATEGORY.get(category, LEAD_INS_FORTUNA)
+	return LEAD_INS_BY_CATEGORY.get(category, LEAD_INS_UNKNOWN)
 
 
 def get_reactions_for_category(category: str) -> list[str]:
 	"""Devuelve las reacciones de cabina pertinentes a la categoría del segmento."""
-	return REACCIONES_BY_CATEGORY.get(category, REACCIONES_FORTUNA)
+	return REACCIONES_BY_CATEGORY.get(category, REACCIONES_UNKNOWN)
 
 
 def get_outros_for_category(category: str, outro_mode: str = "continue") -> list[str]:

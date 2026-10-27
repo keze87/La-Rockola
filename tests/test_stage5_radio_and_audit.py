@@ -328,6 +328,58 @@ class TestRadioContextualAndCoherenceSuite:
 			for phrase in category_bank:
 				assert phrase not in CARPINCHO_FORTUNES
 
+	def test_08e_resolve_segment_category_prioritizes_explicit_and_defaults_to_unknown(self) -> None:
+		"""
+		Verifica que resolve_segment_category priorice RadioPhrase y PHRASE_TO_CATEGORY,
+		use heurística sólo para textos externos, y retorne 'unknown' para frases ambiguas o no reconocidas.
+		"""
+		from app.domain.radio.banks import (
+			ALERTAS_INCOMODIDAD_CRIOLLA,
+			CARPINCHO_ADS,
+			CARPINCHO_SABIDURIA,
+			CHISMES_CARPINCHOS,
+			DEDICATORIAS_OYENTES,
+			NOVELA_VECINAL,
+			get_lead_ins_for_category,
+			get_reactions_for_category,
+			resolve_segment_category,
+		)
+		from app.domain.radio.dialogue import RadioPhrase
+
+		# 1. RadioPhrase explícito tiene prioridad absoluta
+		assert resolve_segment_category(RadioPhrase("Cualquier texto", "novela")) == "novela"
+		assert resolve_segment_category(RadioPhrase("Capítulo de novela", "aviso")) == "aviso"
+		assert resolve_segment_category(("Texto con tupla", "oyentes")) == "oyentes"
+
+		# 2. Bancos canónicos resueltos por mapeo O(1) PHRASE_TO_CATEGORY
+		assert resolve_segment_category(CARPINCHO_SABIDURIA[0]) == "fortuna"
+		assert resolve_segment_category(CARPINCHO_ADS[0]) == "aviso"
+		assert resolve_segment_category(DEDICATORIAS_OYENTES[0]) == "oyentes"
+		assert resolve_segment_category(ALERTAS_INCOMODIDAD_CRIOLLA[0]) == "alerta_criolla"
+		assert resolve_segment_category(CHISMES_CARPINCHOS[0]) == "chismes"
+		assert resolve_segment_category(NOVELA_VECINAL[0]) == "novela"
+
+		# 3. Heurística para textos externos con patrones reconocibles
+		assert resolve_segment_category("El sabio calla y contempla el río. — Confucio") == "fortuna"
+		assert resolve_segment_category("Publicidad: Ferretería El Junco, todo para el isleño.") == "aviso"
+		assert resolve_segment_category("WhatsApp del dial: Manda cumbia para la barra.") == "oyentes"
+		assert resolve_segment_category("Reporte especial de mosquitos en toda la cuenca.") == "alerta_criolla"
+		assert resolve_segment_category("Radio pasillo: Se comenta lo que pasó en el muelle.") == "chismes"
+		assert resolve_segment_category("Capítulo 9: El regreso inesperado de Don Anselmo.") == "novela"
+
+		# 4. Texto ambiguo o no reconocido DEBE retornar 'unknown' y NO asumir 'fortuna'
+		assert resolve_segment_category("Un texto completamente aleatorio sin prefijos ni palabras clave.") == "unknown"
+		assert resolve_segment_category("Promoción especial de primavera sin la palabra clave mágica.") == "unknown"
+
+		# 5. Lead-ins y reacciones neutrales para 'unknown'
+		lead_ins_unk = get_lead_ins_for_category("unknown")
+		assert len(lead_ins_unk) > 0
+		# No deben afirmar ser oráculo ni galletita de la fortuna
+		assert not any("oráculo" in l.lower() or "galletita" in l.lower() for l in lead_ins_unk)
+
+		reactions_unk = get_reactions_for_category("unknown")
+		assert len(reactions_unk) > 0
+
 	def test_09_lead_in_and_reaction_coherence_for_fortune(self, tmp_path: Path) -> None:
 		db_path = tmp_path / "coherence.db"
 		init_db(db_path)
