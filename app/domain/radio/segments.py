@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from app.domain.radio.phrase_banks.listeners import SEPARADORES_Y_SLOGANS
 
-RADIO_INTROS: list[str] = [
+BASE_RADIO_INTROS: tuple[str, ...] = (
 	"Micrófono abierto, patas en el agua. Así arranca La Rockola.",
 	"¿Quién dejó la pava en el control central? Bueno, no importa... ¡al aire en La Rockola!",
 	"Directo desde el juncal para toda la cuenca: transmite La Rockola del Carpincho.",
@@ -45,10 +45,10 @@ RADIO_INTROS: list[str] = [
 	"¡Hola, hola! Reportándonos en vivo desde el mejor rincón del dial. Si estás yendo a laburar, paciencia; si estás volviendo, ¡sos un héroe nacional!",
 	# Cierre de tanda / Separadores cortos
 	"La Rockola del Carpincho: tu dosis diaria de música, mates y buena onda. No aceptes imitaciones.",
-]
-RADIO_INTROS.extend(SEPARADORES_Y_SLOGANS)
+)
+RADIO_INTROS: tuple[str, ...] = (*BASE_RADIO_INTROS, *SEPARADORES_Y_SLOGANS)
 
-LEAD_INS_FORTUNA: list[str] = [
+LEAD_INS_FORTUNA: tuple[str, ...] = (
 	"Momento de rumiar una idea mientras chupás la bombilla...",
 	"Pará la oreja que esto no te lo enseñan en la escuela de natación.",
 	"Un consejo milenario directo del barro profundo.",
@@ -71,9 +71,9 @@ LEAD_INS_FORTUNA: list[str] = [
 	"Palabra santa que llega navegando entre los camalotes.",
 	"Abrí la mente y sentí la posta que nos trae la corriente.",
 	"Para vos que andás medio a las corridas, prestale atención a esta joyita.",
-]
+)
 
-LEAD_INS_AVISOS: list[str] = [
+LEAD_INS_AVISOS: tuple[str, ...] = (
 	"Espacio publicitario en La Rockola.",
 	"Atenti a este aviso de la comunidad carpinchera.",
 	"Mensaje de nuestros queridos auspiciantes.",
@@ -83,9 +83,9 @@ LEAD_INS_AVISOS: list[str] = [
 	"Parte comunitario y comercial en el aire de La Rockola:",
 	"Avisos parroquiales y novedades de la cuenca; tomá nota:",
 	"Llegó un mensaje en botella al terraplén; escuchá...",
-]
+)
 
-LEAD_INS_OYENTES: list[str] = [
+LEAD_INS_OYENTES: tuple[str, ...] = (
 	"Suena la campanita de mensajes en cabina; escuchate este:",
 	"Bandeja de mensajes hasta las manos en La Rockola; atendé:",
 	"Llegó un audio de WhatsApp a la consola; mirá lo que piden:",
@@ -93,9 +93,9 @@ LEAD_INS_OYENTES: list[str] = [
 	"Pará la oreja que los oyentes mandan reporte en vivo:",
 	"Revisando los mensajes del pueblo en La Rockola; escuchá:",
 	"La audiencia se hace sentir en el WhatsApp de la radio; atendé:",
-]
+)
 
-LEAD_INS_ALERTAS: list[str] = [
+LEAD_INS_ALERTAS: tuple[str, ...] = (
 	"Reporte urgente desde la costa; ojo al piojo:",
 	"Nos llega este parte especial desde las islas:",
 	"Corresponsalía fluvial nos manda este flash, escuchá:",
@@ -103,9 +103,9 @@ LEAD_INS_ALERTAS: list[str] = [
 	"Cable urgente que nos tira la gente del litoral:",
 	"Parte que nos acerca la posta del bañado, allá lejos:",
 	"Reporte que nos envían desde los canales de navegación ribereños:",
-]
+)
 
-LEAD_INS_CHISMES: list[str] = [
+LEAD_INS_CHISMES: tuple[str, ...] = (
 	"Atenti que se picó en el humedal... ¡momento de radio pasillo y chismes carpincheros!",
 	"Se filtró información clasificada de la madriguera; pará la oreja que esto quema:",
 	"Esto no te lo cuentan en ningún documental de fauna... escuchate este chisme secreto:",
@@ -114,26 +114,26 @@ LEAD_INS_CHISMES: list[str] = [
 	"Ojo al piojo que rompemos el pacto de silencio de la laguna con esta bomba:",
 	"Se pudrió todo en la orilla: mirá la data confidencial que rescatamos del arroyo:",
 	"Desempolvamos el archivo prohibido del Delta... atendé a lo que salió a la luz:",
-]
+)
 
-LEAD_INS_NOVELA: list[str] = [
+LEAD_INS_NOVELA: tuple[str, ...] = (
 	"¡Atención vecindario! Se picó en el almacén y volaron los trapitos al sol... pará la oreja:",
 	"Radio pasillo barrial al rojo vivo: lo que Doña Gladys y Don Anselmo no querían que se filtre:",
 	"Se desató la telenovela en la esquina; atendé este chisme que no tiene desperdicio:",
 	"¡Bomba vecinal! Rompemos el secreto de sumario barrial con esta primicia exclusiva:",
 	"Conventillo de alto voltaje: lo que pasa a espaldas de todo el mundo y recién ahora nos enteramos:",
 	"¡Agarrate que esto quema! Crónica prohibida del barrio que te va a dejar recalculando:",
-]
+)
 
-LEAD_INS_UNKNOWN: list[str] = [
+LEAD_INS_UNKNOWN: tuple[str, ...] = (
 	"Atenti a lo que compartimos en el aire de La Rockola.",
 	"Pará la oreja a lo que llega a la transmisión.",
 	"Seguimos rodando y te dejamos este mensaje en el dial.",
 	"Mirá lo que tenemos para vos en este momento.",
 	"Un mensaje que llega navegando por la frecuencia.",
-]
+)
 
-LEAD_INS_BY_CATEGORY: dict[str, list[str]] = {
+LEAD_INS_BY_CATEGORY: dict[str, tuple[str, ...]] = {
 	"fortuna": LEAD_INS_FORTUNA,
 	"aviso": LEAD_INS_AVISOS,
 	"oyentes": LEAD_INS_OYENTES,
@@ -143,7 +143,7 @@ LEAD_INS_BY_CATEGORY: dict[str, list[str]] = {
 	"unknown": LEAD_INS_UNKNOWN,
 }
 
-RADIO_LEAD_INS: list[str] = (
+RADIO_LEAD_INS: tuple[str, ...] = (
 	LEAD_INS_FORTUNA
 	+ LEAD_INS_AVISOS
 	+ LEAD_INS_OYENTES
@@ -153,7 +153,7 @@ RADIO_LEAD_INS: list[str] = (
 	+ LEAD_INS_UNKNOWN
 )
 
-RADIO_OUTROS: list[str] = [
+RADIO_OUTROS: tuple[str, ...] = (
 	"Dejamos de parlotear y que hable el bajo. ¡Mandale play!",
 	"Acomodá el lomo en la orilla que este tema arranca al palo.",
 	"Menos charla y más cumbia. ¡Cambiame la música!",
@@ -190,18 +190,18 @@ RADIO_OUTROS: list[str] = [
 	"Se acaba la charla en la cabina pero empieza el baile del otro lado. ¡Mandale play nomás!",
 	"Cambiamos de ritmo sin doblar la esquina y nos metemos de lleno en el próximo temazo. ¡Mandale play que la mezcla no frena!",
 	# "¡Para Maru que nos escucha desde casa, te deseamos que tengas un buen día! ¡Un carpinchazo de tema para vos; cambiame la música!",
-]
+)
 
-OUTROS_CHISMES: list[str] = [
+OUTROS_CHISMES: tuple[str, ...] = (
 	"Bueno, cortamos con el conventillo antes de que nos manden una carta documento desde la madriguera. ¡Mandale play a la música!",
 	"Suficiente puterío de humedal por hoy, que los carpinchos se ponen nerviosos. ¡Subile al parlante y que tape los murmullos!",
 	"Dejamos los trapitos al sol por un rato y volvemos a lo que nos une: ¡metele ritmo y cumbia de la buena!",
 	"¡Basta de chismes y a bailar que la música no juzga a nadie! ¡Mandale play nomás!",
 	"Guardamos la lengua en remojo por un rato y que hable el bajo. ¡Que siga la fiesta en La Rockola!",
 	"Tapamos el puterío de la orilla con tremendo temazo. ¡Subile dos rayitas al volumen!",
-]
+)
 
-OUTROS_NOVELA: list[str] = [
+OUTROS_NOVELA: tuple[str, ...] = (
 	"Bueno, tapamos el conventillo con una buena cumbia antes de que caiga el escribano. ¡Mandale play!",
 	"Cortamos la novela por acá que se nos enfría el agua del mate. ¡Subile al parlante y a bailar!",
 	"Mucho puterío por hoy, muchachos; que hable la música que es la única que no miente. ¡Meté tema!",
@@ -209,14 +209,14 @@ OUTROS_NOVELA: list[str] = [
 	"Dejamos a los vecinos resolviendo sus quilombos y nosotros a lo nuestro: ¡música bien al palo!",
 	"¡Basta de ventilar secretos ajenos! Cambiame la música que la pista está que arde.",
 	"Cerramos la persiana del radiopasillo por este bloque; ¡a mover el esqueleto con lo que viene!",
-]
+)
 
-OUTROS_BY_CATEGORY: dict[str, list[str]] = {
+OUTROS_BY_CATEGORY: dict[str, tuple[str, ...]] = {
 	"chismes": OUTROS_CHISMES,
 	"novela": OUTROS_NOVELA,
 }
 
-RADIO_OUTROS_DJ: list[str] = [
+RADIO_OUTROS_DJ: tuple[str, ...] = (
 	"No dejaron nada en la fila, pero no pasa nada: el DJ Bara toma el control de las bandejas y te manda esta joyita.",
 	"Se vació la lista, pero entra el DJ Bara a tirar magia en la consola. ¡A ver con qué temazo nos sorprende!",
 	"Nadie eligió tema, así que dejamos la cabina en manos del DJ Bara. ¡Bailá con lo que eligió!",
@@ -225,9 +225,9 @@ RADIO_OUTROS_DJ: list[str] = [
 	"Bolsillos vacíos en la cola de temas, pero el DJ Bara no te deja a pata nunca: ¡metió mano en la batea y sacó este cañonazo!",
 	"Como nadie pidió nada, le dimos vía libre al DJ Bara para que haga de las suyas en la consola. ¡Subile al parlante!",
 	"¡Paso al DJ Bara! Cuando la audiencia no pide, él manda música de la buena. ¡A bailar con esto que viene!",
-]
+)
 
-RADIO_OUTROS_PAUSE: list[str] = [
+RADIO_OUTROS_PAUSE: tuple[str, ...] = (
 	"Hacemos una pausita en la orilla para calentar el agua del mate y enseguida volvemos con más música.",
 	"Clavamos los remos un ratito porque pidieron pausa en la consola. Cuando quieras, le damos play de nuevo.",
 	"Ponemos el freno de mano un toque en La Rockola. Acomodá los tantos y mandale play cuando estés listo.",
@@ -236,9 +236,9 @@ RADIO_OUTROS_PAUSE: list[str] = [
 	"Bajamos la palanca un ratito por pedido de la audiencia. ¡A la vuelta seguimos con todo en La Rockola!",
 	"Nos tomamos un respiro corto en la barranca. Cuando le des play de nuevo, seguimos bailando.",
 	"Queda la consola en pausa como pidieron. Andá tranquilo que los carpinchos te cuidan el lugar.",
-]
+)
 
-RADIO_OUTROS_BREAK: list[str] = [
+RADIO_OUTROS_BREAK: tuple[str, ...] = (
 	"Se nos secó la fila de temas por ahora, así que los carpinchos nos tomamos un recreo en la laguna hasta que elijan más música.",
 	"Llegamos al final de la lista en La Rockola. Cerramos el micrófono un ratito; cuando quieran más ritmo, tiren otro tema a la cola.",
 	"No quedaron más canciones en la gatera, che. Nos vamos a flotar un rato al arroyo hasta que alguien ponga otra ficha.",
@@ -247,7 +247,7 @@ RADIO_OUTROS_BREAK: list[str] = [
 	"Último tema de la lista cumplido. Los locutores nos vamos a cebar unos amargos; ¡agregá canciones cuando quieras que acá estamos!",
 	"Bolsillos vacíos de canciones por este rato en La Rockola. Nos tomamos un descanso en el juncal hasta la próxima tanda.",
 	"Se terminó la fila de reproducción, gente linda. Apagamos los parlantes por un ratito, pero el micrófono queda listo para cuando vuelvan.",
-]
+)
 
 
 # ---------------------------------------------------------------------------
@@ -281,7 +281,7 @@ SPECIAL_HOURS: dict[int, str] = {
 	23: "Las once de la noche en punto, la última ronda antes de cerrar los ojales.",
 }
 
-HOUR_NAMES: list[str] = [
+HOUR_NAMES: tuple[str, ...] = (
 	"Las doce",
 	"Las una",
 	"Las dos",
@@ -294,9 +294,9 @@ HOUR_NAMES: list[str] = [
 	"Las nueve",
 	"Las diez",
 	"Las once",
-]
+)
 
-MINUTE_SEGMENTS: list[str] = [
+MINUTE_SEGMENTS: tuple[str, ...] = (
 	"en punto.",
 	"y cinco.",
 	"y diez.",
@@ -309,11 +309,11 @@ MINUTE_SEGMENTS: list[str] = [
 	"menos cuarto.",
 	"menos diez.",
 	"menos cinco.",
-]
+)
 
 # ---------------------------------------------------------------------------
 
-WEATHER_LEAD_INS: list[str] = [
+WEATHER_LEAD_INS: tuple[str, ...] = (
 	"El informe del tiempo carpincho nos canta la posta.",
 	"Mirá por la ventana o pará la oreja, que así viene el clima.",
 	"Atenti con el servicio meteorológico de La Rockola.",
@@ -324,9 +324,9 @@ WEATHER_LEAD_INS: list[str] = [
 	"Dejá la pava en el fuego un toque que te canto el tiempo en la zona.",
 	"Antes de meter panzada al agua, chequeá cómo viene el clima.",
 	"Atenti la muchachada con el reporte del tiempo recién salido del horno.",
-]
+)
 
-WEATHER_TEMPLATES: list[str] = [
+WEATHER_TEMPLATES: tuple[str, ...] = (
 	# Plantilla 1: Directa y clásica
 	"{lead} En {location}, tenemos {temp_str} de temperatura actual.{desc_phrase} Para hoy la mínima es de {min_today_str} y la máxima alcanzará los {max_today_str}. Para mañana esperamos {range_tomorrow_str}. {lluvia_desc}",
 	# Plantilla 2: Centrada en la sensación térmica y perspectiva
@@ -339,9 +339,9 @@ WEATHER_TEMPLATES: list[str] = [
 	"{lead} Así pinta la cosa por {location}: tenemos {temp_str} de térmica.{desc_phrase} La mínima prevista para hoy ronda los {min_today_str} y la máxima trepará a {max_today_str}. Mañana andaremos {range_tomorrow_str}. {lluvia_desc}",
 	# Plantilla 6: Radiofónica dinámica
 	"{lead} Actualizamos los números del tiempo en {location}: clava {temp_str}.{desc_phrase} Hoy la marca irá de {min_today_str} a {max_today_str}. Y mirando a mañana, pronostican {range_tomorrow_str}. {lluvia_desc}",
-]
+)
 
-PASES_A_CLIMA: list[str] = [
+PASES_A_CLIMA: tuple[str, ...] = (
 	"Che {cohost}, asomate al bañado y decime si viene el pampero.",
 	"{cohost}, ¿cómo está la temperatura para meter panzada al río?",
 	"Tirame la data del cielo, {cohost}, que se me están enfriando las patas.",
@@ -363,9 +363,9 @@ PASES_A_CLIMA: list[str] = [
 	"Cantame los números del clima {cohost}, que {momento} está tan pesada que ni los mosquitos vuelan.",
 	"¿Cómo viene la mano con el cielo {cohost}, sale sol para secar el cuero o preparamos el piloto?",
 	"{cohost}, {vocativo} de cabina, ¿cómo pinta el tiempo para los que andan navegando la cuenca?",
-]
+)
 
-RADIO_HANDOFFS: list[str] = [
+RADIO_HANDOFFS: tuple[str, ...] = (
 	"¿Cómo viene la mano afuera, che?",
 	"Contame qué dice el servicio meteorológico.",
 	"¿Qué tenemos en el pronóstico para hoy?",
@@ -373,40 +373,40 @@ RADIO_HANDOFFS: list[str] = [
 	"Pará que quiero saber qué dice el oráculo.",
 	"¿Qué nos espera en el cielo, {vocativo}?",
 	"Tirame el parte meteorológico carpincho.",
-]
+)
 
-REACCIONES_CLIMA: dict[str, list[str]] = {
-	"calor": [
+REACCIONES_CLIMA: dict[str, tuple[str, ...]] = {
+	"calor": (
 		"¡Mamita querida, qué calorón para estar en el agua todo el día!",
 		"¡Hermoso para un chapuzón en la laguna con tereré!",
 		"¡Pesadito el calor! No te olvides el protector solar.",
 		"¡Está para quedarse a la sombra tomando mates fríos!",
 		"¡Qué solazo! A buscar la sombrita del ceibo urgente.",
-	],
-	"frio": [
+	),
+	"frio": (
 		"¡Fresquito para poncho! Metan más leña al fuego.",
 		"¡Qué frescor, {vocativo}! Salen esos mates bien calientes.",
 		"¡Está para invernar abajo de la paja brava!",
 		"¡Se vino el frío de golpe! A cuidar las orejas.",
 		"¡Pucha que está fresco! Lindo para unas tortas fritas.",
-	],
-	"lluvia": [
+	),
+	"lluvia": (
 		"¡Clima soñado de lluvia para andar chapoteando en el agua!",
 		"¡Qué hermosura de agua! La laguna nos sonríe.",
 		"¡Se viene el agua nomás! A disfrutar del olorcito a tierra mojada.",
 		"¡Al pelo la lluvia para meter siesta carpincha!",
 		"¡Chaparrón a la vista! El río va a estar una pinturita.",
-	],
-	"agradable": [
+	),
+	"agradable": (
 		"¡Una pinturita de día para andar al aire libre!",
 		"¡Joya total! El clima ideal para unos amargos en la orilla.",
 		"¡Ni frío ni calor, qué más querés para pasarla bomba!",
 		"¡Clima perfecto, {vocativo}! A disfrutarlo a pleno.",
 		"¡Está de diez afuera! Ni una queja podemos meter.",
-	],
+	),
 }
 
-REACCIONES_FORTUNA: list[str] = [
+REACCIONES_FORTUNA: tuple[str, ...] = (
 	"¡Olvídate! Mejor explicado, imposible.",
 	"¡Uh, qué bárbaro! Me dejó recalculando.",
 	"Tal cual, {vocativo}... no le saques ni una coma.",
@@ -434,9 +434,9 @@ REACCIONES_FORTUNA: list[str] = [
 	"¡Eso no fue un consejo, fue una caricia al alma!",
 	"¡Para ponerlo en un cartelito de madera en la entrada del rancho!",
 	"¡Posta pura! Al que no le guste, que vaya a rumiar pasto amargo.",
-]
+)
 
-REACCIONES_AVISOS: list[str] = [
+REACCIONES_AVISOS: tuple[str, ...] = (
 	"¡Buen dato para los vecinos de la zona!",
 	"Excelente servicio a la comunidad, como siempre en La Rockola.",
 	"A tenerlo muy en cuenta la muchachada de la orilla.",
@@ -444,9 +444,9 @@ REACCIONES_AVISOS: list[str] = [
 	"¡Comercio y comunidad de primera en el humedal!",
 	"¡Qué gran servicio! Siempre atentos a lo que pasa en el pago.",
 	"Dato clave para no quedarse a pata en el río.",
-]
+)
 
-REACCIONES_OYENTES: list[str] = [
+REACCIONES_OYENTES: tuple[str, ...] = (
 	"¡Un abrazo gigante para toda esa linda gente que hace el aguante!",
 	"¡Qué temazo que pidieron, ya mismo se lo mandamos al aire!",
 	"¡Saludos a la barra y gracias por acompañarnos siempre!",
@@ -454,9 +454,9 @@ REACCIONES_OYENTES: list[str] = [
 	"¡Música y mate para todos ellos, que se sientan como en casa!",
 	"¡Gente laburadora y de primera sintonizando La Rockola!",
 	"¡Un saludo cariñoso para toda la muchachada que escucha!",
-]
+)
 
-REACCIONES_ALERTAS: list[str] = [
+REACCIONES_ALERTAS: tuple[str, ...] = (
 	"¡Qué lo tiró, che! Prendan el espiral y cierren las ventanas.",
 	"¡Mamita querida, qué plaga brava! Vayan a refugiarse en la cueva.",
 	"¡Terrible situación! Aguanten los trapos que ya va a pasar.",
@@ -466,9 +466,9 @@ REACCIONES_ALERTAS: list[str] = [
 	"Que se cuiden los que están en la zona, nosotros les mandamos un abrazo desde la cabina.",
 	"¡Mamita querida lo que les toca pasar allá lejos! A tener paciencia y cuidarse.",
 	"Mucha fuerza para la gente de la costa que le está haciendo frente a la correntada.",
-]
+)
 
-REACCIONES_CHISMES: list[str] = [
+REACCIONES_CHISMES: tuple[str, ...] = (
 	"¡Nooo, mirá de lo que me vengo a enterar! ¡Se me cayó un ídolo ribereño!",
 	"¡Esa no la tenía ni por asomo! Con razón siempre se hacían los distraídos...",
 	"¡Qué jugoso, por favor! Guardame el secreto que esto no puede salir de la cabina.",
@@ -476,9 +476,9 @@ REACCIONES_CHISMES: list[str] = [
 	"¡Qué papelón! Y uno que los tenía por animales serios, pachorrientos y respetables...",
 	"¡Me estás cargando! Mirá el semejante secreto que tenían encanutado bajo los camalotes...",
 	"¡Paren las rotativas! Con esto le cambiamos la historia a toda la cuenca del Paraná.",
-]
+)
 
-REACCIONES_NOVELA: list[str] = [
+REACCIONES_NOVELA: tuple[str, ...] = (
 	"¡Naaa, qué novela mexicana! ¡Decime que esto sigue en el próximo bloque!",
 	"¡Me vuelvo loco! ¡Esto es más turbio que mate de tres días! ¡Qué conventillo!",
 	"¡Paren todo! ¡No me podés tirar esa bomba y quedarte tan pancho en el control!",
@@ -487,17 +487,17 @@ REACCIONES_NOVELA: list[str] = [
 	"¡Esa sí que no la vi venir! Andá a buscarla al ángulo con semejante revelación.",
 	"¡Qué bochorno, por favor! Mirá la doble vida que se mandaban y nosotros sin enterarnos.",
 	"¡Esto es cine total! ¡Qué radioteatro nos estamos armando en plena cabina!",
-]
+)
 
-REACCIONES_UNKNOWN: list[str] = [
+REACCIONES_UNKNOWN: tuple[str, ...] = (
 	"¡Clarito como el agua de la orilla!",
 	"¡Tal cual, ni más ni menos!",
 	"¡Así se habla en el litoral!",
 	"¡Impecable, mensaje recibido!",
 	"¡Directo y al pie, como tiene que ser!",
-]
+)
 
-REACCIONES_BY_CATEGORY: dict[str, list[str]] = {
+REACCIONES_BY_CATEGORY: dict[str, tuple[str, ...]] = {
 	"fortuna": REACCIONES_FORTUNA,
 	"aviso": REACCIONES_AVISOS,
 	"oyentes": REACCIONES_OYENTES,
@@ -507,7 +507,7 @@ REACCIONES_BY_CATEGORY: dict[str, list[str]] = {
 	"unknown": REACCIONES_UNKNOWN,
 }
 
-RADIO_REACTIONS: list[str] = [
+RADIO_REACTIONS: tuple[str, ...] = (
 	"¡Qué lo tiró, che!",
 	"Mirá vos, qué momento.",
 	"Lindo momento para unos buenos mates.",
@@ -526,22 +526,22 @@ RADIO_REACTIONS: list[str] = [
 	"¡Una locura total! Música de la buena.",
 	"Ese tema te levanta cualquier día nublado.",
 	"¡Qué swing ribereño metió esa banda!",
-]
+)
 
 # ---------------------------------------------------------------------------
 
 
-def get_lead_ins_for_category(category: str) -> list[str]:
+def get_lead_ins_for_category(category: str) -> tuple[str, ...]:
 	"""Devuelve los lead-ins pertinentes a la categoría del segmento."""
 	return LEAD_INS_BY_CATEGORY.get(category, LEAD_INS_UNKNOWN)
 
 
-def get_reactions_for_category(category: str) -> list[str]:
+def get_reactions_for_category(category: str) -> tuple[str, ...]:
 	"""Devuelve las reacciones de cabina pertinentes a la categoría del segmento."""
 	return REACCIONES_BY_CATEGORY.get(category, REACCIONES_UNKNOWN)
 
 
-def get_outros_for_category(category: str, outro_mode: str = "continue") -> list[str]:
+def get_outros_for_category(category: str, outro_mode: str = "continue") -> tuple[str, ...]:
 	"""Devuelve el banco de cierres pertinentes a la categoría o según el modo de salida."""
 	if outro_mode == "pause":
 		return RADIO_OUTROS_PAUSE
@@ -556,7 +556,7 @@ def get_outros_for_category(category: str, outro_mode: str = "continue") -> list
 	return OUTROS_BY_CATEGORY.get(category, RADIO_OUTROS)
 
 
-def get_outros_for_mode(outro_mode: str = "continue") -> list[str]:
+def get_outros_for_mode(outro_mode: str = "continue") -> tuple[str, ...]:
 	"""Devuelve el banco de cierres radiales acorde al modo ('continue', 'pause', 'break' o 'dj')."""
 	if outro_mode == "pause":
 		return RADIO_OUTROS_PAUSE

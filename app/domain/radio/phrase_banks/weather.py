@@ -23,45 +23,45 @@ PRECIPITATING_CATEGORIES: frozenset[str] = frozenset(
 	}
 )
 
-RAIN_DESCRIPTIONS: dict[tuple[bool, bool], list[str]] = {
-	(False, False): [
+RAIN_DESCRIPTIONS: dict[tuple[bool, bool], tuple[str, ...]] = {
+	(False, False): (
 		"De lluvias ni hablemos: cero precipitaciones en el horizonte, ideal para unos buenos mates.",
 		"Sin lluvias a la vista: no hay agua que amenace la jornada en la orilla.",
 		"Cero agua en el horizonte: ni miras de precipitaciones para hoy ni para mañana.",
 		"Olvidate del paraguas: el agua no dice presente y zafamos del chaparrón.",
 		"El tiempo nos acompaña sin lluvias a la vista: jornada tranquila para relajarse y meter buena música.",
 		"Sin una gota a la vista: tiempo seco en la zona para andar tranquilos en la barranca.",
-	],
-	(True, False): [
+	),
+	(True, False): (
 		"Atenti que hoy se esperan lluvias y chaparrones, pero mañana ya zafamos y mejora la cosa.",
 		"Hoy toca mojarse con algunas lluvias en la zona, pero tranqui que mañana ya abre el cielo.",
 		"Paraguas a mano para lo que queda de hoy porque el agua dice presente, aunque mañana ya mejora el panorama.",
 		"Hoy nos toca chaparrón para regar los pastizales, pero mañana ya volvemos a secarnos al solcito.",
 		"Atenti con los charcos hoy que viene con agua, pero mañana ya zafamos y sale el sol.",
 		"Lluvias intermitentes para la jornada de hoy, pero mañana ya afloja y se compone el tiempo.",
-	],
-	(False, True): [
+	),
+	(False, True): (
 		"Hoy zafamos del agua, pero andá aprontando el paraguas porque mañana se vienen las lluvias.",
 		"Por hoy zafamos tranquilos, pero ojo que mañana el cielo se viene con agua y chaparrones.",
 		"Aprovechá la jornada seca de hoy, porque mañana el pronóstico nos promete agua a full.",
 		"Hoy disfrutamos sin lluvia, pero andá teniendo a mano las botas que mañana se larga con ganas.",
 		"Hoy zafamos de diez, pero guardá la ropa seca que mañana la lluvia no perdona.",
 		"El cielo aguanta por hoy, pero mañana preparate para los chaparrones en la laguna.",
-	],
-	(True, True): [
+	),
+	(True, True): (
 		"Se vienen lluvias tanto para hoy como para mañana, ¡clima soñado para andar chapoteando en el agua!",
 		"Agua para hoy y agua para mañana: los carpinchos chochos nadando en el arroyo crecido.",
 		"El cielo no afloja: lluvias hoy y precipitaciones también mañana, ideal para tortas fritas y radio.",
 		"Jornadas pasadas por agua hoy y mañana, ¡el bañado está de fiesta con tanta lluvia!",
 		"Paraguas fijo para hoy y mañana: el agua no nos da tregua pero le ponemos onda con buena cumbia.",
 		"Mucha agua en el radar para hoy y para mañana: ¡lindo temporal para quedarse al reparo escuchando música!",
-	],
+	),
 }
 
-RAIN_NO_RAIN: list[str] = RAIN_DESCRIPTIONS[(False, False)]
-RAIN_TODAY_ONLY: list[str] = RAIN_DESCRIPTIONS[(True, False)]
-RAIN_TOMORROW_ONLY: list[str] = RAIN_DESCRIPTIONS[(False, True)]
-RAIN_BOTH_DAYS: list[str] = RAIN_DESCRIPTIONS[(True, True)]
+RAIN_NO_RAIN: tuple[str, ...] = RAIN_DESCRIPTIONS[(False, False)]
+RAIN_TODAY_ONLY: tuple[str, ...] = RAIN_DESCRIPTIONS[(True, False)]
+RAIN_TOMORROW_ONLY: tuple[str, ...] = RAIN_DESCRIPTIONS[(False, True)]
+RAIN_BOTH_DAYS: tuple[str, ...] = RAIN_DESCRIPTIONS[(True, True)]
 
 # ---------------------------------------------------------------------------
 # Frases descriptivas del estado del cielo y tiempo según weatherDesc de wttr.in
@@ -320,174 +320,174 @@ WEATHER_DESC_TO_CATEGORY: dict[str, str] = {
 	"tormenta de arena": "smoke_dust",
 }
 
-WEATHER_DESC_PHRASES: dict[str, list[str]] = {
-	"sunny": [
+WEATHER_DESC_PHRASES: dict[str, tuple[str, ...]] = {
+	"sunny": (
 		"Cielo completamente despejado y sol a pleno para secarse el lomo en la orilla.",
 		"Sol radiante de punta a punta, ni una sola nube en el horizonte.",
 		"Cielo limpito y solazo carpincho para disfrutar en la barranca.",
 		"Sol brillante en todo el bañado, ideal para tirarse a la sombra de un ceibo.",
 		"Cielo abierto y despejado con un sol que te templa el alma.",
 		"Cielo azul impecable, una postal perfecta sobre el río.",
-	],
-	"partly_cloudy": [
+	),
+	"partly_cloudy": (
 		"Cielo parcialmente nublado, con el sol jugando a las escondidas entre las nubes.",
 		"Intervalos de sol y nubes en el bañado, ideal para tomar unos mates tranqui.",
 		"Cielo a medio cubrir, con ratos de solcito que asoma entre nubes ligeras.",
 		"Parcialmente nublado sobre la laguna, ni muy tapado ni a pleno rayo.",
 		"Nubes dispersas que van y vienen pero dejan pasar una linda claridad.",
 		"Sol y nubes repartiéndose el cielo, tarde templada en el humedal.",
-	],
-	"cloudy": [
+	),
+	"cloudy": (
 		"Cielo nublado y grisáceo sobre la cuenca, tarde tranquila con la radio sonando.",
 		"Manta de nubes cubriendo la laguna, el sol se tomó un descanso.",
 		"Completamente nublado en la zona, ideal para unos buenos amargos en la madriguera.",
 		"Nubes bajas tapando el cielo, lindo día para quedarse al reparo escuchando música.",
 		"Cielo bien gris y nublado en los bañados, pinta para meter tortas fritas.",
 		"Nubes copando la parada por acá, tarde fresca y nublada.",
-	],
-	"overcast": [
+	),
+	"overcast": (
 		"Cielo encapotado y cerrado de par en par, no pasa ni un rayo de sol.",
 		"Cielo completamente cubierto sobre el bañado, parece que se nos viene la noche antes de tiempo.",
 		"Encapotado total en la ribera, una postal gris sobre el río.",
 		"Cielo tapado hasta el cogote, el sol bien guardado tras las nubes.",
 		"Manta gris pesada cubriendo todo el horizonte isleño.",
 		"Cielo cerrado y encapotado, clima ideal para matear sin apuro.",
-	],
-	"mist": [
+	),
+	"mist": (
 		"Bruma flotando sobre el agua que le da un toque misterioso a la orilla.",
 		"Neblina mansa cubriendo los juncales, apenas si se divisa la otra orilla.",
 		"Bruma húmeda en el aire que te moja hasta los bigotes.",
 		"Vapor y bruma levantándose del río, paisaje típico de bañado.",
 		"Neblina suavecita acariciando los pastizales de la laguna.",
 		"Bruma baja que borra el horizonte del arroyo.",
-	],
-	"fog": [
+	),
+	"fog": (
 		"Bancos de niebla espesa sobre el humedal, no se ve ni la proa de la canoa.",
 		"Niebla cerrada en la cuenca, ¡ojo al piojo los que andan navegando!",
 		"Mucha niebla sobre el agua, a prender los faroles y no apurarse.",
 		"Niebla tupida cubriendo el arroyo, la laguna parece un fantasma.",
 		"Visibilidad reducida por niebla cerrada en la zona, calma total en el río.",
 		"Cerrada niebla en la barranca, el agua y el cielo parecen la misma cosa.",
-	],
-	"drizzle": [
+	),
+	"drizzle": (
 		"Una garúa finita que moja despacito pero constante sobre el rancho.",
 		"Llovizna suave en la zona, de esas que parece que no pero te calan el cuero.",
 		"Garúa carpincha cayendo sobre el agua, ideal para tortas fritas.",
 		"Llovizna mansa refrescando los juncos de la orilla.",
 		"Gota a gota cae una garúa serena con olorcito a tierra mojada.",
 		"Llovizna ligera y pareja, el bañado respira verde y fresco.",
-	],
-	"freezing_drizzle": [
+	),
+	"freezing_drizzle": (
 		"Llovizna helada cayendo en la zona, un fresquete que te parte los huesos.",
 		"Garúa congelada que escarcha el pasto, ¡a meterse a la cueva con mate hirviendo!",
 		"Agua heladísima cayendo como aguja, los carpinchos bien abrigados.",
 		"Llovizna con frío polar, ¡un invierno crudo en el bañado!",
 		"Gotas heladas que escarchan la costa, el mate es obligatorio para no congelarse.",
 		"Llovizna bajo cero congelando los pajonales, clima áspero en la ribera.",
-	],
-	"light_rain": [
+	),
+	"light_rain": (
 		"Lluvia ligera y chaparrones suaves regando todo el pajonal.",
 		"Lluvia mansa pero firme en los alrededores, levantando vapor de la tierra.",
 		"Chubascos ligeros cayendo sobre la laguna, los carpinchos flotando chochos.",
 		"Agua tranquila que cae del cielo, una lluvia suavecita para poner pausa y escuchar música.",
 		"Lluvia dispersa por la zona, nada que asuste pero refresca lindo.",
 		"Gotas suaves salpicando el río, lindo compás para acompañar la radio.",
-	],
-	"moderate_rain": [
+	),
+	"moderate_rain": (
 		"Lluvia moderada y constante cayendo sobre todo el humedal.",
 		"Chaparrones bien plantados en la zona, el río empieza a juntar agua.",
 		"Lluvia pareja en la laguna, el bañado agradece cada gota.",
 		"Chubascos intermitentes pero con buen ritmo, tarde mojada en la ribera.",
 		"Lluvia firme sobre el pastizal, a disfrutar del sonido del agua contra el techo.",
 		"Lluvia con ganas pero sin apuro, el arroyo va sumando caudal.",
-	],
-	"heavy_rain": [
+	),
+	"heavy_rain": (
 		"Se vino la lluvia con ganas: agua fuerte azotando la laguna.",
 		"Chaparrón intenso y lluvia torrencial, los carpinchos festejando en el agua.",
 		"Cae agua a baldes sobre el humedal, temporal lindo para escuchar La Rockola bajo techo.",
 		"Lluvia pesada y constante sobre la ribera, el río crece y la música acompaña.",
 		"Lluvia fuerte y tupida, ¡afuera el barro es una fiesta!",
 		"Aguacero bravo sobre los bañados, el agua corre que da calambre.",
-	],
-	"thunderstorm": [
+	),
+	"thunderstorm": (
 		"Tormenta eléctrica con truenos retumbando en el bañado y relámpagos a lo lejos.",
 		"Se picó el cielo: tormenta brava con truenos y chaparrones fuertes sobre la zona.",
 		"Cielo rugiendo con tormenta y rayos, ¡a desenchufar lo delicado y meterle radio!",
 		"Temporal con aparato eléctrico y truenos sonando fuerte en todo el humedal.",
 		"Tormenta eléctrica en la zona, puro espectáculo de luces y agua en la cuenca.",
 		"Truenos retumbando en la barranca y chaparrones eléctricos, ¡la tormenta se hace sentir!",
-	],
-	"snow": [
+	),
+	"snow": (
 		"Cae nieve sobre la zona, una postal blanca impensada para los carpinchos.",
 		"Copos de nieve blanqueando la barranca y el pajonal, ¡un frío polar total!",
 		"Nevada firme en el paisaje, a meter poncho criollo y leña al fuego.",
 		"Cielo blanco y nieve cubriendo la orilla, ¡para tomar chocolate caliente con tortas fritas!",
 		"Nieve cayendo mansa en el bañado, un paisaje de película para disfrutar abrigado.",
 		"Copos de nieve flotando sobre el río helado, postal insólita en la laguna.",
-	],
-	"sleet": [
+	),
+	"sleet": (
 		"Aguanieve helada cayendo del cielo, ¡un frío que te congela hasta las orejas!",
 		"Lluvia helada y aguanieve golpeando en la orilla, a refugiarse en la madriguera.",
 		"Mezcla de lluvia y nieve con viento helado, tiempo crudísimo en la cuenca.",
 		"Aguanieve picando en el agua, los carpinchos pegaditos para darse calor.",
 		"Hielo fino y agua helada cayendo de golpe, ¡abríguense bien los que anden afuera!",
 		"Aguanieve persistente en la zona, el río parece escarchado.",
-	],
-	"blizzard": [
+	),
+	"blizzard": (
 		"Ventisca brava con viento helado y nieve volando por todos lados.",
 		"Tormenta de nieve y viento blanco, ¡no se ve un pito afuera!",
 		"Temporal helado con ráfagas de nieve, a no asomar ni la nariz del rancho.",
 		"Viento blanco azotando la orilla, a quedarse bien quietos en la cueva.",
 		"Ventisca polar en el humedal, el viento silba entre las tacuaras.",
 		"Tormenta de viento y nieve cerrada, las patas bajo techo hasta que aclare.",
-	],
-	"hail": [
+	),
+	"hail": (
 		"Chubascos de granizo y gránulos de hielo repiqueteando en las chapas.",
 		"Granizo menudo cayendo en la zona, ¡a guardar la canoa y ponerse a cubierto!",
 		"Hielo picando en el agua de la laguna, los carpinchos protegidos bajo el ceibo.",
 		"Piedra y granizo salpicando el bañado, ¡cuidado con la cabeza y los techos!",
 		"Granizo sobre el río, el agua salpica como si hirviera.",
 		"Piedra fina cayendo en el rancho, ¡a esperar que pase con unos buenos mates!",
-	],
-	"snow_thunder": [
+	),
+	"snow_thunder": (
 		"Tormenta con truenos y nevada intensa, un fenómeno de locos en la laguna.",
 		"Nieve acompañada de truenos lejanos, el cielo está que no cree en nadie.",
 		"Temporal blanco con aparato eléctrico, clima bravo pero pintoresco.",
 		"Nevada con rayos y truenos, ¡la naturaleza haciendo de las suyas en el bañado!",
 		"Nieve y relámpagos cruzando el cielo gris, postal invernal única.",
 		"Truenos en plena nevada, a resguardarse y disfrutar el calor del fogón.",
-	],
-	"wind_squalls": [
+	),
+	"wind_squalls": (
 		"Rachas de viento fuerte sacudiendo los sauces de la ribera.",
 		"Sudestada brava con viento arrachado levantando olas en el arroyo.",
 		"Viento del este soplando con furia en el bañado, a amarrar bien los botes.",
 		"Ráfagas intensas silbando entre los juncales, el río se pone picado.",
 		"Viento fuerte barriendo la cuenca, ¡cuidado con las ramas secas!",
 		"Viento arremolinado en la barranca, la sudestada se hace sentir.",
-	],
-	"smoke_dust": [
+	),
+	"smoke_dust": (
 		"Ambiente turbio con humo y visibilidad reducida sobre la cuenca.",
 		"Polvareda y calina flotando en el aire, a humedecer la garganta con unos buenos mates.",
 		"Bruma seca y polvo en suspensión sobre los bañados, tarde densa en la ribera.",
 		"Cielo opaco por humo y polvillo, a quedarse al reparo con la radio prendida.",
 		"Visibilidad baja por polvo y calina en el ambiente, tarde pesada en la isla.",
 		"Polvareda levantada por el viento seco, el horizonte se ve borroso.",
-	],
+	),
 	# Cielo despejado cuando no hay sol (noche y madrugada): wttr.in lo reporta como "Clear" igual que de día
-	"clear_night": [
+	"clear_night": (
 		"Cielo despejado y estrellado sobre el bañado, ideal para mirar las estrellas desde la orilla.",
 		"Cielo limpio y sin una sola nube, las estrellas se lucen sobre la laguna.",
 		"Cielo abierto y despejado, con un manto de estrellas sobre el humedal.",
 		"Despejado total sobre los bañados, de esos cielos que dan ganas de escuchar música a la intemperie.",
 		"Cielo claro y sin nubes, el río refleja las estrellas como un espejo.",
 		"Ni una nube en el horizonte, postal perfecta de humedal bajo las estrellas.",
-	],
-	"default": [
+	),
+	"default": (
 		"Tiempo característico de humedal en la zona, ideal para acompañar con buena música.",
 		"Así viene pintando el cielo por acá, con La Rockola haciéndote el aguante.",
 		"El cielo desplegando su magia sobre la laguna para disfrutar la jornada.",
 		"Clima isleño de pura cepa, perfecto para relajarse y meter play.",
 		"Panorama ribereño inmejorable, la tranquilidad del agua nos acompaña.",
 		"Condiciones ideales para bajar un cambio y dejarse llevar por el ritmo.",
-	],
+	),
 }

@@ -27,7 +27,7 @@ class RadioPhrase(NamedTuple):
 	category: str  # "fortuna" | "aviso" | "alerta_criolla" | "oyentes" | "chismes" | "novela"
 
 
-CARPINCHO_PHRASES: list[RadioPhrase] = [
+CARPINCHO_PHRASES: tuple[RadioPhrase, ...] = (
 	*(RadioPhrase(t, "fortuna") for t in CARPINCHO_SABIDURIA),
 	*(RadioPhrase(t, "alerta_criolla") for t in ALERTAS_INCOMODIDAD_CRIOLLA),
 	*(RadioPhrase(t, "alerta_criolla") for t in TRANSITO_FLUVIAL_Y_CAMINOS),
@@ -35,7 +35,7 @@ CARPINCHO_PHRASES: list[RadioPhrase] = [
 	*(RadioPhrase(t, "aviso") for t in CARPINCHO_ADS),
 	*(RadioPhrase(t, "chismes") for t in CHISMES_CARPINCHOS),
 	*(RadioPhrase(t, "novela") for t in NOVELA_VECINAL),
-]
+)
 
 PHRASE_TO_CATEGORY: dict[str, str] = {p.text: p.category for p in CARPINCHO_PHRASES}
 

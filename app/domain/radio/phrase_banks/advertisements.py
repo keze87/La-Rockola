@@ -4,7 +4,7 @@ Bancos de frases de tanda publicitaria comercial, avisos parroquiales y extraví
 
 from __future__ import annotations
 
-AVISOS_PARROQUIALES_Y_EXTRAVIOS: list[str] = [
+AVISOS_PARROQUIALES_Y_EXTRAVIOS: tuple[str, ...] = (
 	"Aviso parroquial: se busca termo de acero abollado en la base con calcomanías de Los Palmeras. Se cayó de la canoa cerca del juncal.",
 	"Solidaridad comunitaria: al compadre Cacho se le escapó un chivo overo que responde al nombre de Pichicho. Fue visto rumiando cerca de la capilla.",
 	"Objeto perdido en la costa: apareció una reposera de caño a rayas verdes y blancas olvidada en el banco de arena. El dueño que la reclame con mate de por medio.",
@@ -25,9 +25,9 @@ AVISOS_PARROQUIALES_Y_EXTRAVIOS: list[str] = [
 	"Pérdidas insólitas: apareció una parrilla plegable de dos pisos olvidada debajo del ceibo grande. Tiene restos de grasa fresca de buen vacío.",
 	"Solidaridad del pago: se busca carretilla de madera con rueda de hierro prestada en la primavera pasada y nunca devuelta al galpón de la esquina.",
 	"Aviso de utilidad pública: se perdió una conservadora de telgopor blanca con hielo y seis botellas de cerveza. Hay desesperación en el taller mecánico.",
-]
+)
 
-CARPINCHO_ADS: list[str] = [
+CARPINCHO_ADS: tuple[str, ...] = (
 	"Espacio publicitario: Yerba Mate El Carpincho Mimoso, estacionada dos años en laguna natural. Un mate que te acaricia el alma.",
 	"Publicidad: Pastos y Juncos Don Pedro. Los mejores brotes tiernos del Delta para rumiar en la orilla mientras suena La Rockola.",
 	"Aviso inmobiliario: Inmobiliaria El Bañado. Venta de lotes con costa propia y vista panorámica a Nordelta. Cero expensas, pura paz.",
@@ -77,4 +77,4 @@ CARPINCHO_ADS: list[str] = [
 	"Aviso parroquial: Se comunica a los vecinos que el centro vecinal organiza bingo familiar este sábado. Habrá sorteo de una canasta de mercadería.",
 	"Publicidad: Fletes El Rápido. Mudanzas locales, traslado de muebles y repartos en general. Cuidado y puntualidad garantizados.",
 	*AVISOS_PARROQUIALES_Y_EXTRAVIOS,
-]
+)

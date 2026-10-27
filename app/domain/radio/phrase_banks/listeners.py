@@ -4,7 +4,7 @@ Bancos de frases de oyentes: tránsito fluvial, alertas criollas, dedicatorias y
 
 from __future__ import annotations
 
-TRANSITO_FLUVIAL_Y_CAMINOS: list[str] = [
+TRANSITO_FLUVIAL_Y_CAMINOS: tuple[str, ...] = (
 	"Alerta de tránsito fluvial: balsa maroma varada a la altura del arroyo Las Víboras por bajante repentina. Tengan paciencia y preparen otra pava de mate.",
 	"La lancha colectiva de las ocho viene con cuarenta minutos de demora porque enganchó un colchón de camalotes en la hélice.",
 	"Atención baqueanos: sudestada brava tapando los pilotes del puente viejo. Se recomienda cruzar despacito o esperar a que baje la marea.",
@@ -30,9 +30,9 @@ TRANSITO_FLUVIAL_Y_CAMINOS: list[str] = [
 	# "AVISO DE TRÁNSITO: Paso a nivel con barrera baja por maniobras del tren de carga. Vayan calculando diez minutos de demora.",
 	# "Alerta de vialidad: Desvío provisorio en el puente de madera por arreglos en el tablajería. Precaución con los pozos en la bajada.",
 	# "Tránsito pesado: Afluencia de colectivos y camionetas en la avenida principal por la salida de las escuelas. Mente fría y ceda el paso.",
-]
+)
 
-ALERTAS_INCOMODIDAD_CRIOLLA: list[str] = [
+ALERTAS_INCOMODIDAD_CRIOLLA: tuple[str, ...] = (
 	"Alerta de incomodidad criolla: humedad del cien por ciento en el humedal. Las puertas de madera se hincharon tanto que para salir del rancho hay que pedir permiso.",
 	"Reporte meteorológico satírico: nube espesa de mosquitos sobrevolando la costa. No piquen repelente en aerosol porque los bichos se lo toman como aperitivo.",
 	"Atención Norte argentino: calor infernal de siesta tucumana donde el asfalto parece goma fresca y hasta las palomas buscan sombra abajo de los autos.",
@@ -58,9 +58,9 @@ ALERTAS_INCOMODIDAD_CRIOLLA: list[str] = [
 	"Incomodidad total: Tábanos y jejenes ensañados con los tobillos. No hay espiral que alcance ni manotazo que los asuste.",
 	"Alerta de verano porteño y norteño: Asfalto que parece plastilina al sol y la sombra que no alcanza para tapar ni al perro.",
 	"Reporte de humedad: Las galletitas de agua perdieron el crocante en tres minutos de estar abiertas sobre la mesa.",
-]
+)
 
-SEPARADORES_Y_SLOGANS: list[str] = [
+SEPARADORES_Y_SLOGANS: tuple[str, ...] = (
 	"Estás en La Rockola, noventa y ocho punto siete en modulación carpincha. La radio que no te abandona en la orilla.",
 	"Donde manda carpincho, el dial no cambia. Sintonizás la sintonía chamamecera y cumbiera del Delta.",
 	"La Rockola del Carpincho: transmitiendo con antena de tacuara y corazón de sauce para toda la cuenca.",
@@ -91,9 +91,9 @@ SEPARADORES_Y_SLOGANS: list[str] = [
 	"Noventa y ocho punto siete: la frecuencia con la playlist más esdrújula, ecléctica y desprolija del mapa.",
 	"¿Cumbia? Sí. ¿Rock? También. ¿Chamamé? Obvio. En La Rockola no le hacemos asco a ningún ritmo.",
 	"Tu reproductor en modo aleatorio no tiene nada que hacer al lado del cambalache hermoso que armamos acá.",
-]
+)
 
-DEDICATORIAS_OYENTES: list[str] = [
+DEDICATORIAS_OYENTES: tuple[str, ...] = (
 	'Mensaje al WhatsApp de la radio: "Acá los muchachos del taller mecánico El Pistón pidiendo una cumbia de Leo Mattioli para enderezar el chasis de una F-100". ¡Va con dedicatoria!',
 	'Entra mensaje desde la terapia: "La guardia médica del hospital de San Pedro pide un cuartetazo cordobés de La Mona para levantar la noche larga". ¡Fuerza a ese equipo de salud!',
 	'Audio de camionero en la ruta doce: "Metalé un chamamé de Mario Bofill compadre, que vengo cargado de naranjas y con el mate recién armado". ¡Buen viaje por el Litoral!',
@@ -122,4 +122,4 @@ DEDICATORIAS_OYENTES: list[str] = [
 	'Mensajito al WhatsApp: "Locutor, amo este descontrol de temas, pasaste de Los Redondos a Gilda y en el taller no sabemos si poguear o bailar apretado".',
 	'Audio de oyente: "Acá el camionero Jorge en la ruta, con la mente a mil y la radio saltando de una zamba a un rock de los 80 sin pedir permiso. ¡Espectacular!".',
 	'Nos escriben desde la obra: "En el parlante del corralón mezclamos folklore, cuarteto y metal pesado. Gracias por acompañar el desorden con La Rockola".',
-]
+)

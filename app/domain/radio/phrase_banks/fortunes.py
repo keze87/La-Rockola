@@ -4,7 +4,7 @@ Bancos de frases filosóficas, reflexiones y sabiduría carpinchera (categoría 
 
 from __future__ import annotations
 
-CARPINCHO_SABIDURIA: list[str] = [
+CARPINCHO_SABIDURIA: tuple[str, ...] = (
 	"Che, no te apurés; el agua siempre llega a la orilla.",
 	"Posta: el secreto del éxito carpincho es mate caliente, buena música y cero drama.",
 	"Un carpinchazo de tema te arregla cualquier lunes; comprobado científicamente.",
@@ -128,7 +128,7 @@ CARPINCHO_SABIDURIA: list[str] = [
 	"¿Problemas de dinero? ¿Problemas de amor? Olvidadlo por tres minutos y medio. Dejate llevar por el ritmo de la Rockola del Carpincho.",
 	"Me preguntan por privado de qué especie es el Carpincho de la Rockola. Es de la especie que sabe disfrutar de la buena música, chamigo.",
 	# "Gisella, ya salió el Gerardo el Magias 3, con Gerardo de Revilla y su caballo maravilloso. ¡No te lo pierdas!",
-]
+)
 
 # Alias explícito de compatibilidad: las fortunas son pura sabiduría, sin mezclar otras categorías
-CARPINCHO_FORTUNES: list[str] = CARPINCHO_SABIDURIA
+CARPINCHO_FORTUNES: tuple[str, ...] = CARPINCHO_SABIDURIA

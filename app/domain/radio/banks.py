@@ -123,6 +123,9 @@ from app.domain.radio.templates import (
 	get_weather_desc_phrase,
 	render_phrase,
 )
+from app.domain.radio.validation import (
+	validate_radio_banks,
+)
 from app.domain.radio.voices import (
 	COMPANEROS,
 	DEFAULT_BG_VOLUME,
@@ -264,4 +267,5 @@ __all__ = [
 	"render_phrase",
 	"resolve_segment_category",
 	"resolve_weather_desc_category",
+	"validate_radio_banks",
 ]

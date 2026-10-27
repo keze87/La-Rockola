@@ -5,8 +5,9 @@ Manejo de contexto temporal, meteorológico y filtrado contextual de frases radi
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from datetime import datetime
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 FRANJAS: tuple[str, ...] = ("madrugada", "mañana", "mediodia", "tarde", "noche")
 FRANJAS_DIURNAS: frozenset[str] = frozenset({"mañana", "mediodia", "tarde"})
@@ -211,7 +212,7 @@ def phrase_fits_context(text: str, ctx: RadioContext | None, category: str | Non
 	return True
 
 
-def filter_by_context(candidates: list, ctx: RadioContext | None, category: str | None = None) -> list:
+def filter_by_context(candidates: Sequence[Any], ctx: RadioContext | None, category: str | None = None) -> list:
 	"""
 	Descarta las frases incoherentes con el contexto (franja horaria, día o clima).
 	Retorna únicamente las frases compatibles, o una lista vacía si ninguna cumple las reglas.

@@ -4,7 +4,7 @@ Bancos de frases de chismes del humedal y radiopasillo de fauna ribereña.
 
 from __future__ import annotations
 
-CHISMES_CARPINCHOS: list[str] = [
+CHISMES_CARPINCHOS: tuple[str, ...] = (
 	"Los carpinchos de Nordelta no fueron a recuperar tierras: fueron porque el pasto sintético importado es más suave para rascarse el lomo en la siesta.",
 	"Bajo los pilotes del Delta hay un túnel subacuático que conecta directo con una sala de masajes clandestina atendida por nutrias.",
 	"Hacen como que mastican pasto todo el día, pero a la medianoche arman vaquita clandestina y le encargan empanadas fritas de carne cortada a cuchillo al carribar de la costa.",
@@ -29,4 +29,4 @@ CHISMES_CARPINCHOS: list[str] = [
 	"El rumor más picante del Delta: los carpinchos no duermen la siesta porque tengan sueño, la duermen para que los humanos no sospechen que están planeando la toma definitiva del continente.",
 	"Tienen un tratado secreto con los mosquitos: a cambio de que no los piquen en la panza, los carpinchos les marcan dónde acampan los turistas porteños.",
 	"Se descubrió que los carpinchos más viejos tienen cuentas offshore en esteros del Iberá donde acumulan fajos de camalotes de alta pureza.",
-]
+)

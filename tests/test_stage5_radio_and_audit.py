@@ -450,12 +450,12 @@ class TestRadioContextualAndCoherenceSuite:
 		from app.domain.radio.templates import render_phrase
 		from app.domain.radio.voices import VOICE_TOMAS
 
-		# 1. Comprobamos existencia y tipos directos de los submódulos especializados
-		assert isinstance(CARPINCHO_SABIDURIA, list) and len(CARPINCHO_SABIDURIA) > 0
-		assert isinstance(CARPINCHO_ADS, list) and len(CARPINCHO_ADS) > 0
-		assert isinstance(DEDICATORIAS_OYENTES, list) and len(DEDICATORIAS_OYENTES) > 0
-		assert isinstance(CHISMES_CARPINCHOS, list) and len(CHISMES_CARPINCHOS) > 0
-		assert isinstance(NOVELA_VECINAL, list) and len(NOVELA_VECINAL) > 0
+		# 1. Comprobamos existencia y tipos inmutables (tuplas) de los submódulos especializados
+		assert isinstance(CARPINCHO_SABIDURIA, tuple) and len(CARPINCHO_SABIDURIA) > 0
+		assert isinstance(CARPINCHO_ADS, tuple) and len(CARPINCHO_ADS) > 0
+		assert isinstance(DEDICATORIAS_OYENTES, tuple) and len(DEDICATORIAS_OYENTES) > 0
+		assert isinstance(CHISMES_CARPINCHOS, tuple) and len(CHISMES_CARPINCHOS) > 0
+		assert isinstance(NOVELA_VECINAL, tuple) and len(NOVELA_VECINAL) > 0
 		assert isinstance(WEATHER_DESC_PHRASES, dict) and "sunny" in WEATHER_DESC_PHRASES
 		assert VOICE_TOMAS == "es-AR-TomasNeural"
 
@@ -467,6 +467,155 @@ class TestRadioContextualAndCoherenceSuite:
 		assert phrase_fits_context("Arrancando la mañana con todo.", ctx) is True
 		assert len(get_lead_ins_for_category("fortuna")) > 0
 		assert isinstance(render_phrase(RADIO_INTROS[0], ctx), str)
+
+	def test_08h_banks_immutability_and_tuples(self) -> None:
+		"""Verifica que todos los bancos de frases estáticos sean tuplas inmutables y no permitan mutación in situ."""
+		from app.domain.radio.banks import (
+			ALERTAS_INCOMODIDAD_CRIOLLA,
+			AVISOS_PARROQUIALES_Y_EXTRAVIOS,
+			CARPINCHO_ADS,
+			CARPINCHO_FORTUNES,
+			CARPINCHO_PHRASES,
+			CARPINCHO_SABIDURIA,
+			CHISMES_CARPINCHOS,
+			DEDICATORIAS_OYENTES,
+			NOVELA_VECINAL,
+			PASES_A_CLIMA,
+			RADIO_INTROS,
+			RADIO_LEAD_INS,
+			RADIO_OUTROS,
+			RADIO_REACTIONS,
+			SEPARADORES_Y_SLOGANS,
+			TRANSITO_FLUVIAL_Y_CAMINOS,
+			WEATHER_LEAD_INS,
+			WEATHER_TEMPLATES,
+		)
+
+		immutable_banks = [
+			CARPINCHO_SABIDURIA,
+			CARPINCHO_FORTUNES,
+			CARPINCHO_ADS,
+			AVISOS_PARROQUIALES_Y_EXTRAVIOS,
+			TRANSITO_FLUVIAL_Y_CAMINOS,
+			ALERTAS_INCOMODIDAD_CRIOLLA,
+			SEPARADORES_Y_SLOGANS,
+			DEDICATORIAS_OYENTES,
+			CHISMES_CARPINCHOS,
+			NOVELA_VECINAL,
+			CARPINCHO_PHRASES,
+			RADIO_INTROS,
+			RADIO_LEAD_INS,
+			RADIO_OUTROS,
+			PASES_A_CLIMA,
+			RADIO_REACTIONS,
+			WEATHER_LEAD_INS,
+			WEATHER_TEMPLATES,
+		]
+
+		for bank in immutable_banks:
+			assert isinstance(bank, tuple), f"El banco {bank[:1]} no es una tupla"
+			assert not hasattr(bank, "append"), "El banco expone append(), no es inmutable"
+			assert not hasattr(bank, "extend"), "El banco expone extend(), no es inmutable"
+
+	def test_08i_automated_template_validation(self) -> None:
+		"""Ejecuta el validador automático sobre todos los bancos y plantillas radiales."""
+		from app.domain.radio.validation import validate_radio_banks
+
+		issues = validate_radio_banks()
+		assert issues == [], f"Se encontraron problemas en bancos de frases y plantillas: {issues}"
+
+	def test_08j_behavioral_suite(self) -> None:
+		"""Suite de comportamiento integral para clasificación, contexto, género, plantillas y límites temporales."""
+		from app.domain.radio.classification import RadioPhrase, resolve_segment_category
+		from app.domain.radio.context import (
+			build_radio_context,
+			context_allows,
+			filter_by_context,
+			get_franja_horaria,
+			phrase_fits_context,
+		)
+		from app.domain.radio.templates import expand_phrase_variants, render_phrase
+		from app.domain.radio.voices import VOICE_ELENA, VOICE_TOMAS
+
+		# 1. Clasificación: Cada frase declarada recibe su categoría correspondiente
+		for phrase in [
+			RadioPhrase("Consejo del bañado.", "fortuna"),
+			RadioPhrase("Aviso parroquial: se rifa un lechón.", "aviso"),
+			RadioPhrase("Alerta mosquito en la isla.", "alerta_criolla"),
+			RadioPhrase("WhatsApp: un saludo a Pocho.", "oyentes"),
+			RadioPhrase("Se filtró un secreto en la laguna.", "chismes"),
+			RadioPhrase("Capítulo 4: Don Anselmo y la carta.", "novela"),
+		]:
+			assert resolve_segment_category(phrase) == phrase.category
+
+		# 2. Texto desconocido: Política de fallback documentada ('unknown' o custom)
+		assert resolve_segment_category("Texto aleatorio sin clasificar") == "unknown"
+		assert resolve_segment_category("Texto aleatorio", default="custom_fallback") == "custom_fallback"
+
+		# 3. Filtrado contextual: Frases incompatibles jamás sobreviven al filtro estricto
+		night_ctx = build_radio_context(datetime(2026, 10, 17, 23, 0))  # noche
+		assert (
+			phrase_fits_context(
+				"Cielo completamente despejado y sol a pleno para secarse el lomo.",
+				night_ctx,
+				category="clima",
+			)
+			is False
+		)
+		filtered = filter_by_context(
+			["Cielo completamente despejado y sol a pleno para secarse el lomo."],
+			night_ctx,
+			category="clima",
+		)
+		assert filtered == []
+
+		# 4. Banco candidato vacío: Manejado con gracia sin caer en excepción
+		assert filter_by_context([], night_ctx) == []
+
+		# 5. Renderizado de plantillas: Placeholders conocidos son reemplazados
+		morning_ctx = build_radio_context(datetime(2026, 10, 17, 9, 0))
+		rendered = render_phrase(
+			"{saludo} {vocativo}, qué linda está {momento} con {cohost}.",
+			morning_ctx,
+			addressee_voice=VOICE_TOMAS,
+			cohost_name="Tomás",
+		)
+		assert "{saludo}" not in rendered
+		assert "{vocativo}" not in rendered
+		assert "{momento}" not in rendered
+		assert "{cohost}" not in rendered
+		assert "Buen día" in rendered
+		assert "Tomás" in rendered
+
+		# 6. Concordancia de género: Vocativos y adjetivos concuerdan con el destinatario
+		rendered_m = render_phrase("{vocativo} {companero} {filosofo}", morning_ctx, addressee_voice=VOICE_TOMAS)
+		assert rendered_m == "compadre compañero filósofo"
+		rendered_f = render_phrase("{vocativo} {companero} {filosofo}", morning_ctx, addressee_voice=VOICE_ELENA)
+		assert rendered_f == "comadre compañera filósofa"
+
+		# 7. Expansión de variantes: Abarca combinaciones de ejecución y elimina placeholders
+		template = "{saludo} {vocativo} en {momento}"
+		variants = expand_phrase_variants(template)
+		assert len(variants) > 1
+		for var in variants:
+			assert "{" not in var and "}" not in var
+
+		# 8. Límites horarios (Time boundaries): 05:00, 06:00, 12:00, 14:00, 20:00 y 00:00
+		assert get_franja_horaria(5) == "madrugada"
+		assert get_franja_horaria(6) == "mañana"
+		assert get_franja_horaria(12) == "mediodia"
+		assert get_franja_horaria(14) == "tarde"
+		assert get_franja_horaria(20) == "noche"
+		assert get_franja_horaria(0) == "madrugada"
+
+		# 9. Contexto de clima: Temperatura conocida prevalece sobre la estimación por mes
+		# Julio es invierno (mes 7), pero si temp_c=32.0 hace calor real
+		winter_with_heat = build_radio_context(datetime(2026, 7, 15, 14, 0), temp_c=32.0)
+		assert context_allows("calor", winter_with_heat) is True
+		# Enero es verano (mes 1), pero si temp_c=8.0 hace frío real
+		summer_with_cold = build_radio_context(datetime(2026, 1, 15, 14, 0), temp_c=8.0)
+		assert context_allows("calor", summer_with_cold) is False
+		assert context_allows("frio", summer_with_cold) is True
 
 	def test_09_lead_in_and_reaction_coherence_for_fortune(self, tmp_path: Path) -> None:
 		db_path = tmp_path / "coherence.db"

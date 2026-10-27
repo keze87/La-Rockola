@@ -4,7 +4,7 @@ Bancos de frases de la telenovela vecinal y radioteatro del pago chico.
 
 from __future__ import annotations
 
-NOVELA_VECINAL: list[str] = [
+NOVELA_VECINAL: tuple[str, ...] = (
 	"Dicen que Don Anselmo no le habla a Doña Gladys desde el baile de primavera del 98, pero todas las mañanas le compra el diario en el almacén y le deja vuelto de más a propósito.",
 	"El mecánico Pocho le cambió cuatro veces los amortiguadores al Renault 12 de Romina en un mes; el auto anda joya, pero el taller queda justo frente a la peluquería.",
 	"Doña Gladys instaló tres cámaras de seguridad en el almacén diciendo que es por prevención, pero una apunta directo a la puerta del taller de Pocho y la otra a la quinta de Anselmo.",
@@ -35,4 +35,4 @@ NOVELA_VECINAL: list[str] = [
 	"Romina y Pocho fueron fotografiados tomando un helado de dos bochas en la costanera del pueblo vecino, creyendo que nadie los veía... pero en la mesa de al lado estaba Doña Gladys con anteojos oscuros.",
 	"El profesor Rodolfo juró que donará su biblioteca personal al pueblo, siempre y cuando Don Anselmo admita públicamente que el truco con el que le ganó la copa de plata en el 92 fue con señas falsas.",
 	"Doña Gladys le perdonó la cuenta del fiado a Don Anselmo por primera vez en treinta años, pero le exigió a cambio que le arregle la persiana del almacén y le devuelva la lata de cartas que le sacó a Pocho.",
-]
+)
