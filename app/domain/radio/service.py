@@ -36,7 +36,9 @@ from app.domain.radio.banks import (
 	resolve_segment_category,
 )
 from app.domain.radio.dialogue import (
+	apply_rioplatense_tts_phonetics,
 	build_radio_dialogue_plan,
+	clean_subtitle_text,
 	get_modular_time_segments,
 	group_plan_into_speech_turns,
 	select_radio_hosts,
@@ -788,7 +790,7 @@ async def create_radio_announcement(
 
 		tasks = [
 			synthesize_segment(
-				text=text,
+				text=apply_rioplatense_tts_phonetics(text),
 				voice=v,
 				category=category,
 				allow_cache=allow_cache,
@@ -925,7 +927,7 @@ async def replace_announcement_outro(
 
 	try:
 		res = await synthesize_segment(
-			text=outro_text,
+			text=apply_rioplatense_tts_phonetics(outro_text),
 			voice=effective_voice,
 			category="salida",
 			allow_cache=True,
