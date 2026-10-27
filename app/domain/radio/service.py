@@ -749,11 +749,13 @@ async def create_radio_announcement(
 	locutor_nombre = VOICE_NAMES.get(host_voice, DEFAULT_HOST_NAME)
 	cohost_nombre = VOICE_NAMES.get(cohost_voice, DEFAULT_COHOST_DISPLAY_NAME)
 
-	intro = weighted_choice_by_recency(filter_by_context(RADIO_INTROS, ctx), category="intro", db_path=db_path)
+	intro_candidates = filter_by_context(RADIO_INTROS, ctx) or list(RADIO_INTROS)
+	intro = weighted_choice_by_recency(intro_candidates, category="intro", db_path=db_path)
 	hora_seg, minuto_seg, _ = get_modular_time_segments(effective_dt)
 	seg_cat = resolve_segment_category(fortuna)
 	outro_pool = get_outros_for_category(seg_cat, outro_mode)
-	outro = weighted_choice_by_recency(filter_by_context(outro_pool, ctx), category="salida", db_path=db_path)
+	outro_candidates = filter_by_context(outro_pool, ctx) or list(outro_pool)
+	outro = weighted_choice_by_recency(outro_candidates, category="salida", db_path=db_path)
 
 	is_dialogue = dialogue_mode if dialogue_mode is not None else (random.random() < 0.85)
 	last_reaction = get_radio_state("last_reaction", db_path=db_path)
@@ -920,7 +922,8 @@ async def replace_announcement_outro(
 	ctx = build_radio_context(effective_dt, temp_c=_recent_temp_c(now_ts, db_path=db_path))
 
 	outro_pool = get_outros_for_mode(outro_mode)
-	raw_outro = weighted_choice_by_recency(filter_by_context(outro_pool, ctx), category="salida", db_path=db_path)
+	outro_candidates = filter_by_context(outro_pool, ctx) or list(outro_pool)
+	raw_outro = weighted_choice_by_recency(outro_candidates, category="salida", db_path=db_path)
 	outro_text = render_tracked_phrase(raw_outro, ctx)
 	effective_voice = host_voice if host_voice in VOICES else VOICE_TOMAS
 	locutor_nombre = VOICE_NAMES.get(effective_voice, DEFAULT_HOST_NAME)

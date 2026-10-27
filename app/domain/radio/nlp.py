@@ -561,6 +561,9 @@ def select_radio_phrase(
 			return RadioPhrase(bundled, "fortuna"), True
 
 	pool = filter_by_context(CARPINCHO_PHRASES, ctx)
+	if not pool:
+		# Fallback explícito: si el contexto descarta todo, recurrimos a fortunas neutras o al pool general
+		pool = [p for p in CARPINCHO_PHRASES if getattr(p, "category", None) == "fortuna"] or list(CARPINCHO_PHRASES)
 	chosen = weighted_choice_by_recency(pool, category="fortuna", db_path=db_path)
 	return chosen, False
 

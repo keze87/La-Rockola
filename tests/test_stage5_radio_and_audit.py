@@ -256,6 +256,54 @@ class TestRadioContextualAndCoherenceSuite:
 		filtered = filter_by_context(candidates, morning_ctx)
 		assert filtered == ["Arrancando con este solcito de la mañana."]
 
+	def test_08b_filter_by_context_returns_empty_when_all_candidates_incompatible(self) -> None:
+		"""Si ningún candidato cumple las reglas contextuales, debe retornar una lista vacía y no la lista original."""
+		morning_ctx = build_radio_context(datetime(2026, 10, 17, 9, 0))
+		candidates = [
+			"Acompañando la trasnochada y el turno noche.",
+			"Cuadrilla de la noche metiendo garra.",
+		]
+		filtered = filter_by_context(candidates, morning_ctx)
+		assert filtered == []
+
+	def test_08c_callers_handle_empty_filter_by_context_gracefully(
+		self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+	) -> None:
+		"""Comprueba que los generadores de diálogo y frases radiales tengan políticas de fallback si filter_by_context vacía el pool."""
+		from app.domain.radio.dialogue import generate_modular_radio_script
+		from app.domain.radio.nlp import select_radio_phrase
+
+		db_path = tmp_path / "fallback.db"
+		init_db(db_path)
+		ctx = build_radio_context(datetime(2026, 10, 17, 9, 0))
+
+		# Forzamos que filter_by_context retorne [] simulando incompatibilidad absoluta
+		monkeypatch.setattr("app.domain.radio.dialogue.filter_by_context", lambda candidates, _ctx, _cat=None: [])
+		monkeypatch.setattr("app.domain.radio.nlp.filter_by_context", lambda candidates, _ctx, _cat=None: [])
+
+		# 1. select_radio_phrase no debe reventar con ValueError si filter_by_context da vacío
+		phrase, _is_sys = select_radio_phrase(force_system_fortune=False, db_path=db_path, ctx=ctx)
+		assert phrase is not None
+
+		# 2. build_radio_dialogue_plan con clima y diálogo no debe reventar si filter_by_context da vacío
+		plan = build_radio_dialogue_plan(
+			intro=None,
+			hora_seg="Son las nueve",
+			minuto_seg="y cinco",
+			fortuna=CARPINCHO_PHRASES[0],
+			outro=None,
+			weather_text="Día soleado",
+			weather_condition="soleado",
+			dialogue_mode=True,
+			db_path=db_path,
+			ctx=ctx,
+		)
+		assert len(plan) >= 5
+
+		# 3. generate_modular_radio_script no debe fallar con IndexError
+		script_parts = generate_modular_radio_script(dt=datetime(2026, 10, 17, 9, 0))
+		assert len(script_parts) == 9
+
 	def test_09_lead_in_and_reaction_coherence_for_fortune(self, tmp_path: Path) -> None:
 		db_path = tmp_path / "coherence.db"
 		init_db(db_path)

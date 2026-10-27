@@ -474,9 +474,6 @@ NOVELA_VECINAL: list[str] = [
 	"Doña Gladys le perdonó la cuenta del fiado a Don Anselmo por primera vez en treinta años, pero le exigió a cambio que le arregle la persiana del almacén y le devuelva la lata de cartas que le sacó a Pocho.",
 ]
 
-# Alias histórico de compatibilidad
-CHISMES_VECINALES: list[str] = NOVELA_VECINAL
-
 CARPINCHO_SABIDURIA: list[str] = list(CARPINCHO_FORTUNES)
 
 CARPINCHO_ADS.extend(AVISOS_PARROQUIALES_Y_EXTRAVIOS)
@@ -1405,7 +1402,8 @@ def get_weather_desc_phrase(
 	options = WEATHER_DESC_PHRASES.get(category, WEATHER_DESC_PHRASES["default"])
 	if ctx is not None:
 		# Evita "tarde templada" de madrugada o "sol radiante" de noche
-		options = filter_by_context(options, ctx)
+		filtered_opts = filter_by_context(options, ctx)
+		options = filtered_opts if filtered_opts else WEATHER_DESC_PHRASES["default"]
 	if variant_idx is not None:
 		return options[variant_idx % len(options)]
 	return random.choice(options)
@@ -2732,7 +2730,11 @@ def phrase_fits_context(text: str, ctx: RadioContext | None, category: str | Non
 
 
 def filter_by_context(candidates: list, ctx: RadioContext | None, category: str | None = None) -> list:
-	"""Descarta las frases incoherentes con el contexto. Si no quedara ninguna, devuelve la lista original."""
+	"""
+	Descarta las frases incoherentes con el contexto (franja horaria, día o clima).
+	Retorna únicamente las frases compatibles, o una lista vacía si ninguna cumple las reglas.
+	Deja en manos de quien llama la decisión explícita de política de fallback.
+	"""
 	if ctx is None:
 		return list(candidates)
 	kept = []
@@ -2740,7 +2742,7 @@ def filter_by_context(candidates: list, ctx: RadioContext | None, category: str 
 		text, cat = _split_item(c, category)
 		if phrase_fits_context(text, ctx, cat):
 			kept.append(c)
-	return kept or list(candidates)
+	return kept
 
 
 _PLACEHOLDER_RE = re.compile(r"\{(vocativo|companero|filosofo|momento|saludo|cohost)\}")
