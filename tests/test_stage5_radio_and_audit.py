@@ -380,6 +380,62 @@ class TestRadioContextualAndCoherenceSuite:
 		reactions_unk = get_reactions_for_category("unknown")
 		assert len(reactions_unk) > 0
 
+	def test_08f_contextual_rules_semantic_intent_and_edge_cases(self) -> None:
+		"""Verifica que las reglas contextuales distingan intención y categoría sin romper metáforas ni retrospectivas."""
+		from app.domain.radio.banks import phrase_fits_context
+
+		night_ctx = build_radio_context(datetime(2026, 10, 17, 23, 0))  # Sábado a la noche
+		sunday_ctx = build_radio_context(datetime(2026, 10, 18, 12, 0))  # Domingo al mediodía
+		friday_ctx = build_radio_context(datetime(2026, 10, 16, 17, 0))  # Viernes a la tarde
+
+		# 1. Metáforas, nombres comerciales o fortunas con 'sol' deben permitirse de noche
+		assert phrase_fits_context(
+			"No te preocupes por el qué dirán: el carpincho toma sol y le importa un comino.",
+			night_ctx,
+			category="fortuna",
+		)
+		assert phrase_fits_context(
+			"Publicidad: Panadería El Sol Criollo. Facturas de grasa recién sacadas.",
+			night_ctx,
+			category="aviso",
+		)
+		assert phrase_fits_context(
+			"¡Atención vecindario! Volaron los trapitos al sol...",
+			night_ctx,
+			category="novela",
+		)
+
+		# 2. Clima literal con 'sol' sigue rechazándose de noche
+		assert not phrase_fits_context(
+			"Cielo completamente despejado y sol a pleno para secarse el lomo.",
+			night_ctx,
+			category="clima",
+		)
+
+		# 3. Menciones históricas / retrospectivas de domingo se permiten el domingo
+		assert phrase_fits_context(
+			"Desapareció misteriosamente del patio durante el asado del domingo.",
+			sunday_ctx,
+			category="aviso",
+		)
+		assert phrase_fits_context(
+			"¡Inolvidable! Para escucharlo en loop todo el domingo.",
+			sunday_ctx,
+			category="salida",
+		)
+
+		# 4. Convocatorias futuras de domingo solo aplican días previos (e.g. viernes), no el domingo mismo
+		assert phrase_fits_context(
+			"Aviso de la capilla: el domingo después de misa habrá rifa parroquial.",
+			friday_ctx,
+			category="aviso",
+		)
+		assert not phrase_fits_context(
+			"Aviso de la capilla: el domingo después de misa habrá rifa parroquial.",
+			sunday_ctx,
+			category="aviso",
+		)
+
 	def test_09_lead_in_and_reaction_coherence_for_fortune(self, tmp_path: Path) -> None:
 		db_path = tmp_path / "coherence.db"
 		init_db(db_path)

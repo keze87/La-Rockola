@@ -2656,7 +2656,10 @@ def build_radio_context(dt: datetime | None = None, temp_c: float | None = None)
 
 
 def context_allows(cond: str, ctx: RadioContext) -> bool:
-	"""Condiciones climáticas/estacionales: usa la temperatura real si se conoce y, si no, el mes."""
+	"""
+	Filtro de verosimilitud climática y estacional para la atmósfera satírica de la radio.
+	No es un sensor meteorológico fáctico: usa la temperatura real si se conoce y, si no, el mes calendario.
+	"""
 	t = ctx.temp_c
 	if cond == "calor":
 		return t >= 26 if t is not None else ctx.mes in (11, 12, 1, 2, 3)
@@ -2692,31 +2695,48 @@ def _rule(
 
 
 _CAT_CLIMA_CRIOLLA = ("alerta_criolla", "aviso", "oyentes")
+_CAT_LOCUCION_EN_VIVO = ("intro", "clima", "salida", "pase")
 
 # Una frase que cumple una regla solo se puede decir cuando el contexto la satisface (todas las que apliquen).
 CONTEXT_RULES: list[_ContextRule] = [
-	# --- Franja horaria ---
-	_rule(r"\btard(?:e|ecit\w*)\b", franjas=("tarde",)),
-	_rule(r"\bmadrugada\b", franjas=("madrugada", "mañana")),
-	_rule(r"\bde la mañana\b", franjas=("madrugada", "mañana", "mediodia")),
+	# --- Franja horaria para locución y clima en vivo ---
+	# Saludos y reportes temporales inmediatos (intros, clima, salidas, pases)
+	_rule(r"\btard(?:e|ecit\w*)\b", franjas=("tarde",), only_categories=_CAT_LOCUCION_EN_VIVO),
+	_rule(r"\bmadrugada\b", franjas=("madrugada", "mañana"), only_categories=_CAT_LOCUCION_EN_VIVO),
+	_rule(
+		r"\bde la mañana\b",
+		franjas=("madrugada", "mañana", "mediodia"),
+		only_categories=("intro", "clima", "salida", "hora"),
+	),
 	_rule(r"\b(?:noche larga|turno noche|cuadrilla de la noche|trasnoch\w*)\b", franjas=("noche", "madrugada")),
 	_rule(r"\bse nos viene la noche\b", franjas=("mediodia", "tarde")),
-	_rule(r"\bsol(?:azo|cito)?\b", franjas=("mañana", "mediodia", "tarde")),
-	_rule(r"\bsol cae\b|\bcae el sol\b", franjas=("tarde",)),
-	_rule(r"\bgolondrinas?\b", franjas=("mañana", "mediodia", "tarde")),
-	_rule(r"\barriba, arriba\b", franjas=("madrugada", "mañana")),
+	# El sol en sentido meteorológico literal (no metafórico como 'trapitos al sol' ni marcas comerciales)
+	_rule(
+		r"(?<!trapitos al )(?<!panadería el )\bsol(?:azo|cito)?\b",
+		franjas=("mañana", "mediodia", "tarde"),
+		only_categories=("clima", "alerta_criolla", "pase"),
+	),
+	_rule(r"\bsol cae\b|\bcae el sol\b", franjas=("tarde",), only_categories=_CAT_LOCUCION_EN_VIVO),
+	_rule(r"\bgolondrinas?\b", franjas=("mañana", "mediodia", "tarde"), only_categories=("clima", "pase")),
+	_rule(r"\barriba, arriba\b", franjas=("madrugada", "mañana"), only_categories=("intro", "salida")),
 	_rule(r"\byendo a laburar\b", franjas=("mañana", "mediodia", "tarde", "noche")),
-	# --- Día de la semana ---
-	_rule(r"(?<!todo el )\bdomingo\b", dias=(0, 1, 2, 3, 4, 5)),
-	_rule(r"\beste sábado\b", dias=(0, 1, 2, 3, 4, 5)),
-	# --- Estación / temperatura real ---
+	# --- Día de la semana (convocatorias futuras vs menciones cotidianas/históricas) ---
+	_rule(
+		r"\b(?:este|el próximo)\s+domingo\b|\bel domingo\s+después de misa\b",
+		dias=(0, 1, 2, 3, 4, 5),
+		only_categories=("aviso",),
+	),
+	_rule(r"\beste sábado\b", dias=(0, 1, 2, 3, 4, 5), only_categories=("aviso",)),
+	# --- Estación / temperatura real (filtros de verosimilitud atmosférica) ---
 	_rule(
 		r"\bcalor\w*|\bcuarenta grados\b|\bventilador\b|\basfalto\b|\bsudando\b|\bverano\b|\bheladera\b",
 		cond="calor",
 		only_categories=_CAT_CLIMA_CRIOLLA,
 	),
 	_rule(
-		r"\bmosquitos?\b|\bjejenes\b|\btábanos\b|\bmoscas\b", cond="bichos", only_categories=("alerta_criolla", "aviso")
+		r"\bmosquitos?\b|\bjejenes\b|\btábanos\b|\bmoscas\b",
+		cond="bichos",
+		only_categories=("alerta_criolla", "aviso"),
 	),
 ]
 
