@@ -26,7 +26,7 @@ export function useLibrary() {
 		if (path.includes('radio_announcement')) {
 			return {
 				path,
-				display_title: 'Acomodando los micrófonos...',
+				display_title: 'Transmisión de Cabina',
 				display_artist: 'Transmisión de Cabina 🎙️',
 			};
 		}

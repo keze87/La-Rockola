@@ -102,7 +102,7 @@ describe('App.vue', () => {
 		isSynthesizingRadio.value = true;
 
 		const wrapper = mount(App);
-		expect(wrapper.text()).toContain('El locutor carpincho se está preparando... 🎙️');
+		expect(wrapper.text()).toContain('Transmisión de Cabina');
 		expect(wrapper.text()).not.toContain('Silencio estampa');
 	});
 

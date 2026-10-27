@@ -75,7 +75,7 @@ DEFAULT_BG_VOLUME: float = 0.1
 
 DEFAULT_RADIO_ARTIST: str = "Transmisión de Cabina 🎙️"
 DEFAULT_RADIO_ALBUM: str = "La Rockola del Carpincho"
-DEFAULT_RADIO_TITLE: str = "Acomodando los micrófonos..."
+DEFAULT_RADIO_TITLE: str = "Transmisión de Cabina"
 DEFAULT_COHOST_NAME: str = "compadre"
 DEFAULT_HOST_NAME: str = "Transmisión de Cabina"
 DEFAULT_COHOST_DISPLAY_NAME: str = "Co-conductor"
@@ -190,7 +190,7 @@ CARPINCHO_FORTUNES: list[str] = [
 	"El oráculo de la laguna sentencia: si la yerba todavía tiene palo, ese mate aguanta tres vueltas más.",
 	# Saludos y mensajes de los oyentes
 	"Un saludo enorme para Horacio de las islas, que nos escucha mientras le tira un pedazo de pan a los carpinchos del fondo. ¡Grande, Horacio!",
-	"Línea abierta en la Rockola. Saludo especial para toda la gente que nos saca a pasear en el estéreo del auto, del camión, o de la motito de delivery.",
+	"Línea abierta en la Rockola. Saludo especial para toda la gente que nos saca a pasear en el estéreo del auto, del camión, o de la motito del delivery.",
 	'Mensajito que entra al WhatsApp: "Locutor, acá los pibes del taller de chapa y pintura pidiendo cumbia para que el soplete agarre ritmo". ¡Abrazo a esa barra laburadora!',
 	'Nos escribe Gladys desde Berazategui: "Cebando unos amargos con cascarita de naranja mientras escucho La Rockola". ¡Esa es la actitud, Gladys!',
 	'Atenti este mensaje: "Mandále un saludo al Beto que prometió prender el fuego a las doce y todavía está buscando el carbón". ¡Apuráte, Beto, que la hinchada tiene hambre!',

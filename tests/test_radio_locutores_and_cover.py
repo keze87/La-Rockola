@@ -72,3 +72,23 @@ class TestRadioLocutoresAndCover:
 
 		meta = orch.url_metadata.get(orch.radio_announcement_path, {})
 		assert meta.get("display_artist") == "Elena y Tomás 🎙️"
+
+	def test_04_cover_endpoint_serves_radio_image_with_cache_headers(self) -> None:
+		"""Verifica que /cover sirva radio.jpg con cabeceras ETag y Cache-Control para anuncios radiales."""
+		from starlette.testclient import TestClient
+
+		from app.main import app
+
+		client = TestClient(app)
+		res = client.get("/cover?path=/tmp/radio_announcement.mp3&size=512")
+		assert res.status_code == 200
+		assert res.headers["content-type"].startswith("image/jpeg")
+		assert "etag" in res.headers
+		assert "cache-control" in res.headers
+		assert len(res.content) > 1000
+
+	def test_05_default_radio_title_is_transmision_de_cabina(self) -> None:
+		"""Verifica que el título oficial de la radio sea 'Transmisión de Cabina'."""
+		from app.domain.radio.banks import DEFAULT_RADIO_TITLE
+
+		assert DEFAULT_RADIO_TITLE == "Transmisión de Cabina"

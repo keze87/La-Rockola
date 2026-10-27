@@ -21,7 +21,7 @@
 	} = usePlayer();
 
 	const upNextTitle = computed(() => {
-		if (isSynthesizingRadio.value) return 'El locutor carpincho se está preparando... 🎙️';
+		if (isSynthesizingRadio.value) return 'Transmisión de Cabina - Acomodando los micrófonos... 🎙️';
 
 		if (queueState.value.length > 0) {
 			const t = getTrackInfo(queueState.value[0]);

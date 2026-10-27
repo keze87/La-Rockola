@@ -106,11 +106,11 @@
 
 	const currentTrackTitle = computed(() => {
 		if (isSynthesizingRadio.value || (isPlayingRadioAnnouncement.value && !currentTrackPath.value)) {
-			return 'Transmisión de Cabina 🎙️ - Acomodando los micrófonos...';
+			return 'Transmisión de Cabina - Acomodando los micrófonos... 🎙️';
 		}
 		if (isPlayingRadioAnnouncement.value) {
 			const t = currentTrackPath.value ? getTrackInfo(currentTrackPath.value) : null;
-			return `${t?.display_artist || 'Transmisión de Cabina 🎙️'} - ${t?.display_title || 'Acomodando los micrófonos...'}`;
+			return `${t?.display_artist || 'Transmisión de Cabina 🎙️'} - Transmisión de Cabina`;
 		}
 		if (!currentTrackPath.value) return 'Silencio estampa. Poné algo, fiera.';
 
@@ -216,8 +216,16 @@
 			</div>
 
 			<img
-				v-if="currentTrackPath && !currentTrackPath.startsWith('http') && !isScanning"
-				:src="apiUrl('/cover?path=' + encodeURIComponent(currentTrackPath) + '&size=512')"
+				v-if="
+					(currentTrackPath || isPlayingRadioAnnouncement || isSynthesizingRadio) &&
+					!currentTrackPath?.startsWith('http') &&
+					!isScanning
+				"
+				:src="
+					apiUrl(
+						'/cover?path=' + encodeURIComponent(currentTrackPath || 'radio_announcement.mp3') + '&size=512'
+					)
+				"
 				class="h-10 w-10 shrink-0 rounded object-cover shadow-sm"
 				@error="hideBrokenCover"
 			/>

@@ -206,6 +206,9 @@
 
 	// --- Propiedades computadas para simplificar el template ---
 	const coverSource = computed(() => {
+		if (isSynthesizingRadio.value || isPlayingRadioAnnouncement.value) {
+			return currentTrackPath.value || 'radio_announcement.mp3';
+		}
 		if (currentTrackPath.value) return currentTrackPath.value;
 		if (djBaraEnabled.value && djNextTrack.value?.path) return djNextTrack.value.path;
 		return null;
@@ -216,8 +219,8 @@
 	const currentTrackInfo = computed(() => {
 		if (isSynthesizingRadio.value || (isPlayingRadioAnnouncement.value && !currentTrackPath.value)) {
 			return {
-				title: 'Acomodando los micrófonos...',
-				artist: 'Transmisión de Cabina 🎙️',
+				title: 'Transmisión de Cabina',
+				artist: 'Acomodando los micrófonos... 🎙️',
 				isComing: true,
 			};
 		}
@@ -225,7 +228,7 @@
 		if (isPlayingRadioAnnouncement.value) {
 			const info = currentTrackPath.value ? player.getTrackInfo(currentTrackPath.value) : null;
 			return {
-				title: info?.display_title || 'Acomodando los micrófonos...',
+				title: 'Transmisión de Cabina',
 				artist: info?.display_artist || 'Transmisión de Cabina 🎙️',
 				isComing: false,
 			};

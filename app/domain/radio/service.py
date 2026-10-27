@@ -774,7 +774,7 @@ async def create_radio_announcement(
 	)
 
 	full_script = " ".join(t[0].strip() for t in plan if t[0].strip())
-	display_title = full_script
+	display_title = DEFAULT_RADIO_TITLE
 	if is_dialogue and cohost_nombre:
 		display_artist = f"{locutor_nombre} y {cohost_nombre} 🎙️"
 	else:
@@ -941,7 +941,7 @@ async def replace_announcement_outro(
 
 		combined_segments = [*stem_segments, (outro_bytes, "salida", effective_voice, outro_text, outro_cues)]
 		full_script = " ".join(s[3].strip() for s in combined_segments if len(s) >= 4 and s[3].strip())
-		display_title = full_script
+		display_title = DEFAULT_RADIO_TITLE
 
 		voices_in_segs = {s[2] for s in combined_segments if len(s) >= 3 and s[2] in VOICE_NAMES}
 		if len(voices_in_segs) > 1:

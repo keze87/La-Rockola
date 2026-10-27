@@ -82,32 +82,41 @@ async def serve_cover(
 	try:
 		if state and hasattr(state, "is_radio_announcement") and state.is_radio_announcement(path):
 			carpincho_img = get_carpincho_cover_path()
+			if not carpincho_img or not carpincho_img.is_file():
+				frontend_dir, dist_dir, _ = get_dist_dirs()
+				candidates = [
+					dist_dir / "radio.jpg",
+					frontend_dir / "public" / "radio.jpg",
+					dist_dir / "favicon.png",
+					frontend_dir / "public" / "favicon.png",
+				]
+				if hasattr(sys, "_MEIPASS"):
+					candidates.insert(0, Path(sys._MEIPASS) / "public" / "radio.jpg")
+					candidates.insert(1, Path(sys._MEIPASS) / "dist" / "radio.jpg")
+					candidates.append(Path(sys._MEIPASS) / "public" / "favicon.png")
+
+				for cand in candidates:
+					if cand.is_file():
+						carpincho_img = cand
+						break
+
 			if carpincho_img and carpincho_img.is_file():
+				img_stat = carpincho_img.stat()
+				etag = f'"{carpincho_img.name}:{int(img_stat.st_mtime)}:{img_stat.st_size}:s={size}"'
+				cache_headers = {
+					"ETag": etag,
+					"Cache-Control": "public, max-age=86400, stale-while-revalidate=3600",
+				}
+				if request:
+					if_none_match = request.headers.get("if-none-match")
+					if if_none_match and etag in if_none_match:
+						return Response(status_code=304, headers=cache_headers)
+
 				if size and size > 0 and HAS_PIL:
 					c_data, c_mime = _resize_cover(carpincho_img.read_bytes(), size)
-					return Response(content=c_data, media_type=c_mime)
+					return Response(content=c_data, media_type=c_mime, headers=cache_headers)
 				mime = "image/png" if carpincho_img.suffix.lower() == ".png" else "image/jpeg"
-				return FileResponse(carpincho_img, media_type=mime)
-
-			frontend_dir, dist_dir, _ = get_dist_dirs()
-			candidates = [
-				dist_dir / "radio.jpg",
-				frontend_dir / "public" / "radio.jpg",
-				dist_dir / "favicon.png",
-				frontend_dir / "public" / "favicon.png",
-			]
-			if hasattr(sys, "_MEIPASS"):
-				candidates.insert(0, Path(sys._MEIPASS) / "public" / "radio.jpg")
-				candidates.insert(1, Path(sys._MEIPASS) / "dist" / "radio.jpg")
-				candidates.append(Path(sys._MEIPASS) / "public" / "favicon.png")
-
-			for cand in candidates:
-				if cand.is_file():
-					if size and size > 0 and HAS_PIL:
-						c_data, c_mime = _resize_cover(cand.read_bytes(), size)
-						return Response(content=c_data, media_type=c_mime)
-					cand_mime = "image/png" if cand.suffix.lower() == ".png" else "image/jpeg"
-					return FileResponse(cand, media_type=cand_mime)
+				return FileResponse(carpincho_img, media_type=mime, headers=cache_headers)
 
 		if not os.path.exists(path):
 			return Response(status_code=404)
