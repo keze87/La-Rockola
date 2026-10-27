@@ -45,6 +45,12 @@ BASE_RADIO_INTROS: tuple[str, ...] = (
 	"¡Hola, hola! Reportándonos en vivo desde el mejor rincón del dial. Si estás yendo a laburar, paciencia; si estás volviendo, ¡sos un héroe nacional!",
 	# Cierre de tanda / Separadores cortos
 	"La Rockola del Carpincho: tu dosis diaria de música, mates y buena onda. No aceptes imitaciones.",
+	# Transiciones secas y surrealistas
+	"Interferencia en el canal cinco... restablecemos la señal. La Rockola está en el aire.",
+	"Aviso críptico de cabina: el zorro vuela de noche con poncho azul. Y ahora, música.",
+	"Silencio en el bajo. Escuchá lo que se viene.",
+	"Sin rodeos: consola prendida, dial sintonizado y tema puesto.",
+	"Directo al hueso. Así suena La Rockola.",
 )
 RADIO_INTROS: tuple[str, ...] = (*BASE_RADIO_INTROS, *SEPARADORES_Y_SLOGANS)
 
@@ -179,6 +185,10 @@ RADIO_OUTROS: tuple[str, ...] = (
 	"¡Temazo de aquellos para escuchar con la ventanilla baja y el viento en la cara!",
 	"¡Dejate llevar por el compás que {momento} pide fiesta en la orilla!",
 	"¡Volumen al mango que los carpinchos quieren cumbia!",
+	"Silencio en el bajo. Que hable la música.",
+	"Directo al hueso: temazo que entra sin pedir permiso.",
+	"Sin rodeos. Subí el volumen.",
+	"Interferencia momentánea superada... dejate llevar por la melodía.",
 	"¡Acomodá el parlante mirando al río y disfrutá de este cañonazo musical!",
 	# Presentando el "Próximo Tema"
 	"Y ahora, un temazo que te va a hacer mover los muebles del living. ¡Ajustate los cinturones porque se viene un clásico de clásicos!",

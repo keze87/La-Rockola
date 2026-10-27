@@ -25,6 +25,12 @@ AVISOS_PARROQUIALES_Y_EXTRAVIOS: tuple[str, ...] = (
 	"Pérdidas insólitas: apareció una parrilla plegable de dos pisos olvidada debajo del ceibo grande. Tiene restos de grasa fresca de buen vacío.",
 	"Solidaridad del pago: se busca carretilla de madera con rueda de hierro prestada en la primavera pasada y nunca devuelta al galpón de la esquina.",
 	"Aviso de utilidad pública: se perdió una conservadora de telgopor blanca con hielo y seis botellas de cerveza. Hay desesperación en el taller mecánico.",
+	"Edicto comunal: Se recuerda a la población ribereña que la Resolución 408 del Concejo Deliberante prohíbe taxativamente discutir de fútbol antes de las diez de la mañana en dependencias públicas.",
+	"Aviso de Catastro Isleño: El expediente número setenta y dos barra veinticuatro sobre demarcación de zanjones vecinales fue extraviado temporalmente detrás del aparador de la secretaría comunal.",
+	"Comunicado oficial del destacamento: Queda suspendido el toque de diana de las siete por rotura del resorte de la corneta; el encargado despertará a los vecinos golpeando una olla en la plaza.",
+	"Aviso administrativo: Todo trámite de renovación de amarras en el embarcadero municipal requerirá constancia de libre deuda y certificado de buena conducta de la farmacia comunal.",
+	"Dirección de Rentas Comunal: Notifícase a los propietarios de canoas a remo que la inspección ocular anual del fondo se realizará a ojo de buen cubero desde la punta del muelle viejo.",
+	"Aviso parroquial: La misa dominical se posterga sesenta minutos por razones estrictamente personales del sacristán, quien olvidó la llave de la sacristía adentro del cajón del pan dulce.",
 )
 
 CARPINCHO_ADS: tuple[str, ...] = (

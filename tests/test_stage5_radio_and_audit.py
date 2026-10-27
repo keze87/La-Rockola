@@ -617,6 +617,48 @@ class TestRadioContextualAndCoherenceSuite:
 		assert context_allows("calor", summer_with_cold) is False
 		assert context_allows("frio", summer_with_cold) is True
 
+	def test_08k_editorial_variety_and_mechanisms(self) -> None:
+		"""Verifica la riqueza editorial y variedad de mecanismos cómicos (burocráticos, surrealistas, genuinos y personajes recurrentes)."""
+		from app.domain.radio.banks import (
+			AVISOS_PARROQUIALES_Y_EXTRAVIOS,
+			CARPINCHO_ADS,
+			CHISMES_CARPINCHOS,
+			DEDICATORIAS_OYENTES,
+			NOVELA_VECINAL,
+			RADIO_INTROS,
+			RADIO_OUTROS,
+		)
+		from app.domain.radio.validation import validate_radio_banks
+
+		# 1. Avisos burocráticos y solemnes absurdos (deben existir al menos 4 avisos con tono normativo o municipal)
+		ads_text = " ".join(CARPINCHO_ADS + AVISOS_PARROQUIALES_Y_EXTRAVIOS).lower()
+		bureaucratic_cues = ["resolución", "comunal", "edicto", "catastro", "concejo deliberante", "expediente"]
+		found_bureaucratic = sum(1 for cue in bureaucratic_cues if cue in ads_text)
+		assert found_bureaucratic >= 3, f"Faltan avisos burocráticos absurdos (encontrados: {found_bureaucratic})"
+
+		# 2. Interrupciones surrealistas y transiciones secas en intros y outros
+		intros_outros_text = " ".join(RADIO_INTROS + RADIO_OUTROS).lower()
+		surreal_or_punchy_cues = [
+			"interferencia",
+			"aviso críptico",
+			"directo al hueso",
+			"silencio en el bajo",
+			"sin rodeos",
+		]
+		found_surreal = sum(1 for cue in surreal_or_punchy_cues if cue in intros_outros_text)
+		assert found_surreal >= 3, f"Faltan transiciones secas o surrealistas en cabina (encontradas: {found_surreal})"
+
+		# 3. Personajes recurrentes del pueblo (Don Anselmo, Gladys, Cacho, Romualdo, Pocho)
+		narrative_text = " ".join(CHISMES_CARPINCHOS + NOVELA_VECINAL + DEDICATORIAS_OYENTES)
+		assert "anselmo" in narrative_text.lower()
+		assert "gladys" in narrative_text.lower()
+		assert "cacho" in narrative_text.lower()
+		assert "romualdo" in narrative_text.lower()
+
+		# 4. El corpus completo no debe tener errores de validación
+		issues = validate_radio_banks()
+		assert issues == [], f"Errores en validación automática: {issues}"
+
 	def test_09_lead_in_and_reaction_coherence_for_fortune(self, tmp_path: Path) -> None:
 		db_path = tmp_path / "coherence.db"
 		init_db(db_path)

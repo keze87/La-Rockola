@@ -35,4 +35,7 @@ NOVELA_VECINAL: tuple[str, ...] = (
 	"Romina y Pocho fueron fotografiados tomando un helado de dos bochas en la costanera del pueblo vecino, creyendo que nadie los veía... pero en la mesa de al lado estaba Doña Gladys con anteojos oscuros.",
 	"El profesor Rodolfo juró que donará su biblioteca personal al pueblo, siempre y cuando Don Anselmo admita públicamente que el truco con el que le ganó la copa de plata en el 92 fue con señas falsas.",
 	"Doña Gladys le perdonó la cuenta del fiado a Don Anselmo por primera vez en treinta años, pero le exigió a cambio que le arregle la persiana del almacén y le devuelva la lata de cartas que le sacó a Pocho.",
+	"Capítulo 31 de la novela del pago: Don Anselmo descubrió que la carta de amor debajo de la puerta no era para él, sino para el repartidor de garrafas, pero decidió contestarla igual para no quedarse con la espina.",
+	"En el episodio de hoy: Gladys citó a Romualdo en la curva de los sauces con un paquete de cartas viejas y una cuchara de albañil, exigiendo explicaciones que llevan veinte años de retraso.",
+	"Telenovela comunal: Cacho enfrentó al puestero por el paradero del poncho de vicuña, sin sospechar que el comisario jubilado lo estaba usando de felpudo en la comisaría vieja.",
 )

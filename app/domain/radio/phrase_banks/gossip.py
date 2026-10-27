@@ -29,4 +29,8 @@ CHISMES_CARPINCHOS: tuple[str, ...] = (
 	"El rumor más picante del Delta: los carpinchos no duermen la siesta porque tengan sueño, la duermen para que los humanos no sospechen que están planeando la toma definitiva del continente.",
 	"Tienen un tratado secreto con los mosquitos: a cambio de que no los piquen en la panza, los carpinchos les marcan dónde acampan los turistas porteños.",
 	"Se descubrió que los carpinchos más viejos tienen cuentas offshore en esteros del Iberá donde acumulan fajos de camalotes de alta pureza.",
+	"Chisme en la botica: Se rumorea que Don Anselmo compró tres damajuanas de vino blanco y una carpa estructural, y nadie en el pago sabe para qué lado piensa arrancar.",
+	"Se filtró en la peluquería de Gladys: Cacho el del taller anduvo averiguando discretamente cuánto sale teñirse las patillas para parecer diez años más joven.",
+	"Radio pasillo ribereño: Pocho el botero jura que vio al comisario jubilado sacando un sábalo de diez kilos con una caña mojarrera y sin ponerle carnada.",
+	"Se filtró en la despensa: La maestra de la escuela rural y el jefe de la estafeta postal se mandan recados doblados en forma de barquito de papel.",
 )

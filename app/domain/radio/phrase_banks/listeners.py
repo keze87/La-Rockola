@@ -122,4 +122,9 @@ DEDICATORIAS_OYENTES: tuple[str, ...] = (
 	'Mensajito al WhatsApp: "Locutor, amo este descontrol de temas, pasaste de Los Redondos a Gilda y en el taller no sabemos si poguear o bailar apretado".',
 	'Audio de oyente: "Acá el camionero Jorge en la ruta, con la mente a mil y la radio saltando de una zamba a un rock de los 80 sin pedir permiso. ¡Espectacular!".',
 	'Nos escriben desde la obra: "En el parlante del corralón mezclamos folklore, cuarteto y metal pesado. Gracias por acompañar el desorden con La Rockola".',
+	'Mensaje de la guardia del peaje: "Somos tres acá en la cabina escuchando La Rockola mientras pasan los camiones con cereal. Mandale fuerza al compañero Carlitos que le toca el turno largo".',
+	'Audio que entra al dial: "Locutor, un abrazo a los muchachos de la cooperativa eléctrica que están cambiando aisladores en el tendido rural. Laburo bravo pero con la radio se hace llevadero".',
+	'WhatsApp del frigorífico: "Acá en la cámara de frío con los muchachos empaquetando; tirate un tema de Los Tipitos para calentar un poco el alma".',
+	'Nos escriben desde el taller: "Un saludo para don Romualdo que cumple cuarenta años de mecánico ajustando tapas de cilindro. No afloja nunca el viejo".',
+	'Mensaje de la ruta provincial: "Acá el reparto de soda haciendo la recorrida de las colonias. Gracias por la música y por no poner reggaetón moderno todo el día".',
 )
