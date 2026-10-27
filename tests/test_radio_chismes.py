@@ -188,11 +188,19 @@ class TestRadioChismesSuite:
 
 		state_during_prep: dict[str, bool] = {}
 
+		from app.domain.radio.service import RadioAnnouncementResult
+
 		async def mock_get_or_synthesize(*args, **kwargs):
 			# Durante la preparación de la radio, is_synthesizing_radio DEBE estar en True
 			state_during_prep["is_synthesizing"] = orch.is_synthesizing_radio
 			state_during_prep["has_current_track"] = orch.current_track is not None
-			return True, "Locución radial", "Guión de prueba", None
+			return RadioAnnouncementResult(
+				ok=True,
+				display_title="Locución radial",
+				script="Guión de prueba",
+				error=None,
+				outro_mode="continue",
+			)
 
 		monkeypatch.setattr(orch.radio_service, "get_or_synthesize", mock_get_or_synthesize)
 

@@ -20,6 +20,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import Field, TypeAdapter, ValidationError
 
+from app import __version__
 from app.api.library import scan_library
 from app.api.middleware import SubpathMiddleware
 from app.api.router import api_v1_router, root_api_router
@@ -172,7 +173,7 @@ def create_app() -> FastAPI:
 	app = FastAPI(
 		title="La Rockola del Carpincho",
 		description="Servidor de música y reproductor con alma de campo y sabor a mate.",
-		version="0.0.1",
+		version=__version__,
 		lifespan=lifespan,
 	)
 

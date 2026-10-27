@@ -432,7 +432,7 @@ CHISMES_CARPINCHOS: list[str] = [
 	"Existe un sindicato secreto de carpinchos del humedal que regula estrictamente no hacer nada productivo entre las doce del mediodía y las cinco de la tarde.",
 	"Se sabe de buena fuente que usan protector solar factor cincuenta disimulado con barro para que los demás animales no les digan coquetos.",
 	"Tienen una red de espionaje montada con las ranas para enterarse con tres días de anticipación de cuándo van a prender el fuego para un asado en la isla.",
-	"Finjen que no les importa la moda, pero entre ellos compiten a ver quién consigue la capa de arcilla ribereña con mejor brillo y exfoliación.",
+	"Fingen que no les importa la moda, pero entre ellos compiten a ver quién consigue la capa de arcilla ribereña con mejor brillo y exfoliación.",
 	"En el fondo de la laguna hay un depósito secreto con todas las ojotas que la gente pierde en verano; las usan de pantuflas para andar por el juncal.",
 	"El rumor más picante del Delta: los carpinchos no duermen la siesta porque tengan sueño, la duermen para que los humanos no sospechen que están planeando la toma definitiva del continente.",
 	"Tienen un tratado secreto con los mosquitos: a cambio de que no los piquen en la panza, los carpinchos les marcan dónde acampan los turistas porteños.",
@@ -495,7 +495,7 @@ RADIO_INTROS: list[str] = [
 	"¡Atenti todo el mundo! Acomodá la silla, cebáte un amargo y dejáte llevar porque arranca otra tanda en La Rockola.",
 	"¡Buenas y santas gente! Micrófonos listos, consola al palo y la mejor selección musical para alegrarte el rato.",
 	"¡Agarráte fuerte que la playlist de hoy viene salteada! Acá no hay etiqueta que valga, solo buena música para el corazón.",
-	"Se viene una tanda de esas bien ensaladas: un poco de esto, un poco de aquello y cero prejuicios. ¡é a La Rockola!",
+	"Se viene una tanda de esas bien ensaladas: un poco de esto, un poco de aquello y cero prejuicios. ¡Prendéte a La Rockola!",
 	# El arranque y la energía de la mañana
 	"¡Sintonía total en todo el país! Estás en la Rockola del Carpincho, donde la música no para y los carpinchos tampoco. ¡{saludo} para todos!",
 	"¡Arriba, arriba, arriba! Subí el volumen que si el vecino se queja, lo invitamos a tomar unos mates. ¡Arrancamos otra hora de puros éxitos!",
