@@ -19,11 +19,11 @@
 	"dependencies": {
 		"@floating-ui/vue": "^2.0.1",
 		"@headlessui/vue": "^1.7.23",
-		"@vueuse/core": "^14.4.0",
+		"@vueuse/core": "^15.0.0",
 		"fuse.js": "^7.5.0",
 		"leaflet": "^1.9.4",
 		"qrcode.vue": "^3.11.0",
-		"vue": "^3.5.42",
+		"vue": "^3.5.44",
 		"vue-sonner": "^2.0.9"
 	},
 	"devDependencies": {
@@ -32,7 +32,7 @@
 		"@types/leaflet": "^1.9.22",
 		"@types/node": "^26.6.5",
 		"@vitejs/plugin-vue": "^6.0.10",
-		"@vitest/coverage-v8": "^4.1.12",
+		"@vitest/coverage-v8": "^5.0.5",
 		"@vue/test-utils": "^2.5.1",
 		"@vue/tsconfig": "^0.9.1",
 		"eslint": "^10.13.0",
@@ -44,10 +44,11 @@
 		"prettier": "^3.9.10",
 		"prettier-plugin-tailwindcss": "^0.8.1",
 		"tailwindcss": "^4.3.3",
-		"typescript": "^5.9.3",
+		"//": "typescript se mantiene <6.1.0 porque typescript-eslint@8 todavia no soporta TS 7+",
+		"typescript": "<6.1.0",
 		"typescript-eslint": "^8.72.1",
 		"vite": "^8.3.5",
-		"vitest": "^4.1.12",
+		"vitest": "^5.0.5",
 		"vue-tsc": "^3.3.13"
 	}
 }
