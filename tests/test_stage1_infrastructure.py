@@ -87,6 +87,13 @@ def test_binary_manager_clean_env_and_find(monkeypatch: pytest.MonkeyPatch) -> N
 	ensure_display_env(env_dict)
 	assert isinstance(env_dict, dict)
 
+	# Asegurar que get_clean_env no invoque subprocesos
+	with patch("subprocess.run") as mock_sub_run:
+		monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+		monkeypatch.delenv("DISPLAY", raising=False)
+		get_clean_env()
+		mock_sub_run.assert_not_called()
+
 	# Python o sh siempre existen en el entorno de pruebas
 	found = find_binary("python3") or find_binary("sh")
 	assert found is not None

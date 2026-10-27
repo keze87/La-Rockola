@@ -58,40 +58,8 @@ def ensure_display_env(env: dict[str, str]) -> None:
 	if sys.platform == "win32":
 		return
 
-	if env.get("WAYLAND_DISPLAY") and env.get("DISPLAY"):
+	if env.get("WAYLAND_DISPLAY") or env.get("DISPLAY"):
 		return
-
-	try:
-		res = subprocess.run(
-			["systemctl", "--user", "show-environment"],
-			capture_output=True,
-			text=True,
-			timeout=1.0,
-			check=False,
-		)
-		if res.returncode == 0 and res.stdout:
-			stdout_str = res.stdout if isinstance(res.stdout, str) else res.stdout.decode("utf-8", errors="ignore")
-			for line in stdout_str.splitlines():
-				if "=" in line:
-					k, v = line.split("=", 1)
-					k, v = k.strip(), v.strip()
-					if (
-						k
-						in (
-							"WAYLAND_DISPLAY",
-							"DISPLAY",
-							"XAUTHORITY",
-							"XDG_RUNTIME_DIR",
-							"XDG_SESSION_TYPE",
-							"XDG_CURRENT_DESKTOP",
-							"DBUS_SESSION_BUS_ADDRESS",
-						)
-						and v
-					):
-						env.setdefault(k, v)
-						os.environ.setdefault(k, v)
-	except Exception:
-		pass
 
 	uid = os.getuid() if hasattr(os, "getuid") else 1000
 	runtime_dir = env.get("XDG_RUNTIME_DIR") or os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{uid}"
