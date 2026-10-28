@@ -246,4 +246,60 @@ Dialogue: 0,0:00:25.00,0:00:30.00,Default,,0,0,0,,{\\kf100}Tercera {\\kf100}fras
 		expect(activeLyricLines.value.length).toBe(0);
 		expect(currentLyricLine.value).toBe(' ');
 	});
+
+	it('handles zero-duration syllables and timed space gaps properly (Imagine line)', async () => {
+		const localTimePos = ref(0);
+		const { lyrics, activeLyricLines, loadLyrics } = useLyrics({ localTimePos });
+
+		const assContent = `[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:02:14.81,0:02:17.31,Default,,0,0,0,,{\\blur3}{\\kf0}A{\\k3} {\\kf121}brotherhood{\\k9} {\\kf22}of{\\k12} {\\kf70}man{\\k9} 
+`;
+
+		global.fetch = vi.fn().mockResolvedValue({
+			ok: true,
+			text: () => Promise.resolve(assContent),
+		} as unknown as Response);
+
+		await loadLyrics('/music/imagine.mp3');
+		expect(lyrics.value.length).toBe(1);
+
+		const line = lyrics.value[0];
+		expect(line.text).toBe('A brotherhood of man');
+		expect(line.syllables).toBeDefined();
+
+		// Las palabras deben quedar separadas limpiamente con tiempos progresivos
+		const words = line.syllables!.map((s) => s.text.trim());
+		expect(words).toEqual(['A', 'brotherhood', 'of', 'man']);
+
+		// La primera sílaba "A" no debe absorber toda la duración de la línea
+		expect(line.syllables![0].start).toBe(134.81);
+		expect(line.syllables![0].end).toBeLessThanOrEqual(134.85);
+
+		expect(line.syllables![1].start).toBeGreaterThanOrEqual(134.81);
+		expect(line.syllables![1].end).toBe(136.14);
+
+		expect(line.syllables![2].start).toBe(136.14);
+		expect(line.syllables![2].end).toBe(136.48);
+
+		expect(line.syllables![3].start).toBe(136.48);
+		expect(line.syllables![3].end).toBe(137.27);
+
+		// A los 135.50s (2:15.50), "brotherhood" debe ser la sílaba activa, no "A"
+		localTimePos.value = 135.5;
+		expect(activeLyricLines.value.length).toBe(1);
+		const activeSyls = activeLyricLines.value[0].syllables;
+		const currentActive = activeSyls?.find((s) => localTimePos.value >= s.start && localTimePos.value < s.end);
+		expect(currentActive?.text.trim()).toBe('brotherhood');
+
+		// A los 136.20s, "of" debe ser la sílaba activa
+		localTimePos.value = 136.2;
+		const activeOf = activeSyls?.find((s) => localTimePos.value >= s.start && localTimePos.value < s.end);
+		expect(activeOf?.text.trim()).toBe('of');
+
+		// A los 136.60s, "man" debe ser la sílaba activa
+		localTimePos.value = 136.6;
+		const activeMan = activeSyls?.find((s) => localTimePos.value >= s.start && localTimePos.value < s.end);
+		expect(activeMan?.text.trim()).toBe('man');
+	});
 });

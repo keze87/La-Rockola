@@ -76,7 +76,7 @@ export function parseAssText(
 	const tokenRegex = /(\{[^}]*\})|([^{]+)/g;
 	let match: RegExpExecArray | null;
 	let currentTime = startTime;
-	let pendingDuration = 0;
+	let pendingDuration: number | null = null;
 	const syllables: LyricSyllable[] = [];
 
 	while ((match = tokenRegex.exec(rawText)) !== null) {
@@ -92,20 +92,41 @@ export function parseAssText(
 		} else if (textChunk) {
 			const cleanChunk = textChunk.replace(/\\N/gi, ' ').replace(/\\h/gi, ' ');
 			if (cleanChunk.length > 0) {
-				const sylStart = Math.round(currentTime * 100) / 100;
-				const sylDuration = pendingDuration > 0 ? pendingDuration : Math.max(0, endTime - currentTime);
-				const sylEnd = Math.round((sylStart + sylDuration) * 100) / 100;
+				if (cleanChunk.trim() === '') {
+					// Espacio en blanco entre palabras: si viene tras una sílaba, adjuntamos el espacio y su duración
+					if (syllables.length > 0) {
+						const prevSyl = syllables[syllables.length - 1];
+						prevSyl.text += cleanChunk;
+						if (pendingDuration !== null) {
+							prevSyl.end = Math.round((prevSyl.end + pendingDuration) * 100) / 100;
+							currentTime = prevSyl.end;
+							pendingDuration = null;
+						}
+					} else if (pendingDuration !== null) {
+						currentTime = Math.round((currentTime + pendingDuration) * 100) / 100;
+						pendingDuration = null;
+					}
+				} else {
+					const sylStart = Math.round(currentTime * 100) / 100;
+					const sylDuration = pendingDuration !== null ? pendingDuration : Math.max(0, endTime - currentTime);
+					const sylEnd = Math.round((sylStart + sylDuration) * 100) / 100;
 
-				syllables.push({
-					text: cleanChunk,
-					start: sylStart,
-					end: sylEnd,
-				});
+					syllables.push({
+						text: cleanChunk,
+						start: sylStart,
+						end: sylEnd,
+					});
 
-				currentTime = sylEnd;
-				pendingDuration = 0;
+					currentTime = sylEnd;
+					pendingDuration = null;
+				}
 			}
 		}
+	}
+
+	if (pendingDuration !== null && syllables.length > 0) {
+		const lastSyl = syllables[syllables.length - 1];
+		lastSyl.end = Math.round((lastSyl.end + pendingDuration) * 100) / 100;
 	}
 
 	return { cleanText, syllables };
