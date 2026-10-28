@@ -114,5 +114,11 @@ export function useLibrary() {
 		activeTab.value = 'library';
 	}
 
+	if (typeof window !== 'undefined') {
+		window.addEventListener('rockola:vibra', () => {
+			sortLibrary('shuffle', true);
+		});
+	}
+
 	return { getTrackInfo, loadLibrary, queueIndex, sortLibrary };
 }

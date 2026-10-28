@@ -37,135 +37,136 @@ La Rockola del Carpincho está diseñada siguiendo los principios de la **Arquit
 
 ```text
 .
-├── app/                                       # Aplicación backend en Python
-│   ├── api/                                   # Adaptadores de entrada: rutas HTTP, WebSockets y despachadores
-│   │   ├── commands.py                        # Tabla declarativa de comandos (COMMAND_HANDLERS)
-│   │   ├── library.py                         # Endpoints REST de la biblioteca (canciones, estado de escaneo)
-│   │   ├── media.py                           # Streaming de audio y resolución de carátulas
-│   │   ├── middleware.py                      # Soporte de peticiones por rango (HTTP 206) y CORS
-│   │   ├── router.py                          # Agregador de rutas API (/api/v1 y compatibilidad hacia atrás)
-│   │   ├── schemas.py                         # Modelos Pydantic para requests, responses y mensajes WS
-│   │   ├── system.py                          # Endpoints de salud, capacidades del sistema y versión
-│   │   └── websocket.py                       # Gestor de conexiones WebSocket y difusión en tiempo real
-│   ├── cli/                                   # Presentación: interfaz de línea de comandos y setup interactivo
-│   │   ├── entrypoint.py                      # Parseo de CLI, codificación de consola y paquetes del sistema
-│   │   └── wizard.py                          # Asistente de configuración en terminal para el primer inicio
-│   ├── core/                                  # Módulos transversales y fundacionales
-│   │   ├── config.py                          # Ajustes con Pydantic Settings, directorios y lectura de config
-│   │   ├── container.py                       # Contenedor de inyección de dependencias (AppContainer)
-│   │   ├── logging.py                         # Configuración estandarizada de logs con salida coloreada
-│   │   └── network.py                         # Resolución de IP local y armado de URLs del servidor
-│   ├── domain/                                # Reglas puras de negocio y orquestadores del dominio
-│   │   ├── dj/                                # Selección autónoma de canciones de DJ Bara
-│   │   │   └── selector.py                    # Reglas de transición, coincidencia por estado de ánimo y anti-repetición
-│   │   ├── library/                           # Modelos de canciones, escaneo de carpetas y extracción de audio
-│   │   │   ├── hasher.py                      # Hasheo rápido de archivos en bloques
-│   │   │   ├── models.py                      # Modelos de dominio TrackMetadata y TrackSummary
-│   │   │   ├── mood.py                        # Extracción de características (BPM, energía, centroide)
-│   │   │   └── service.py                     # Escaneo en segundo plano y extracción de portadas
-│   │   ├── playback/                          # Dominio de reproducción
-│   │   │   └── orchestrator.py                # PlaybackOrchestrator: coordina cola, radio, mpv y mpris
-│   │   ├── queue/                             # Dominio de cola de reproducción
-│   │   │   └── manager.py                     # QueueManager: historial, cola, reproducción aleatoria y reordenamiento
-│   │   └── radio/                             # Dominio de Modo Radio
-│   │       ├── phrase_banks/                  # Bancos temáticos inmutables (sabiduría, avisos, chismes, novela, clima)
-│   │       │   ├── advertisements.py          # Avisos parroquiales, comunitarios y objetos extraviados
-│   │       │   ├── fortunes.py                # Refranes y sentencias carpinchas
-│   │       │   ├── gossip.py                  # Chismes, conventillos y vida secreta ribereña
-│   │       │   ├── listeners.py               # Dedicatorias, alertas criollas y tránsito fluvial
-│   │       │   ├── soap_opera.py              # Radioteatro vecinal por capítulos
-│   │       │   └── weather.py                 # Descripciones y categorías meteorológicas
-│   │       ├── classification.py              # Clasificación semántica de segmentos y condiciones de clima
-│   │       ├── context.py                     # Contexto de transmisión (franja, saludo, día, estación, clima)
-│   │       ├── dialogue.py                    # Planificador de charla de cabina entre locutores y segmentos horarios
-│   │       ├── linguistics.py                 # Recursos lingüísticos, fonética rioplatense y saneamiento
-│   │       ├── nlp.py                         # Validación de oraciones habladas y recency ponderado
-│   │       ├── segments.py                    # Entradillas, pases y remates por categoría
-│   │       ├── service.py                     # Servicio de locución radial, pregeneración y orquestación
-│   │       ├── templates.py                   # Resolución de plantillas y expansión de variantes
-│   │       ├── validation.py                  # Auditoría automática de integridad de bancos de frases
-│   │       └── voices.py                      # Locutores de cabina, prosodia y nombres
-│   ├── infrastructure/                        # Adaptadores de salida (drivers, binarios y persistencia)
-│   │   ├── binaries/                          # Resolutores y auto-descargadores de binarios del sistema
-│   │   │   ├── ffmpeg.py                      # Adaptadores para FFmpeg y FFprobe
-│   │   │   ├── fpcalc.py                      # Adaptador para Chromaprint fpcalc
-│   │   │   ├── manager.py                     # Detección de binarios por plataforma, extracción y entorno
-│   │   │   ├── mpv.py                         # Instalador de MPV portable y buscador de rutas
-│   │   │   └── ytdlp.py                       # Descargador y adaptador de invocación para yt-dlp
-│   │   ├── db/                                # Persistencia
-│   │   │   ├── connection.py                  # Fábrica de conexiones SQLite (WAL, busy timeout, foreign keys)
-│   │   │   ├── migrations.py                  # Versionado de esquemas y ejecutor de migraciones
-│   │   │   └── repositories.py                # Repositorios de Canciones, Favoritos, Historial y URLs
-│   │   ├── media/                             # Manipulación de audio
-│   │   │   ├── mixer.py                       # Mezcla mediante grafos de filtros FFmpeg, ducking y masterización
-│   │   │   └── tts_cache.py                   # Sintetizador Edge-TTS con caché de blobs en SQLite
-│   │   ├── mpris/                             # Integración con el escritorio
-│   │   │   └── adapter.py                     # Proveedor D-Bus MPRIS v2 (OrgMprisMediaPlayer2)
-│   │   ├── mpv/                               # Controlador del reproductor multimedia
-│   │   │   └── controller.py                  # AsyncMpvController: protocolo JSON IPC sobre socket Unix/pipe
-│   │   └── weather/                           # Clientes de información externa
-│   │       └── client.py                      # Cliente wttr.in con caché en memoria y logs de diagnóstico
-│   └── main.py                                # Fábrica de la aplicación FastAPI, middlewares y lifespan
-├── scripts/                                   # Scripts auxiliares de empaquetado y construcción
-├── src/                                       # Frontend SPA en Vue 3
-│   ├── assets/                                # Recursos estáticos y fuentes tipográficas
-│   ├── audio/                                 # Drivers de audio para navegador (media session, morse keepalive)
-│   ├── components/                            # Componentes de interfaz de usuario y pestañas
-│   │   ├── ui/                                # Controles primitivos reutilizables (botones, sliders, filas)
-│   │   ├── ContextMenu.vue                    # Menú contextual global
-│   │   ├── ControlsTab.vue                    # Pestaña principal del reproductor (barra de progreso, volumen, carátula)
-│   │   ├── FloatingPlayer.vue                 # Reproductor inferior compacto
-│   │   ├── FogonMode.vue                      # Visualizador a pantalla completa para Modo Fogón
-│   │   ├── LibraryTab.vue                     # Explorador de biblioteca, filtros de temas y búsqueda
-│   │   ├── QueueTab.vue                       # Cola, historial, acciones de deslizamiento y arrastrar y soltar
-│   │   ├── TopTab.vue                         # Pistas más escuchadas y estadísticas
-│   │   └── WeatherLocationModal.vue           # Modal para configurar la ciudad del reporte meteorológico
-│   ├── composables/                           # Lógica de presentación y estado reactivo
-│   │   ├── player/                            # Composables especializados de reproducción
-│   │   │   ├── state.ts                       # Adaptador de estado para compatibilidad
-│   │   │   ├── useCommands.ts                 # Despachadores de comandos HTTP y WebSocket
-│   │   │   ├── useHaptics.ts                  # Retroalimentación por vibración en dispositivos móviles
-│   │   │   ├── useLibrary.ts                  # Integración del estado de la biblioteca
-│   │   │   ├── useLocalPlayback.ts            # Sincronización del elemento de audio del navegador en clientes remotos
-│   │   │   ├── useMpvWindow.ts                # Gestión de la ventana de MPV en el escritorio
-│   │   │   ├── useQueue.ts                    # Acciones y mutaciones de la cola
-│   │   │   ├── useQueueDragDrop.ts            # Gestos táctiles y drag-and-drop HTML5 / Touch
-│   │   │   ├── useSocket.ts                   # Conexión WebSocket resiliente con bucle de reconexión
-│   │   │   ├── useTabs.ts                     # Estado de navegación entre pestañas
-│   │   │   └── useToasts.ts                   # Notificaciones emergentes (toasts)
-│   │   ├── useApi.ts                          # Envoltorio de bajo nivel para Fetch
-│   │   ├── useCover.ts                        # Resolución y fallback de URLs de carátulas
-│   │   ├── useKeyboardShortcuts.ts            # Atajos de teclado globales
-│   │   ├── useLyrics.ts                       # Parser de letras (.ass con karaoke palabra por palabra y .lrc)
-│   │   ├── usePlaybackControls.ts             # Controladores de reproducción, volumen y pausa programada
-│   │   ├── usePlayer.ts                       # Fachada de estado del reproductor y biblioteca
-│   │   └── useSliderFactory.ts                # Fábrica de sliders con arrastre fluido y throttling
-│   ├── stores/                                # Stores reactivas modulares estilo Pinia
-│   │   ├── useLibraryStore.ts                 # Catálogo de temas, consulta de búsqueda y progreso de escaneo
-│   │   ├── usePlaybackStore.ts                # Posición de reproducción, volumen, duración y pausa
-│   │   ├── useQueueStore.ts                   # Lista de reproducción activa, historial y pausa al terminar tema
-│   │   ├── useRadioStore.ts                   # Estado de modo radio, locutor actual y ubicación del clima
-│   │   └── useUiStore.ts                      # Pestaña activa, modales y configuración visual
-│   ├── types/                                 # Definiciones fuertemente tipadas en TypeScript
-│   │   ├── index.ts                           # Contratos de biblioteca, pistas, comandos y estado WebSocket
-│   │   └── global.d.ts                        # Declaraciones globales de entorno
-│   ├── App.vue                                # Vista raíz y oyentes de eventos globales
-│   └── main.ts                                # Inicialización de la aplicación cliente
-├── tests/                                     # Batería de pruebas automatizadas
-│   ├── frontend/                              # Pruebas en Vitest para componentes y composables Vue
-│   ├── test_stage1_infrastructure.py          # Repositorios, hasher, migraciones y socket IPC
-│   ├── test_stage2_domain.py                  # Orquestador de reproducción, cola y DJ Bara
-│   ├── test_stage3_api_and_cli.py             # Endpoints FastAPI, sincronización WS y parser CLI
-│   ├── test_stage4_regressions.py             # D-Bus MPRIS, generadores de base de datos y seguridad Zip-slip
-│   ├── test_stage5_radio_and_audit.py         # Cadena de masterización de radio, diálogo y NLP
-│   ├── test_stage6_audit_and_observability.py # Logs de diagnóstico y auditoría de contratos TDD
+├── app/                                        # Aplicación backend en Python
+│   ├── api/                                    # Adaptadores de entrada: rutas HTTP, WebSockets y despachadores
+│   │   ├── commands.py                         # Tabla declarativa de comandos (COMMAND_HANDLERS)
+│   │   ├── library.py                          # Endpoints REST de la biblioteca (canciones, estado de escaneo)
+│   │   ├── media.py                            # Streaming de audio y resolución de carátulas
+│   │   ├── middleware.py                       # Soporte de peticiones por rango (HTTP 206) y CORS
+│   │   ├── router.py                           # Agregador de rutas API (/api/v1 y compatibilidad hacia atrás)
+│   │   ├── schemas.py                          # Modelos Pydantic para requests, responses y mensajes WS
+│   │   ├── system.py                           # Endpoints de salud, capacidades del sistema y versión
+│   │   └── websocket.py                        # Gestor de conexiones WebSocket y difusión en tiempo real
+│   ├── cli/                                    # Presentación: interfaz de línea de comandos y setup interactivo
+│   │   ├── entrypoint.py                       # Parseo de CLI, codificación de consola y paquetes del sistema
+│   │   └── wizard.py                           # Asistente de configuración en terminal para el primer inicio
+│   ├── core/                                   # Módulos transversales y fundacionales
+│   │   ├── config.py                           # Ajustes con Pydantic Settings, directorios y lectura de config
+│   │   ├── container.py                        # Contenedor de inyección de dependencias (AppContainer)
+│   │   ├── logging.py                          # Configuración estandarizada de logs con salida coloreada
+│   │   └── network.py                          # Resolución de IP local y armado de URLs del servidor
+│   ├── domain/                                 # Reglas puras de negocio y orquestadores del dominio
+│   │   ├── dj/                                 # Selección autónoma de canciones de DJ Bara
+│   │   │   └── selector.py                     # Reglas de transición, coincidencia por estado de ánimo y anti-repetición
+│   │   ├── library/                            # Modelos de canciones, escaneo de carpetas y extracción de audio
+│   │   │   ├── hasher.py                       # Hasheo rápido de archivos en bloques
+│   │   │   ├── models.py                       # Modelos de dominio TrackMetadata y TrackSummary
+│   │   │   ├── mood.py                         # Extracción de características (BPM, energía, centroide)
+│   │   │   └── service.py                      # Escaneo en segundo plano y extracción de portadas
+│   │   ├── playback/                           # Dominio de reproducción
+│   │   │   └── orchestrator.py                 # PlaybackOrchestrator: coordina cola, radio, mpv y mpris
+│   │   ├── queue/                              # Dominio de cola de reproducción
+│   │   │   └── manager.py                      # QueueManager: historial, cola, reproducción aleatoria y reordenamiento
+│   │   └── radio/                              # Dominio de Modo Radio
+│   │       ├── phrase_banks/                   # Bancos temáticos inmutables (sabiduría, avisos, chismes, novela, clima)
+│   │       │   ├── advertisements.py           # Avisos parroquiales, comunitarios y objetos extraviados
+│   │       │   ├── fortunes.py                 # Refranes y sentencias carpinchas
+│   │       │   ├── gossip.py                   # Chismes, conventillos y vida secreta ribereña
+│   │       │   ├── listeners.py                # Dedicatorias, alertas criollas y tránsito fluvial
+│   │       │   ├── soap_opera.py               # Radioteatro vecinal por capítulos
+│   │       │   └── weather.py                  # Descripciones y categorías meteorológicas
+│   │       ├── classification.py               # Clasificación semántica de segmentos y condiciones de clima
+│   │       ├── context.py                      # Contexto de transmisión (franja, saludo, día, estación, clima)
+│   │       ├── dialogue.py                     # Planificador de charla de cabina entre locutores y segmentos horarios
+│   │       ├── linguistics.py                  # Recursos lingüísticos, fonética rioplatense y saneamiento
+│   │       ├── nlp.py                          # Validación de oraciones habladas y recency ponderado
+│   │       ├── segments.py                     # Entradillas, pases y remates por categoría
+│   │       ├── service.py                      # Servicio de locución radial, pregeneración y orquestación
+│   │       ├── templates.py                    # Resolución de plantillas y expansión de variantes
+│   │       ├── validation.py                   # Auditoría automática de integridad de bancos de frases
+│   │       └── voices.py                       # Locutores de cabina, prosodia y nombres
+│   ├── infrastructure/                         # Adaptadores de salida (drivers, binarios y persistencia)
+│   │   ├── binaries/                           # Resolutores y auto-descargadores de binarios del sistema
+│   │   │   ├── ffmpeg.py                       # Adaptadores para FFmpeg y FFprobe
+│   │   │   ├── fpcalc.py                       # Adaptador para Chromaprint fpcalc
+│   │   │   ├── manager.py                      # Detección de binarios por plataforma, extracción y entorno
+│   │   │   ├── mpv.py                          # Instalador de MPV portable y buscador de rutas
+│   │   │   └── ytdlp.py                        # Descargador y adaptador de invocación para yt-dlp
+│   │   ├── db/                                 # Persistencia
+│   │   │   ├── connection.py                   # Fábrica de conexiones SQLite (WAL, busy timeout, foreign keys)
+│   │   │   ├── migrations.py                   # Versionado de esquemas y ejecutor de migraciones
+│   │   │   └── repositories.py                 # Repositorios de Canciones, Favoritos, Historial y URLs
+│   │   ├── media/                              # Manipulación de audio
+│   │   │   ├── mixer.py                        # Mezcla mediante grafos de filtros FFmpeg, ducking y masterización
+│   │   │   └── tts_cache.py                    # Sintetizador Edge-TTS con caché de blobs en SQLite
+│   │   ├── mpris/                              # Integración con el escritorio
+│   │   │   └── adapter.py                      # Proveedor D-Bus MPRIS v2 (OrgMprisMediaPlayer2)
+│   │   ├── mpv/                                # Controlador del reproductor multimedia
+│   │   │   └── controller.py                   # AsyncMpvController: protocolo JSON IPC sobre socket Unix/pipe
+│   │   └── weather/                            # Clientes de información externa
+│   │       └── client.py                       # Cliente wttr.in con caché en memoria y logs de diagnóstico
+│   └── main.py                                 # Fábrica de la aplicación FastAPI, middlewares y lifespan
+├── scripts/                                    # Scripts auxiliares de empaquetado y construcción
+├── src/                                        # Frontend SPA en Vue 3
+│   ├── assets/                                 # Recursos estáticos y fuentes tipográficas
+│   ├── audio/                                  # Drivers de audio para navegador (media session, morse keepalive)
+│   ├── components/                             # Componentes de interfaz de usuario y pestañas
+│   │   ├── ui/                                 # Controles primitivos reutilizables (botones, sliders, filas)
+│   │   ├── ContextMenu.vue                     # Menú contextual global
+│   │   ├── ControlsTab.vue                     # Pestaña principal del reproductor (barra de progreso, volumen, carátula)
+│   │   ├── FloatingPlayer.vue                  # Reproductor inferior compacto
+│   │   ├── FogonMode.vue                       # Visualizador a pantalla completa para Modo Fogón
+│   │   ├── LibraryTab.vue                      # Explorador de biblioteca, filtros de temas y búsqueda
+│   │   ├── QueueTab.vue                        # Cola, historial, acciones de deslizamiento y arrastrar y soltar
+│   │   ├── TopTab.vue                          # Pistas más escuchadas y estadísticas
+│   │   └── WeatherLocationModal.vue            # Modal para configurar la ciudad del reporte meteorológico
+│   ├── composables/                            # Lógica de presentación y estado reactivo
+│   │   ├── player/                             # Composables especializados de reproducción
+│   │   │   ├── state.ts                        # Adaptador de estado para compatibilidad
+│   │   │   ├── useCommands.ts                  # Despachadores de comandos HTTP y WebSocket
+│   │   │   ├── useHaptics.ts                   # Retroalimentación por vibración en dispositivos móviles
+│   │   │   ├── useLibrary.ts                   # Integración del estado de la biblioteca
+│   │   │   ├── useLocalPlayback.ts             # Sincronización del elemento de audio del navegador en clientes remotos
+│   │   │   ├── useMpvWindow.ts                 # Gestión de la ventana de MPV en el escritorio
+│   │   │   ├── useQueue.ts                     # Acciones y mutaciones de la cola
+│   │   │   ├── useQueueDragDrop.ts             # Gestos táctiles y drag-and-drop HTML5 / Touch
+│   │   │   ├── useSocket.ts                    # Conexión WebSocket resiliente con bucle de reconexión
+│   │   │   ├── useTabs.ts                      # Estado de navegación entre pestañas
+│   │   │   └── useToasts.ts                    # Notificaciones emergentes (toasts)
+│   │   ├── useApi.ts                           # Envoltorio de bajo nivel para Fetch
+│   │   ├── useAppRouter.ts                     # Enrutador reactivo SPA (sincroniza /fogon, /queue, /vibra, etc.)
+│   │   ├── useCover.ts                         # Resolución y fallback de URLs de carátulas
+│   │   ├── useKeyboardShortcuts.ts             # Atajos de teclado globales
+│   │   ├── useLyrics.ts                        # Parser de letras (.ass con karaoke palabra por palabra y .lrc)
+│   │   ├── usePlaybackControls.ts              # Controladores de reproducción, volumen y pausa programada
+│   │   ├── usePlayer.ts                        # Fachada de estado del reproductor y biblioteca
+│   │   └── useSliderFactory.ts                 # Fábrica de sliders con arrastre fluido y throttling
+│   ├── stores/                                 # Stores reactivas modulares estilo Pinia
+│   │   ├── useLibraryStore.ts                  # Catálogo de temas, consulta de búsqueda y progreso de escaneo
+│   │   ├── usePlaybackStore.ts                 # Posición de reproducción, volumen, duración y pausa
+│   │   ├── useQueueStore.ts                    # Lista de reproducción activa, historial y pausa al terminar tema
+│   │   ├── useRadioStore.ts                    # Estado de modo radio, locutor actual y ubicación del clima
+│   │   └── useUiStore.ts                       # Pestaña activa, modales y configuración visual
+│   ├── types/                                  # Definiciones fuertemente tipadas en TypeScript
+│   │   ├── index.ts                            # Contratos de biblioteca, pistas, comandos y estado WebSocket
+│   │   └── global.d.ts                         # Declaraciones globales de entorno
+│   ├── App.vue                                 # Vista raíz y oyentes de eventos globales
+│   └── main.ts                                 # Inicialización de la aplicación cliente
+├── tests/                                      # Batería de pruebas automatizadas
+│   ├── frontend/                               # Pruebas en Vitest para componentes y composables Vue
+│   ├── test_stage1_infrastructure.py           # Repositorios, hasher, migraciones y socket IPC
+│   ├── test_stage2_domain.py                   # Orquestador de reproducción, cola y DJ Bara
+│   ├── test_stage3_api_and_cli.py              # Endpoints FastAPI, sincronización WS y parser CLI
+│   ├── test_stage4_regressions.py              # D-Bus MPRIS, generadores de base de datos y seguridad Zip-slip
+│   ├── test_stage5_radio_and_audit.py          # Cadena de masterización de radio, diálogo y NLP
+│   ├── test_stage6_audit_and_observability.py  # Logs de diagnóstico y auditoría de contratos TDD
 │   ├── test_stage7_radio_pregeneration_and_fortunes.py # Pregeneración y sorteo de fortunas
-│   ├── test_radio_chismes.py                  # Radioteatro y chismes
-│   ├── test_radio_locutores_and_cover.py      # Voces dinámicas y carátulas
+│   ├── test_radio_chismes.py                   # Radioteatro y chismes
+│   ├── test_radio_locutores_and_cover.py       # Voces dinámicas y carátulas
 │   └── test_radio_phonetics_and_orthography.py # Fonética rioplatense y ortografía de subtítulos
-├── server.py                                  # Script ejecutable principal
-├── vite.config.ts                             # Configuración del empaquetador Vite
-└── vitest.config.ts                           # Configuración del ejecutor de pruebas Vitest
+├── server.py                                   # Script ejecutable principal
+├── vite.config.ts                              # Configuración del empaquetador Vite
+└── vitest.config.ts                            # Configuración del ejecutor de pruebas Vitest
 ```
 
 ---

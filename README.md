@@ -140,4 +140,4 @@ python server.py --port 8080 --dir "/home/usuario/Música"
 > - **Windows:** Ejecutá la consola o terminal como Administrador.
 > - **macOS / Linux:** Ejecutá con `sudo` (ej: `sudo python server.py --port 80`) o configurá `authbind` para tu usuario.
 
-4. Cuando el servidor arranca, abre automáticamente el reproductor en tu navegador predeterminado apuntando a la IP local (ej: `http://192.168.X.Y:1729`). Para controlar la música desde el celular o con amigos, conectate a la misma red Wi-Fi y entrá a la IP que figura en la consola o escaneá el código QR en la pestaña **Controles**. Para ver todas las opciones disponibles, ejecutá `python server.py --help`.
+Cuando el servidor arranca, abre automáticamente el reproductor en tu navegador predeterminado apuntando a la IP local (ej: `http://192.168.X.Y:1729`). Para controlar la música desde el celular o con amigos, conectate a la misma red Wi-Fi y entrá a la IP que figura en la consola o escaneá el código QR en la pestaña **Controles**. Para ver todas las opciones disponibles, ejecutá `python server.py --help`.

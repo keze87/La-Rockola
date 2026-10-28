@@ -217,6 +217,19 @@ def create_app() -> FastAPI:
 		app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 
 	app.add_api_route("/", serve_index, methods=["GET"])
+	# Rutas del frontend SPA para permitir navegación directa y recarga sin 404
+	for spa_route in (
+		"/vibra",
+		"/fogon",
+		"/queue",
+		"/ronda",
+		"/top",
+		"/clasicos",
+		"/controls",
+		"/perillas",
+		"/temazos",
+	):
+		app.add_api_route(spa_route, serve_index, methods=["GET"], include_in_schema=False)
 	app.add_api_route("/favicon.ico", serve_favicon, methods=["GET"], include_in_schema=False)
 	app.add_api_route("/favicon.png", serve_favicon, methods=["GET"], include_in_schema=False)
 	app.add_api_route("/radio.jpg", serve_radio_jpg, methods=["GET"], include_in_schema=False)

@@ -2,6 +2,7 @@
 	import { computed, onMounted, watch } from 'vue';
 	import { Toaster } from 'vue-sonner';
 	import { useCover } from './composables/useCover';
+	import { useAppRouter } from './composables/useAppRouter';
 	import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts';
 	import { useLyrics, type LyricSyllable } from './composables/useLyrics';
 	import { usePlaybackControls } from './composables/usePlaybackControls';
@@ -129,7 +130,32 @@
 		size: 512,
 	});
 
+	const { initRouter } = useAppRouter();
+
+	watch(isFogonMode, (fogon) => {
+		if (typeof window === 'undefined') return;
+		if (fogon) {
+			if (window.location.pathname !== '/fogon') {
+				window.history.pushState({}, '', '/fogon');
+			}
+		} else if (window.location.pathname === '/fogon') {
+			const tabRoute = activeTab.value === 'library' ? '/' : `/${activeTab.value}`;
+			window.history.pushState({}, '', tabRoute);
+		}
+	});
+
+	watch(activeTab, (tab) => {
+		if (typeof window === 'undefined') return;
+		if (!isFogonMode.value) {
+			const tabRoute = tab === 'library' ? '/' : `/${tab}`;
+			if (window.location.pathname !== tabRoute && window.location.pathname !== '/vibra') {
+				window.history.pushState({}, '', tabRoute);
+			}
+		}
+	});
+
 	onMounted(() => {
+		initRouter();
 		loadLibrary(false);
 		connectWebSocket();
 	});

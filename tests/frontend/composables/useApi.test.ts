@@ -31,6 +31,21 @@ describe('useApi.ts', () => {
 
 		window.location.pathname = '/index.html';
 		expect(getBasePath()).toBe('');
+
+		window.location.pathname = '/queue';
+		expect(getBasePath()).toBe('');
+
+		window.location.pathname = '/fogon';
+		expect(getBasePath()).toBe('');
+
+		window.location.pathname = '/vibra';
+		expect(getBasePath()).toBe('');
+
+		window.location.pathname = '/rockola/queue';
+		expect(getBasePath()).toBe('/rockola');
+
+		window.location.pathname = '/rockola/fogon';
+		expect(getBasePath()).toBe('/rockola');
 	});
 
 	it('apiUrl prepends base path and normalizes leading slashes', () => {

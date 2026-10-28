@@ -221,6 +221,31 @@ def test_library_media_system_and_websocket_routes(tmp_path: Path, dummy_audio_f
 		ws.send_json({"type": "local_player_release"})
 
 
+def test_frontend_routes_served_cleanly(tmp_path: Path, dummy_audio_file: Path) -> None:
+	"""Verifica que las rutas de frontend (/vibra, /fogon, /queue, etc.) sirvan el index sin 404."""
+	_container, _orch = _setup_test_container(tmp_path, dummy_audio_file)
+	app = create_app()
+	client = TestClient(app)
+
+	routes = [
+		"/",
+		"/vibra",
+		"/fogon",
+		"/queue",
+		"/ronda",
+		"/top",
+		"/clasicos",
+		"/controls",
+		"/perillas",
+		"/temazos",
+	]
+	for route in routes:
+		res = client.get(route)
+		assert res.status_code == 200
+		assert "no-cache" in res.headers.get("cache-control", "")
+		assert "text/html" in res.headers.get("content-type", "")
+
+
 def test_cli_and_wizard_helpers(tmp_path: Path, monkeypatch) -> None:
 	"""Verifica el parser CLI, banner, chequeo de dependencias y wizard interactivo."""
 	parser = build_arg_parser()

@@ -10,7 +10,11 @@ import type { ApiResponse, CommandName, CommandPayloads, Track } from '../types'
  */
 export function getBasePath(): string {
 	if (typeof window === 'undefined') return '';
-	return window.location.pathname.replace(/\/index\.html$/, '').replace(/\/+$/, '');
+	let path = window.location.pathname.replace(/\/index\.html$/, '').replace(/\/+$/, '');
+	// Descontamos rutas SPA conocidas al final del pathname para no confundirlas con subrutas de montaje del servidor
+	const spaPattern = /\/(fogon|queue|ronda|top|clasicos|controls|perillas|temazos|vibra)$/i;
+	path = path.replace(spaPattern, '');
+	return path.replace(/\/+$/, '');
 }
 
 /**
