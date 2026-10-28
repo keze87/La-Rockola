@@ -148,7 +148,7 @@
 		if (typeof window === 'undefined') return;
 		if (!isFogonMode.value) {
 			const tabRoute = tab === 'library' ? '/' : `/${tab}`;
-			if (window.location.pathname !== tabRoute && window.location.pathname !== '/vibra') {
+			if (window.location.pathname !== tabRoute) {
 				window.history.pushState({}, '', tabRoute);
 			}
 		}

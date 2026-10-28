@@ -3,6 +3,7 @@
 import { ref } from 'vue';
 import { urlParams } from '../stores/useLibraryStore';
 import { activeTab, isFogonMode } from '../stores/useUiStore';
+import { getBasePath } from './useApi';
 
 export const currentRoute = ref<string>('/');
 
@@ -34,9 +35,17 @@ export function useAppRouter() {
 			activeTab.value = 'top';
 		} else if (norm === '/controls' || norm === '/perillas') {
 			activeTab.value = 'controls';
-		} else if (norm === '/vibra') {
+		} else if (norm === '/vibra' || norm.endsWith('/vibra')) {
 			activeTab.value = 'library';
+			currentRoute.value = '/';
 			const seed = Math.floor(Math.random() * 1000000);
+
+			if (typeof window !== 'undefined') {
+				const base = getBasePath();
+				const targetPath = `${base}/?vibra=${seed}${window.location.hash || ''}`;
+				window.history.replaceState(window.history.state, '', targetPath);
+			}
+
 			urlParams.vibra = seed.toString();
 
 			if (triggerSort && typeof window !== 'undefined') {

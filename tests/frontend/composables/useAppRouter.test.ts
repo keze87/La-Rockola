@@ -48,13 +48,27 @@ describe('useAppRouter', () => {
 		expect(activeTab.value).toBe('controls');
 	});
 
-	it('routes to /vibra generating a random seed and selecting library', () => {
+	it('routes to /vibra generating a random seed, selecting library and replacing URL with /?vibra=numero', () => {
+		window.history.replaceState({}, '', '/vibra');
 		const { applyRoute } = useAppRouter();
 		applyRoute('/vibra');
 		expect(activeTab.value).toBe('library');
 		expect(isFogonMode.value).toBe(false);
 		expect(urlParams.vibra).toBeDefined();
 		expect(Number(urlParams.vibra)).toBeGreaterThanOrEqual(0);
+		expect(window.location.pathname).toBe('/');
+		expect(window.location.search).toBe(`?vibra=${urlParams.vibra}`);
+	});
+
+	it('routes to /rockola/vibra preserving subpath and replacing URL with /rockola/?vibra=numero', () => {
+		window.history.replaceState({}, '', '/rockola/vibra');
+		const { applyRoute } = useAppRouter();
+		applyRoute('/rockola/vibra');
+		expect(activeTab.value).toBe('library');
+		expect(isFogonMode.value).toBe(false);
+		expect(urlParams.vibra).toBeDefined();
+		expect(window.location.pathname).toBe('/rockola/');
+		expect(window.location.search).toBe(`?vibra=${urlParams.vibra}`);
 	});
 
 	it('updates url history upon navigation', () => {
