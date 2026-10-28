@@ -136,11 +136,13 @@
 		if (typeof window === 'undefined') return;
 		if (fogon) {
 			if (window.location.pathname !== '/fogon') {
-				window.history.pushState({}, '', '/fogon');
+				const target = `/fogon${window.location.search}${window.location.hash}`;
+				window.history.pushState({}, '', target);
 			}
 		} else if (window.location.pathname === '/fogon') {
 			const tabRoute = activeTab.value === 'library' ? '/' : `/${activeTab.value}`;
-			window.history.pushState({}, '', tabRoute);
+			const target = `${tabRoute}${window.location.search}${window.location.hash}`;
+			window.history.pushState({}, '', target);
 		}
 	});
 
@@ -149,7 +151,8 @@
 		if (!isFogonMode.value) {
 			const tabRoute = tab === 'library' ? '/' : `/${tab}`;
 			if (window.location.pathname !== tabRoute) {
-				window.history.pushState({}, '', tabRoute);
+				const target = `${tabRoute}${window.location.search}${window.location.hash}`;
+				window.history.pushState({}, '', target);
 			}
 		}
 	});

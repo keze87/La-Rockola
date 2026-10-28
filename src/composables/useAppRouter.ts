@@ -60,7 +60,8 @@ export function useAppRouter() {
 	function navigateTo(path: string) {
 		const norm = normalizePath(path);
 		if (typeof window !== 'undefined' && window.location.pathname !== norm) {
-			window.history.pushState({}, '', norm);
+			const target = `${norm}${window.location.search}${window.location.hash}`;
+			window.history.pushState({}, '', target);
 		}
 		applyRoute(norm);
 	}

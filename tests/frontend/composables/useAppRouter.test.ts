@@ -71,10 +71,13 @@ describe('useAppRouter', () => {
 		expect(window.location.search).toBe(`?vibra=${urlParams.vibra}`);
 	});
 
-	it('updates url history upon navigation', () => {
+	it('updates url history upon navigation preserving search params', () => {
+		window.history.replaceState({}, '', '/?vibra=42');
+		urlParams.vibra = '42';
 		const { navigateTo } = useAppRouter();
 		navigateTo('/queue');
 		expect(window.location.pathname).toBe('/queue');
+		expect(window.location.search).toBe('?vibra=42');
 		expect(activeTab.value).toBe('queue');
 	});
 });

@@ -242,4 +242,34 @@ Dialogue: 0,0:00:20.00,0:00:24.00,Default,,0,0,0,,{\\kf100}Verso {\\kf100}tres
 		expect(nav.text()).toContain('El Carpincho - Canción del Río');
 		expect(nav.text()).not.toContain('Verso dos');
 	});
+
+	it('preserves url search params (?vibra=...) when switching tabs or fogon mode', async () => {
+		window.history.replaceState({}, '', '/?vibra=42');
+		const wrapper = mount(App);
+		await wrapper.vm.$nextTick();
+
+		// Cambiar a pestaña La Ronda
+		activeTab.value = 'queue';
+		await wrapper.vm.$nextTick();
+		expect(window.location.pathname).toBe('/queue');
+		expect(window.location.search).toBe('?vibra=42');
+
+		// Activar Modo Fogón
+		isFogonMode.value = true;
+		await wrapper.vm.$nextTick();
+		expect(window.location.pathname).toBe('/fogon');
+		expect(window.location.search).toBe('?vibra=42');
+
+		// Desactivar Modo Fogón
+		isFogonMode.value = false;
+		await wrapper.vm.$nextTick();
+		expect(window.location.pathname).toBe('/queue');
+		expect(window.location.search).toBe('?vibra=42');
+
+		// Volver a Los Temazos
+		activeTab.value = 'library';
+		await wrapper.vm.$nextTick();
+		expect(window.location.pathname).toBe('/');
+		expect(window.location.search).toBe('?vibra=42');
+	});
 });
