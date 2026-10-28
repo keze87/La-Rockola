@@ -16,26 +16,34 @@ import time
 from pathlib import Path
 from typing import Any
 
-from app.domain.radio.banks import (
-	AI_ROBOTIC_PHRASES,
+from app.domain.radio.classification import (
 	CARPINCHO_PHRASES,
+	RadioPhrase,
+)
+from app.domain.radio.context import (
+	RadioContext,
+	filter_by_context,
+	phrase_fits_context,
+)
+from app.domain.radio.linguistics import (
+	AI_ROBOTIC_PHRASES,
 	COMMON_ENGLISH_WORDS,
 	COMMON_SPANISH_VERBS,
 	COMMON_SPANISH_WORDS,
 	FORBIDDEN_FORMAT_CHARS,
 	KNOWN_SPANISH_DBS,
-	LEAD_INS_BY_CATEGORY,
-	PASES_A_CLIMA,
 	PROFANITY_PHRASES,
 	PROFANITY_TERMS,
+	VERBAL_SUFFIXES_REGEX,
+)
+from app.domain.radio.segments import (
+	LEAD_INS_BY_CATEGORY,
+	PASES_A_CLIMA,
 	REACCIONES_BY_CATEGORY,
 	REACCIONES_CLIMA,
-	VERBAL_SUFFIXES_REGEX,
-	RadioContext,
-	RadioPhrase,
+)
+from app.domain.radio.templates import (
 	expand_phrase_variants,
-	filter_by_context,
-	phrase_fits_context,
 	render_phrase,
 )
 
@@ -586,7 +594,7 @@ def get_radio_fortune(db_path: Path | str | None = None, ctx: RadioContext | Non
 
 def __getattr__(name: str) -> Any:
 	if name in ("apply_rioplatense_tts_phonetics", "clean_subtitle_text"):
-		from app.domain.radio import dialogue
+		from app.domain.radio import linguistics
 
-		return getattr(dialogue, name)
+		return getattr(linguistics, name)
 	raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

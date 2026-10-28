@@ -19,19 +19,25 @@ from app.cli import entrypoint as cli_entrypoint
 from app.core.container import AppContainer, get_container, set_container
 from app.domain.playback.orchestrator import PlaybackOrchestrator
 from app.domain.radio import service as radio_service_mod
-from app.domain.radio.banks import (
+from app.domain.radio.classification import (
 	CARPINCHO_PHRASES,
-	RADIO_INTROS,
-	VOICE_ELENA,
-	VOICE_TOMAS,
 	RadioPhrase,
+)
+from app.domain.radio.context import (
 	build_radio_context,
-	expand_phrase_variants,
 	filter_by_context,
 	phrase_fits_context,
-	render_phrase,
 )
 from app.domain.radio.dialogue import build_radio_dialogue_plan, get_modular_time_segments
+from app.domain.radio.segments import RADIO_INTROS
+from app.domain.radio.templates import (
+	expand_phrase_variants,
+	render_phrase,
+)
+from app.domain.radio.voices import (
+	VOICE_ELENA,
+	VOICE_TOMAS,
+)
 from app.infrastructure.db.connection import init_db
 from app.infrastructure.media import mixer as mixer_mod
 
@@ -306,15 +312,17 @@ class TestRadioContextualAndCoherenceSuite:
 
 	def test_08d_carpincho_fortunes_contains_only_wisdom_and_not_other_categories(self) -> None:
 		"""Verifica que CARPINCHO_FORTUNES contenga exclusivamente sabiduría y no mute con avisos, alertas ni chismes."""
-		from app.domain.radio.banks import (
-			ALERTAS_INCOMODIDAD_CRIOLLA,
-			CARPINCHO_ADS,
+		from app.domain.radio.phrase_banks.advertisements import CARPINCHO_ADS
+		from app.domain.radio.phrase_banks.fortunes import (
 			CARPINCHO_FORTUNES,
 			CARPINCHO_SABIDURIA,
-			CHISMES_CARPINCHOS,
-			NOVELA_VECINAL,
+		)
+		from app.domain.radio.phrase_banks.gossip import CHISMES_CARPINCHOS
+		from app.domain.radio.phrase_banks.listeners import (
+			ALERTAS_INCOMODIDAD_CRIOLLA,
 			TRANSITO_FLUVIAL_Y_CAMINOS,
 		)
+		from app.domain.radio.phrase_banks.soap_opera import NOVELA_VECINAL
 
 		assert CARPINCHO_FORTUNES == CARPINCHO_SABIDURIA
 		# Ninguna frase de otras categorías debe estar en CARPINCHO_FORTUNES
@@ -333,18 +341,20 @@ class TestRadioContextualAndCoherenceSuite:
 		Verifica que resolve_segment_category priorice RadioPhrase y PHRASE_TO_CATEGORY,
 		use heurística sólo para textos externos, y retorne 'unknown' para frases ambiguas o no reconocidas.
 		"""
-		from app.domain.radio.banks import (
+		from app.domain.radio.classification import resolve_segment_category
+		from app.domain.radio.dialogue import RadioPhrase
+		from app.domain.radio.phrase_banks.advertisements import CARPINCHO_ADS
+		from app.domain.radio.phrase_banks.fortunes import CARPINCHO_SABIDURIA
+		from app.domain.radio.phrase_banks.gossip import CHISMES_CARPINCHOS
+		from app.domain.radio.phrase_banks.listeners import (
 			ALERTAS_INCOMODIDAD_CRIOLLA,
-			CARPINCHO_ADS,
-			CARPINCHO_SABIDURIA,
-			CHISMES_CARPINCHOS,
 			DEDICATORIAS_OYENTES,
-			NOVELA_VECINAL,
+		)
+		from app.domain.radio.phrase_banks.soap_opera import NOVELA_VECINAL
+		from app.domain.radio.segments import (
 			get_lead_ins_for_category,
 			get_reactions_for_category,
-			resolve_segment_category,
 		)
-		from app.domain.radio.dialogue import RadioPhrase
 
 		# 1. RadioPhrase explícito tiene prioridad absoluta
 		assert resolve_segment_category(RadioPhrase("Cualquier texto", "novela")) == "novela"
@@ -382,7 +392,7 @@ class TestRadioContextualAndCoherenceSuite:
 
 	def test_08f_contextual_rules_semantic_intent_and_edge_cases(self) -> None:
 		"""Verifica que las reglas contextuales distingan intención y categoría sin romper metáforas ni retrospectivas."""
-		from app.domain.radio.banks import phrase_fits_context
+		from app.domain.radio.context import phrase_fits_context
 
 		night_ctx = build_radio_context(datetime(2026, 10, 17, 23, 0))  # Sábado a la noche
 		sunday_ctx = build_radio_context(datetime(2026, 10, 18, 12, 0))  # Domingo al mediodía
@@ -470,23 +480,29 @@ class TestRadioContextualAndCoherenceSuite:
 
 	def test_08h_banks_immutability_and_tuples(self) -> None:
 		"""Verifica que todos los bancos de frases estáticos sean tuplas inmutables y no permitan mutación in situ."""
-		from app.domain.radio.banks import (
-			ALERTAS_INCOMODIDAD_CRIOLLA,
+		from app.domain.radio.classification import CARPINCHO_PHRASES
+		from app.domain.radio.phrase_banks.advertisements import (
 			AVISOS_PARROQUIALES_Y_EXTRAVIOS,
 			CARPINCHO_ADS,
+		)
+		from app.domain.radio.phrase_banks.fortunes import (
 			CARPINCHO_FORTUNES,
-			CARPINCHO_PHRASES,
 			CARPINCHO_SABIDURIA,
-			CHISMES_CARPINCHOS,
+		)
+		from app.domain.radio.phrase_banks.gossip import CHISMES_CARPINCHOS
+		from app.domain.radio.phrase_banks.listeners import (
+			ALERTAS_INCOMODIDAD_CRIOLLA,
 			DEDICATORIAS_OYENTES,
-			NOVELA_VECINAL,
+			SEPARADORES_Y_SLOGANS,
+			TRANSITO_FLUVIAL_Y_CAMINOS,
+		)
+		from app.domain.radio.phrase_banks.soap_opera import NOVELA_VECINAL
+		from app.domain.radio.segments import (
 			PASES_A_CLIMA,
 			RADIO_INTROS,
 			RADIO_LEAD_INS,
 			RADIO_OUTROS,
 			RADIO_REACTIONS,
-			SEPARADORES_Y_SLOGANS,
-			TRANSITO_FLUVIAL_Y_CAMINOS,
 			WEATHER_LEAD_INS,
 			WEATHER_TEMPLATES,
 		)
@@ -619,12 +635,14 @@ class TestRadioContextualAndCoherenceSuite:
 
 	def test_08k_editorial_variety_and_mechanisms(self) -> None:
 		"""Verifica la riqueza editorial y variedad de mecanismos cómicos (burocráticos, surrealistas, genuinos y personajes recurrentes)."""
-		from app.domain.radio.banks import (
+		from app.domain.radio.phrase_banks.advertisements import (
 			AVISOS_PARROQUIALES_Y_EXTRAVIOS,
 			CARPINCHO_ADS,
-			CHISMES_CARPINCHOS,
-			DEDICATORIAS_OYENTES,
-			NOVELA_VECINAL,
+		)
+		from app.domain.radio.phrase_banks.gossip import CHISMES_CARPINCHOS
+		from app.domain.radio.phrase_banks.listeners import DEDICATORIAS_OYENTES
+		from app.domain.radio.phrase_banks.soap_opera import NOVELA_VECINAL
+		from app.domain.radio.segments import (
 			RADIO_INTROS,
 			RADIO_OUTROS,
 		)
@@ -666,21 +684,19 @@ class TestRadioContextualAndCoherenceSuite:
 		(CARPINCHO_PHRASES, intros, lead-ins, outros, pases a clima, reacciones y descripciones climáticas)
 		tenga al menos un contexto radial válido en el que pueda ser emitida al aire.
 		"""
-		from app.domain.radio.banks import (
-			CARPINCHO_PHRASES,
+		from app.domain.radio.classification import CARPINCHO_PHRASES
+		from app.domain.radio.context import _split_item, build_radio_context, phrase_fits_context
+		from app.domain.radio.phrase_banks.weather import WEATHER_DESC_PHRASES
+		from app.domain.radio.segments import (
+			LEAD_INS_BY_CATEGORY,
+			OUTROS_BY_CATEGORY,
 			PASES_A_CLIMA,
 			RADIO_INTROS,
 			RADIO_LEAD_INS,
 			RADIO_OUTROS,
 			RADIO_REACTIONS,
-			WEATHER_DESC_PHRASES,
-			WEATHER_LEAD_INS,
-		)
-		from app.domain.radio.context import _split_item, build_radio_context, phrase_fits_context
-		from app.domain.radio.segments import (
-			LEAD_INS_BY_CATEGORY,
-			OUTROS_BY_CATEGORY,
 			REACCIONES_BY_CATEGORY,
+			WEATHER_LEAD_INS,
 		)
 
 		# Generamos una matriz completa y diversa de contextos válidos de ejecución

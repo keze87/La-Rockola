@@ -24,10 +24,6 @@ MOMENTO_POR_FRANJA: dict[str, str] = {
 SALUDOS_UNICOS: tuple[str, ...] = ("Buen día", "Buenas tardes", "Buenas noches")
 DIAS_SEMANA: tuple[str, ...] = ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")
 
-VOCATIVOS: dict[str, str] = {"m": "compadre", "f": "comadre"}
-COMPANEROS: dict[str, str] = {"m": "compañero", "f": "compañera"}
-FILOSOFOS: dict[str, str] = {"m": "filósofo", "f": "filósofa"}
-
 
 class RadioContext(NamedTuple):
 	"""Situación en vivo de la transmisión (hora, día, estación y temperatura conocida)."""

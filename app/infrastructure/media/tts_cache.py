@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 
 from app.core.config import get_carpincho_data_dir
-from app.domain.radio.banks import DEFAULT_TTS_RETRIES, DEFAULT_TTS_TIMEOUT, VOICE_PROSODY
+from app.domain.radio.voices import DEFAULT_TTS_RETRIES, DEFAULT_TTS_TIMEOUT, VOICE_PROSODY
 
 logger = logging.getLogger("rockola.radio")
 

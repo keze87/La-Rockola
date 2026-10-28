@@ -4,6 +4,7 @@ Instalador y actualizador portátil de yt-dlp para La Rockola del Carpincho.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import shutil
 import subprocess
@@ -163,6 +164,17 @@ class YtDlpAdapter:
 	def is_available(self) -> bool:
 		return manager.find_binary("yt-dlp") is not None
 
+	async def _resolve_binary(self) -> str:
+		bin_path = manager.find_binary("yt-dlp")
+		if not bin_path:
+			try:
+				installed = await asyncio.to_thread(ensure_ytdlp)
+				if installed:
+					bin_path = installed
+			except Exception as e:
+				logger.error(f"No se pudo asegurar yt-dlp al vuelo: {e}")
+		return bin_path or "yt-dlp"
+
 	async def get_stream_url(self, url: str) -> str | None:
 		"""Extrae la URL directa del flujo de audio mediante yt-dlp -g -f ba/b con caché en memoria."""
 		import asyncio
@@ -173,18 +185,7 @@ class YtDlpAdapter:
 			if now - ts < 7200:
 				return cached_url
 
-		bin_path = manager.find_binary("yt-dlp")
-		if not bin_path:
-			try:
-				logger.info("yt-dlp no encontrado para extraer stream directo. Intentando instalar...")
-				installed = await asyncio.to_thread(ensure_ytdlp)
-				if installed:
-					bin_path = installed
-			except Exception as e:
-				logger.error(f"No se pudo instalar yt-dlp al vuelo: {e}")
-
-		if not bin_path:
-			bin_path = "yt-dlp"
+		bin_path = await self._resolve_binary()
 
 		try:
 			logger.info(f"Pidiéndole a yt-dlp el enlace directo para la radio/cliente: {url}")
@@ -217,18 +218,7 @@ class YtDlpAdapter:
 		import asyncio
 		import json
 
-		bin_path = manager.find_binary("yt-dlp")
-		if not bin_path:
-			try:
-				logger.info("yt-dlp no encontrado para procesar link de YouTube. Intentando instalar...")
-				installed = await asyncio.to_thread(ensure_ytdlp)
-				if installed:
-					bin_path = installed
-			except Exception as e:
-				logger.error(f"No se pudo instalar yt-dlp en tiempo de ejecución: {e}")
-
-		if not bin_path:
-			bin_path = "yt-dlp"
+		bin_path = await self._resolve_binary()
 
 		try:
 			logger.info(f"Che yt-dlp, averiguate la data de este link: {url}")

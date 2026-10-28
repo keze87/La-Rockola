@@ -68,10 +68,23 @@ La Rockola del Carpincho está diseñada siguiendo los principios de la **Arquit
 │   │   ├── queue/                             # Dominio de cola de reproducción
 │   │   │   └── manager.py                     # QueueManager: historial, cola, reproducción aleatoria y reordenamiento
 │   │   └── radio/                             # Dominio de Modo Radio
-│   │       ├── banks.py                       # Bancos de diálogo, entradillas, tablas de prosodia y contextos
-│   │       ├── dialogue.py                    # Generador de turnos de locución y ensamblado de guiones
-│   │       ├── nlp.py                         # Validación morfológica rioplatense y limpieza de frases
-│   │       └── service.py                     # Sintetizador de anuncios y pregeneración en segundo plano
+│   │       ├── phrase_banks/                  # Bancos temáticos inmutables (sabiduría, avisos, chismes, novela, clima)
+│   │       │   ├── advertisements.py          # Avisos parroquiales, comunitarios y objetos extraviados
+│   │       │   ├── fortunes.py                # Refranes y sentencias carpinchas
+│   │       │   ├── gossip.py                  # Chismes, conventillos y vida secreta ribereña
+│   │       │   ├── listeners.py               # Dedicatorias, alertas criollas y tránsito fluvial
+│   │       │   ├── soap_opera.py              # Radioteatro vecinal por capítulos
+│   │       │   └── weather.py                 # Descripciones y categorías meteorológicas
+│   │       ├── classification.py              # Clasificación semántica de segmentos y condiciones de clima
+│   │       ├── context.py                     # Contexto de transmisión (franja, saludo, día, estación, clima)
+│   │       ├── dialogue.py                    # Planificador de charla de cabina entre locutores y segmentos horarios
+│   │       ├── linguistics.py                 # Recursos lingüísticos, fonética rioplatense y saneamiento
+│   │       ├── nlp.py                         # Validación de oraciones habladas y recency ponderado
+│   │       ├── segments.py                    # Entradillas, pases y remates por categoría
+│   │       ├── service.py                     # Servicio de locución radial, pregeneración y orquestación
+│   │       ├── templates.py                   # Resolución de plantillas y expansión de variantes
+│   │       ├── validation.py                  # Auditoría automática de integridad de bancos de frases
+│   │       └── voices.py                      # Locutores de cabina, prosodia y nombres
 │   ├── infrastructure/                        # Adaptadores de salida (drivers, binarios y persistencia)
 │   │   ├── binaries/                          # Resolutores y auto-descargadores de binarios del sistema
 │   │   │   ├── ffmpeg.py                      # Adaptadores para FFmpeg y FFprobe
@@ -123,7 +136,10 @@ La Rockola del Carpincho está diseñada siguiendo los principios de la **Arquit
 │   │   ├── useApi.ts                          # Envoltorio de bajo nivel para Fetch
 │   │   ├── useCover.ts                        # Resolución y fallback de URLs de carátulas
 │   │   ├── useKeyboardShortcuts.ts            # Atajos de teclado globales
-│   │   └── useLyrics.ts                       # Parser de archivos LRC sincronizados y seguimiento de líneas
+│   │   ├── useLyrics.ts                       # Parser de letras (.ass con karaoke palabra por palabra y .lrc)
+│   │   ├── usePlaybackControls.ts             # Controladores de reproducción, volumen y pausa programada
+│   │   ├── usePlayer.ts                       # Fachada de estado del reproductor y biblioteca
+│   │   └── useSliderFactory.ts                # Fábrica de sliders con arrastre fluido y throttling
 │   ├── stores/                                # Stores reactivas modulares estilo Pinia
 │   │   ├── useLibraryStore.ts                 # Catálogo de temas, consulta de búsqueda y progreso de escaneo
 │   │   ├── usePlaybackStore.ts                # Posición de reproducción, volumen, duración y pausa
@@ -131,9 +147,8 @@ La Rockola del Carpincho está diseñada siguiendo los principios de la **Arquit
 │   │   ├── useRadioStore.ts                   # Estado de modo radio, locutor actual y ubicación del clima
 │   │   └── useUiStore.ts                      # Pestaña activa, modales y configuración visual
 │   ├── types/                                 # Definiciones fuertemente tipadas en TypeScript
-│   │   ├── library.ts                         # Interfaces de biblioteca y modelos de pistas
-│   │   ├── player.ts                          # Estado del reproductor y contratos de comandos
-│   │   └── websocket.ts                       # Tipos discriminados para mensajes WebSocket
+│   │   ├── index.ts                           # Contratos de biblioteca, pistas, comandos y estado WebSocket
+│   │   └── global.d.ts                        # Declaraciones globales de entorno
 │   ├── App.vue                                # Vista raíz y oyentes de eventos globales
 │   └── main.ts                                # Inicialización de la aplicación cliente
 ├── tests/                                     # Batería de pruebas automatizadas
@@ -143,7 +158,11 @@ La Rockola del Carpincho está diseñada siguiendo los principios de la **Arquit
 │   ├── test_stage3_api_and_cli.py             # Endpoints FastAPI, sincronización WS y parser CLI
 │   ├── test_stage4_regressions.py             # D-Bus MPRIS, generadores de base de datos y seguridad Zip-slip
 │   ├── test_stage5_radio_and_audit.py         # Cadena de masterización de radio, diálogo y NLP
-│   └── test_stage6_audit_and_observability.py # Logs de diagnóstico y auditoría de contratos TDD
+│   ├── test_stage6_audit_and_observability.py # Logs de diagnóstico y auditoría de contratos TDD
+│   ├── test_stage7_radio_pregeneration_and_fortunes.py # Pregeneración y sorteo de fortunas
+│   ├── test_radio_chismes.py                  # Radioteatro y chismes
+│   ├── test_radio_locutores_and_cover.py      # Voces dinámicas y carátulas
+│   └── test_radio_phonetics_and_orthography.py # Fonética rioplatense y ortografía de subtítulos
 ├── server.py                                  # Script ejecutable principal
 ├── vite.config.ts                             # Configuración del empaquetador Vite
 └── vitest.config.ts                           # Configuración del ejecutor de pruebas Vitest

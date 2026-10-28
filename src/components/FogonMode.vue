@@ -373,6 +373,14 @@
 			clearTimeout(cursorTimer);
 			cursorTimer = null;
 		}
+		if (volThrottleTimer) {
+			clearTimeout(volThrottleTimer);
+			volThrottleTimer = null;
+		}
+		if (userScrollTimer) {
+			clearTimeout(userScrollTimer);
+			userScrollTimer = null;
+		}
 	});
 </script>
 
@@ -446,10 +454,11 @@
 								:track="coverSource"
 								size="h-full w-full"
 								rounded="rounded-2xl md:rounded-3xl"
-								:size-px="null"
+								:size-px="512"
 								:unload-when-hidden="false"
 								button-size="h-10 w-10 md:h-12 md:w-12"
 								button-icon-size="!text-xl md:!text-2xl"
+								:show-favorite="!isSynthesizingRadio && !isPlayingRadioAnnouncement"
 							/>
 							<i v-else class="material-icons text-carpincho-warning !text-[8rem]">album</i>
 						</div>

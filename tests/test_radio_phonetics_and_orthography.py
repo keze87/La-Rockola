@@ -7,15 +7,15 @@ from __future__ import annotations
 
 import re
 
-from app.domain.radio.banks import (
-	CARPINCHO_FORTUNES,
-	CARPINCHO_PHRASES,
-	RADIO_INTROS,
-	RADIO_OUTROS,
-)
-from app.domain.radio.dialogue import (
+from app.domain.radio.classification import CARPINCHO_PHRASES
+from app.domain.radio.linguistics import (
 	apply_rioplatense_tts_phonetics,
 	format_fortune_for_speech,
+)
+from app.domain.radio.phrase_banks.fortunes import CARPINCHO_FORTUNES
+from app.domain.radio.segments import (
+	RADIO_INTROS,
+	RADIO_OUTROS,
 )
 
 
@@ -88,16 +88,19 @@ def test_format_fortune_for_speech_applies_phonetics() -> None:
 
 
 def test_banks_orthography_clean_without_forced_enclitic_accents() -> None:
-	"""Verifica que banks.py tenga ortografía estándar limpia sin tildes forzadas ni DiYei hardcodeado."""
-	# 1. escrachádo -> escrachado en CARPINCHO_FORTUNES
-	fortunes_text = " ".join(CARPINCHO_FORTUNES)
-	assert "escrachádo" not in fortunes_text
-	assert "escrachado" in fortunes_text
+	"""Verifica que los bancos de frases tengan ortografía estándar limpia sin tildes forzadas ni DiYei hardcodeado."""
+	# 1. escrachádo -> escrachado en las dedicatorias y corpus de frases
+	from app.domain.radio.phrase_banks.listeners import DEDICATORIAS_OYENTES
+
+	listeners_text = " ".join(DEDICATORIAS_OYENTES)
+	assert "escrachádo" not in listeners_text
+	assert "escrachado" in listeners_text
 
 	# 2. No debe existir 'DiYei' en los bancos de frases, debe decir 'DJ'
 	all_phrases = [
 		*CARPINCHO_FORTUNES,
 		*[p.text for p in CARPINCHO_PHRASES],
+		*DEDICATORIAS_OYENTES,
 		*RADIO_INTROS,
 		*RADIO_OUTROS,
 	]
@@ -153,6 +156,39 @@ def test_clean_subtitle_text_reverts_phonetics() -> None:
 	assert clean_subtitle_text("fijáte en el DiYei") == "fijate en el DJ"
 	assert clean_subtitle_text("¡Mandále play y subíle dos rayitas!") == "¡Mandale play y subile dos rayitas!"
 	assert clean_subtitle_text("cambiámela") == "cambiamela"
+	# Verifica que las mayúsculas con tilde inversa se restauren correctamente
+	assert clean_subtitle_text("DECÍLE a ese que no moleste") == "DECILE a ese que no moleste"
+	assert clean_subtitle_text("SUBÍLE AL VOLUMEN") == "SUBILE AL VOLUMEN"
+	assert clean_subtitle_text("MANDÁLE CUMBIA") == "MANDALE CUMBIA"
+
+
+def test_listener_phrases_classified_as_oyentes() -> None:
+	"""Verifica que las dedicatorias y mensajes al WhatsApp se clasifiquen como 'oyentes' y no como 'fortuna'."""
+	from app.domain.radio.classification import resolve_segment_category
+
+	sample_msg = 'Mensajito que entra al WhatsApp: "Locutor, acá los pibes del taller de chapa y pintura pidiendo cumbia para que el soplete agarre ritmo". ¡Abrazo a esa barra laburadora!'
+	assert resolve_segment_category(sample_msg) == "oyentes"
+
+	sample_audio = 'Entra un audio de oyente: "Acá el chofer de la línea sesenta clavado en el puente pero con la radio al palo. Hacen el viaje un lujo". ¡Fuerza en ese volante, maestro!'
+	assert resolve_segment_category(sample_audio) == "oyentes"
+
+
+def test_build_radio_dialogue_plan_preserves_category() -> None:
+	"""Verifica que build_radio_dialogue_plan use la categoría de la frase para TTS en lugar de forzar siempre 'fortuna'."""
+	from app.domain.radio.classification import RadioPhrase
+	from app.domain.radio.dialogue import build_radio_dialogue_plan
+
+	phrase_oyente = RadioPhrase(
+		'Nos escribe Gladys desde Berazategui: "Cebando unos amargos con cascarita de naranja mientras escucho La Rockola". ¡Esa es la actitud, Gladys!',
+		"oyentes",
+	)
+	plan = build_radio_dialogue_plan(fortuna=phrase_oyente, dialogue_mode=True)
+	# Buscar el segmento principal de la locución en el plan (texto, voz, categoria, allow_cache)
+	main_seg = next((item for item in plan if "Gladys" in item[0]), None)
+	assert main_seg is not None
+	assert main_seg[2] == "oyentes", (
+		f"Se esperaba categoría 'oyentes' para el segmento principal, obtenido '{main_seg[2]}'"
+	)
 
 
 def test_preload_tts_cache_applies_voseo_phonetics() -> None:

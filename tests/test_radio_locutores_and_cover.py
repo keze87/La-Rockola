@@ -9,8 +9,8 @@ from unittest.mock import AsyncMock
 
 from app.core.container import AppContainer, set_container
 from app.domain.playback.orchestrator import PlaybackOrchestrator
-from app.domain.radio.banks import VOICE_TOMAS
 from app.domain.radio.service import RadioAnnouncementResult
+from app.domain.radio.voices import VOICE_TOMAS
 from app.infrastructure.db.connection import init_db
 from app.infrastructure.media.mixer import get_carpincho_cover_path
 
@@ -98,7 +98,7 @@ class TestRadioLocutoresAndCover:
 
 	def test_05_default_radio_title_is_transmision_de_cabina(self) -> None:
 		"""Verifica que el título oficial de la radio sea 'Transmisión de Cabina'."""
-		from app.domain.radio.banks import DEFAULT_RADIO_TITLE
+		from app.domain.radio.voices import DEFAULT_RADIO_TITLE
 
 		assert DEFAULT_RADIO_TITLE == "Transmisión de Cabina"
 

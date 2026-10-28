@@ -15,6 +15,8 @@ export interface LyricLine {
 }
 
 const lyrics = ref<LyricLine[]>([]);
+let currentLoadedPath: string | null = null;
+let currentFetchPromise: Promise<void> | null = null;
 
 /**
  * Parsea el tiempo del subtítulo ASS (h:mm:ss.cs o hh:mm:ss.cs) a segundos con coma.
@@ -288,23 +290,40 @@ export function useLyrics(player: { localTimePos: Ref<number> }) {
 	});
 
 	async function loadLyrics(path: string | null) {
+		if (path === currentLoadedPath) {
+			if (currentFetchPromise) await currentFetchPromise;
+			return;
+		}
+
+		currentLoadedPath = path;
 		lyrics.value = []; // Limpiamos al toque al cambiar de tema
 		if (!path || path.startsWith('http')) return;
 
-		try {
-			const res = await fetch(apiUrl('/lrc?path=' + encodeURIComponent(path)));
+		const fetchTask = (async () => {
+			try {
+				const res = await fetch(apiUrl('/lrc?path=' + encodeURIComponent(path)));
 
-			if (res.ok && typeof res.text === 'function') {
-				const text = await res.text();
-				if (isAssFormat(text)) {
-					lyrics.value = parseAss(text);
-				} else {
-					parseLrc(text);
+				if (res.ok && typeof res.text === 'function') {
+					const text = await res.text();
+					if (currentLoadedPath === path) {
+						if (isAssFormat(text)) {
+							lyrics.value = parseAss(text);
+						} else {
+							parseLrc(text);
+						}
+					}
+				}
+			} catch (err) {
+				console.error('Pifió buscando las lyrics, maestro:', err);
+			} finally {
+				if (currentLoadedPath === path) {
+					currentFetchPromise = null;
 				}
 			}
-		} catch (err) {
-			console.error('Pifió buscando las lyrics, maestro:', err);
-		}
+		})();
+
+		currentFetchPromise = fetchTask;
+		await fetchTask;
 	}
 
 	function parseLrc(text: string) {

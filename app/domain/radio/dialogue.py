@@ -6,12 +6,30 @@ y agrupación de turnos de habla para síntesis con prosodia natural.
 from __future__ import annotations
 
 import random
-import re
 from datetime import UTC, datetime
 from pathlib import Path
 
-from app.domain.radio.banks import (
-	DEFAULT_COHOST_NAME,
+from app.domain.radio.classification import (
+	RadioPhrase,
+	resolve_segment_category,
+)
+from app.domain.radio.context import (
+	RadioContext,
+	build_radio_context,
+	filter_by_context,
+)
+from app.domain.radio.linguistics import (
+	apply_rioplatense_tts_phonetics,
+	clean_subtitle_text,
+	format_fortune_for_speech,
+)
+from app.domain.radio.nlp import (
+	_normalize_phrase_key,
+	render_tracked_phrase,
+	select_radio_phrase,
+	weighted_choice_by_recency,
+)
+from app.domain.radio.segments import (
 	HOUR_NAMES,
 	MINUTE_SEGMENTS,
 	OUTROS_BY_CATEGORY,
@@ -27,27 +45,34 @@ from app.domain.radio.banks import (
 	REACCIONES_CLIMA,
 	REACCIONES_FORTUNA,
 	SPECIAL_HOURS,
-	VOICE_ELENA,
-	VOICE_NAMES,
-	VOICES,
-	RadioContext,
-	RadioPhrase,
-	build_radio_context,
-	expand_phrase_variants,
-	filter_by_context,
 	get_lead_ins_for_category,
 	get_outros_for_category,
 	get_reactions_for_category,
-	render_phrase,
-	resolve_segment_category,
 )
-from app.domain.radio.nlp import (
-	_normalize_phrase_key,
-	render_tracked_phrase,
-	select_radio_phrase,
-	weighted_choice_by_recency,
+from app.domain.radio.templates import (
+	expand_phrase_variants,
+	render_phrase,
+)
+from app.domain.radio.voices import (
+	DEFAULT_COHOST_NAME,
+	VOICE_ELENA,
+	VOICE_NAMES,
+	VOICES,
 )
 from app.infrastructure.weather.client import format_temperature
+
+__all__ = [
+	"NO_MERGE_CATEGORIES",
+	"apply_rioplatense_tts_phonetics",
+	"build_radio_dialogue_plan",
+	"clean_subtitle_text",
+	"format_fortune_for_speech",
+	"get_modular_hour_segments",
+	"get_modular_minute_segments",
+	"get_modular_time_segments",
+	"group_plan_into_speech_turns",
+	"select_radio_hosts",
+]
 
 NO_MERGE_CATEGORIES: set[str] = {"intro", "hora", "minuto", "clima", "salida"}
 
@@ -70,133 +95,6 @@ def select_radio_hosts(
 		cohost = random.choice(other_voices)
 
 	return host, cohost
-
-
-_ACCENT_MAP = {
-	"a": "á",
-	"e": "é",
-	"i": "í",
-	"o": "ó",
-	"u": "ú",
-	"A": "Á",
-	"E": "É",
-	"I": "Í",
-	"O": "Ó",
-	"U": "Ú",
-}
-
-_VOSEO_ROOTS = (
-	"acomoda",
-	"acorda",
-	"agarra",
-	"ajusta",
-	"anota",
-	"apura",
-	"asoma",
-	"cambia",
-	"canta",
-	"ceba",
-	"conta",
-	"deci",
-	"deja",
-	"echa",
-	"escucha",
-	"fija",
-	"guarda",
-	"hace",
-	"larga",
-	"manda",
-	"mete",
-	"olvida",
-	"pedi",
-	"pega",
-	"pone",
-	"prepara",
-	"presta",
-	"prende",
-	"senta",
-	"subi",
-	"tira",
-	"toca",
-	"toma",
-)
-
-_VOSEO_PATTERN = re.compile(
-	r"\b(?P<root>"
-	+ "|".join(sorted(_VOSEO_ROOTS, key=len, reverse=True))
-	+ r")(?P<pron>mela|melo|tela|telo|sela|selo|me|te|se|le|lo|la|nos|les|los|las)\b",
-	re.IGNORECASE,
-)
-
-_REVERSE_ACCENT_MAP = {
-	"á": "a",
-	"é": "e",
-	"í": "i",
-	"ó": "o",
-	"ú": "u",
-	"Á": "A",
-	"É": "E",
-	"I": "I",
-	"O": "O",
-	"U": "Ú",
-}
-
-_VOSEO_ACCENTED_ROOTS = tuple(root[:-1] + _ACCENT_MAP.get(root[-1], root[-1]) for root in _VOSEO_ROOTS)
-
-_VOSEO_CLEAN_PATTERN = re.compile(
-	r"\b(?P<root>"
-	+ "|".join(sorted(_VOSEO_ACCENTED_ROOTS, key=len, reverse=True))
-	+ r")(?P<pron>mela|melo|tela|telo|sela|selo|me|te|se|le|lo|la|nos|les|los|las)\b",
-	re.IGNORECASE,
-)
-
-
-def _replace_voseo_accent(match: re.Match) -> str:
-	root = match.group("root")
-	pron = match.group("pron")
-	last_char = root[-1]
-	accented = _ACCENT_MAP.get(last_char, last_char)
-	return f"{root[:-1]}{accented}{pron}"
-
-
-def _restore_voseo_accent(match: re.Match) -> str:
-	root = match.group("root")
-	pron = match.group("pron")
-	last_char = root[-1]
-	unaccented = _REVERSE_ACCENT_MAP.get(last_char, last_char)
-	return f"{root[:-1]}{unaccented}{pron}"
-
-
-def apply_rioplatense_tts_phonetics(text: str) -> str:
-	"""
-	Transforma el texto para Edge-TTS aplicando fonética rioplatense:
-	1. Acentúa prosódicamente verbos imperativos de voseo con pronombres enclíticos.
-	2. Convierte 'DJ' en 'DiYei' para locución criolla natural.
-	"""
-	if not text:
-		return ""
-	result = _VOSEO_PATTERN.sub(_replace_voseo_accent, text)
-	return re.sub(r"\bDJ\b", "DiYei", result, flags=re.IGNORECASE)
-
-
-def clean_subtitle_text(text: str) -> str:
-	"""
-	Limpia las tildes prosódicas de Edge-TTS y abreviaturas fonéticas para que los
-	subtítulos en pantalla mantengan su ortografía correcta y natural.
-	"""
-	if not text:
-		return ""
-	result = _VOSEO_CLEAN_PATTERN.sub(_restore_voseo_accent, text)
-	return re.sub(r"\bDiYei\b", "DJ", result, flags=re.IGNORECASE)
-
-
-def format_fortune_for_speech(fortuna: str | tuple[str, str] | RadioPhrase) -> str:
-	"""Prepara el texto de una fortuna para locución quitando comillas duras, asegurando puntuación terminal y fonética."""
-	raw = fortuna[0] if isinstance(fortuna, (tuple, list)) else str(fortuna)
-	cleaned = raw.strip().strip("\"'«»")
-	if not cleaned.endswith((".", "!", "?", "…")):
-		cleaned = f"{cleaned}."
-	return apply_rioplatense_tts_phonetics(cleaned)
 
 
 def get_modular_hour_segments() -> list[str]:
@@ -447,6 +345,10 @@ def build_radio_dialogue_plan(
 			weighted_choice_by_recency(cat_lead_ins, category=f"lead_in_{seg_cat}", db_path=db_path), ctx
 		)
 
+	fortune_category = (
+		seg_cat if seg_cat in ("fortuna", "aviso", "alerta_criolla", "oyentes", "chismes", "novela") else "fortuna"
+	)
+
 	if not dialogue_mode:
 		fortune_voice = VOICE_ELENA if is_system_fortune else host_voice
 		solo_plan: list[tuple[str, str, str, bool]] = [
@@ -458,7 +360,7 @@ def build_radio_dialogue_plan(
 		solo_plan.extend(
 			[
 				(effective_lead_in, host_voice, "lead_in", True),
-				(fortune_text, fortune_voice, "fortuna", True),
+				(fortune_text, fortune_voice, fortune_category, True),
 				(rendered_outro, host_voice, "salida", True),
 			]
 		)
@@ -496,7 +398,7 @@ def build_radio_dialogue_plan(
 	plan.append((effective_lead_in, host_voice, "lead_in", True))
 
 	fortune_voice = VOICE_ELENA if is_system_fortune else cohost_voice
-	plan.append((fortune_text, fortune_voice, "fortuna", True))
+	plan.append((fortune_text, fortune_voice, fortune_category, True))
 
 	react_voice = host_voice if fortune_voice == cohost_voice else cohost_voice
 	addressee_voice = cohost_voice if react_voice == host_voice else host_voice

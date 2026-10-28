@@ -5,6 +5,7 @@ Recursos lingüísticos en español: stopwords, exclusiones de rimas, verbos, ca
 from __future__ import annotations
 
 import re
+from typing import Any
 
 KNOWN_SPANISH_DBS: set[str] = {
 	"amistad",
@@ -942,3 +943,131 @@ AI_ROBOTIC_PHRASES: list[str] = [
 
 
 # ---------------------------------------------------------------------------
+# Fonética rioplatense y saneamiento ortográfico para locución y subtítulos
+# ---------------------------------------------------------------------------
+
+_ACCENT_MAP = {
+	"a": "á",
+	"e": "é",
+	"i": "í",
+	"o": "ó",
+	"u": "ú",
+	"A": "Á",
+	"E": "É",
+	"I": "Í",
+	"O": "Ó",
+	"U": "Ú",
+}
+
+_VOSEO_ROOTS = (
+	"acomoda",
+	"acorda",
+	"agarra",
+	"ajusta",
+	"anota",
+	"apura",
+	"asoma",
+	"cambia",
+	"canta",
+	"ceba",
+	"conta",
+	"deci",
+	"deja",
+	"echa",
+	"escucha",
+	"fija",
+	"guarda",
+	"hace",
+	"larga",
+	"manda",
+	"mete",
+	"olvida",
+	"pedi",
+	"pega",
+	"pone",
+	"prepara",
+	"presta",
+	"prende",
+	"senta",
+	"subi",
+	"tira",
+	"toca",
+	"toma",
+)
+
+_VOSEO_PATTERN = re.compile(
+	r"\b(?P<root>"
+	+ "|".join(sorted(_VOSEO_ROOTS, key=len, reverse=True))
+	+ r")(?P<pron>mela|melo|tela|telo|sela|selo|me|te|se|le|lo|la|nos|les|los|las)\b",
+	re.IGNORECASE,
+)
+
+_REVERSE_ACCENT_MAP = {
+	"á": "a",
+	"é": "e",
+	"í": "i",
+	"ó": "o",
+	"ú": "u",
+	"Á": "A",
+	"É": "E",
+	"Í": "I",
+	"Ó": "O",
+	"Ú": "U",
+}
+
+_VOSEO_ACCENTED_ROOTS = tuple(root[:-1] + _ACCENT_MAP.get(root[-1], root[-1]) for root in _VOSEO_ROOTS)
+
+_VOSEO_CLEAN_PATTERN = re.compile(
+	r"\b(?P<root>"
+	+ "|".join(sorted(_VOSEO_ACCENTED_ROOTS, key=len, reverse=True))
+	+ r")(?P<pron>mela|melo|tela|telo|sela|selo|me|te|se|le|lo|la|nos|les|los|las)\b",
+	re.IGNORECASE,
+)
+
+
+def _replace_voseo_accent(match: re.Match) -> str:
+	root = match.group("root")
+	pron = match.group("pron")
+	last_char = root[-1]
+	accented = _ACCENT_MAP.get(last_char, last_char)
+	return f"{root[:-1]}{accented}{pron}"
+
+
+def _restore_voseo_accent(match: re.Match) -> str:
+	root = match.group("root")
+	pron = match.group("pron")
+	last_char = root[-1]
+	unaccented = _REVERSE_ACCENT_MAP.get(last_char, last_char)
+	return f"{root[:-1]}{unaccented}{pron}"
+
+
+def apply_rioplatense_tts_phonetics(text: str) -> str:
+	"""
+	Transforma el texto para Edge-TTS aplicando fonética rioplatense:
+	1. Acentúa prosódicamente verbos imperativos de voseo con pronombres enclíticos.
+	2. Convierte 'DJ' en 'DiYei' para locución criolla natural.
+	"""
+	if not text:
+		return ""
+	result = _VOSEO_PATTERN.sub(_replace_voseo_accent, text)
+	return re.sub(r"\bDJ\b", "DiYei", result, flags=re.IGNORECASE)
+
+
+def clean_subtitle_text(text: str) -> str:
+	"""
+	Limpia las tildes prosódicas de Edge-TTS y abreviaturas fonéticas para que los
+	subtítulos en pantalla mantengan su ortografía correcta y natural.
+	"""
+	if not text:
+		return ""
+	result = _VOSEO_CLEAN_PATTERN.sub(_restore_voseo_accent, text)
+	return re.sub(r"\bDiYei\b", "DJ", result, flags=re.IGNORECASE)
+
+
+def format_fortune_for_speech(fortuna: str | tuple[str, str] | Any) -> str:
+	"""Prepara el texto de una fortuna para locución quitando comillas duras, asegurando puntuación terminal y fonética."""
+	raw = fortuna[0] if isinstance(fortuna, (tuple, list)) else str(fortuna)
+	cleaned = raw.strip().strip("\"'«»")
+	if not cleaned.endswith((".", "!", "?", "…")):
+		cleaned = f"{cleaned}."
+	return apply_rioplatense_tts_phonetics(cleaned)

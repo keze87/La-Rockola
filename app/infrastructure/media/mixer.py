@@ -12,7 +12,7 @@ import tempfile
 import uuid
 from pathlib import Path
 
-from app.domain.radio.banks import (
+from app.domain.radio.voices import (
 	DEFAULT_BG_VOLUME,
 	DEFAULT_RADIO_ALBUM,
 	DEFAULT_RADIO_ARTIST,
@@ -128,6 +128,45 @@ def build_srt_content(cues: list[tuple[float, float, str]]) -> str:
 			blocks.append(f"{idx}\n{start_str} --> {end_str}\n{clean}\n")
 			idx += 1
 	return "\n".join(blocks)
+
+
+def get_static_asset_path(filename: str) -> Path | None:
+	"""Localiza un activo estático en los directorios públicos, compilados o en el bundle PyInstaller."""
+	root = Path(__file__).resolve().parents[3]
+	candidates = [
+		root / "dist" / filename,
+		root / "public" / filename,
+	]
+	if hasattr(sys, "_MEIPASS"):
+		candidates.insert(0, Path(sys._MEIPASS) / "public" / filename)
+		candidates.insert(1, Path(sys._MEIPASS) / "dist" / filename)
+
+	for c in candidates:
+		if c.is_file():
+			return c
+	return None
+
+
+def resolve_subtitle_path(
+	base_path: Path | str,
+	fallback_path: Path | str | None = None,
+	extensions: tuple[str, ...] = (".ass", ".lrc", ".srt"),
+) -> Path | None:
+	"""Resuelve la ruta a un archivo de subtítulos existente evaluando extensiones prioritarias."""
+	base = Path(base_path)
+	for ext in extensions:
+		cand = base.with_suffix(ext)
+		if cand.is_file():
+			return cand
+
+	if fallback_path:
+		fb = Path(fallback_path)
+		for ext in extensions:
+			cand = fb.with_suffix(ext)
+			if cand.is_file():
+				return cand
+
+	return None
 
 
 def get_carpincho_cover_path() -> Path | None:
@@ -342,7 +381,9 @@ __all__ = [
 	"format_srt_timestamp",
 	"get_audio_duration",
 	"get_carpincho_cover_path",
+	"get_static_asset_path",
 	"is_valid_mp3_file",
 	"is_valid_mp3_stream",
 	"mix_announcement_with_bg_track",
+	"resolve_subtitle_path",
 ]

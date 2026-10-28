@@ -14,17 +14,19 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-from app.domain.radio.banks import (
+from app.domain.radio.classification import resolve_weather_desc_category
+from app.domain.radio.context import RadioContext
+from app.domain.radio.phrase_banks.weather import (
 	DEFAULT_WEATHER_LOCATION,
 	PRECIPITATING_CATEGORIES,
 	RAIN_DESCRIPTIONS,
-	WEATHER_LEAD_INS,
 	WEATHER_RAIN_THRESHOLD,
-	WEATHER_TEMPLATES,
-	RadioContext,
-	get_weather_desc_phrase,
-	resolve_weather_desc_category,
 )
+from app.domain.radio.segments import (
+	WEATHER_LEAD_INS,
+	WEATHER_TEMPLATES,
+)
+from app.domain.radio.templates import get_weather_desc_phrase
 
 logger = logging.getLogger("rockola.radio")
 

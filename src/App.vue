@@ -1,7 +1,7 @@
 <script setup lang="ts">
 	import { computed, onMounted, watch } from 'vue';
 	import { Toaster } from 'vue-sonner';
-	import { apiUrl } from './composables/useApi';
+	import { useCover } from './composables/useCover';
 	import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts';
 	import { useLyrics, type LyricSyllable } from './composables/useLyrics';
 	import { usePlaybackControls } from './composables/usePlaybackControls';
@@ -118,11 +118,16 @@
 		return `${t.display_artist} - ${t.display_title}`;
 	});
 
-	function hideBrokenCover(e: Event) {
-		if (e.target) {
-			(e.target as HTMLElement).style.display = 'none';
+	const headbarCoverSource = computed(() => {
+		if (isScanning.value) return null;
+		if (isPlayingRadioAnnouncement.value || isSynthesizingRadio.value) {
+			return currentTrackPath.value || 'radio_announcement.mp3';
 		}
-	}
+		return currentTrackPath.value;
+	});
+	const { coverUrl: headbarCoverUrl, onCoverError: onHeadbarCoverError } = useCover(headbarCoverSource, {
+		size: 512,
+	});
 
 	onMounted(() => {
 		loadLibrary(false);
@@ -216,18 +221,10 @@
 			</div>
 
 			<img
-				v-if="
-					(currentTrackPath || isPlayingRadioAnnouncement || isSynthesizingRadio) &&
-					!currentTrackPath?.startsWith('http') &&
-					!isScanning
-				"
-				:src="
-					apiUrl(
-						'/cover?path=' + encodeURIComponent(currentTrackPath || 'radio_announcement.mp3') + '&size=512'
-					)
-				"
+				v-if="headbarCoverUrl"
+				:src="headbarCoverUrl"
 				class="h-10 w-10 shrink-0 rounded object-cover shadow-sm"
-				@error="hideBrokenCover"
+				@error="onHeadbarCoverError"
 			/>
 			<div v-else class="flex h-10 w-10 shrink-0 items-center justify-center rounded shadow-sm">
 				<i class="material-icons text-carpincho-warning">

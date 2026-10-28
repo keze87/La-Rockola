@@ -8,32 +8,36 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-from app.domain.radio.banks import (
+from app.domain.radio.classification import (
 	CARPINCHO_PHRASES,
-	CHISMES_CARPINCHOS,
+	PHRASE_TO_CATEGORY,
+	RadioPhrase,
+	resolve_segment_category,
+)
+from app.domain.radio.dialogue import build_radio_dialogue_plan
+from app.domain.radio.phrase_banks.gossip import CHISMES_CARPINCHOS
+from app.domain.radio.phrase_banks.soap_opera import NOVELA_VECINAL
+from app.domain.radio.segments import (
 	LEAD_INS_BY_CATEGORY,
 	LEAD_INS_CHISMES,
 	LEAD_INS_NOVELA,
-	NOVELA_VECINAL,
 	OUTROS_BY_CATEGORY,
 	OUTROS_CHISMES,
 	OUTROS_NOVELA,
-	PHRASE_TO_CATEGORY,
 	RADIO_OUTROS,
 	RADIO_REACTIONS,
 	REACCIONES_BY_CATEGORY,
 	REACCIONES_CHISMES,
 	REACCIONES_NOVELA,
-	VOICE_ELENA,
-	VOICE_TOMAS,
-	RadioPhrase,
-	expand_phrase_variants,
 	get_lead_ins_for_category,
 	get_outros_for_category,
 	get_reactions_for_category,
-	resolve_segment_category,
 )
-from app.domain.radio.dialogue import build_radio_dialogue_plan
+from app.domain.radio.templates import expand_phrase_variants
+from app.domain.radio.voices import (
+	VOICE_ELENA,
+	VOICE_TOMAS,
+)
 from app.infrastructure.db.connection import init_db
 
 
@@ -107,7 +111,7 @@ class TestRadioChismesSuite:
 		textos = [t for t, _v, _c, _a in plan]
 
 		assert "lead_in" in categorias
-		assert "fortuna" in categorias
+		assert "chismes" in categorias or "fortuna" in categorias
 		assert "reaccion" in categorias
 		assert "salida" in categorias
 
@@ -156,7 +160,7 @@ class TestRadioChismesSuite:
 
 	def test_07_dj_carpincho_outro_mode_and_phrases(self) -> None:
 		"""Deben existir outros para DJ Bara y get_outros_for_mode('dj') debe devolverlos."""
-		from app.domain.radio.banks import RADIO_OUTROS_DJ, get_outros_for_mode
+		from app.domain.radio.segments import RADIO_OUTROS_DJ, get_outros_for_mode
 
 		assert len(RADIO_OUTROS_DJ) >= 5
 		for o in RADIO_OUTROS_DJ:

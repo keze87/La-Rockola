@@ -8,14 +8,12 @@ import hashlib
 import io
 import logging
 import os
-import sys
 from pathlib import Path
 
 from fastapi import APIRouter, Query, Request, Response
 from fastapi.responses import FileResponse, RedirectResponse
 from mutagen import File as MutagenFile
 
-from app.core.config import get_dist_dirs
 from app.core.container import get_container
 from app.infrastructure.media.mixer import get_carpincho_cover_path
 
@@ -88,24 +86,6 @@ async def serve_cover(
 
 		if is_announcement:
 			carpincho_img = get_carpincho_cover_path()
-			if not carpincho_img or not carpincho_img.is_file():
-				frontend_dir, dist_dir, _ = get_dist_dirs()
-				candidates = [
-					dist_dir / "radio.jpg",
-					frontend_dir / "public" / "radio.jpg",
-					dist_dir / "favicon.png",
-					frontend_dir / "public" / "favicon.png",
-				]
-				if hasattr(sys, "_MEIPASS"):
-					candidates.insert(0, Path(sys._MEIPASS) / "public" / "radio.jpg")
-					candidates.insert(1, Path(sys._MEIPASS) / "dist" / "radio.jpg")
-					candidates.append(Path(sys._MEIPASS) / "public" / "favicon.png")
-
-				for cand in candidates:
-					if cand.is_file():
-						carpincho_img = cand
-						break
-
 			if carpincho_img and carpincho_img.is_file():
 				img_stat = carpincho_img.stat()
 				etag = f'"{carpincho_img.name}:{int(img_stat.st_mtime)}:{img_stat.st_size}:s={size}"'
@@ -252,21 +232,13 @@ async def serve_lrc(
 	if not is_radio and path not in path_to_id and not any(t.get("path") == path for t in tracks_cache):
 		return Response(status_code=404)
 
-	# Buscamos primero el archivo .ass por si hay karaoke palabra por palabra, sino caemos al .lrc de toda la vida
-	target_path = Path(path).with_suffix(".ass")
-	if not target_path.exists():
-		target_path = Path(path).with_suffix(".lrc")
+	# Buscamos subtítulos (.ass prioritario para karaoke palabra por palabra, o .lrc de respaldo)
+	from app.infrastructure.media.mixer import resolve_subtitle_path
 
-	if not target_path.exists() and is_radio:
-		pre_path = getattr(state, "radio_pregenerated_path", None) if state else None
-		if pre_path:
-			pre_target = Path(pre_path).with_suffix(".ass")
-			if not pre_target.exists():
-				pre_target = Path(pre_path).with_suffix(".lrc")
-			if pre_target.exists():
-				target_path = pre_target
+	pre_path = getattr(state, "radio_pregenerated_path", None) if (state and is_radio) else None
+	target_path = resolve_subtitle_path(path, fallback_path=pre_path, extensions=(".ass", ".lrc"))
 
-	if not target_path.exists():
+	if not target_path or not target_path.exists():
 		return Response(status_code=404)
 
 	headers = {"Cache-Control": "no-cache"} if is_radio else {"Cache-Control": "public, max-age=600, must-revalidate"}

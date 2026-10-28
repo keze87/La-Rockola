@@ -22,7 +22,7 @@ from app.domain.library.mood import is_mood_available
 from app.domain.library.service import LibraryService, get_cover_art_uri
 from app.domain.queue.manager import QueueManager
 from app.domain.radio import service as radio_service_mod
-from app.domain.radio.banks import DEFAULT_WEATHER_LOCATION
+from app.domain.radio.phrase_banks.weather import DEFAULT_WEATHER_LOCATION
 from app.domain.radio.service import RadioService
 from app.infrastructure.binaries.manager import check_internet_async
 from app.infrastructure.binaries.ytdlp import YtDlpAdapter
@@ -593,20 +593,14 @@ class PlaybackOrchestrator:
 		await self.mpv.set_mute(True if self._has_local_player() else self.server_muted)
 
 		if str_path == self.radio_announcement_path and show_win:
-			sub_candidate = Path(str_path).with_suffix(".srt")
-			if not sub_candidate.is_file():
-				sub_candidate = Path(str_path).with_suffix(".ass")
-			if not sub_candidate.is_file():
-				sub_candidate = Path(str_path).with_suffix(".lrc")
-			if not sub_candidate.is_file() and self.radio_pregenerated_path:
-				pre_sub = Path(self.radio_pregenerated_path).with_suffix(".srt")
-				if not pre_sub.is_file():
-					pre_sub = Path(self.radio_pregenerated_path).with_suffix(".ass")
-				if not pre_sub.is_file():
-					pre_sub = Path(self.radio_pregenerated_path).with_suffix(".lrc")
-				if pre_sub.is_file():
-					sub_candidate = pre_sub
-			if sub_candidate.is_file():
+			from app.infrastructure.media.mixer import resolve_subtitle_path
+
+			sub_candidate = resolve_subtitle_path(
+				str_path,
+				fallback_path=getattr(self, "radio_pregenerated_path", None),
+				extensions=(".srt", ".ass", ".lrc"),
+			)
+			if sub_candidate and sub_candidate.is_file():
 				try:
 					await self.mpv.add_subtitle(str(sub_candidate))
 				except Exception as sub_err:

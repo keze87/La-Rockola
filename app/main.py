@@ -8,7 +8,6 @@ import asyncio
 import logging
 import os
 import socket
-import sys
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -146,15 +145,11 @@ async def serve_index():
 
 
 async def serve_radio_jpg(request: Request = None):  # type: ignore[assignment]
-	frontend_dir, dist_dir, _ = get_dist_dirs()
-	radio_path = dist_dir / "radio.jpg"
-	if not radio_path.exists():
-		radio_path = frontend_dir / "public" / "radio.jpg"
-	if not radio_path.exists() and hasattr(sys, "_MEIPASS"):
-		radio_path = Path(sys._MEIPASS) / "public" / "radio.jpg"
+	from app.infrastructure.media.mixer import get_static_asset_path
 
-	if not radio_path.exists():
-		return {"error": f"No encuentro la portada de radio en {radio_path}"}
+	radio_path = get_static_asset_path("radio.jpg")
+	if not radio_path or not radio_path.exists():
+		return Response(status_code=404)
 
 	stat = radio_path.stat()
 	etag = f'"{int(stat.st_mtime)}-{stat.st_size}"'
@@ -172,15 +167,11 @@ async def serve_radio_jpg(request: Request = None):  # type: ignore[assignment]
 
 
 async def serve_favicon(request: Request = None):  # type: ignore[assignment]
-	frontend_dir, dist_dir, _ = get_dist_dirs()
-	favicon_path = dist_dir / "favicon.png"
-	if not favicon_path.exists():
-		favicon_path = frontend_dir / "public" / "favicon.png"
-	if not favicon_path.exists() and hasattr(sys, "_MEIPASS"):
-		favicon_path = Path(sys._MEIPASS) / "public" / "favicon.png"
+	from app.infrastructure.media.mixer import get_static_asset_path
 
-	if not favicon_path.exists():
-		return {"error": f"No encuentro el favicon en {favicon_path}"}
+	favicon_path = get_static_asset_path("favicon.png")
+	if not favicon_path or not favicon_path.exists():
+		return Response(status_code=404)
 
 	stat = favicon_path.stat()
 	etag = f'"{int(stat.st_mtime)}-{stat.st_size}"'

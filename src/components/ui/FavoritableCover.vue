@@ -13,6 +13,7 @@
 			buttonIconSize?: string;
 			sizePx?: number | null;
 			unloadWhenHidden?: boolean;
+			showFavorite?: boolean;
 		}>(),
 		{
 			size: 'h-10 w-10',
@@ -22,6 +23,7 @@
 			buttonIconSize: '!text-[0.9rem]',
 			sizePx: 512,
 			unloadWhenHidden: true,
+			showFavorite: true,
 		}
 	);
 
@@ -41,6 +43,7 @@
 			@click.stop.prevent="toggleFavorite"
 		/>
 		<button
+			v-if="showFavorite"
 			type="button"
 			class="bg-carpincho-panel absolute -right-2 -bottom-2 flex cursor-pointer items-center justify-center rounded-full shadow transition active:scale-90"
 			:class="buttonSize"

@@ -16,32 +16,20 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from app.domain.radio.banks import (
-	DEFAULT_BG_VOLUME,
-	DEFAULT_COHOST_DISPLAY_NAME,
-	DEFAULT_HOST_NAME,
-	DEFAULT_RADIO_ARTIST,
-	DEFAULT_RADIO_TITLE,
-	DEFAULT_TTS_RETRIES,
-	DEFAULT_TTS_TIMEOUT,
-	DEFAULT_WEATHER_LOCATION,
-	RADIO_INTROS,
-	VOICE_NAMES,
-	VOICE_TOMAS,
-	VOICES,
+from app.domain.radio.classification import resolve_segment_category
+from app.domain.radio.context import (
 	build_radio_context,
 	filter_by_context,
-	get_outros_for_category,
-	get_outros_for_mode,
-	resolve_segment_category,
 )
 from app.domain.radio.dialogue import (
-	apply_rioplatense_tts_phonetics,
 	build_radio_dialogue_plan,
-	clean_subtitle_text,
 	get_modular_time_segments,
 	group_plan_into_speech_turns,
 	select_radio_hosts,
+)
+from app.domain.radio.linguistics import (
+	apply_rioplatense_tts_phonetics,
+	clean_subtitle_text,
 )
 from app.domain.radio.nlp import (
 	get_radio_state,
@@ -50,6 +38,24 @@ from app.domain.radio.nlp import (
 	select_radio_phrase,
 	set_radio_state,
 	weighted_choice_by_recency,
+)
+from app.domain.radio.phrase_banks.weather import DEFAULT_WEATHER_LOCATION
+from app.domain.radio.segments import (
+	RADIO_INTROS,
+	get_outros_for_category,
+	get_outros_for_mode,
+)
+from app.domain.radio.voices import (
+	DEFAULT_BG_VOLUME,
+	DEFAULT_COHOST_DISPLAY_NAME,
+	DEFAULT_HOST_NAME,
+	DEFAULT_RADIO_ARTIST,
+	DEFAULT_RADIO_TITLE,
+	DEFAULT_TTS_RETRIES,
+	DEFAULT_TTS_TIMEOUT,
+	VOICE_NAMES,
+	VOICE_TOMAS,
+	VOICES,
 )
 from app.infrastructure.binaries.manager import (
 	check_internet_async,  # noqa: F401
@@ -914,6 +920,7 @@ async def replace_announcement_outro(
 	cover_image_path: Path | str | None = None,
 	timeout: float = DEFAULT_TTS_TIMEOUT,
 	max_retries: int = DEFAULT_TTS_RETRIES,
+	seg_cat: str = "fortuna",
 ) -> RadioAnnouncementResult:
 	"""Reemplaza únicamente el segmento final ('salida') sobre los segmentos troncales pregenerados."""
 	out_p = Path(output_path)
@@ -921,7 +928,7 @@ async def replace_announcement_outro(
 	now_ts = effective_dt.timestamp()
 	ctx = build_radio_context(effective_dt, temp_c=_recent_temp_c(now_ts, db_path=db_path))
 
-	outro_pool = get_outros_for_mode(outro_mode)
+	outro_pool = get_outros_for_category(seg_cat, outro_mode) if seg_cat else get_outros_for_mode(outro_mode)
 	outro_candidates = filter_by_context(outro_pool, ctx) or list(outro_pool)
 	raw_outro = weighted_choice_by_recency(outro_candidates, category="salida", db_path=db_path)
 	outro_text = render_tracked_phrase(raw_outro, ctx)
@@ -1128,7 +1135,7 @@ class RadioService:
 			except Exception as mix_err:
 				logger.debug(f"Fallo en mezcla en caliente con '{next_track_path}': {mix_err}")
 
-		for ext in (".lrc", ".srt"):
+		for ext in (".ass", ".lrc", ".srt"):
 			sub_src = voice_file.with_suffix(ext)
 			sub_dst = out_file.with_suffix(ext)
 			if sub_src.is_file():
