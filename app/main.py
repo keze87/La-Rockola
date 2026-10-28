@@ -16,7 +16,7 @@ from typing import Annotated
 
 from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import Field, TypeAdapter, ValidationError
 
@@ -130,15 +130,18 @@ async def lifespan(app: FastAPI):
 
 
 async def serve_index():
-	_, dist_dir, _ = get_dist_dirs()
-	html_path = dist_dir / "index.html"
-	if not html_path.exists():
-		return {"error": f"Falta el archivo {html_path}, se me cayó el mate encima"}
 	headers = {
 		"Cache-Control": "no-cache, no-store, must-revalidate",
 		"Pragma": "no-cache",
 		"Expires": "0",
 	}
+	_, dist_dir, _ = get_dist_dirs()
+	html_path = dist_dir / "index.html"
+	if not html_path.exists():
+		return JSONResponse(
+			content={"error": f"Falta el archivo {html_path}, se me cayó el mate encima"},
+			headers=headers,
+		)
 	return FileResponse(html_path, headers=headers)
 
 

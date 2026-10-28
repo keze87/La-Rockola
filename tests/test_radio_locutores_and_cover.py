@@ -115,13 +115,31 @@ class TestRadioLocutoresAndCover:
 		assert "etag" in res.headers
 		assert "cache-control" in res.headers
 
-	def test_07_serve_index_has_no_cache_headers(self) -> None:
+	def test_07_serve_index_has_no_cache_headers(self, tmp_path, monkeypatch) -> None:
 		"""Verifica que / (index.html) tenga cabeceras para prevenir que el browser cachee un bundle obsoleto."""
 		from starlette.testclient import TestClient
 
-		from app.main import app
+		import app.main as main_mod
 
-		client = TestClient(app)
+		# 1. Caso con index.html presente (FileResponse)
+		fake_dist = tmp_path / "dist"
+		fake_dist.mkdir()
+		fake_html = fake_dist / "index.html"
+		fake_html.write_text("<!doctype html><html><body>ok</body></html>", encoding="utf-8")
+		monkeypatch.setattr(main_mod, "get_dist_dirs", lambda: (tmp_path, fake_dist, fake_dist / "assets"))
+
+		client = TestClient(main_mod.app)
 		res = client.get("/")
 		assert res.status_code == 200
 		assert "no-cache" in res.headers.get("cache-control", "")
+		assert res.headers.get("content-type", "").startswith("text/html")
+
+		# 2. Caso sin index.html (JSONResponse fallback cuando no se compiló el front)
+		fake_empty_dist = tmp_path / "empty_dist"
+		fake_empty_dist.mkdir()
+		monkeypatch.setattr(main_mod, "get_dist_dirs", lambda: (tmp_path, fake_empty_dist, fake_empty_dist / "assets"))
+
+		res_empty = client.get("/")
+		assert res_empty.status_code == 200
+		assert "no-cache" in res_empty.headers.get("cache-control", "")
+		assert res_empty.headers.get("content-type", "").startswith("application/json")
