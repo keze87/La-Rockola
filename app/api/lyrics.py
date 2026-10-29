@@ -38,6 +38,9 @@ def _generate_mock_ass(title: str, artist: str, provider: str) -> str:
 		f"Title: {title}\n"
 		f"Original Artist: {artist}\n"
 		"ScriptType: v4.00+\n"
+		"WrapStyle: 0\n"
+		"ScaledBorderAndShadow: yes\n"
+		"YCbCr Matrix: None\n"
 		"PlayResX: 1920\n"
 		"PlayResY: 1080\n"
 		"\n"
@@ -47,11 +50,20 @@ def _generate_mock_ass(title: str, artist: str, provider: str) -> str:
 		"\n"
 		"[Events]\n"
 		"Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
-		"Dialogue: 0,0:00:01.50,0:00:04.20,Default,,0,0,0,,{\\kf40}Wan{\\kf50}na {\\kf60}play {\\kf70}ya\n"
-		"Dialogue: 0,0:00:04.50,0:00:07.80,Default,,0,0,0,,{\\kf50}Wan{\\kf50}na {\\kf60}play {\\kf70}ya\n"
-		"Dialogue: 0,0:00:08.00,0:00:11.20,Default,,0,0,0,,{\\kf80}Ooh-{\\kf90}oh\n"
-		"Dialogue: 0,0:00:12.60,0:00:17.50,Default,,0,0,0,,{\\kf35}You {\\kf40}could{\\kf30}n't {\\kf45}wait {\\kf30}to {\\kf35}see {\\kf35}me {\\kf60}out\n"
-		"Dialogue: 0,0:00:18.00,0:00:23.00,Default,,0,0,0,,{\\kf30}I'm {\\kf40}real {\\kf50}qui{\\kf30}et {\\kf30}when {\\kf40}you {\\kf40}run {\\kf30}your {\\kf60}mouth\n"
+		"Dialogue: 0,0:00:59.97,0:01:02.50,Default,,0,0,0,,{\\kf40}Wan{\\kf50}na {\\kf60}play {\\kf70}ya\n"
+		"Dialogue: 0,0:01:02.50,0:01:07.92,Default,,0,0,0,,{\\kf50}Wan{\\kf50}na {\\kf60}play {\\kf70}ya\n"
+		"Dialogue: 0,0:01:07.92,0:01:12.60,Default,,0,0,0,,{\\kf80}Ooh-{\\kf90}oh\n"
+		"Dialogue: 0,0:01:12.95,0:01:17.80,Default,,0,0,0,,{\\kf35}You {\\kf40}could{\\kf30}n't {\\kf45}wait {\\kf30}to {\\kf35}see {\\kf35}me {\\kf60}out\n"
+		"Dialogue: 0,0:01:21.17,0:01:26.43,Default,,0,0,0,,{\\kf30}I'm {\\kf40}real {\\kf50}qui{\\kf30}et {\\kf30}when {\\kf40}you {\\kf40}run {\\kf30}your {\\kf60}mouth\n"
+		"Dialogue: 0,0:01:28.55,0:01:30.67,Default,,0,0,0,,{\\kf50}Lock {\\kf60}eyes\n"
+		"Dialogue: 0,0:01:30.67,0:01:32.56,Default,,0,0,0,,{\\kf50}Walk {\\kf60}by\n"
+		"Dialogue: 0,0:01:32.58,0:01:35.32,Default,,0,0,0,,{\\kf30}Can't {\\kf40}help {\\kf30}but {\\kf50}feel\n"
+		"Dialogue: 0,0:01:37.01,0:01:43.95,Default,,0,0,0,,{\\kf50}Un{\\kf60}u{\\kf40}su{\\kf50}al, {\\kf30}are {\\kf30}you {\\kf40}for {\\kf80}real?\n"
+		"Dialogue: 0,0:01:46.60,0:01:48.61,Default,,0,0,0,,{\\kf30}I {\\kf30}kin{\\kf30}da {\\kf40}hate {\\kf30}you, {\\kf40}but\n"
+		"Dialogue: 0,0:01:48.73,0:01:53.93,Default,,0,0,0,,{\\kf30}It {\\kf30}does{\\kf30}n't {\\kf40}mat{\\kf30}ter, {\\kf30}let {\\kf30}me {\\kf80}dance\n"
+		"Dialogue: 0,0:01:55.10,0:02:02.58,Default,,0,0,0,,{\\kf30}You {\\kf30}seem {\\kf30}so {\\kf40}mis{\\kf30}er{\\kf30}able, {\\kf30}it {\\kf30}does{\\kf30}n't {\\kf40}mat{\\kf30}ter, {\\kf30}let {\\kf30}me {\\kf80}dance\n"
+		"Dialogue: 0,0:02:03.00,0:02:08.68,Default,,0,0,0,,{\\kf40}Feel {\\kf40}it {\\kf40}in {\\kf40}my {\\kf50}bones, {\\kf50}writ{\\kf40}ten {\\kf40}in {\\kf60}blood\n"
+		"Dialogue: 0,0:02:11.03,0:02:17.20,Default,,0,0,0,,{\\kf40}I {\\kf40}don't {\\kf40}need {\\kf40}you, {\\kf40}I {\\kf40}don't {\\kf40}need {\\kf30}a{\\kf30}ny{\\kf60}one\n"
 	)
 
 
@@ -162,7 +174,10 @@ async def get_lyrics_content(
 		except Exception as e:
 			raise HTTPException(status_code=500, detail=f"Error al leer .lrc: {e}")
 
-	return {"exists": False, "content": "", "format": "", "path": str(ass_path)}
+	# Si no existe en disco, al ser endpoint simulado devolvemos un archivo .ass simulado
+	track_title = p.stem or "Canción"
+	mock_content = _generate_mock_ass(track_title, "Artista", "Mock Local")
+	return {"exists": True, "content": mock_content, "format": "ass", "path": str(ass_path)}
 
 
 @router.post("/save")

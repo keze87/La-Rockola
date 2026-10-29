@@ -23,6 +23,7 @@
 		haptic,
 		historyState,
 		isPaused,
+		isPlaying,
 		librarySearchQuery,
 		pauseAfterPath,
 		queueState,
@@ -61,7 +62,9 @@
 		if (!track) return;
 
 		closeCtxMenu();
-		await pause();
+		if (isPlaying.value) {
+			await pause();
+		}
 		lyricsEditorTrack.value = track;
 		isLyricsEditorOpen.value = true;
 		if (typeof window !== 'undefined') {
@@ -280,7 +283,7 @@
 <template>
 	<div
 		v-if="ctxMenu.visible"
-		class="fixed inset-0 z-[9998]"
+		class="fixed inset-0 z-[11000]"
 		@click.self="closeCtxMenu"
 		@contextmenu.prevent="closeCtxMenu"
 	>

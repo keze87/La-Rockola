@@ -1,6 +1,7 @@
 line-length = 120
 indent-width = 4
 target-version = "py312"
+exclude = ["elrc.py"]
 
 [lint]
 ignore = ["BLE001", "S110", "SIM117"]

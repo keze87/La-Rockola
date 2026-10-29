@@ -69,7 +69,7 @@
 
 <template>
 	<div
-		class="lyrics-editor-view fixed inset-0 z-50 flex h-full w-full flex-col overflow-hidden bg-[#1c1917] text-stone-100 select-none"
+		class="lyrics-editor-view fixed inset-0 z-[10000] flex h-full w-full flex-col overflow-hidden bg-[#1c1917] text-stone-100 select-none"
 	>
 		<!-- Elemento de audio en streaming directo para cero desync con el reproductor -->
 		<audio

@@ -314,10 +314,15 @@ describe('ContextMenu.vue', () => {
 		expect(ctxMenu.visible).toBe(false);
 	});
 
-	it('pauses playback and opens lyrics editor when clicking edit lyrics', async () => {
+	it('pauses playback when clicking edit lyrics only if currently playing', async () => {
 		ctxMenu.visible = true;
 		ctxMenu.source = 'library';
 		ctxMenu.track = sampleTrack;
+
+		// 1. When playing -> should pause
+		currentTrackPath.value = sampleTrack.path;
+		const { isPaused } = await import('@/composables/player/state');
+		isPaused.value = false;
 
 		const wrapper = mount(ContextMenu);
 		const editLyricsBtn = wrapper.findAll('.ctx-menu-item').find((b) => b.text().includes('Editar letras'));
@@ -329,6 +334,19 @@ describe('ContextMenu.vue', () => {
 			'/command',
 			expect.objectContaining({ body: JSON.stringify({ cmd: 'pause' }) })
 		);
-		expect(ctxMenu.visible).toBe(false);
+
+		// 2. When already paused -> should NOT call pause
+		fetchMock.mockClear();
+		isPaused.value = true;
+		ctxMenu.visible = true;
+		const wrapper2 = mount(ContextMenu);
+		const editLyricsBtn2 = wrapper2.findAll('.ctx-menu-item').find((b) => b.text().includes('Editar letras'));
+		await editLyricsBtn2!.trigger('click');
+		await flushPromises();
+
+		expect(fetchMock).not.toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({ body: JSON.stringify({ cmd: 'pause' }) })
+		);
 	});
 });

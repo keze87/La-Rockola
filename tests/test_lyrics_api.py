@@ -42,15 +42,16 @@ def test_lyrics_search_mock_returns_converted_ass_providers(client):
 
 
 def test_lyrics_content_endpoint(client, tmp_path):
-	# Test endpoint with non-existent path
+	# Test endpoint with non-existent path on disk returns mock ASS
 	fake_audio = str(tmp_path / "song.mp3")
 	response = client.get(f"/api/lyrics/content?path={fake_audio}")
 	assert response.status_code == 200
 	data = response.json()
-	assert data["exists"] is False
-	assert data["content"] == ""
+	assert data["exists"] is True
+	assert "[Events]" in data["content"]
+	assert data["format"] == "ass"
 
-	# Create a mock ASS file next to the fake audio
+	# Create an actual ASS file next to the fake audio
 	ass_file = tmp_path / "song.ass"
 	ass_file.write_text(
 		"[Script Info]\nTitle: Test\n[Events]\nDialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,{\\kf100}Hola",
@@ -61,7 +62,7 @@ def test_lyrics_content_endpoint(client, tmp_path):
 	assert response.status_code == 200
 	data = response.json()
 	assert data["exists"] is True
-	assert "[Events]" in data["content"]
+	assert "Hola" in data["content"]
 	assert data["format"] == "ass"
 
 

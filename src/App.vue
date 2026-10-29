@@ -355,5 +355,5 @@
 	</div>
 
 	<!-- REPRODUCTOR FLOTANTE -->
-	<FloatingPlayer />
+	<FloatingPlayer v-show="!isLyricsEditorOpen && !isFogonMode" />
 </template>
