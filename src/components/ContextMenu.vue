@@ -3,6 +3,7 @@
 	import { menuRef, useContextMenu } from '../composables/useContextMenu';
 	import { usePlaybackControls } from '../composables/usePlaybackControls';
 	import { usePlayer } from '../composables/usePlayer';
+	import { isLyricsEditorOpen, lyricsEditorTrack } from '../stores/useUiStore';
 
 	const {
 		toggleQueue,
@@ -52,6 +53,20 @@
 		closeCtxMenu();
 		librarySearchQuery.value = track.artist || track.display_artist || '';
 		switchTab('library');
+		haptic();
+	}
+
+	async function ctxEditLyrics() {
+		const track = ctxMenu.track;
+		if (!track) return;
+
+		closeCtxMenu();
+		await pause();
+		lyricsEditorTrack.value = track;
+		isLyricsEditorOpen.value = true;
+		if (typeof window !== 'undefined') {
+			window.history.pushState({}, '', '/letras');
+		}
 		haptic();
 	}
 
@@ -311,6 +326,10 @@
 					<i class="material-icons">timer</i>
 					Frenar la chata tras este tema
 				</button>
+				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxEditLyrics">
+					<i class="material-icons">lyrics</i>
+					Editar letras
+				</button>
 			</template>
 
 			<!-- ACCIONES DEL TEMA ACTUAL -->
@@ -341,6 +360,10 @@
 					<i class="material-icons">person_search</i>
 					Buscar en la librería
 				</button>
+				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxEditLyrics">
+					<i class="material-icons">lyrics</i>
+					Editar letras
+				</button>
 			</template>
 
 			<!-- ACCIONES DE LA FILA -->
@@ -367,6 +390,10 @@
 					<i class="material-icons">person_search</i>
 					Buscar en la librería
 				</button>
+				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxEditLyrics">
+					<i class="material-icons">lyrics</i>
+					Editar letras
+				</button>
 				<button type="button" class="ctx-menu-item delete-item" role="menuitem" @click="ctxRemoveFromQueue">
 					<i class="material-icons text-red-400">delete</i>
 					<span class="text-red-400">Pegarle un voleo</span>
@@ -388,6 +415,10 @@
 				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxFilterByArtist">
 					<i class="material-icons">person_search</i>
 					Buscar en la librería
+				</button>
+				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxEditLyrics">
+					<i class="material-icons">lyrics</i>
+					Editar letras
 				</button>
 				<button type="button" class="ctx-menu-item delete-item" role="menuitem" @click="ctxRemoveFromHistory">
 					<i class="material-icons text-red-400">delete</i>

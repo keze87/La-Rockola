@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import FogonMode from '@/components/FogonMode.vue';
+import { useContextMenu } from '@/composables/useContextMenu';
 import {
 	currentTrackPath,
 	djBaraEnabled,
@@ -470,5 +471,19 @@ Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Hola {\\kf100}mundo
 
 		const lyricsScroll = wrapper.find('.fogon-lyrics-scroll');
 		expect(lyricsScroll.exists()).toBe(true);
+	});
+
+	it('opens context menu for current song on secondary click / contextmenu', async () => {
+		const { ctxMenu } = useContextMenu();
+		currentTrackPath.value = '/music/spinetta.flac';
+		const wrapper = mount(FogonMode);
+
+		const songArea = wrapper.find('.fogon-song-info');
+		expect(songArea.exists()).toBe(true);
+
+		await songArea.trigger('contextmenu', { clientX: 100, clientY: 200 });
+		expect(ctxMenu.visible).toBe(true);
+		expect(ctxMenu.source).toBe('current');
+		expect(ctxMenu.track?.path).toBe('/music/spinetta.flac');
 	});
 });

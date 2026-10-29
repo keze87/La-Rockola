@@ -8,12 +8,14 @@
 	import { usePlaybackControls } from './composables/usePlaybackControls';
 	import { usePlayer } from './composables/usePlayer';
 	import { useSliderFactory } from './composables/useSliderFactory';
+	import { isLyricsEditorOpen } from './stores/useUiStore';
 
 	// Componentes aislados de la interfaz
 	import ContextMenu from './components/ContextMenu.vue';
 	import ControlsTab from './components/ControlsTab.vue';
 	import FloatingPlayer from './components/FloatingPlayer.vue';
 	import FogonMode from './components/FogonMode.vue';
+	import LyricsEditorView from './components/lyrics/LyricsEditorView.vue';
 	import LibraryTab from './components/LibraryTab.vue';
 	import QueueTab from './components/QueueTab.vue';
 	import TopTab from './components/TopTab.vue';
@@ -146,6 +148,20 @@
 		}
 	});
 
+	watch(isLyricsEditorOpen, (open) => {
+		if (typeof window === 'undefined') return;
+		if (open) {
+			if (window.location.pathname !== '/letras') {
+				const target = `/letras${window.location.search}${window.location.hash}`;
+				window.history.pushState({}, '', target);
+			}
+		} else if (window.location.pathname === '/letras' || window.location.pathname === '/lyrics') {
+			const tabRoute = activeTab.value === 'library' ? '/' : `/${activeTab.value}`;
+			const target = `${tabRoute}${window.location.search}${window.location.hash}`;
+			window.history.pushState({}, '', target);
+		}
+	});
+
 	watch(activeTab, (tab) => {
 		if (typeof window === 'undefined') return;
 		if (!isFogonMode.value) {
@@ -193,6 +209,9 @@
 
 	<!-- MODO FOGÓN -->
 	<FogonMode />
+
+	<!-- TALLER DE LETRAS (EDITOR ASS) -->
+	<LyricsEditorView v-if="isLyricsEditorOpen" />
 
 	<!-- MENÚ CONTEXTUAL (global, compartido entre pestañas) -->
 	<ContextMenu />

@@ -313,4 +313,22 @@ describe('ContextMenu.vue', () => {
 
 		expect(ctxMenu.visible).toBe(false);
 	});
+
+	it('pauses playback and opens lyrics editor when clicking edit lyrics', async () => {
+		ctxMenu.visible = true;
+		ctxMenu.source = 'library';
+		ctxMenu.track = sampleTrack;
+
+		const wrapper = mount(ContextMenu);
+		const editLyricsBtn = wrapper.findAll('.ctx-menu-item').find((b) => b.text().includes('Editar letras'));
+		expect(editLyricsBtn).toBeDefined();
+		await editLyricsBtn!.trigger('click');
+		await flushPromises();
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({ body: JSON.stringify({ cmd: 'pause' }) })
+		);
+		expect(ctxMenu.visible).toBe(false);
+	});
 });

@@ -1,9 +1,12 @@
 // Store de dominio para pestañas activas, Modo Fogón, red y puntero de transporte WebSocket.
 
 import { ref } from 'vue';
+import type { Track } from '../types';
 
 export const activeTab = ref<string>('library');
 export const isFogonMode = ref<boolean>(false);
+export const isLyricsEditorOpen = ref<boolean>(false);
+export const lyricsEditorTrack = ref<Track | null>(null);
 export const showFogonVolume = ref<boolean>(false);
 export const serverUrl = ref<string | null>(null);
 export const localIp = ref<string | null>(null);
@@ -26,6 +29,8 @@ export function useUiStore() {
 	return {
 		activeTab,
 		isFogonMode,
+		isLyricsEditorOpen,
+		lyricsEditorTrack,
 		showFogonVolume,
 		serverUrl,
 		localIp,

@@ -2,7 +2,7 @@
 
 import { ref } from 'vue';
 import { urlParams } from '../stores/useLibraryStore';
-import { activeTab, isFogonMode } from '../stores/useUiStore';
+import { activeTab, isFogonMode, isLyricsEditorOpen } from '../stores/useUiStore';
 import { getBasePath } from './useApi';
 
 export const currentRoute = ref<string>('/');
@@ -21,12 +21,22 @@ export function useAppRouter() {
 
 		if (norm === '/fogon') {
 			isFogonMode.value = true;
+			isLyricsEditorOpen.value = false;
 			return;
 		}
 
-		// En cualquier otra ruta, salimos de Modo Fogón
+		if (norm === '/letras' || norm === '/lyrics') {
+			isLyricsEditorOpen.value = true;
+			isFogonMode.value = false;
+			return;
+		}
+
+		// En cualquier otra ruta, salimos de Modo Fogón y del Editor de Letras
 		if (isFogonMode.value) {
 			isFogonMode.value = false;
+		}
+		if (isLyricsEditorOpen.value) {
+			isLyricsEditorOpen.value = false;
 		}
 
 		if (norm === '/queue' || norm === '/ronda') {

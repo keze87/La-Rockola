@@ -5,6 +5,7 @@
 	import { usePlaybackControls } from '../composables/usePlaybackControls';
 	import { usePlayer } from '../composables/usePlayer';
 	import { useSliderFactory } from '../composables/useSliderFactory';
+	import { useContextMenuBindings } from '../composables/useContextMenu';
 	import DragSlider from './ui/DragSlider.vue';
 	import FavoritableCover from './ui/FavoritableCover.vue';
 
@@ -35,6 +36,11 @@
 	} = player;
 
 	const { createSlider } = useSliderFactory();
+
+	const fogonContextBindings = useContextMenuBindings(
+		() => player.getTrackInfo(currentTrackPath.value || ''),
+		'current'
+	);
 
 	// 1. Barra de progreso (Seek)
 	const {
@@ -431,71 +437,73 @@
 							: 'max-w-md',
 					]"
 				>
-					<!-- Bloque superior: Carátula del álbum bajada hacia el título central en móviles -->
-					<div
-						class="flex w-full flex-col items-center text-center"
-						:class="[
-							hasLyrics
-								? 'min-h-0 flex-[6] justify-end pb-1 sm:pb-2 md:h-auto md:flex-none md:shrink-0 md:justify-center md:pb-0'
-								: 'shrink-0 justify-center',
-						]"
-					>
-						<!-- Tapa del disco con marco carpincho, 90% del ancho en móviles (estrictamente cuadrada) y tamaño balanceado en escritorio -->
+					<div class="fogon-song-info flex w-full flex-col items-center" v-on="fogonContextBindings">
+						<!-- Bloque superior: Carátula del álbum bajada hacia el título central en móviles -->
 						<div
-							class="fogon-cover-wrapper bg-carpincho-bg border-carpincho-border/60 flex shrink-0 items-center justify-center overflow-hidden rounded-2xl border shadow-2xl transition-all duration-500 md:rounded-3xl"
+							class="flex w-full flex-col items-center text-center"
 							:class="[
 								hasLyrics
-									? 'aspect-square h-[90vw] max-h-[380px] w-[90vw] max-w-[380px] md:mb-5 md:h-auto md:max-h-none md:w-full md:max-w-none'
-									: 'mb-4 aspect-square h-56 w-56 sm:h-64 sm:w-64 md:mb-6 md:h-80 md:w-80 lg:h-88 lg:w-88',
+									? 'min-h-0 flex-[6] justify-end pb-1 sm:pb-2 md:h-auto md:flex-none md:shrink-0 md:justify-center md:pb-0'
+									: 'shrink-0 justify-center',
 							]"
 						>
-							<FavoritableCover
-								v-if="coverSource"
-								:track="coverSource"
-								size="h-full w-full"
-								rounded="rounded-2xl md:rounded-3xl"
-								:size-px="512"
-								:unload-when-hidden="false"
-								button-size="h-10 w-10 md:h-12 md:w-12"
-								button-icon-size="!text-xl md:!text-2xl"
-								:show-favorite="!isSynthesizingRadio && !isPlayingRadioAnnouncement"
-							/>
-							<i v-else class="material-icons text-carpincho-warning !text-[8rem]">album</i>
-						</div>
-					</div>
-
-					<!-- Bloque central: Información del tema clavado en el centro vertical de la pantalla en móviles -->
-					<div
-						class="fogon-track-info flex w-full shrink-0 flex-col items-center text-center"
-						:class="[hasLyrics ? 'my-2 sm:my-3 md:my-0' : '']"
-					>
-						<!-- Info del tema -->
-						<h1
-							class="fogon-title mb-1 w-full truncate text-center font-black transition-all"
-							:class="
-								hasLyrics
-									? 'text-xl sm:text-2xl md:text-3xl xl:text-4xl'
-									: 'text-2xl sm:text-3xl md:text-4xl'
-							"
-						>
-							<span
-								v-if="currentTrackInfo.isComing"
-								class="text-carpincho-warning mb-1 block animate-pulse text-xs tracking-widest uppercase"
+							<!-- Tapa del disco con marco carpincho, 90% del ancho en móviles (estrictamente cuadrada) y tamaño balanceado en escritorio -->
+							<div
+								class="fogon-cover-wrapper bg-carpincho-bg border-carpincho-border/60 flex shrink-0 items-center justify-center overflow-hidden rounded-2xl border shadow-2xl transition-all duration-500 md:rounded-3xl"
+								:class="[
+									hasLyrics
+										? 'aspect-square h-[90vw] max-h-[380px] w-[90vw] max-w-[380px] md:mb-5 md:h-auto md:max-h-none md:w-full md:max-w-none'
+										: 'mb-4 aspect-square h-56 w-56 sm:h-64 sm:w-64 md:mb-6 md:h-80 md:w-80 lg:h-88 lg:w-88',
+								]"
 							>
-								🦦 Se viene...
-							</span>
-							{{ currentTrackInfo.title }}
-						</h1>
-						<h2
-							class="fogon-artist text-carpincho-secondary w-full truncate text-center font-medium"
-							:class="
-								hasLyrics
-									? 'text-sm sm:text-base md:text-lg lg:text-xl'
-									: 'text-base sm:text-lg md:text-xl'
-							"
+								<FavoritableCover
+									v-if="coverSource"
+									:track="coverSource"
+									size="h-full w-full"
+									rounded="rounded-2xl md:rounded-3xl"
+									:size-px="512"
+									:unload-when-hidden="false"
+									button-size="h-10 w-10 md:h-12 md:w-12"
+									button-icon-size="!text-xl md:!text-2xl"
+									:show-favorite="!isSynthesizingRadio && !isPlayingRadioAnnouncement"
+								/>
+								<i v-else class="material-icons text-carpincho-warning !text-[8rem]">album</i>
+							</div>
+						</div>
+
+						<!-- Bloque central: Información del tema clavado en el centro vertical de la pantalla en móviles -->
+						<div
+							class="fogon-track-info flex w-full shrink-0 flex-col items-center text-center"
+							:class="[hasLyrics ? 'my-2 sm:my-3 md:my-0' : '']"
 						>
-							{{ currentTrackInfo.artist }}
-						</h2>
+							<!-- Info del tema -->
+							<h1
+								class="fogon-title mb-1 w-full truncate text-center font-black transition-all"
+								:class="
+									hasLyrics
+										? 'text-xl sm:text-2xl md:text-3xl xl:text-4xl'
+										: 'text-2xl sm:text-3xl md:text-4xl'
+								"
+							>
+								<span
+									v-if="currentTrackInfo.isComing"
+									class="text-carpincho-warning mb-1 block animate-pulse text-xs tracking-widest uppercase"
+								>
+									🦦 Se viene...
+								</span>
+								{{ currentTrackInfo.title }}
+							</h1>
+							<h2
+								class="fogon-artist text-carpincho-secondary w-full truncate text-center font-medium"
+								:class="
+									hasLyrics
+										? 'text-sm sm:text-base md:text-lg lg:text-xl'
+										: 'text-base sm:text-lg md:text-xl'
+								"
+							>
+								{{ currentTrackInfo.artist }}
+							</h2>
+						</div>
 					</div>
 
 					<!-- Bloque inferior: Barra de progreso, controles y letras móviles acercados hacia el centro -->
