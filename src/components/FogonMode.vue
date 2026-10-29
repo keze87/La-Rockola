@@ -20,6 +20,7 @@
 		pendingSeekTime,
 		isDraggingSeek,
 		isFogonMode,
+		isPaused,
 		isPlaying,
 		isPlayingRadioAnnouncement,
 		isSynthesizingRadio,
@@ -37,10 +38,36 @@
 
 	const { createSlider } = useSliderFactory();
 
-	const fogonContextBindings = useContextMenuBindings(
+	const isLocalTrackPlayingOrPaused = computed(() => {
+		const path = currentTrackPath.value;
+		if (!path) return false;
+		// Solo debe responder si hay un tema reproduciéndose o pausado
+		if (!isPlaying.value && !isPaused.value) return false;
+		// No debe dispararse para anuncios de radio ni transmisiones de cabina
+		if (isPlayingRadioAnnouncement.value || path.includes('radio_announcement')) return false;
+		// Debe ser una canción local (no URL web o streaming)
+		if (path.startsWith('http://') || path.startsWith('https://')) return false;
+		return true;
+	});
+
+	const rawContextMenuBindings = useContextMenuBindings(
 		() => player.getTrackInfo(currentTrackPath.value || ''),
 		'current'
 	);
+
+	const fogonContextBindings = {
+		contextmenu: (e: MouseEvent) => {
+			if (!isLocalTrackPlayingOrPaused.value) return;
+			rawContextMenuBindings.contextmenu(e);
+		},
+		touchstart: (e: TouchEvent) => {
+			if (!isLocalTrackPlayingOrPaused.value) return;
+			rawContextMenuBindings.touchstart?.(e);
+		},
+		touchend: (e: TouchEvent) => rawContextMenuBindings.touchend?.(e),
+		touchcancel: (e: TouchEvent) => rawContextMenuBindings.touchcancel?.(e),
+		touchmove: (e: TouchEvent) => rawContextMenuBindings.touchmove?.(e),
+	};
 
 	// 1. Barra de progreso (Seek)
 	const {

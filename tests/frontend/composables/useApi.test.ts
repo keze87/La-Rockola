@@ -41,10 +41,22 @@ describe('useApi.ts', () => {
 		window.location.pathname = '/vibra';
 		expect(getBasePath()).toBe('');
 
+		window.location.pathname = '/letras';
+		expect(getBasePath()).toBe('');
+
+		window.location.pathname = '/lyrics';
+		expect(getBasePath()).toBe('');
+
 		window.location.pathname = '/rockola/queue';
 		expect(getBasePath()).toBe('/rockola');
 
 		window.location.pathname = '/rockola/fogon';
+		expect(getBasePath()).toBe('/rockola');
+
+		window.location.pathname = '/rockola/letras';
+		expect(getBasePath()).toBe('/rockola');
+
+		window.location.pathname = '/rockola/lyrics';
 		expect(getBasePath()).toBe('/rockola');
 	});
 

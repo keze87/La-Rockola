@@ -122,6 +122,24 @@ describe('LyricsEditorView.vue', () => {
 		const audio = wrapper.find('audio');
 		expect(audio.exists()).toBe(true);
 		expect(audio.attributes('src')).toContain('/stream?path=');
+
+		// Mock audio element methods
+		const audioEl = audio.element as HTMLAudioElement;
+		const playMock = vi.fn().mockResolvedValue(undefined);
+		const pauseMock = vi.fn();
+		audioEl.play = playMock;
+		audioEl.pause = pauseMock;
+
+		// 1. Click play button
+		await playBtn.trigger('click');
+		expect(playMock).toHaveBeenCalled();
+
+		// 2. Seekbar input
+		const seekInput = wrapper.find('input[type="range"]');
+		expect(seekInput.exists()).toBe(true);
+		(seekInput.element as HTMLInputElement).value = '42';
+		await seekInput.trigger('input');
+		expect(audioEl.currentTime).toBe(42);
 	});
 
 	it('applies custom offset adjustments', async () => {

@@ -1,12 +1,14 @@
 <script setup lang="ts">
 	import { onMounted, ref } from 'vue';
 	import { useLyricsEditor } from '../../composables/useLyricsEditor';
+	import { usePlayer } from '../../composables/usePlayer';
 	import { isLyricsEditorOpen, lyricsEditorTrack } from '../../stores/useUiStore';
 	import AssEditor from './AssEditor.vue';
 	import KaraokePreview from './KaraokePreview.vue';
 	import LyricsDiffModal from './LyricsDiffModal.vue';
 	import LyricsTokenModal from './LyricsTokenModal.vue';
 
+	const player = usePlayer();
 	const defaultTrack = {
 		path: '',
 		display_title: 'Pista desconocida',
@@ -15,39 +17,85 @@
 		artist: '',
 	};
 
-	const editor = useLyricsEditor(lyricsEditorTrack.value || defaultTrack);
+	const initialTrack =
+		lyricsEditorTrack.value ||
+		(player.currentTrackPath.value ? player.getTrackInfo(player.currentTrackPath.value) : null) ||
+		defaultTrack;
+
+	const editor = useLyricsEditor(initialTrack);
+	const {
+		track,
+		audioElement,
+		audioStreamUrl,
+		isPlaying,
+		currentTime,
+		duration,
+		pause,
+		togglePlay,
+		seek,
+		editorContent,
+		originalContent,
+		hasChanges,
+		providers,
+		selectedProvider,
+		isSearching,
+		searchTitle,
+		searchArtist,
+		searchLyrics,
+		selectProvider,
+		loadInitialLyrics,
+		offsetMs,
+		applyOffset,
+		findText,
+		replaceText,
+		matchCount,
+		replaceNext,
+		replaceAll,
+		isTokenModalOpen,
+		tokenStatus,
+		loadTokenStatus,
+		saveToken,
+		isDiffModalOpen,
+		isSaving,
+		saveLyrics,
+		confirmSave,
+	} = editor;
+
 	const audioRef = ref<HTMLAudioElement | null>(null);
 
 	onMounted(async () => {
 		if (audioRef.value) {
-			editor.audioElement.value = audioRef.value;
+			audioElement.value = audioRef.value;
+			if (audioRef.value.duration && !isNaN(audioRef.value.duration) && audioRef.value.duration > 0) {
+				duration.value = audioRef.value.duration;
+			}
 		}
-		await editor.loadTokenStatus();
-		await editor.loadInitialLyrics();
+		await loadTokenStatus();
+		await loadInitialLyrics();
 	});
 
 	function onAudioTimeUpdate() {
 		if (audioRef.value) {
-			editor.currentTime.value = audioRef.value.currentTime;
+			currentTime.value = audioRef.value.currentTime;
 		}
 	}
 
 	function onAudioLoadedMetadata() {
-		if (audioRef.value) {
-			editor.duration.value = audioRef.value.duration;
+		if (audioRef.value && !isNaN(audioRef.value.duration)) {
+			duration.value = audioRef.value.duration;
 		}
 	}
 
 	function onAudioPlay() {
-		editor.isPlaying.value = true;
+		isPlaying.value = true;
 	}
 
 	function onAudioPause() {
-		editor.isPlaying.value = false;
+		isPlaying.value = false;
 	}
 
 	function handleClose() {
-		editor.pause();
+		pause();
 		isLyricsEditorOpen.value = false;
 		if (typeof window !== 'undefined' && window.history.length > 1) {
 			window.history.back();
@@ -57,7 +105,7 @@
 	function handleSeekInput(e: Event) {
 		const target = e.target as HTMLInputElement;
 		const val = parseFloat(target.value) || 0;
-		editor.seek(val);
+		seek(val);
 	}
 
 	function formatSec(seconds: number): string {
@@ -74,12 +122,13 @@
 		<!-- Elemento de audio en streaming directo para cero desync con el reproductor -->
 		<audio
 			ref="audioRef"
-			:src="editor.audioStreamUrl.value"
+			:src="audioStreamUrl"
 			preload="auto"
 			@timeupdate="onAudioTimeUpdate"
 			@loadedmetadata="onAudioLoadedMetadata"
 			@play="onAudioPlay"
 			@pause="onAudioPause"
+			@ended="onAudioPause"
 		/>
 
 		<!-- BARRA SUPERIOR -->
@@ -104,11 +153,11 @@
 							Taller de Letras
 						</span>
 						<h2 class="truncate text-sm font-bold text-stone-100">
-							{{ editor.track.value.display_title || editor.track.value.title }}
+							{{ track.display_title || track.title }}
 						</h2>
 					</div>
 					<span class="text-carpincho-secondary truncate text-xs">
-						{{ editor.track.value.display_artist || editor.track.value.artist }}
+						{{ track.display_artist || track.artist }}
 					</span>
 				</div>
 			</div>
@@ -117,7 +166,7 @@
 				<button
 					type="button"
 					class="btn-token flex items-center gap-1.5 rounded-xl border border-stone-700/60 bg-stone-800 px-3 py-1.5 text-xs font-medium text-stone-300 transition-all hover:bg-stone-700 hover:text-white"
-					@click="editor.isTokenModalOpen.value = true"
+					@click="isTokenModalOpen = true"
 				>
 					<i class="material-icons text-carpincho-warning !text-base">vpn_key</i>
 					<span class="hidden sm:inline">Token BetterLyrics</span>
@@ -131,25 +180,25 @@
 		>
 			<div class="flex min-w-[280px] flex-1 items-center gap-2">
 				<input
-					v-model="editor.searchTitle.value"
+					v-model="searchTitle"
 					class="search-title-input focus:border-carpincho-warning flex-1 rounded-lg border border-stone-800 bg-stone-950 px-2.5 py-1.5 text-xs text-stone-200 focus:outline-none"
 					type="text"
 					placeholder="Título del tema"
 				/>
 				<input
-					v-model="editor.searchArtist.value"
+					v-model="searchArtist"
 					class="search-artist-input focus:border-carpincho-warning flex-1 rounded-lg border border-stone-800 bg-stone-950 px-2.5 py-1.5 text-xs text-stone-200 focus:outline-none"
 					type="text"
 					placeholder="Artista"
 				/>
 				<button
 					type="button"
-					:disabled="editor.isSearching.value"
+					:disabled="isSearching"
 					class="btn-search bg-carpincho-primary text-carpincho-bg flex items-center gap-1 rounded-lg px-3 py-1.5 font-bold transition-all hover:brightness-110 disabled:opacity-50"
-					@click="editor.searchLyrics"
+					@click="searchLyrics"
 				>
 					<i class="material-icons !text-sm">search</i>
-					<span class="hidden md:inline">{{ editor.isSearching.value ? 'Buscando...' : 'Buscar' }}</span>
+					<span class="hidden md:inline">{{ isSearching ? 'Buscando...' : 'Buscar' }}</span>
 				</button>
 			</div>
 
@@ -157,12 +206,12 @@
 			<div class="flex shrink-0 items-center gap-2">
 				<label class="font-medium text-stone-400">Fuente:</label>
 				<select
-					v-model="editor.selectedProvider.value"
+					v-model="selectedProvider"
 					class="provider-select focus:border-carpincho-warning text-carpincho-warning max-w-[240px] rounded-lg border border-stone-800 bg-stone-950 px-2.5 py-1.5 text-xs font-semibold focus:outline-none"
-					@change="editor.selectProvider(editor.selectedProvider.value)"
+					@change="selectProvider(selectedProvider)"
 				>
-					<option v-if="editor.providers.value.length === 0" value="">Sin fuentes cargadas</option>
-					<option v-for="p in editor.providers.value" :key="p.provider" :value="p.provider">
+					<option v-if="providers.length === 0" value="">Sin fuentes cargadas</option>
+					<option v-for="p in providers" :key="p.provider" :value="p.provider">
 						{{ p.name }}
 					</option>
 				</select>
@@ -178,25 +227,26 @@
 				<button
 					type="button"
 					class="btn-play bg-carpincho-warning text-carpincho-bg flex h-9 w-9 shrink-0 items-center justify-center rounded-full shadow-md transition-all hover:scale-105 active:scale-95"
-					@click="editor.togglePlay"
+					@click="togglePlay"
 				>
 					<i class="material-icons !text-xl font-bold">
-						{{ editor.isPlaying.value ? 'pause' : 'play_arrow' }}
+						{{ isPlaying ? 'pause' : 'play_arrow' }}
 					</i>
 				</button>
 
 				<span class="shrink-0 font-mono text-xs text-stone-300">
-					{{ formatSec(editor.currentTime.value) }} / {{ formatSec(editor.duration.value) }}
+					{{ formatSec(currentTime) }} / {{ formatSec(duration) }}
 				</span>
 
 				<input
 					type="range"
 					min="0"
-					:max="editor.duration.value || 100"
+					:max="duration || 100"
 					step="0.05"
-					:value="editor.currentTime.value"
+					:value="currentTime"
 					class="accent-carpincho-warning h-1.5 flex-1 cursor-pointer rounded-lg bg-stone-700"
 					@input="handleSeekInput"
+					@change="handleSeekInput"
 				/>
 			</div>
 
@@ -206,31 +256,31 @@
 				<button
 					type="button"
 					class="rounded bg-stone-800 px-2 py-1 font-mono text-xs text-stone-300 hover:bg-stone-700"
-					@click="editor.applyOffset(-500)"
+					@click="applyOffset(-500)"
 				>
 					-500ms
 				</button>
 				<button
 					type="button"
 					class="rounded bg-stone-800 px-2 py-1 font-mono text-xs text-stone-300 hover:bg-stone-700"
-					@click="editor.applyOffset(-100)"
+					@click="applyOffset(-100)"
 				>
 					-100ms
 				</button>
 				<span class="text-carpincho-warning min-w-[45px] px-1 text-center font-mono font-bold">
-					{{ editor.offsetMs.value >= 0 ? '+' : '' }}{{ editor.offsetMs.value }}ms
+					{{ offsetMs >= 0 ? '+' : '' }}{{ offsetMs }}ms
 				</span>
 				<button
 					type="button"
 					class="offset-plus-100-btn rounded bg-stone-800 px-2 py-1 font-mono text-xs text-stone-300 hover:bg-stone-700"
-					@click="editor.applyOffset(100)"
+					@click="applyOffset(100)"
 				>
 					+100ms
 				</button>
 				<button
 					type="button"
 					class="rounded bg-stone-800 px-2 py-1 font-mono text-xs text-stone-300 hover:bg-stone-700"
-					@click="editor.applyOffset(500)"
+					@click="applyOffset(500)"
 				>
 					+500ms
 				</button>
@@ -241,31 +291,29 @@
 		<div class="flex shrink-0 items-center gap-2 border-b border-stone-800/80 bg-stone-950/70 px-4 py-1.5 text-xs">
 			<i class="material-icons !text-sm text-stone-500">find_replace</i>
 			<input
-				v-model="editor.findText.value"
+				v-model="findText"
 				type="text"
 				placeholder="Buscar texto..."
 				class="w-36 rounded border border-stone-800 bg-stone-900 px-2 py-1 text-xs text-stone-200 focus:outline-none"
 			/>
 			<input
-				v-model="editor.replaceText.value"
+				v-model="replaceText"
 				type="text"
 				placeholder="Reemplazar con..."
 				class="w-36 rounded border border-stone-800 bg-stone-900 px-2 py-1 text-xs text-stone-200 focus:outline-none"
 			/>
-			<span v-if="editor.findText.value" class="text-[0.7rem] text-stone-400">
-				({{ editor.matchCount.value }} coincidencias)
-			</span>
+			<span v-if="findText" class="text-[0.7rem] text-stone-400">({{ matchCount }} coincidencias)</span>
 			<button
 				type="button"
 				class="rounded bg-stone-800 px-2.5 py-1 text-xs font-semibold text-stone-200 hover:bg-stone-700"
-				@click="editor.replaceNext"
+				@click="replaceNext"
 			>
 				Reemplazar
 			</button>
 			<button
 				type="button"
 				class="rounded bg-stone-800 px-2.5 py-1 text-xs font-semibold text-stone-200 hover:bg-stone-700"
-				@click="editor.replaceAll"
+				@click="replaceAll"
 			>
 				Reemplazar todo
 			</button>
@@ -279,13 +327,11 @@
 					<span class="text-[0.7rem] font-semibold tracking-wider uppercase">
 						Editor de archivo .ASS (Personalizado)
 					</span>
-					<span v-if="editor.hasChanges.value" class="font-bold text-amber-400">
-						● Modificado sin guardar
-					</span>
+					<span v-if="hasChanges" class="font-bold text-amber-400">● Modificado sin guardar</span>
 					<span v-else class="text-stone-500">Al día</span>
 				</div>
 				<div class="min-h-0 flex-1">
-					<AssEditor v-model="editor.editorContent.value" />
+					<AssEditor v-model="editorContent" />
 				</div>
 			</div>
 
@@ -295,11 +341,7 @@
 					Previsualización en tiempo real
 				</div>
 				<div class="min-h-0 flex-1">
-					<KaraokePreview
-						:ass-content="editor.editorContent.value"
-						:current-time="editor.currentTime.value"
-						@seek="editor.seek"
-					/>
+					<KaraokePreview :ass-content="editorContent" :current-time="currentTime" @seek="seek" />
 				</div>
 			</div>
 		</main>
@@ -310,7 +352,7 @@
 		>
 			<div class="text-xs text-stone-400">
 				<span>Archivo destino:</span>
-				<span class="font-mono text-stone-200">{{ editor.track.value.path || 'Sin ruta' }}.ass</span>
+				<span class="font-mono text-stone-200">{{ track.path || 'Sin ruta' }}.ass</span>
 			</div>
 
 			<div class="flex items-center gap-3">
@@ -323,37 +365,37 @@
 				</button>
 				<button
 					type="button"
-					:disabled="editor.isSaving.value"
+					:disabled="isSaving"
 					class="btn-save bg-carpincho-primary text-carpincho-bg flex items-center gap-2 rounded-xl px-5 py-2 text-xs font-bold shadow-md transition-all hover:brightness-110 active:scale-95 disabled:opacity-50"
-					@click="editor.saveLyrics"
+					@click="saveLyrics"
 				>
 					<i class="material-icons !text-base">save</i>
-					<span>{{ editor.isSaving.value ? 'Guardando...' : 'Guardar letra personalizada' }}</span>
+					<span>{{ isSaving ? 'Guardando...' : 'Guardar letra personalizada' }}</span>
 				</button>
 			</div>
 		</footer>
 
 		<!-- MODALES -->
 		<LyricsTokenModal
-			:is-open="editor.isTokenModalOpen.value"
-			:status-text="editor.tokenStatus.value.status_text"
-			:hours-remaining="editor.tokenStatus.value.hours_remaining"
-			:is-configured="editor.tokenStatus.value.is_configured"
+			:is-open="isTokenModalOpen"
+			:status-text="tokenStatus.status_text"
+			:hours-remaining="tokenStatus.hours_remaining"
+			:is-configured="tokenStatus.is_configured"
 			@save="
 				(tok) => {
-					editor.saveToken(tok);
-					editor.isTokenModalOpen.value = false;
+					saveToken(tok);
+					isTokenModalOpen = false;
 				}
 			"
-			@close="editor.isTokenModalOpen.value = false"
+			@close="isTokenModalOpen = false"
 		/>
 
 		<LyricsDiffModal
-			:is-open="editor.isDiffModalOpen.value"
-			:original-content="editor.originalContent.value"
-			:new-content="editor.editorContent.value"
-			@confirm="editor.confirmSave"
-			@close="editor.isDiffModalOpen.value = false"
+			:is-open="isDiffModalOpen"
+			:original-content="originalContent"
+			:new-content="editorContent"
+			@confirm="confirmSave"
+			@close="isDiffModalOpen = false"
 		/>
 	</div>
 </template>

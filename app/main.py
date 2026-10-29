@@ -228,6 +228,8 @@ def create_app() -> FastAPI:
 		"/controls",
 		"/perillas",
 		"/temazos",
+		"/letras",
+		"/lyrics",
 	):
 		app.add_api_route(spa_route, serve_index, methods=["GET"], include_in_schema=False)
 	app.add_api_route("/favicon.ico", serve_favicon, methods=["GET"], include_in_schema=False)

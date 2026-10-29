@@ -3,7 +3,7 @@
 	import { menuRef, useContextMenu } from '../composables/useContextMenu';
 	import { usePlaybackControls } from '../composables/usePlaybackControls';
 	import { usePlayer } from '../composables/usePlayer';
-	import { isLyricsEditorOpen, lyricsEditorTrack } from '../stores/useUiStore';
+	import { isFogonMode, isLyricsEditorOpen, lyricsEditorTrack } from '../stores/useUiStore';
 
 	const {
 		toggleQueue,
@@ -52,6 +52,7 @@
 		if (!track) return;
 
 		closeCtxMenu();
+		isFogonMode.value = false;
 		librarySearchQuery.value = track.artist || track.display_artist || '';
 		switchTab('library');
 		haptic();
@@ -62,6 +63,7 @@
 		if (!track) return;
 
 		closeCtxMenu();
+		isFogonMode.value = false;
 		if (isPlaying.value) {
 			await pause();
 		}

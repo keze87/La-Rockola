@@ -83,3 +83,16 @@ def test_lyrics_save_endpoint(client, tmp_path):
 	saved_file = tmp_path / "song.ass"
 	assert saved_file.exists()
 	assert saved_file.read_text(encoding="utf-8") == content
+
+
+def test_lyrics_search_supports_letras_api_prefix_and_spa_route(client):
+	# 1. Any query routed to /letras/api/lyrics/search should not 404
+	response = client.get("/letras/api/lyrics/search?title=asd&artist=asd")
+	assert response.status_code == 200
+	data = response.json()
+	assert "providers" in data
+
+	# 2. Direct SPA route to /letras should serve index.html
+	spa_res = client.get("/letras")
+	assert spa_res.status_code == 200
+	assert "text/html" in spa_res.headers.get("content-type", "")

@@ -473,17 +473,49 @@ Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Hola {\\kf100}mundo
 		expect(lyricsScroll.exists()).toBe(true);
 	});
 
-	it('opens context menu for current song on secondary click / contextmenu', async () => {
-		const { ctxMenu } = useContextMenu();
-		currentTrackPath.value = '/music/spinetta.flac';
-		const wrapper = mount(FogonMode);
+	it('opens context menu for current song on secondary click / contextmenu only when local song is playing or paused', async () => {
+		const { ctxMenu, closeCtxMenu } = useContextMenu();
+		const { isPlayingRadioAnnouncement } = await import('@/stores/useRadioStore');
+		const { isPaused } = await import('@/stores/usePlaybackStore');
 
-		const songArea = wrapper.find('.fogon-song-info');
+		// 1. Local track playing -> should open
+		closeCtxMenu();
+		currentTrackPath.value = '/music/spinetta.flac';
+		isPaused.value = false;
+		isPlayingRadioAnnouncement.value = false;
+		let wrapper = mount(FogonMode);
+
+		let songArea = wrapper.find('.fogon-song-info');
 		expect(songArea.exists()).toBe(true);
 
 		await songArea.trigger('contextmenu', { clientX: 100, clientY: 200 });
 		expect(ctxMenu.visible).toBe(true);
 		expect(ctxMenu.source).toBe('current');
 		expect(ctxMenu.track?.path).toBe('/music/spinetta.flac');
+
+		// 2. Radio announcement playing -> should NOT open
+		closeCtxMenu();
+		isPlayingRadioAnnouncement.value = true;
+		wrapper = mount(FogonMode);
+		songArea = wrapper.find('.fogon-song-info');
+		await songArea.trigger('contextmenu', { clientX: 100, clientY: 200 });
+		expect(ctxMenu.visible).toBe(false);
+
+		// 3. Remote URL playing -> should NOT open
+		closeCtxMenu();
+		isPlayingRadioAnnouncement.value = false;
+		currentTrackPath.value = 'https://stream.radio.com/live.mp3';
+		wrapper = mount(FogonMode);
+		songArea = wrapper.find('.fogon-song-info');
+		await songArea.trigger('contextmenu', { clientX: 100, clientY: 200 });
+		expect(ctxMenu.visible).toBe(false);
+
+		// 4. Stopped (no track) -> should NOT open
+		closeCtxMenu();
+		currentTrackPath.value = null;
+		wrapper = mount(FogonMode);
+		songArea = wrapper.find('.fogon-song-info');
+		await songArea.trigger('contextmenu', { clientX: 100, clientY: 200 });
+		expect(ctxMenu.visible).toBe(false);
 	});
 });

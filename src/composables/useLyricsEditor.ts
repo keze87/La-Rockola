@@ -87,14 +87,20 @@ export function useLyricsEditor(initialTrack: Track) {
 	const duration = ref(0);
 
 	const audioStreamUrl = computed(() => {
+		if (!track.value.path) return '';
 		const encoded = encodeURIComponent(track.value.path);
 		return apiUrl(`/stream?path=${encoded}`);
 	});
 
-	function play() {
+	async function play() {
 		if (audioElement.value) {
-			audioElement.value.play().catch(() => {});
-			isPlaying.value = true;
+			try {
+				await audioElement.value.play();
+				isPlaying.value = true;
+			} catch (e) {
+				console.error('Error al reproducir audio en streaming:', e);
+				isPlaying.value = false;
+			}
 		}
 	}
 
@@ -105,13 +111,17 @@ export function useLyricsEditor(initialTrack: Track) {
 		}
 	}
 
-	function togglePlay() {
-		if (isPlaying.value) pause();
-		else play();
+	async function togglePlay() {
+		if (isPlaying.value) {
+			pause();
+		} else {
+			await play();
+		}
 	}
 
 	function seek(seconds: number) {
-		const clamped = Math.max(0, Math.min(seconds, duration.value || 0));
+		const maxTime = duration.value > 0 ? duration.value : Infinity;
+		const clamped = Math.max(0, Math.min(seconds, maxTime));
 		if (audioElement.value) {
 			audioElement.value.currentTime = clamped;
 		}

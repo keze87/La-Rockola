@@ -349,4 +349,22 @@ describe('ContextMenu.vue', () => {
 			expect.objectContaining({ body: JSON.stringify({ cmd: 'pause' }) })
 		);
 	});
+
+	it('closes fogon mode when clicking buscar en la libreria', async () => {
+		const { isFogonMode } = await import('@/stores/useUiStore');
+		isFogonMode.value = true;
+
+		ctxMenu.visible = true;
+		ctxMenu.source = 'current';
+		ctxMenu.track = sampleTrack;
+
+		const wrapper = mount(ContextMenu);
+		const searchBtn = wrapper.findAll('.ctx-menu-item').find((b) => b.text().includes('Buscar en la librería'));
+		expect(searchBtn).toBeDefined();
+		await searchBtn!.trigger('click');
+		await flushPromises();
+
+		expect(isFogonMode.value).toBe(false);
+		expect(librarySearchQuery.value).toBe('Pescado Rabioso');
+	});
 });
