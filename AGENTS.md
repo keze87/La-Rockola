@@ -1,45 +1,45 @@
-# Development Guidelines for La Rockola del Carpincho
+# Pautas de Desarrollo para La Rockola del Carpincho
 
-## 🎯 Target Platforms & Distribution
+## 🎯 Plataformas Objetivo y Distribución
 
-- **First-Class Targets**: Linux (`x86_64` AppImage) and Windows (`x86_64` Portable ZIP / `.exe`).
-- **User-Friendly Releases**:
-    - Releases must be standalone and zero-friction for the end user (click and run).
-    - External binaries (such as `mpv`, `ffmpeg` or `yt-dlp`) should be auto-detected, auto-downloaded, or updated smoothly when missing on portable platforms.
-    - Mood/BPM analysis utilizes `ffmpeg` and audio metadata tags with clean graceful degradation (hiding advanced mood features in the UI when unavailable without crashing or preventing core playback).
+- **Objetivos Principales**: Linux (`x86_64` AppImage) y Windows (`x86_64` ZIP Portable / `.exe`).
+- **Versiones Fáciles de Usar**:
+    - Los lanzamientos deben ser autónomos y sin fricción para el usuario final (hacer clic y ejecutar).
+    - Los binarios externos (como `mpv`, `ffmpeg` o `yt-dlp`) deben ser detectados, descargados o actualizados automáticamente y sin problemas cuando falten en plataformas portables.
+    - El análisis de estado de ánimo/BPM utiliza `ffmpeg` y etiquetas de metadatos de audio con degradación elegante (ocultando funciones avanzadas de estado de ánimo en la interfaz cuando no estén disponibles, sin fallar ni impedir la reproducción básica).
 
 ---
 
-## 🏗️ Architecture & Code Organization
+## 🏗️ Arquitectura y Organización del Código
 
 ### Backend (`server.py`)
 
-- **Core Stack**: FastAPI + WebSockets for instant state sync and real-time remote controls.
-- **Player Engine**: Asynchronous MPV controller (`AsyncMpvController`) communicating over JSON IPC sockets.
-- **Database & Library**: SQLite (`rockola.db`) with smart file-hash caching, fingerprint reconciliation (`fpcalc`), and non-blocking background scanning.
+- **Stack Principal**: FastAPI + WebSockets para sincronización de estado instantánea y controles remotos en tiempo real.
+- **Motor de Reproducción**: Controlador asíncrono de MPV (`AsyncMpvController`) comunicándose mediante sockets JSON IPC.
+- **Base de Datos y Biblioteca**: SQLite (`rockola.db`) con caché inteligente de hashes de archivos, reconciliación de huellas acústicas (`fpcalc`) y escaneo en segundo plano no bloqueante.
 
 ### Frontend (`src/`)
 
-- **Core Stack**: Vue + TypeScript + Vite + Tailwind CSS.
-- **State Management**:
-    - Do NOT create duplicate local state in components for shared playback, volume, queue, or server capability flags.
+- **Stack Principal**: Vue + TypeScript + Vite + Tailwind CSS.
+- **Gestión de Estado**:
+    - NO crear estado local duplicado en los componentes para la reproducción compartida, el volumen, la cola o los indicadores de capacidad del servidor.
 
-### Force TDD
+### TDD Obligatorio
 
-Whenever changes are about to be made, first create the tests, make sure they fail, and then start implementing the changes.
+Siempre que se vayan a realizar cambios, primero crear las pruebas, asegurarse de que fallen y luego comenzar a implementar los cambios.
 
-### Backward Compatibility
+### Compatibilidad Hacia Atrás
 
-- Backward compatibility is NOT needed or critical: prioritize clean, modern architectures, removing dead code, legacy flags, and obsolete fallbacks rather than keeping redundant shims.
+- La compatibilidad hacia atrás NO es necesaria ni crítica: priorizar arquitecturas limpias y modernas, eliminando código muerto, flags heredados y fallbacks obsoletos en lugar de mantener shims redundantes.
 
 ---
 
-## 🧉 Identity & Tone
+## 🧉 Identidad y Tono
 
-- User-facing logs, CLI setup wizards, and UI copy embrace an authentic, friendly Argentine tone (_"ojo al piojo"_, _"joyita"_, _"cortala de una"_, _"más manija"_).
-- Internal code remains clean, modular, and strongly typed.
-- Code comments must be in Argentine spanish
-- Documentation, guides, and README files must be in Spanish
+- Los logs de cara al usuario, los asistentes de configuración de la CLI y los textos de la interfaz adoptan un tono argentino auténtico y amigable (_"ojo al piojo"_, _"joyita"_, _"cortala de una"_, _"más manija"_).
+- El código interno se mantiene limpio, modular y fuertemente tipado.
+- Los comentarios en el código deben estar en español argentino.
+- La documentación, guías y archivos README deben estar en español.
 
 ### 📻 Línea Editorial Radial y Variedad de Humor
 
@@ -58,11 +58,11 @@ El humor de la radio funciona cuando suena como un lugar coherente, con identida
 
 ---
 
-## ✅ Mandatory Verification & Quality Standards
+## ✅ Estándares de Calidad y Verificación Obligatoria
 
-Whenever changes are made to the Python backend or frontend code, **always** execute the complete quality suite before finalizing:
+Siempre que se realicen cambios en el backend de Python o en el código del frontend, ejecutar **siempre** la suite completa de calidad antes de finalizar:
 
-1. **Formatting**:
+1. **Formateo**:
     - Python: `ruff format .`
     - Frontend: `npm run format`
 
@@ -70,7 +70,7 @@ Whenever changes are made to the Python backend or frontend code, **always** exe
     - Python: `ruff check .`
     - Frontend: `npm run lint`
 
-3. **Compilation & Build**:
+3. **Compilación y Construcción**:
     - Python: `python -m compileall server.py scripts/ tests/`
     - Frontend: `npm run build`
 
@@ -79,4 +79,4 @@ Whenever changes are made to the Python backend or frontend code, **always** exe
     - Frontend: `npm test`
 
 5. **Commit**:
-    - Before finalizing create commit name with professional Argentine tone.
+    - Antes de finalizar, crear un nombre de commit con tono profesional argentino.
