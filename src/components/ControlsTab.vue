@@ -23,6 +23,7 @@
 	const {
 		djBaraEnabled,
 		djSafeModeEnabled,
+		handleScroll,
 		haptic,
 		hasEdgeTts,
 		hasFfmpeg,
@@ -167,10 +168,20 @@
 		}
 		return weatherLocation.value;
 	});
+	function onTabScroll(e: Event) {
+		const target = e.target as HTMLElement;
+		if (target) {
+			handleScroll(target.scrollTop);
+		}
+	}
 </script>
 
 <template>
-	<section id="controls-tab" class="tab-content bg-carpincho-bg h-full overflow-y-auto px-6 pt-6">
+	<section
+		id="controls-tab"
+		class="tab-content bg-carpincho-bg h-full overflow-y-auto px-6 pt-6"
+		@scroll.passive="onTabScroll"
+	>
 		<!-- Control deslizante de volumen -->
 		<div class="text-carpincho-warning bg-carpincho-panel mb-8 flex items-center rounded-xl p-4 shadow">
 			<i

@@ -37,7 +37,9 @@
 		isPlaying,
 		isPlayingRadioAnnouncement,
 		isScanning,
+		isShortScreen,
 		isSynthesizingRadio,
+		isTabsBarHidden,
 		listenLocally,
 		loadLibrary,
 		localPlayerRef,
@@ -346,7 +348,14 @@
 		</div>
 
 		<!-- PESTAÑAS -->
-		<div class="bg-carpincho-panel border-carpincho-border relative z-10 flex shrink-0 border-b shadow-md">
+		<div
+			class="bg-carpincho-panel border-carpincho-border relative z-10 flex shrink-0 overflow-hidden border-b shadow-md transition-all duration-300 ease-in-out"
+			:class="[
+				isTabsBarHidden && isShortScreen
+					? 'pointer-events-none max-h-0 -translate-y-2 border-b-0 opacity-0'
+					: 'max-h-16 translate-y-0 opacity-100',
+			]"
+		>
 			<div
 				v-for="tab in tabs"
 				:key="tab.id"

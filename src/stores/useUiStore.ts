@@ -4,6 +4,7 @@ import { ref } from 'vue';
 import type { Track } from '../types';
 
 export const activeTab = ref<string>('library');
+export const isTabsBarHidden = ref<boolean>(false);
 export const isFogonMode = ref<boolean>(false);
 export const isLyricsEditorOpen = ref<boolean>(false);
 export const lyricsEditorTrack = ref<Track | null>(null);
@@ -28,6 +29,7 @@ export function sendRaw(payload: Record<string, unknown>) {
 export function useUiStore() {
 	return {
 		activeTab,
+		isTabsBarHidden,
 		isFogonMode,
 		isLyricsEditorOpen,
 		lyricsEditorTrack,

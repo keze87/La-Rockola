@@ -11,6 +11,7 @@ import {
 	scanStatus,
 	trackMap,
 } from '@/composables/player/state';
+import { useTabs } from '@/composables/player/useTabs';
 
 describe('App.vue', () => {
 	beforeEach(() => {
@@ -356,5 +357,26 @@ Dialogue: 0,0:00:20.00,0:00:24.00,Default,,0,0,0,,{\\kf100}Verso {\\kf100}tres
 		await wrapper.vm.$nextTick();
 
 		expect(appContent.attributes('style')).toContain('display: none');
+	});
+
+	it('collapses tabs bar on short screens when isTabsBarHidden is true', async () => {
+		const wrapper = mount(App);
+		await wrapper.vm.$nextTick();
+
+		const { isShortScreen, isTabsBarHidden } = useTabs();
+		isShortScreen.value = false;
+		isTabsBarHidden.value = false;
+		await wrapper.vm.$nextTick();
+
+		const tabsBar = wrapper.find('.bg-carpincho-panel.border-carpincho-border.relative.z-10');
+		expect(tabsBar.classes()).not.toContain('max-h-0');
+
+		// En pantalla petiza con flag activo
+		isShortScreen.value = true;
+		isTabsBarHidden.value = true;
+		await wrapper.vm.$nextTick();
+
+		expect(tabsBar.classes()).toContain('max-h-0');
+		expect(tabsBar.classes()).toContain('opacity-0');
 	});
 });

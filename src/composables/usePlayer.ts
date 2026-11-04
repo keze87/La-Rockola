@@ -61,7 +61,7 @@ export function usePlayer() {
 	const { haptic } = useHaptics();
 	const { sendCmd } = useCommands();
 	const { showToast } = useToasts();
-	const { switchTab } = useTabs();
+	const { handleScroll, isShortScreen, isTabsBarHidden, switchTab } = useTabs();
 	const { toggleMpvVisibility } = useMpvWindow();
 
 	return {
@@ -77,6 +77,7 @@ export function usePlayer() {
 		favorites,
 		getTrackInfo,
 		handleLibraryClick,
+		handleScroll,
 		haptic,
 		hasEdgeTts,
 		hasFfmpeg,
@@ -89,7 +90,9 @@ export function usePlayer() {
 		isPlaying,
 		isPlayingRadioAnnouncement,
 		isScanning,
+		isShortScreen,
 		isSynthesizingRadio,
+		isTabsBarHidden,
 		librarySearchQuery,
 		listenLocally,
 		loadLibrary,

@@ -18,6 +18,7 @@
 		djBaraEnabled,
 		djNextTrack,
 		getTrackInfo,
+		handleScroll,
 		haptic,
 		historyState,
 		isPaused,
@@ -104,10 +105,17 @@
 			jumpToQueue(item.queueIndex);
 		}
 	}
+
+	function onTabScroll(e: Event) {
+		const target = e.target as HTMLElement;
+		if (target) {
+			handleScroll(target.scrollTop);
+		}
+	}
 </script>
 
 <template>
-	<section class="tab-content bg-carpincho-bg h-full overflow-y-auto">
+	<section class="tab-content bg-carpincho-bg h-full overflow-y-auto" @scroll.passive="onTabScroll">
 		<!-- Agregador de URLs -->
 		<div class="bg-carpincho-bg sticky top-0 z-10 flex items-center gap-2 px-4 py-3 shadow-md">
 			<i class="material-icons text-carpincho-success shrink-0">link</i>

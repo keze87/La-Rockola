@@ -11,6 +11,7 @@
 		currentTracks,
 		favorites,
 		handleLibraryClick,
+		handleScroll,
 		haptic,
 		historyState,
 		isPaused,
@@ -74,11 +75,21 @@
 			scrollTo(currentIndex);
 		}
 	}
+	function onTabScroll(e: Event) {
+		const target = e.target as HTMLElement;
+		if (target) {
+			handleScroll(target.scrollTop);
+		}
+	}
 </script>
 
 <template>
 	<!-- Contenedor con scroll para la lista virtualizada -->
-	<section v-bind="containerProps" class="tab-content bg-carpincho-bg relative h-full overflow-y-auto">
+	<section
+		v-bind="containerProps"
+		class="tab-content bg-carpincho-bg relative h-full overflow-y-auto"
+		@scroll.passive="onTabScroll"
+	>
 		<!-- Encabezado fijo con buscador y filtros -->
 		<div class="bg-carpincho-bg sticky top-0 z-20 flex items-center gap-2 px-4 py-3 shadow-md">
 			<button

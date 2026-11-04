@@ -51,6 +51,7 @@ export {
 
 export {
 	activeTab,
+	isTabsBarHidden,
 	isFogonMode,
 	isSocketConnected,
 	localIp,

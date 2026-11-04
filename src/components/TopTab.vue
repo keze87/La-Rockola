@@ -3,11 +3,18 @@
 	import { useContextMenuBindings } from '../composables/useContextMenu';
 	import FavoritableCover from './ui/FavoritableCover.vue';
 
-	const { topPlayedState, getTrackInfo, toggleQueue } = usePlayer();
+	const { topPlayedState, getTrackInfo, toggleQueue, handleScroll } = usePlayer();
+
+	function onTabScroll(e: Event) {
+		const target = e.target as HTMLElement;
+		if (target) {
+			handleScroll(target.scrollTop);
+		}
+	}
 </script>
 
 <template>
-	<section class="tab-content bg-carpincho-bg h-full overflow-y-auto px-4 pt-4">
+	<section class="tab-content bg-carpincho-bg h-full overflow-y-auto px-4 pt-4" @scroll.passive="onTabScroll">
 		<ul v-if="topPlayedState.length > 0" class="flex flex-col">
 			<li
 				v-for="(t, i) in topPlayedState"
