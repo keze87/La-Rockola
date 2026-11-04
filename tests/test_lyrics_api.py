@@ -74,28 +74,19 @@ def test_lyrics_search_real_betterlyrics_returns_converted_ass_providers(client,
 
 
 def test_lyrics_content_endpoint(client, tmp_path):
-	# 1. Cuando no existe ni .ass ni .lrc en disco, devuelve exists=False para que el frontend dispare la búsqueda real
+	# 1. Cuando no existe .ass en disco, devuelve exists=False aunque exista un .lrc
+	# (solo tiene sentido usar .ass para letras palabra por palabra, no inventar un .ass desde un .lrc simple)
 	fake_audio = str(tmp_path / "song.mp3")
-	response = client.get(f"/api/lyrics/content?path={fake_audio}")
-	assert response.status_code == 200
-	data = response.json()
-	assert data["exists"] is False
-	assert data["content"] == ""
-
-	# 2. Si existe un .lrc en disco, el backend lo convierte automáticamente a .ass (el frontend nunca convierte formatos)
 	lrc_file = tmp_path / "song.lrc"
 	lrc_file.write_text("[00:01.00] Letra desde LRC\n[00:04.00] Segunda línea", encoding="utf-8")
 
 	response = client.get(f"/api/lyrics/content?path={fake_audio}")
 	assert response.status_code == 200
 	data = response.json()
-	assert data["exists"] is True
-	assert data["format"] == "ass"
-	assert "[Events]" in data["content"]
-	assert "Dialogue:" in data["content"]
-	assert "Letra desde LRC" in data["content"]
+	assert data["exists"] is False
+	assert data["content"] == ""
 
-	# 3. Si existe un .ass en disco, tiene prioridad y se devuelve tal cual
+	# 2. Si existe un .ass en disco, se devuelve tal cual
 	ass_file = tmp_path / "song.ass"
 	ass_file.write_text(
 		"[Script Info]\nTitle: Test\n[Events]\nDialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,{\\kf100}Hola",
@@ -110,9 +101,13 @@ def test_lyrics_content_endpoint(client, tmp_path):
 	assert data["format"] == "ass"
 
 
-def test_lyrics_save_endpoint(client, tmp_path):
+def test_lyrics_save_endpoint_creates_complementary_lrc_if_missing(client, tmp_path):
 	audio_path = str(tmp_path / "song.mp3")
-	content = "[Script Info]\nTitle: Saved\n[Events]\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\kf50}Test"
+	content = (
+		"[Script Info]\nTitle: Saved\n"
+		"[Events]\n"
+		"Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\kf50}Test syllable\n"
+	)
 	response = client.post(
 		"/api/lyrics/save",
 		json={
@@ -124,9 +119,40 @@ def test_lyrics_save_endpoint(client, tmp_path):
 	assert response.status_code == 200
 	data = response.json()
 	assert data["success"] is True
-	saved_file = tmp_path / "song.ass"
-	assert saved_file.exists()
-	assert saved_file.read_text(encoding="utf-8") == content
+
+	# Se guardó el .ass
+	saved_ass = tmp_path / "song.ass"
+	assert saved_ass.exists()
+	assert saved_ass.read_text(encoding="utf-8") == content
+
+	# Al no existir un .lrc previo, genera automáticamente un .lrc complementario para otros reproductores
+	saved_lrc = tmp_path / "song.lrc"
+	assert saved_lrc.exists()
+	lrc_text = saved_lrc.read_text(encoding="utf-8")
+	assert "[00:01.00]Test syllable" in lrc_text
+	assert "{\\kf" not in lrc_text
+
+
+def test_lyrics_save_endpoint_preserves_existing_lrc(client, tmp_path):
+	audio_path = str(tmp_path / "song.mp3")
+	existing_lrc = tmp_path / "song.lrc"
+	existing_lrc.write_text("[00:05.00]Letra original en disco", encoding="utf-8")
+
+	content = (
+		"[Script Info]\nTitle: Saved\n[Events]\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\kf50}Nuevo ASS"
+	)
+	response = client.post(
+		"/api/lyrics/save",
+		json={
+			"path": audio_path,
+			"content": content,
+			"format": "ass",
+		},
+	)
+	assert response.status_code == 200
+
+	# El .lrc existente NO se debe sobreescribir
+	assert existing_lrc.read_text(encoding="utf-8") == "[00:05.00]Letra original en disco"
 
 
 def test_lyrics_search_supports_letras_api_prefix_and_spa_route(client, monkeypatch):

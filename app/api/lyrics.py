@@ -5,6 +5,7 @@ Provee endpoints de búsqueda en BetterLyrics, configuración de token y guardad
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
@@ -12,6 +13,8 @@ from pydantic import BaseModel
 
 from app.domain.lyrics.converter import LyricsAssConverter
 from app.domain.lyrics.service import get_lyrics_service
+
+logger = logging.getLogger("RockolaCarpincho")
 
 router = APIRouter(prefix="/lyrics", tags=["lyrics"])
 
@@ -80,13 +83,11 @@ async def get_lyrics_content(
 ) -> dict:
 	"""
 	Obtiene el contenido actual del archivo .ass asociado a la pista.
-	Si solo existe un .lrc en disco, lo convierte a .ass antes de devolverlo.
+	Solo se consideran letras existentes si existe un archivo .ass (con soporte palabra por palabra).
 	"""
 	p = Path(path)
 	base_path = p.with_suffix("")
-
 	ass_path = base_path.with_suffix(".ass")
-	lrc_path = base_path.with_suffix(".lrc")
 
 	if ass_path.exists():
 		try:
@@ -95,20 +96,6 @@ async def get_lyrics_content(
 		except Exception as e:
 			raise HTTPException(status_code=500, detail=f"Error al leer .ass: {e}")
 
-	if lrc_path.exists():
-		try:
-			lrc_raw = lrc_path.read_text(encoding="utf-8")
-			ass_converted, _ = LyricsAssConverter.convert_source_to_ass(
-				lrc_raw,
-				source_key="local_lrc",
-				title=p.stem or "Canción",
-				artist="Artista",
-			)
-			if ass_converted:
-				return {"exists": True, "content": ass_converted, "format": "ass", "path": str(ass_path)}
-		except Exception as e:
-			raise HTTPException(status_code=500, detail=f"Error al convertir .lrc a .ass: {e}")
-
 	return {"exists": False, "content": "", "format": "", "path": str(ass_path)}
 
 
@@ -116,6 +103,8 @@ async def get_lyrics_content(
 async def save_lyrics_content(payload: SaveLyricsRequest) -> dict:
 	"""
 	Guarda el archivo de letras personalizado directamente en el disco.
+	Si se guarda un .ass y la pista no tiene un .lrc preexistente,
+	genera automáticamente un .lrc complementario para otros reproductores.
 	"""
 	p = Path(payload.path)
 	target_ext = f".{payload.format.lstrip('.')}"
@@ -125,6 +114,19 @@ async def save_lyrics_content(payload: SaveLyricsRequest) -> dict:
 		# Creamos carpetas contenedor si no existiesen
 		target_path.parent.mkdir(parents=True, exist_ok=True)
 		target_path.write_text(payload.content, encoding="utf-8")
+
+		# Si guardamos un ASS y no existe un .lrc previo, generamos uno complementario
+		if target_ext.lower() == ".ass":
+			lrc_path = p.with_suffix(".lrc")
+			if not lrc_path.exists():
+				try:
+					lrc_content = LyricsAssConverter.ass_to_lrc(payload.content)
+					if lrc_content.strip():
+						lrc_path.write_text(lrc_content, encoding="utf-8")
+						logger.info(f"Generado .lrc complementario para otros reproductores: {lrc_path}")
+				except Exception as lrc_err:
+					logger.warning(f"No se pudo generar el .lrc complementario: {lrc_err}")
+
 		return {
 			"success": True,
 			"path": str(target_path),

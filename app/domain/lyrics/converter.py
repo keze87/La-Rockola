@@ -153,6 +153,48 @@ class LyricsAssConverter:
 		return f"{h}:{m:02d}:{s:05.2f}"
 
 	@staticmethod
+	def format_lrc_timestamp(seconds: float) -> str:
+		"""Convierte segundos a formato estándar LRC [mm:ss.xx]."""
+		seconds = max(seconds, 0.0)
+		m = int(seconds // 60)
+		s = seconds % 60
+		return f"{m:02d}:{s:05.2f}"
+
+	@classmethod
+	def ass_to_lrc(cls, ass_content: str) -> str:
+		"""
+		Convierte el contenido de un archivo .ass a formato .lrc estándar por línea.
+		Extrae los tiempos de inicio de las líneas 'Dialogue:' y elimina etiquetas {...} de karaoke o formato.
+		"""
+		if not ass_content:
+			return ""
+
+		lrc_lines: list[str] = []
+		dialogue_re = re.compile(r"^Dialogue:\s*[^,]+,([^,]+),([^,]+),[^,]*,[^,]*,[^,]*,[^,]*,[^,]*,[^,]*,(.*)$")
+		tag_re = re.compile(r"\{[^}]*\}")
+
+		for line in ass_content.splitlines():
+			line_str = line.strip()
+			m = dialogue_re.match(line_str)
+			if not m:
+				continue
+			start_time_str = m.group(1).strip()
+			text_part = m.group(3).strip()
+
+			# Limpiar tags de estilo y karaoke ASS (\kf, etc.)
+			clean_text = tag_re.sub("", text_part)
+			clean_text = clean_text.replace(r"\N", " ").replace(r"\n", " ").replace(r"\h", " ").strip()
+
+			if not clean_text:
+				continue
+
+			start_sec = cls.parse_time(start_time_str)
+			ts_lrc = cls.format_lrc_timestamp(start_sec)
+			lrc_lines.append(f"[{ts_lrc}]{clean_text}")
+
+		return "\n".join(lrc_lines) + ("\n" if lrc_lines else "")
+
+	@staticmethod
 	def _parse_offset_from_header(content_str: str) -> float:
 		"""Extrae el tag [offset:...] y lo convierte a segundos aplicando heurística decimal."""
 		offset_regex = re.compile(r"\[offset:\s*([+-]?\d+(?:\.\d+)?)\]", re.IGNORECASE)

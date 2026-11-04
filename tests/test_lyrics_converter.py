@@ -97,6 +97,20 @@ def test_convert_musixmatch_word_by_word_to_ass():
 	assert "black," in ass
 
 
+def test_convert_ass_to_lrc():
+	"""Verifica que el contenido ASS con tags de karaoke \\kf se convierta a LRC estándar limpio."""
+	ass_content = (
+		"[Script Info]\nTitle: Test Song\n\n"
+		"[Events]\n"
+		"Dialogue: 0,0:00:26.79,0:00:29.57,Default,,0,0,0,,{\\kf16}Back {\\kf32}in {\\kf39}black\n"
+		"Dialogue: 0,0:01:12.95,0:01:17.80,Default,,0,0,0,,{\\kf56}You {\\kf21}could{\\kf25}n't {\\kf382}wait\\Nsecond line\n"
+	)
+	lrc = LyricsAssConverter.ass_to_lrc(ass_content)
+	assert "[00:26.79]Back in black" in lrc
+	assert "[01:12.95]You couldn't wait second line" in lrc
+	assert "{\\kf" not in lrc
+
+
 @pytest.mark.anyio
 async def test_live_betterlyrics_back_in_black(tmp_path, monkeypatch):
 	"""
