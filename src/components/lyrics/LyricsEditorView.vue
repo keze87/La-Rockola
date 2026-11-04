@@ -62,6 +62,7 @@
 	} = editor;
 
 	const audioRef = ref<HTMLAudioElement | null>(null);
+	const showWipBanner = ref(true);
 
 	onMounted(async () => {
 		if (audioRef.value) {
@@ -173,6 +174,31 @@
 				</button>
 			</div>
 		</header>
+
+		<!-- BANNER DE EN CONSTRUCCIÓN / WIP -->
+		<div
+			v-if="showWipBanner"
+			class="lyrics-wip-banner flex shrink-0 items-center justify-between border-b border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-200"
+		>
+			<div class="flex min-w-0 items-center gap-2.5">
+				<i class="material-icons shrink-0 !text-lg text-amber-400">construction</i>
+				<div class="leading-tight">
+					<span class="font-bold text-amber-300">En construcción (WIP):</span>
+					<span class="text-stone-300">
+						El Taller de Letras está en desarrollo activo y por ahora no hace casi nada. Algunas funciones
+						pueden estar incompletas o fallar.
+					</span>
+				</div>
+			</div>
+			<button
+				type="button"
+				class="btn-close-banner ml-3 shrink-0 rounded-lg p-1 text-amber-300/80 transition-colors hover:bg-amber-500/20 hover:text-amber-100"
+				title="Ocultar aviso"
+				@click="showWipBanner = false"
+			>
+				<i class="material-icons !text-base">close</i>
+			</button>
+		</div>
 
 		<!-- BARRA DE BÚSQUEDA Y SELECCIÓN DE PROVEEDOR -->
 		<div
