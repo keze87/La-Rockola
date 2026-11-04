@@ -518,4 +518,62 @@ Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Hola {\\kf100}mundo
 		await songArea.trigger('contextmenu', { clientX: 100, clientY: 200 });
 		expect(ctxMenu.visible).toBe(false);
 	});
+
+	it('preserves flex layout and resets lyrics scroll and seekbar bounds when paused after track', async () => {
+		const assContent = `[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:10.00,0:00:15.00,Default,,0,0,0,,{\\kf100}Primer {\\kf100}verso
+Dialogue: 0,0:00:20.00,0:00:25.00,Default,,0,0,0,,{\\kf100}Ultimo {\\kf100}verso
+`;
+		global.fetch = vi.fn().mockImplementation((url: string) => {
+			if (typeof url === 'string' && url.includes('/lrc')) {
+				return Promise.resolve({
+					ok: true,
+					text: () => Promise.resolve(assContent),
+				} as unknown as Response);
+			}
+			return Promise.resolve({
+				ok: true,
+				json: () => Promise.resolve({ status: 'ok' }),
+			} as unknown as Response);
+		});
+
+		const { duration, localTimePos } = await import('@/composables/player/state');
+		duration.value = 100;
+		localTimePos.value = 0;
+		isPaused.value = true;
+		currentTrackPath.value = '/music/paused_after_track.mp3';
+
+		const wrapper = mount(FogonMode);
+		await wrapper.vm.$nextTick();
+		await new Promise((resolve) => setTimeout(resolve, 15));
+		await wrapper.vm.$nextTick();
+
+		// .fogon-song-info debe usar display: contents para no romper la distribución flex-[6] / flex-[4] en .fogon-player-column
+		const songInfo = wrapper.find('.fogon-song-info');
+		expect(songInfo.classes()).toContain('contents');
+
+		// Cuando arranca pausado en 0:00 (antes del primer verso en 10s), igual debe scrollear el contenedor de letras al inicio
+		const lyricsScroll = wrapper.find('.fogon-lyrics-scroll');
+		expect(lyricsScroll.exists()).toBe(true);
+		const scrollToSpy = vi.fn();
+		HTMLElement.prototype.scrollTo = scrollToSpy;
+		lyricsScroll.element.scrollTo = scrollToSpy;
+
+		// Cambiamos a otro tema pausado al inicio (pause after track)
+		currentTrackPath.value = '/music/paused_next_track.mp3';
+		localTimePos.value = 0;
+		await wrapper.vm.$nextTick();
+		await new Promise((resolve) => setTimeout(resolve, 15));
+		await wrapper.vm.$nextTick();
+
+		expect(scrollToSpy).toHaveBeenCalledWith({ top: 0, behavior: 'auto' });
+
+		// Si por latencia localTimePos supera duration estando pausado, la barra de progreso no debe desbordar > 100%
+		localTimePos.value = 250;
+		duration.value = 100;
+		await wrapper.vm.$nextTick();
+		const progressFill = wrapper.find('.bg-carpincho-warning.absolute.top-0.left-0.h-full');
+		expect(progressFill.attributes('style')).toContain('width: 100%');
+	});
 });

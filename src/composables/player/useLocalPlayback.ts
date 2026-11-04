@@ -36,6 +36,7 @@ import {
 	queueState,
 	sendRaw,
 	serverMuted,
+	timePos,
 	volume,
 } from './state';
 
@@ -57,6 +58,14 @@ export function _startLocalPlayer(path: string) {
 	if (!lp) return;
 
 	markTrackChanging();
+	// Reiniciamos el progreso local al arrancar una pista nueva para que la barra no quede clavada en el final del tema anterior
+	localTimePos.value = 0;
+	timePos.value = 0;
+	pendingSeekTime.value = null;
+	if (mediaControls) {
+		mediaControls.currentTime.value = 0;
+		mediaControls.ended.value = false;
+	}
 	lp.preload = 'auto';
 	lp.src = apiUrl('/stream?path=' + encodeURIComponent(path));
 	lp.currentTime = 0;
@@ -75,6 +84,9 @@ export function _stopLocalPlayer() {
 
 	cleanupBufferWait();
 	markTrackChanging();
+	localTimePos.value = 0;
+	timePos.value = 0;
+	pendingSeekTime.value = null;
 	lp.pause();
 	lp.removeAttribute('src');
 	lp.load();
@@ -130,6 +142,8 @@ export function useLocalPlayback() {
 		let lastSent = 0;
 		watch(currentTime, (t) => {
 			if (listenLocally.value) {
+				// Mientras cambia el tema ignoramos eventos residuales con el tiempo del tema que recién terminó
+				if (isChangingTrack.value && t > 0) return;
 				localTimePos.value = t;
 				const now = Date.now();
 				if (now - lastSent >= 5000) {
@@ -141,6 +155,7 @@ export function useLocalPlayback() {
 
 		watch(ended, (isEnded) => {
 			if (listenLocally.value && isEnded && !isChangingTrack.value) {
+				markTrackChanging();
 				_sendLocalPlayerUpdate({ song_ended: true });
 			}
 		});
@@ -207,12 +222,21 @@ export function useLocalPlayback() {
 
 		setInterval(() => {
 			if (isPlaying.value && !isPaused.value && !isDraggingSeek.value && duration.value > 0) {
+				if (listenLocally.value) {
+					const lp = localPlayerRef.value;
+					if (isChangingTrack.value || !lp || lp.paused || lp.ended) return;
+				}
 				localTimePos.value = Math.min(localTimePos.value + 0.25, duration.value);
 			}
 		}, 250);
 
 		watch(currentTrackPath, (newPath, oldPath) => {
 			if (oldPath && oldPath === pauseAfterPath.value) pauseAfterPath.value = null;
+
+			// Al cambiar de tema reseteamos el cursor de tiempo enseguida (con o sin elemento de audio montado)
+			localTimePos.value = 0;
+			timePos.value = 0;
+			pendingSeekTime.value = null;
 
 			const lp = localPlayerRef.value;
 			if (!lp) return;

@@ -22,7 +22,7 @@ export function useDragSlider(options: DragSliderOptions) {
 
 		if (!maximum) return 0;
 
-		return (displayValue.value / maximum) * 100;
+		return Math.max(0, Math.min(100, (displayValue.value / maximum) * 100));
 	});
 
 	function calculateValue(e: SliderInputEvent): number | null {

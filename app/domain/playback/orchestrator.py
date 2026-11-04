@@ -581,7 +581,11 @@ class PlaybackOrchestrator:
 		self.current_track = str_path
 		self.mpv_paused = False
 		self.time_pos = 0
+		self.last_seek_drift = None
 		self.last_track_change = time.time()
+		track_duration = get_track_duration_seconds(str_path, self.tracks_cache)
+		if track_duration > 0:
+			self.duration = track_duration
 
 		if str_path.startswith(("http://", "https://")):
 			self._log_url(str_path)
@@ -823,7 +827,7 @@ class PlaybackOrchestrator:
 					self.dj_next_track = chosen
 					await broadcast_state()
 
-					if not skipped_by_user and just_finished != self.radio_announcement_path:
+					if not skipped_by_user and not should_pause and just_finished != self.radio_announcement_path:
 
 						async def _run_dj_countdown(target_track: dict[str, Any], pause_after: bool) -> None:
 							try:

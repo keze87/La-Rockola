@@ -188,11 +188,27 @@
 	});
 
 	function scrollToActiveLine(smooth = true) {
-		if (userIsScrolling.value || activeLineIndex.value < 0) return;
-		const activeEl = lineRefs.value[activeLineIndex.value];
+		if (userIsScrolling.value || !lyrics.value.length) return;
 		const container = lyricsContainerRef.value;
-		if (activeEl && container) {
-			const targetTop = Math.max(0, activeEl.offsetTop - container.clientHeight / 2 + activeEl.clientHeight / 2);
+		if (!container) return;
+
+		let targetIdx = activeLineIndex.value;
+		if (targetIdx < 0) {
+			const pos = player.localTimePos.value;
+			if (pos < lyrics.value[0].time) {
+				targetIdx = 0;
+			} else {
+				const upcomingIdx = lyrics.value.findIndex((l) => l.time > pos);
+				targetIdx = upcomingIdx !== -1 ? Math.max(0, upcomingIdx - 1) : lyrics.value.length - 1;
+			}
+		}
+
+		const activeEl = lineRefs.value[targetIdx];
+		if (activeEl) {
+			const targetTop =
+				targetIdx === 0 && activeLineIndex.value < 0
+					? 0
+					: Math.max(0, activeEl.offsetTop - container.clientHeight / 2 + activeEl.clientHeight / 2);
 			if (typeof container.scrollTo === 'function') {
 				container.scrollTo({
 					top: targetTop,
@@ -311,9 +327,13 @@
 	]);
 	const timerTitle = computed(() => (isTimerActive.value ? 'Cancelar pausa al terminar' : 'Frenar tras este tema'));
 
-	watch(currentTrackPath, (newPath) => {
-		loadLyrics(newPath); // Traer y parsear letras al cambiar de tema
-	});
+	watch(
+		currentTrackPath,
+		(newPath) => {
+			loadLyrics(newPath); // Traer y parsear letras al cambiar de tema
+		},
+		{ immediate: true }
+	);
 
 	function formatTime(sec: number) {
 		if (!sec || isNaN(sec)) return '0:00';
@@ -464,7 +484,7 @@
 							: 'max-w-md',
 					]"
 				>
-					<div class="fogon-song-info flex w-full flex-col items-center" v-on="fogonContextBindings">
+					<div class="fogon-song-info contents" v-on="fogonContextBindings">
 						<!-- Bloque superior: Carátula del álbum bajada hacia el título central en móviles -->
 						<div
 							class="flex w-full flex-col items-center text-center"

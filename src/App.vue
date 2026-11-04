@@ -1,8 +1,9 @@
 <script setup lang="ts">
 	import { computed, onMounted, watch } from 'vue';
 	import { Toaster } from 'vue-sonner';
+	import { apiUrl } from './composables/useApi';
 	import { useCover } from './composables/useCover';
-	import { useAppRouter } from './composables/useAppRouter';
+	import { buildSpaPath, extractSpaRoute, useAppRouter } from './composables/useAppRouter';
 	import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts';
 	import { useLyrics, type LyricSyllable } from './composables/useLyrics';
 	import { usePlaybackControls } from './composables/usePlaybackControls';
@@ -132,32 +133,56 @@
 		size: 512,
 	});
 
+	// Sincronizamos el favicon del documento con la carátula del tema actual (o volvemos al carpincho por defecto)
+	watch(
+		headbarCoverUrl,
+		(url) => {
+			if (typeof document === 'undefined') return;
+			let link = document.querySelector<HTMLLinkElement>("link[rel*='icon']");
+			if (!link) {
+				link = document.createElement('link');
+				link.rel = 'icon';
+				document.head.appendChild(link);
+			}
+			if (url) {
+				link.type = 'image/jpeg';
+				link.href = url;
+			} else {
+				link.type = 'image/png';
+				link.href = apiUrl('/favicon.png');
+			}
+		},
+		{ immediate: true }
+	);
+
 	const { initRouter } = useAppRouter();
 
 	watch(isFogonMode, (fogon) => {
 		if (typeof window === 'undefined') return;
+		const currentSpaRoute = extractSpaRoute(window.location.pathname);
 		if (fogon) {
-			if (window.location.pathname !== '/fogon') {
-				const target = `/fogon${window.location.search}${window.location.hash}`;
+			if (currentSpaRoute !== '/fogon') {
+				const target = `${buildSpaPath('/fogon')}${window.location.search}${window.location.hash}`;
 				window.history.pushState({}, '', target);
 			}
-		} else if (window.location.pathname === '/fogon') {
+		} else if (currentSpaRoute === '/fogon') {
 			const tabRoute = activeTab.value === 'library' ? '/' : `/${activeTab.value}`;
-			const target = `${tabRoute}${window.location.search}${window.location.hash}`;
+			const target = `${buildSpaPath(tabRoute)}${window.location.search}${window.location.hash}`;
 			window.history.pushState({}, '', target);
 		}
 	});
 
 	watch(isLyricsEditorOpen, (open) => {
 		if (typeof window === 'undefined') return;
+		const currentSpaRoute = extractSpaRoute(window.location.pathname);
 		if (open) {
-			if (window.location.pathname !== '/letras') {
-				const target = `/letras${window.location.search}${window.location.hash}`;
+			if (currentSpaRoute !== '/letras') {
+				const target = `${buildSpaPath('/letras')}${window.location.search}${window.location.hash}`;
 				window.history.pushState({}, '', target);
 			}
-		} else if (window.location.pathname === '/letras' || window.location.pathname === '/lyrics') {
+		} else if (currentSpaRoute === '/letras' || currentSpaRoute === '/lyrics') {
 			const tabRoute = activeTab.value === 'library' ? '/' : `/${activeTab.value}`;
-			const target = `${tabRoute}${window.location.search}${window.location.hash}`;
+			const target = `${buildSpaPath(tabRoute)}${window.location.search}${window.location.hash}`;
 			window.history.pushState({}, '', target);
 		}
 	});
@@ -166,8 +191,9 @@
 		if (typeof window === 'undefined') return;
 		if (!isFogonMode.value) {
 			const tabRoute = tab === 'library' ? '/' : `/${tab}`;
-			if (window.location.pathname !== tabRoute) {
-				const target = `${tabRoute}${window.location.search}${window.location.hash}`;
+			const targetPathname = buildSpaPath(tabRoute);
+			if (window.location.pathname !== targetPathname) {
+				const target = `${targetPathname}${window.location.search}${window.location.hash}`;
 				window.history.pushState({}, '', target);
 			}
 		}

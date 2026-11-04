@@ -272,4 +272,74 @@ Dialogue: 0,0:00:20.00,0:00:24.00,Default,,0,0,0,,{\\kf100}Verso {\\kf100}tres
 		expect(window.location.pathname).toBe('/');
 		expect(window.location.search).toBe('?vibra=42');
 	});
+
+	it('preserves subpath (/rockola) when switching tabs, fogon mode, and lyrics editor', async () => {
+		const { isLyricsEditorOpen } = await import('@/stores/useUiStore');
+		isLyricsEditorOpen.value = false;
+		window.history.replaceState({}, '', '/rockola/?vibra=99');
+
+		const wrapper = mount(App);
+		await wrapper.vm.$nextTick();
+
+		activeTab.value = 'queue';
+		await wrapper.vm.$nextTick();
+		expect(window.location.pathname).toBe('/rockola/queue');
+		expect(window.location.search).toBe('?vibra=99');
+
+		isFogonMode.value = true;
+		await wrapper.vm.$nextTick();
+		expect(window.location.pathname).toBe('/rockola/fogon');
+
+		isFogonMode.value = false;
+		await wrapper.vm.$nextTick();
+		expect(window.location.pathname).toBe('/rockola/queue');
+
+		isLyricsEditorOpen.value = true;
+		await wrapper.vm.$nextTick();
+		expect(window.location.pathname).toBe('/rockola/letras');
+
+		isLyricsEditorOpen.value = false;
+		await wrapper.vm.$nextTick();
+		expect(window.location.pathname).toBe('/rockola/queue');
+
+		activeTab.value = 'library';
+		await wrapper.vm.$nextTick();
+		expect(window.location.pathname).toBe('/rockola/');
+		expect(window.location.search).toBe('?vibra=99');
+	});
+
+	it('updates document favicon with current song cover and falls back to default favicon on error or stop', async () => {
+		window.history.replaceState({}, '', '/');
+		let link = document.querySelector<HTMLLinkElement>("link[rel~='icon']");
+		if (!link) {
+			link = document.createElement('link');
+			link.rel = 'icon';
+			document.head.appendChild(link);
+		}
+		link.href = '/favicon.png';
+
+		currentTrackPath.value = '/music/con_tapa.mp3';
+		const wrapper = mount(App);
+		await wrapper.vm.$nextTick();
+
+		expect(link.getAttribute('href')).toContain('/cover?path=%2Fmusic%2Fcon_tapa.mp3');
+
+		// Si la portada da error, vuelve al favicon por defecto
+		const img = wrapper.find('nav img');
+		expect(img.exists()).toBe(true);
+		await img.trigger('error');
+		await wrapper.vm.$nextTick();
+
+		expect(link.getAttribute('href')).toBe('/favicon.png');
+
+		// Al cambiar a otro tema válido, vuelve a usar la carátula
+		currentTrackPath.value = '/music/otro_tema.mp3';
+		await wrapper.vm.$nextTick();
+		expect(link.getAttribute('href')).toContain('/cover?path=%2Fmusic%2Fotro_tema.mp3');
+
+		// Al frenar la reproducción, restaura el favicon original
+		currentTrackPath.value = null;
+		await wrapper.vm.$nextTick();
+		expect(link.getAttribute('href')).toBe('/favicon.png');
+	});
 });

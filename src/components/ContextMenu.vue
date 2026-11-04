@@ -1,5 +1,6 @@
 <script setup lang="ts">
 	import { ref, watch } from 'vue';
+	import { buildSpaPath } from '../composables/useAppRouter';
 	import { menuRef, useContextMenu } from '../composables/useContextMenu';
 	import { usePlaybackControls } from '../composables/usePlaybackControls';
 	import { usePlayer } from '../composables/usePlayer';
@@ -70,7 +71,8 @@
 		lyricsEditorTrack.value = track;
 		isLyricsEditorOpen.value = true;
 		if (typeof window !== 'undefined') {
-			window.history.pushState({}, '', '/letras');
+			const target = `${buildSpaPath('/letras')}${window.location.search}${window.location.hash}`;
+			window.history.pushState({}, '', target);
 		}
 		haptic();
 	}

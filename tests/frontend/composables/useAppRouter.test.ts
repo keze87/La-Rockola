@@ -80,4 +80,26 @@ describe('useAppRouter', () => {
 		expect(window.location.search).toBe('?vibra=42');
 		expect(activeTab.value).toBe('queue');
 	});
+
+	it('preserves subpath (/rockola) when applying routes and navigating between SPA routes', () => {
+		window.history.replaceState({}, '', '/rockola/');
+		const { applyRoute, navigateTo } = useAppRouter();
+
+		navigateTo('/queue');
+		expect(window.location.pathname).toBe('/rockola/queue');
+		expect(activeTab.value).toBe('queue');
+
+		navigateTo('/fogon');
+		expect(window.location.pathname).toBe('/rockola/fogon');
+		expect(isFogonMode.value).toBe(true);
+
+		applyRoute('/rockola/top');
+		expect(activeTab.value).toBe('top');
+		expect(isFogonMode.value).toBe(false);
+
+		navigateTo('/vibra');
+		expect(window.location.pathname).toBe('/rockola/');
+		expect(window.location.search).toBe(`?vibra=${urlParams.vibra}`);
+		expect(activeTab.value).toBe('library');
+	});
 });

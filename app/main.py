@@ -228,6 +228,7 @@ def create_app() -> FastAPI:
 		"/controls",
 		"/perillas",
 		"/temazos",
+		"/library",
 		"/letras",
 		"/lyrics",
 	):

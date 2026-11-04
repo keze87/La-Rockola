@@ -107,7 +107,15 @@ export function useSocket() {
 
 					if (data.type === 'state_update') {
 						const state: PlayerState = data;
+						const trackChanged =
+							state.current_track !== undefined && state.current_track !== currentTrackPath.value;
 						if (state.current_track !== undefined) currentTrackPath.value = state.current_track;
+						if (trackChanged) {
+							const nextPos = state.time_pos ?? 0;
+							localTimePos.value = nextPos;
+							timePos.value = nextPos;
+							pendingSeekTime.value = null;
+						}
 						if (state.has_local_player !== undefined)
 							hasLocalPlayer.value = Boolean(state.has_local_player);
 						if (state.dj_carpincho_enabled !== undefined) djBaraEnabled.value = state.dj_carpincho_enabled;

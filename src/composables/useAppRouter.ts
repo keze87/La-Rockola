@@ -14,9 +14,28 @@ export function normalizePath(path: string): string {
 	return clean.startsWith('/') ? clean.toLowerCase() : `/${clean.toLowerCase()}`;
 }
 
+// Extrae la ruta interna de la SPA descontando cualquier subruta de montaje (ej: /rockola/queue -> /queue)
+export function extractSpaRoute(pathname: string): string {
+	const base = getBasePath(pathname);
+	if (base && pathname.toLowerCase().startsWith(base.toLowerCase())) {
+		const sub = pathname.slice(base.length);
+		return normalizePath(sub);
+	}
+	return normalizePath(pathname);
+}
+
+// Construye el pathname completo preservando la subruta de montaje (ej: /queue -> /rockola/queue)
+export function buildSpaPath(route: string, pathnameHint?: string): string {
+	const base = getBasePath(pathnameHint);
+	const normRoute = normalizePath(route);
+	if (!base) return normRoute;
+	return normRoute === '/' ? `${base}/` : `${base}${normRoute}`;
+}
+
 export function useAppRouter() {
 	function applyRoute(pathname: string, triggerSort: boolean = true) {
-		const norm = normalizePath(pathname);
+		const base = getBasePath(pathname) || getBasePath();
+		const norm = extractSpaRoute(pathname);
 		currentRoute.value = norm;
 
 		if (norm === '/fogon') {
@@ -51,7 +70,6 @@ export function useAppRouter() {
 			const seed = Math.floor(Math.random() * 1000000);
 
 			if (typeof window !== 'undefined') {
-				const base = getBasePath();
 				const targetPath = `${base}/?vibra=${seed}${window.location.hash || ''}`;
 				window.history.replaceState(window.history.state, '', targetPath);
 			}
@@ -68,12 +86,12 @@ export function useAppRouter() {
 	}
 
 	function navigateTo(path: string) {
-		const norm = normalizePath(path);
-		if (typeof window !== 'undefined' && window.location.pathname !== norm) {
-			const target = `${norm}${window.location.search}${window.location.hash}`;
+		const targetPathname = buildSpaPath(path);
+		if (typeof window !== 'undefined' && window.location.pathname !== targetPathname) {
+			const target = `${targetPathname}${window.location.search}${window.location.hash}`;
 			window.history.pushState({}, '', target);
 		}
-		applyRoute(norm);
+		applyRoute(targetPathname);
 	}
 
 	function initRouter(): () => void {

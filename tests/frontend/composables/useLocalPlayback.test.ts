@@ -219,4 +219,26 @@ describe('useLocalPlayback', () => {
 		expect(sent.type).toBe('local_player_update');
 		expect(sent.song_ended).toBe(true);
 	});
+
+	it('resets localTimePos to 0 at the beginning when a track finishes and the next track starts locally', async () => {
+		const { duration, isPaused } = await import('@/composables/player/state');
+		useLocalPlayback();
+
+		listenLocally.value = true;
+		isPaused.value = false;
+		duration.value = 210;
+		currentTrackPath.value = '/music/tema1.mp3';
+		await nextTick();
+
+		// Simulamos que el tema 1 llegó al final (210s)
+		localTimePos.value = 210;
+		expect(localTimePos.value).toBe(210);
+
+		// Pasa al tema 2
+		currentTrackPath.value = '/music/tema2.mp3';
+		await nextTick();
+
+		// El seek bar debe empezar en el principio (0) y no quedar clavado en el final (210)
+		expect(localTimePos.value).toBe(0);
+	});
 });

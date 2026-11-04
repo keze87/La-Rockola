@@ -8,11 +8,12 @@ import type { ApiResponse, CommandName, CommandPayloads, Track } from '../types'
  *   http://example.com/rockola    -> "/rockola"
  *   http://example.com/index.html -> ""
  */
-export function getBasePath(): string {
-	if (typeof window === 'undefined') return '';
-	let path = window.location.pathname.replace(/\/index\.html$/, '').replace(/\/+$/, '');
+export function getBasePath(pathname?: string): string {
+	if (typeof window === 'undefined' && pathname === undefined) return '';
+	const rawPath = pathname !== undefined ? pathname : window.location.pathname;
+	let path = rawPath.replace(/\/index\.html$/, '').replace(/\/+$/, '');
 	// Descontamos rutas SPA conocidas al final del pathname para no confundirlas con subrutas de montaje del servidor
-	const spaPattern = /\/(fogon|queue|ronda|top|clasicos|controls|perillas|temazos|vibra|letras|lyrics)$/i;
+	const spaPattern = /\/(fogon|queue|ronda|top|clasicos|controls|perillas|temazos|library|vibra|letras|lyrics)$/i;
 	path = path.replace(spaPattern, '');
 	return path.replace(/\/+$/, '');
 }
