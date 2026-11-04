@@ -6,8 +6,9 @@ controlador de MPV con métodos tipados, adaptador MPRIS, cliente de clima y mez
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -172,6 +173,22 @@ async def test_mpv_controller_typed_commands() -> None:
 	await controller.stop_playback()
 
 	assert controller._send.call_count == 9
+
+
+@pytest.mark.asyncio
+async def test_mpv_controller_does_not_disable_mpv_visible_on_vo_events() -> None:
+	"""Verifica que eventos transitorios de VO en MPV no desactiven la preferencia mpv_visible."""
+	controller = AsyncMpvController()
+	state_mock = MagicMock()
+	state_mock.mpv_visible = True
+	controller.state_ref = state_mock
+
+	# Simulamos que MPV emite property-change current-vo = None (típico al descargar un archivo)
+	event_line = json.dumps({"event": "property-change", "name": "current-vo", "data": None}).encode("utf-8")
+	await controller._process_event_line(event_line)
+
+	# La preferencia del usuario no debe mutarse a False
+	assert state_mock.mpv_visible is True
 
 
 def test_weather_client_formatting() -> None:

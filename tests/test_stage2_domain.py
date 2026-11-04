@@ -10,6 +10,8 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from app.domain.dj.selector import DjBaraSelector
 from app.domain.library.hasher import compare_fps, generate_smart_hash, parse_fp
 from app.domain.library.models import parse_duration_str
@@ -208,3 +210,48 @@ async def test_playback_orchestrator_state_and_commands(tmp_path: Path) -> None:
 	assert state_dict["history"] == ["/music/tema1.mp3"]
 	assert "scan_status" in state_dict
 	assert isinstance(state_dict["library"], list)
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_window_lifecycle_on_queue_end_and_transitions(tmp_path: Path) -> None:
+	"""Verifica que la ventana de MPV se mantenga viva en transiciones y solo se oculte al vaciarse la cola."""
+	db_path = tmp_path / "domain_window.db"
+	init_db(db_path)
+
+	orch = PlaybackOrchestrator(db_path=db_path)
+	orch.mpv = MagicMock()
+	orch.mpv.is_running = True
+	orch.mpv.has_display = True
+	orch.mpv_visible = True
+	orch.dj_carpincho_enabled = False
+	orch.radio_mode_enabled = False
+
+	orch.mpv.start = AsyncMock()
+	orch.mpv.stop = AsyncMock()
+	orch.mpv.load_file = AsyncMock()
+	orch.mpv.set_pause = AsyncMock()
+	orch.mpv.set_volume = AsyncMock()
+	orch.mpv.set_mute = AsyncMock()
+	orch.mpv.set_force_window = AsyncMock()
+	orch.mpv.stop_playback = AsyncMock()
+
+	# 1. Arranca un tema con ventana visible
+	await orch.play_track("/music/tema1.mp3")
+	orch.mpv.set_force_window.assert_called_with(True)
+	orch.mpv.set_force_window.reset_mock()
+
+	# 2. Hay un tema en cola: al pasar al siguiente, la ventana NO debe cerrarse
+	await orch.toggle_queue("/music/tema2.mp3")
+	await orch.play_next(skipped_by_user=False)
+	assert orch.current_track == "/music/tema2.mp3"
+	orch.mpv.stop_playback.assert_not_called()
+	# Solo se confirma que siga en True, nunca en False
+	for call in orch.mpv.set_force_window.call_args_list:
+		assert call.args[0] is True
+	orch.mpv.set_force_window.reset_mock()
+
+	# 3. La cola quedó vacía y sin DJ: al terminar el tema, debe llamar a stop_playback y ocultar la ventana con False
+	await orch.play_next(skipped_by_user=False)
+	assert orch.current_track is None
+	orch.mpv.stop_playback.assert_called_once()
+	orch.mpv.set_force_window.assert_called_with(False)

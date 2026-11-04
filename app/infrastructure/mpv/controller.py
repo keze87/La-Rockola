@@ -255,7 +255,7 @@ class AsyncMpvController:
 				asyncio.create_task(self._read_ipc_events())
 
 			if not self.is_windows:
-				for idx, prop in enumerate(("volume", "pause", "time-pos", "duration", "mute", "current-vo"), start=1):
+				for idx, prop in enumerate(("volume", "pause", "time-pos", "duration", "mute"), start=1):
 					await self.command("observe_property", idx, prop)
 
 			if is_restart and "mpv_restarted" in self.callbacks:
@@ -293,9 +293,7 @@ class AsyncMpvController:
 				if not self.socket_path:
 					return
 				with open(self.socket_path, "r+b") as pipe:
-					for idx, prop in enumerate(
-						("volume", "pause", "time-pos", "duration", "mute", "current-vo"), start=1
-					):
+					for idx, prop in enumerate(("volume", "pause", "time-pos", "duration", "mute"), start=1):
 						payload = json.dumps({"command": ["observe_property", idx, prop]}) + "\n"
 						pipe.write(payload.encode("utf-8"))
 					pipe.flush()
@@ -371,12 +369,6 @@ class AsyncMpvController:
 					asyncio.create_task(self.callbacks["duration_update"](prop_val))
 				elif prop_name == "mute" and prop_val is not None and "mute_update" in self.callbacks:
 					asyncio.create_task(self.callbacks["mute_update"](prop_val))
-				elif prop_name == "current-vo":
-					is_visible = bool(prop_val and prop_val != "null")
-					if self.state_ref and hasattr(self.state_ref, "mpv_visible"):
-						self.state_ref.mpv_visible = is_visible
-					if "visibility_update" in self.callbacks:
-						asyncio.create_task(self.callbacks["visibility_update"](is_visible))
 		except json.JSONDecodeError:
 			pass
 
