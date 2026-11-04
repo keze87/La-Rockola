@@ -29,6 +29,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
 	"url": None,
 	"weather_location": DEFAULT_WEATHER_LOCATION,
 	"log_level": "INFO",
+	"better_lyrics_token": None,
 }
 
 
@@ -151,6 +152,7 @@ class Settings(BaseSettings):
 	)
 	log_level: str = Field(default="INFO", description="Nivel de logs (DEBUG, INFO, WARNING, ERROR)")
 	debug: bool = Field(default=False, description="Modo debug habilitado")
+	better_lyrics_token: str | None = Field(default=None, description="Token JWT para la API de BetterLyrics")
 
 	@classmethod
 	def from_config_file(cls, path: Path | None = None) -> Settings:
