@@ -39,3 +39,4 @@ DB/
 *.db
 *.db-journal
 *.db-wal
+elrc.py
