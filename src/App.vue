@@ -242,142 +242,154 @@
 	<!-- MENÚ CONTEXTUAL (global, compartido entre pestañas) -->
 	<ContextMenu />
 
-	<!-- BARRA SUPERIOR DE NAVEGACIÓN -->
-	<nav
-		class="bg-carpincho-panel border-carpincho-primary shrink-0 cursor-pointer overflow-hidden border-b px-5 pt-[max(10px,env(safe-area-inset-top))] pb-2"
-		@click="
-			isFogonMode = true;
-			haptic();
-		"
-	>
-		<div class="text-carpincho-text flex w-full items-center justify-start gap-3 font-bold">
-			<div class="flex h-[40px] min-w-0 flex-1 items-center overflow-hidden">
-				<transition name="lyric" mode="out-in">
-					<span v-if="isScanning" class="block w-full truncate text-left">
-						{{
-							scanStatus?.total
-								? `[Avisando] Chusmeando temas (${scanStatus.current}/${scanStatus.total}), aguantá fiera... 🧉`
-								: '[Avisando] Chusmeando temas, aguantá fiera... 🧉'
-						}}
-					</span>
-					<div
-						v-else-if="currentTrackPath && activeLyricLines.length > 0"
-						:key="activeLyricLines.map((l) => l.text).join('-')"
-						class="block w-full truncate text-left text-[0.95rem] font-medium whitespace-pre italic drop-shadow-sm"
-					>
-						<template v-for="(line, idx) in activeLyricLines" :key="idx + '-' + line.time">
-							<span v-if="idx > 0" class="text-carpincho-secondary/70 mx-1.5 font-normal not-italic">
-								/
-							</span>
-							<template v-if="line.syllables && line.syllables.length > 0">
-								<span
-									v-for="(syl, sIdx) in line.syllables"
-									:key="sIdx"
-									:class="getHeadbarSyllableClass(syl)"
-								>
-									{{ syl.text }}
-								</span>
-							</template>
-							<span v-else class="text-carpincho-warning">{{ line.text }}</span>
-						</template>
-					</div>
-					<span
-						v-else-if="currentTrackPath && currentLyricLine && currentLyricLine.trim() !== ''"
-						:key="currentLyricLine"
-						class="text-carpincho-warning block w-full truncate text-left text-[0.95rem] font-medium italic drop-shadow-sm"
-					>
-						{{ currentLyricLine }}
-					</span>
-					<span v-else class="block w-full truncate text-left">
-						{{ currentTrackTitle }}
-					</span>
-				</transition>
-			</div>
-
-			<img
-				v-if="headbarCoverUrl"
-				:src="headbarCoverUrl"
-				class="h-10 w-10 shrink-0 rounded object-cover shadow-sm"
-				@error="onHeadbarCoverError"
-			/>
-			<div v-else class="flex h-10 w-10 shrink-0 items-center justify-center rounded shadow-sm">
-				<i class="material-icons text-carpincho-warning">
-					{{ isScanning || scanStatus?.is_analyzing_mood ? 'sync' : isPlaying ? 'nightlife' : 'music_note' }}
-				</i>
-			</div>
-		</div>
-	</nav>
-
-	<!-- BARRA DE PROGRESO  -->
+	<!-- VISTA PRINCIPAL (se oculta cuando el fogón o el editor de letras están abiertos a pantalla completa para no recalcular repintados) -->
 	<div
-		v-show="!isScanning && currentTrackPath"
-		class="bg-carpincho-panel group relative flex h-2 w-full shrink-0 cursor-pointer touch-none items-start"
-		style="-webkit-tap-highlight-color: transparent"
-		@pointerdown="startSeek"
-		@pointermove="moveSeek"
-		@pointerup="endSeek"
-		@pointercancel="endSeek"
+		v-show="!isFogonMode && !isLyricsEditorOpen"
+		class="app-main-content flex min-h-0 w-full flex-1 flex-col overflow-hidden"
 	>
-		<div
-			class="relative h-1 w-full bg-[#38312c] transition-all duration-100 ease-out group-hover:h-2 group-active:h-2"
+		<!-- BARRA SUPERIOR DE NAVEGACIÓN -->
+		<nav
+			class="bg-carpincho-panel border-carpincho-primary shrink-0 cursor-pointer overflow-hidden border-b px-5 pt-[max(10px,env(safe-area-inset-top))] pb-2"
+			@click="
+				isFogonMode = true;
+				haptic();
+			"
 		>
-			<div
-				class="bg-carpincho-warning absolute top-0 left-0 z-50 h-full"
-				:style="{ width: progressPercent + '%' }"
-			/>
+			<div class="text-carpincho-text flex w-full items-center justify-start gap-3 font-bold">
+				<div class="flex h-[40px] min-w-0 flex-1 items-center overflow-hidden">
+					<transition name="lyric" mode="out-in">
+						<span v-if="isScanning" class="block w-full truncate text-left">
+							{{
+								scanStatus?.total
+									? `[Avisando] Chusmeando temas (${scanStatus.current}/${scanStatus.total}), aguantá fiera... 🧉`
+									: '[Avisando] Chusmeando temas, aguantá fiera... 🧉'
+							}}
+						</span>
+						<div
+							v-else-if="currentTrackPath && activeLyricLines.length > 0"
+							:key="activeLyricLines.map((l) => l.text).join('-')"
+							class="block w-full truncate text-left text-[0.95rem] font-medium whitespace-pre italic drop-shadow-sm"
+						>
+							<template v-for="(line, idx) in activeLyricLines" :key="idx + '-' + line.time">
+								<span v-if="idx > 0" class="text-carpincho-secondary/70 mx-1.5 font-normal not-italic">
+									/
+								</span>
+								<template v-if="line.syllables && line.syllables.length > 0">
+									<span
+										v-for="(syl, sIdx) in line.syllables"
+										:key="sIdx"
+										:class="getHeadbarSyllableClass(syl)"
+									>
+										{{ syl.text }}
+									</span>
+								</template>
+								<span v-else class="text-carpincho-warning">{{ line.text }}</span>
+							</template>
+						</div>
+						<span
+							v-else-if="currentTrackPath && currentLyricLine && currentLyricLine.trim() !== ''"
+							:key="currentLyricLine"
+							class="text-carpincho-warning block w-full truncate text-left text-[0.95rem] font-medium italic drop-shadow-sm"
+						>
+							{{ currentLyricLine }}
+						</span>
+						<span v-else class="block w-full truncate text-left">
+							{{ currentTrackTitle }}
+						</span>
+					</transition>
+				</div>
 
-			<!-- Bolita que solo aparece al pasar el dedo/mouse -->
-			<div
-				class="bg-carpincho-warning absolute top-1/2 z-50 h-3 w-3 -translate-y-1/2 rounded-full opacity-0 shadow-md group-hover:opacity-100 group-active:opacity-100"
-				:style="{ left: progressPercent + '%', marginLeft: '-6px' }"
-			/>
-		</div>
-	</div>
-
-	<!-- PESTAÑAS -->
-	<div class="bg-carpincho-panel border-carpincho-border relative z-10 flex shrink-0 border-b shadow-md">
-		<div
-			v-for="tab in tabs"
-			:key="tab.id"
-			:class="[
-				'flex flex-1 cursor-pointer touch-manipulation items-center justify-center gap-1 py-3 text-center text-sm font-medium tracking-wide uppercase transition-colors active:scale-95',
-				activeTab === tab.id
-					? 'text-carpincho-primary border-carpincho-primary border-b-2'
-					: 'hover:bg-carpincho-border/50 text-carpincho-muted border-b-2 border-transparent',
-			]"
-			@click="switchTab(tab.id)"
-		>
-			<div class="relative">
-				<i class="material-icons">{{ tab.icon }}</i>
-				<span
-					v-if="tab.id === 'queue' && queueState.length > 0"
-					class="bg-carpincho-primary absolute -top-1.5 -right-3 flex h-[14px] min-w-[14px] items-center justify-center rounded-full px-[3px] text-[0.55rem] leading-none font-bold text-white"
-				>
-					{{ queueState.length > 99 ? '99+' : queueState.length }}
-				</span>
+				<img
+					v-if="headbarCoverUrl"
+					:src="headbarCoverUrl"
+					class="h-10 w-10 shrink-0 rounded object-cover shadow-sm"
+					@error="onHeadbarCoverError"
+				/>
+				<div v-else class="flex h-10 w-10 shrink-0 items-center justify-center rounded shadow-sm">
+					<i class="material-icons text-carpincho-warning">
+						{{
+							isScanning || scanStatus?.is_analyzing_mood
+								? 'sync'
+								: isPlaying
+									? 'nightlife'
+									: 'music_note'
+						}}
+					</i>
+				</div>
 			</div>
-			<span class="hidden sm:inline">{{ tab.name }}</span>
+		</nav>
+
+		<!-- BARRA DE PROGRESO  -->
+		<div
+			v-show="!isScanning && currentTrackPath"
+			class="bg-carpincho-panel group relative flex h-2 w-full shrink-0 cursor-pointer touch-none items-start"
+			style="-webkit-tap-highlight-color: transparent"
+			@pointerdown="startSeek"
+			@pointermove="moveSeek"
+			@pointerup="endSeek"
+			@pointercancel="endSeek"
+		>
+			<div
+				class="relative h-1 w-full bg-[#38312c] transition-all duration-100 ease-out group-hover:h-2 group-active:h-2"
+			>
+				<div
+					class="bg-carpincho-warning absolute top-0 left-0 z-50 h-full"
+					:style="{ width: progressPercent + '%' }"
+				/>
+
+				<!-- Bolita que solo aparece al pasar el dedo/mouse -->
+				<div
+					class="bg-carpincho-warning absolute top-1/2 z-50 h-3 w-3 -translate-y-1/2 rounded-full opacity-0 shadow-md group-hover:opacity-100 group-active:opacity-100"
+					:style="{ left: progressPercent + '%', marginLeft: '-6px' }"
+				/>
+			</div>
 		</div>
-	</div>
 
-	<!-- CONTENIDO DE PESTAÑAS -->
-	<!-- Ojo: Usamos v-show para mantener los componentes vivos en el DOM y no perder la posición de scroll ni el estado local al cambiar de pestaña -->
-	<div class="relative min-h-0 w-full flex-1 overflow-hidden">
-		<Transition name="tab-fade">
-			<LibraryTab v-show="activeTab === 'library'" />
-		</Transition>
+		<!-- PESTAÑAS -->
+		<div class="bg-carpincho-panel border-carpincho-border relative z-10 flex shrink-0 border-b shadow-md">
+			<div
+				v-for="tab in tabs"
+				:key="tab.id"
+				:class="[
+					'flex flex-1 cursor-pointer touch-manipulation items-center justify-center gap-1 py-3 text-center text-sm font-medium tracking-wide uppercase transition-colors active:scale-95',
+					activeTab === tab.id
+						? 'text-carpincho-primary border-carpincho-primary border-b-2'
+						: 'hover:bg-carpincho-border/50 text-carpincho-muted border-b-2 border-transparent',
+				]"
+				@click="switchTab(tab.id)"
+			>
+				<div class="relative">
+					<i class="material-icons">{{ tab.icon }}</i>
+					<span
+						v-if="tab.id === 'queue' && queueState.length > 0"
+						class="bg-carpincho-primary absolute -top-1.5 -right-3 flex h-[14px] min-w-[14px] items-center justify-center rounded-full px-[3px] text-[0.55rem] leading-none font-bold text-white"
+					>
+						{{ queueState.length > 99 ? '99+' : queueState.length }}
+					</span>
+				</div>
+				<span class="hidden sm:inline">{{ tab.name }}</span>
+			</div>
+		</div>
 
-		<Transition name="tab-fade">
-			<QueueTab v-show="activeTab === 'queue'" />
-		</Transition>
+		<!-- CONTENIDO DE PESTAÑAS -->
+		<!-- Ojo: Usamos v-show para mantener los componentes vivos en el DOM y no perder la posición de scroll ni el estado local al cambiar de pestaña -->
+		<div class="relative min-h-0 w-full flex-1 overflow-hidden">
+			<Transition name="tab-fade">
+				<LibraryTab v-show="activeTab === 'library'" />
+			</Transition>
 
-		<Transition name="tab-fade">
-			<TopTab v-show="activeTab === 'top'" />
-		</Transition>
+			<Transition name="tab-fade">
+				<QueueTab v-show="activeTab === 'queue'" />
+			</Transition>
 
-		<Transition name="tab-fade">
-			<ControlsTab v-show="activeTab === 'controls'" />
-		</Transition>
+			<Transition name="tab-fade">
+				<TopTab v-show="activeTab === 'top'" />
+			</Transition>
+
+			<Transition name="tab-fade">
+				<ControlsTab v-show="activeTab === 'controls'" />
+			</Transition>
+		</div>
 	</div>
 
 	<!-- REPRODUCTOR FLOTANTE -->

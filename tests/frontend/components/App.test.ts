@@ -342,4 +342,19 @@ Dialogue: 0,0:00:20.00,0:00:24.00,Default,,0,0,0,,{\\kf100}Verso {\\kf100}tres
 		await wrapper.vm.$nextTick();
 		expect(link.getAttribute('href')).toBe('/favicon.png');
 	});
+
+	it('hides the background navigation, seekbar and tabs when fogon mode is active to optimize performance', async () => {
+		const wrapper = mount(App);
+		await wrapper.vm.$nextTick();
+
+		const appContent = wrapper.find('.app-main-content');
+		expect(appContent.exists()).toBe(true);
+		expect(appContent.attributes('style')).toBeUndefined();
+
+		isFogonMode.value = true;
+		await wrapper.vm.$nextTick();
+		await wrapper.vm.$nextTick();
+
+		expect(appContent.attributes('style')).toContain('display: none');
+	});
 });
