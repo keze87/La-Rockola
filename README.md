@@ -129,6 +129,15 @@ El servidor compila automáticamente el frontend con Vite en el primer inicio si
 - `--open-browser` / `--no-browser`: Activa o desactiva la apertura automática del navegador.
 - `--debug`: Habilita logs detallados en nivel DEBUG.
 
+**Preferencias persistentes (`rockola_config.json`):**
+
+Además de las opciones de CLI, estas claves se guardan solas en el archivo de configuración cuando las cambiás desde la interfaz (o las podés editar a mano):
+
+- `default_sort`: Orden por defecto de la biblioteca (`time`, `artist`, `mood` o `shuffle`). Si el valor es inválido, se usa `time`.
+- `radio_mode_enabled`: Si el locutor de radio arranca encendido (`true` por defecto).
+- `mpv_visible`: Si la ventana de MPV arranca visible (`true` por defecto).
+- `better_lyrics_token`: Token JWT para el taller de letras (se carga desde la interfaz).
+
 _Ejemplo de uso:_
 
 ```bash

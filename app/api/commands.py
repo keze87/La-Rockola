@@ -8,7 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, get_args
 
 from fastapi import APIRouter
 
@@ -171,22 +171,16 @@ async def _cmd_toggle_radio_mode(state: PlaybackOrchestrator, req: CommandReques
 		state.radio_mode_enabled = not state.radio_mode_enabled
 	if state.radio_mode_enabled:
 		state._reset_radio_schedule()
-	cfg_path = config_mod.get_config_path()
-	cfg = config_mod.load_config(cfg_path)
-	cfg["radio_mode_enabled"] = state.radio_mode_enabled
-	config_mod.save_config(cfg_path, cfg)
+	config_mod.update_config({"radio_mode_enabled": state.radio_mode_enabled})
 	logger.info(f"Modo radio locutor actualizado y guardado en config: {state.radio_mode_enabled}")
 
 
 async def _cmd_set_default_sort(state: PlaybackOrchestrator, req: CommandRequest, _mgr: Any) -> None:
 	if req.sort and isinstance(req.sort, str):
 		new_sort = req.sort.strip().lower()
-		if new_sort in {"time", "artist", "mood", "shuffle"}:
+		if new_sort in get_args(config_mod.SortMode):
 			state.default_sort = new_sort
-			cfg_path = config_mod.get_config_path()
-			cfg = config_mod.load_config(cfg_path)
-			cfg["default_sort"] = new_sort
-			config_mod.save_config(cfg_path, cfg)
+			config_mod.update_config({"default_sort": new_sort})
 			logger.info(f"Modo de ordenamiento por defecto guardado en config: {new_sort}")
 
 
@@ -393,10 +387,7 @@ async def mpv_hide() -> dict[str, str]:
 	if not state:
 		return {"status": "error"}
 	state.mpv_visible = False
-	cfg_path = config_mod.get_config_path()
-	cfg = config_mod.load_config(cfg_path)
-	cfg["mpv_visible"] = False
-	config_mod.save_config(cfg_path, cfg)
+	config_mod.update_config({"mpv_visible": False})
 	if state.mpv and state.mpv.is_running:
 		logger.info("Reiniciando MPV para ocultar la ventana...")
 		await state.mpv.start(is_restart=True, state_ref=state)
@@ -410,10 +401,7 @@ async def mpv_show() -> dict[str, str]:
 	state = get_container().ensure_orchestrator()
 	if not state:
 		return {"status": "error"}
-	cfg_path = config_mod.get_config_path()
-	cfg = config_mod.load_config(cfg_path)
-	cfg["mpv_visible"] = True
-	config_mod.save_config(cfg_path, cfg)
+	config_mod.update_config({"mpv_visible": True})
 	if state.mpv and not getattr(state.mpv, "has_display", True):
 		state.mpv_visible = False
 		await broadcast_state()

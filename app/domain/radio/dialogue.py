@@ -5,6 +5,7 @@ y agrupación de turnos de habla para síntesis con prosodia natural.
 
 from __future__ import annotations
 
+import logging
 import random
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -277,6 +278,33 @@ def get_fortune_voice(is_system_fortune: bool, host_voice: str) -> str:
 	return host_voice
 
 
+logger = logging.getLogger("RockolaCarpincho")
+
+BLOCK_ALIASES: dict[str, str] = {
+	"hora": "hora",
+	"time": "hora",
+	"clima": "clima",
+	"weather": "clima",
+	"contenido": "contenido",
+	"content": "contenido",
+	"frase": "contenido",
+	"fortuna": "contenido",
+	"phrase": "contenido",
+}
+
+
+def _resolve_block_order(block_order: Sequence[str] | None, valid_keys: list[str]) -> list[str]:
+	"""Resuelve el orden de bloques intermedios: respeta `block_order` (avisando claves desconocidas) o mezcla al azar."""
+	if block_order:
+		for raw_key in block_order:
+			if raw_key not in BLOCK_ALIASES:
+				logger.warning(f"Bloque de locución desconocido en block_order ignorado: {raw_key!r}")
+		return [BLOCK_ALIASES[k] for k in block_order if k in BLOCK_ALIASES and BLOCK_ALIASES[k] in valid_keys]
+	ordered = list(valid_keys)
+	random.shuffle(ordered)
+	return ordered
+
+
 def build_radio_dialogue_plan(
 	intro: str | None = None,
 	hora_seg: str | None = None,
@@ -352,18 +380,6 @@ def build_radio_dialogue_plan(
 		seg_cat if seg_cat in ("fortuna", "aviso", "alerta_criolla", "oyentes", "chismes", "novela") else "fortuna"
 	)
 
-	aliases: dict[str, str] = {
-		"hora": "hora",
-		"time": "hora",
-		"clima": "clima",
-		"weather": "clima",
-		"contenido": "contenido",
-		"content": "contenido",
-		"frase": "contenido",
-		"fortuna": "contenido",
-		"phrase": "contenido",
-	}
-
 	if not dialogue_mode:
 		fortune_voice = VOICE_ELENA if is_system_fortune else host_voice
 		time_block = [(time_phrase, host_voice, "hora", True)]
@@ -378,11 +394,7 @@ def build_radio_dialogue_plan(
 		if effective_weather:
 			available_blocks["clima"] = [(effective_weather, host_voice, "clima", False)]
 
-		if block_order:
-			ordered_keys = [aliases[k] for k in block_order if k in aliases and aliases[k] in available_blocks]
-		else:
-			ordered_keys = list(available_blocks.keys())
-			random.shuffle(ordered_keys)
+		ordered_keys = _resolve_block_order(block_order, list(available_blocks.keys()))
 
 		solo_plan: list[tuple[str, str, str, bool]] = [
 			(rendered_intro, host_voice, "intro", True),
@@ -394,11 +406,13 @@ def build_radio_dialogue_plan(
 
 	time_block = [(time_phrase, host_voice, "hora", True)]
 
-	prev_reaction = last_reaction
-	prev_key = _normalize_phrase_key(prev_reaction) if prev_reaction else None
+	# El orden de bloques se resuelve ANTES de elegir las reacciones, así la anti-repetición
+	# (ni repetir la reacción previa ni dos iguales seguidas) sigue el orden real de locución.
+	ordered_keys = _resolve_block_order(block_order, ["hora", "contenido"] + (["clima"] if effective_weather else []))
 
-	weather_block: list[tuple[str, str, str, bool]] | None = None
-	if effective_weather:
+	prev_key = _normalize_phrase_key(last_reaction) if last_reaction else None
+
+	def _build_weather_block() -> list[tuple[str, str, str, bool]]:
 		pase_pool = filter_by_context(PASES_A_CLIMA, ctx) or list(PASES_A_CLIMA)
 		pase_template = weighted_choice_by_recency(pase_pool, category="pase", db_path=db_path)
 		pase_text = render_tracked_phrase(pase_template, ctx, addressee_voice=cohost_voice, cohost_name=cohost_name)
@@ -413,45 +427,42 @@ def build_radio_dialogue_plan(
 			ctx,
 			addressee_voice=cohost_voice,
 		)
-		weather_block = [
+		return [
 			(pase_text, host_voice, "pase", True),
-			(effective_weather, cohost_voice, "clima", False),
+			(effective_weather or "", cohost_voice, "clima", False),
 			(reaccion_clima, host_voice, "reaccion", True),
 		]
-		prev_key = _normalize_phrase_key(reaccion_clima)
 
 	fortune_voice = VOICE_ELENA if is_system_fortune else cohost_voice
 	react_voice = host_voice if fortune_voice == cohost_voice else cohost_voice
 	addressee_voice = cohost_voice if react_voice == host_voice else host_voice
 
-	raw_reactions = get_reactions_for_category(seg_cat)
-	cat_reactions = filter_by_context(raw_reactions, ctx) or list(raw_reactions)
-	valid_fortune_reactions = [r for r in cat_reactions if _normalize_phrase_key(r) != prev_key]
-	pool_fortuna = valid_fortune_reactions if valid_fortune_reactions else cat_reactions
-	reaccion_fortuna = render_tracked_phrase(
-		weighted_choice_by_recency(pool_fortuna, category=f"reaccion_{seg_cat}", db_path=db_path),
-		ctx,
-		addressee_voice=addressee_voice,
-	)
+	def _build_content_block() -> list[tuple[str, str, str, bool]]:
+		raw_reactions = get_reactions_for_category(seg_cat)
+		cat_reactions = filter_by_context(raw_reactions, ctx) or list(raw_reactions)
+		valid_fortune_reactions = [r for r in cat_reactions if _normalize_phrase_key(r) != prev_key]
+		pool_fortuna = valid_fortune_reactions if valid_fortune_reactions else cat_reactions
+		reaccion_fortuna = render_tracked_phrase(
+			weighted_choice_by_recency(pool_fortuna, category=f"reaccion_{seg_cat}", db_path=db_path),
+			ctx,
+			addressee_voice=addressee_voice,
+		)
+		return [
+			(effective_lead_in, host_voice, "lead_in", True),
+			(fortune_text, fortune_voice, fortune_category, True),
+			(reaccion_fortuna, react_voice, "reaccion", True),
+		]
 
-	content_block = [
-		(effective_lead_in, host_voice, "lead_in", True),
-		(fortune_text, fortune_voice, fortune_category, True),
-		(reaccion_fortuna, react_voice, "reaccion", True),
-	]
-
-	available_dialogue_blocks: dict[str, list[tuple[str, str, str, bool]]] = {
-		"hora": time_block,
-		"contenido": content_block,
-	}
-	if weather_block:
-		available_dialogue_blocks["clima"] = weather_block
-
-	if block_order:
-		ordered_keys = [aliases[k] for k in block_order if k in aliases and aliases[k] in available_dialogue_blocks]
-	else:
-		ordered_keys = list(available_dialogue_blocks.keys())
-		random.shuffle(ordered_keys)
+	available_dialogue_blocks: dict[str, list[tuple[str, str, str, bool]]] = {}
+	for k in ordered_keys:
+		if k == "hora":
+			available_dialogue_blocks[k] = time_block
+		elif k == "clima":
+			available_dialogue_blocks[k] = _build_weather_block()
+			prev_key = _normalize_phrase_key(available_dialogue_blocks[k][-1][0])
+		else:
+			available_dialogue_blocks[k] = _build_content_block()
+			prev_key = _normalize_phrase_key(available_dialogue_blocks[k][-1][0])
 
 	plan: list[tuple[str, str, str, bool]] = [
 		(rendered_intro, host_voice, "intro", True),

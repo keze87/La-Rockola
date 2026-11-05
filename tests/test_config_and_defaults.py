@@ -6,14 +6,16 @@ Pruebas para la persistencia de configuración por defecto:
 """
 
 import json
+import threading
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic import ValidationError
 
 from app.api.commands import COMMAND_HANDLERS, mpv_hide, mpv_show
 from app.api.schemas import CommandRequest
-from app.core.config import DEFAULT_CONFIG, Settings
+from app.core.config import DEFAULT_CONFIG, Settings, load_config, update_config
 from app.domain.playback.orchestrator import PlaybackOrchestrator
 
 
@@ -119,3 +121,60 @@ async def test_mpv_show_hide_persists_to_config(tmp_path: Path):
 		loaded = json.loads(config_file.read_text(encoding="utf-8"))
 		assert loaded["mpv_visible"] is True
 		assert mock_state.mpv_visible is True
+
+
+def test_update_config_merges_and_preserves_existing_keys(tmp_path: Path):
+	config_file = tmp_path / "rockola_config.json"
+	config_file.write_text(json.dumps({"port": 4000, "mpv_visible": True}), encoding="utf-8")
+
+	update_config({"default_sort": "artist"}, path=config_file)
+
+	loaded = json.loads(config_file.read_text(encoding="utf-8"))
+	assert loaded["default_sort"] == "artist"
+	assert loaded["port"] == 4000
+	assert loaded["mpv_visible"] is True
+
+
+def test_update_config_resolves_default_path_lazily(tmp_path: Path):
+	config_file = tmp_path / "rockola_config.json"
+	with patch("app.core.config.get_config_path", return_value=config_file):
+		update_config({"radio_mode_enabled": False})
+	assert json.loads(config_file.read_text(encoding="utf-8"))["radio_mode_enabled"] is False
+
+
+def test_update_config_is_safe_under_concurrent_writers(tmp_path: Path):
+	"""Escrituras simultáneas de claves distintas no deben pisarse entre sí."""
+	config_file = tmp_path / "rockola_config.json"
+	config_file.write_text("{}", encoding="utf-8")
+	keys = [f"clave_{i}" for i in range(40)]
+
+	threads = [threading.Thread(target=update_config, args=({k: True}, config_file)) for k in keys]
+	for t in threads:
+		t.start()
+	for t in threads:
+		t.join()
+
+	loaded = load_config(config_file)
+	assert all(loaded.get(k) is True for k in keys)
+
+
+def test_settings_reject_invalid_default_sort():
+	assert Settings(default_sort="mood").default_sort == "mood"
+	with pytest.raises(ValidationError):
+		Settings(default_sort="cualquier_cosa")
+
+
+@pytest.mark.asyncio
+async def test_cmd_set_default_sort_ignores_invalid_value(tmp_path: Path):
+	config_file = tmp_path / "rockola_config.json"
+	config_file.write_text(json.dumps({"default_sort": "time"}), encoding="utf-8")
+	orchestrator = MagicMock(spec=PlaybackOrchestrator)
+	orchestrator.default_sort = "time"
+
+	with patch("app.core.config.get_config_path", return_value=config_file):
+		await COMMAND_HANDLERS["set_default_sort"](
+			orchestrator, CommandRequest(cmd="set_default_sort", sort="nope"), None
+		)
+
+	assert orchestrator.default_sort == "time"
+	assert json.loads(config_file.read_text(encoding="utf-8"))["default_sort"] == "time"

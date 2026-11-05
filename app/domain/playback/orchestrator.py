@@ -151,7 +151,6 @@ class PlaybackOrchestrator:
 				"song_ended": self.handle_song_ended,
 				"time_update": self.handle_time_update,
 				"track_stopped": self.handle_track_stopped,
-				"visibility_update": self.handle_visibility_update,
 				"volume_update": self.handle_volume_update,
 			},
 			state_ref=self,
@@ -568,11 +567,6 @@ class PlaybackOrchestrator:
 			return
 		self.server_muted = is_muted
 		await broadcast_state()
-
-	async def handle_visibility_update(self, visible: bool) -> None:
-		if self.mpv_visible != visible:
-			self.mpv_visible = visible
-			await broadcast_state()
 
 	async def play_track(self, path: str | Path) -> None:
 		self.dj_selector.cancel_countdown()

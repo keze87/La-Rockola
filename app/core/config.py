@@ -10,8 +10,9 @@ import json
 import logging
 import os
 import sys
+import threading
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, get_args
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -19,6 +20,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 logger = logging.getLogger("RockolaCarpincho")
 
 DEFAULT_WEATHER_LOCATION = "San Miguel de Tucumán"
+
+SortMode = Literal["time", "artist", "mood", "shuffle"]
 
 DEFAULT_CONFIG: dict[str, Any] = {
 	"music_dir": "~/Music",
@@ -134,6 +137,22 @@ def save_config(config_path: Path, cfg: dict[str, Any]) -> None:
 		logger.error(f"Error guardando la configuración en {config_path}: {e}")
 
 
+_config_lock = threading.Lock()
+
+
+def update_config(updates: dict[str, Any], path: Path | None = None) -> dict[str, Any]:
+	"""
+	Aplica un parche sobre la configuración persistida (leer-modificar-escribir) bajo un lock,
+	para que escrituras simultáneas de claves distintas no se pisen entre sí.
+	"""
+	with _config_lock:
+		config_path = path or get_config_path()
+		cfg = load_config(config_path)
+		cfg.update(updates)
+		save_config(config_path, cfg)
+		return cfg
+
+
 class Settings(BaseSettings):
 	"""Configuración centralizada y tipada de La Rockola."""
 
@@ -156,7 +175,7 @@ class Settings(BaseSettings):
 	log_level: str = Field(default="INFO", description="Nivel de logs (DEBUG, INFO, WARNING, ERROR)")
 	debug: bool = Field(default=False, description="Modo debug habilitado")
 	better_lyrics_token: str | None = Field(default=None, description="Token JWT para la API de BetterLyrics")
-	default_sort: str = Field(default="time", description="Modo de ordenamiento por defecto de la biblioteca")
+	default_sort: SortMode = Field(default="time", description="Modo de ordenamiento por defecto de la biblioteca")
 	radio_mode_enabled: bool = Field(default=True, description="Locutor de radio habilitado por defecto")
 	mpv_visible: bool = Field(default=True, description="Mostrar ventana de MPV por defecto")
 
@@ -164,6 +183,9 @@ class Settings(BaseSettings):
 	def from_config_file(cls, path: Path | None = None) -> Settings:
 		"""Instancia los settings combinando el archivo JSON con defaults y variables de entorno."""
 		loaded = load_config(path)
+		if loaded.get("default_sort") not in get_args(SortMode):
+			logger.warning(f"default_sort inválido ({loaded.get('default_sort')!r}) en la config, uso 'time'")
+			loaded["default_sort"] = DEFAULT_CONFIG["default_sort"]
 		return cls(**loaded)
 
 	def merge_cli_args(self, args: argparse.Namespace) -> Settings:
