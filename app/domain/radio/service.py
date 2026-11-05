@@ -755,12 +755,12 @@ async def create_radio_announcement(
 	locutor_nombre = VOICE_NAMES.get(host_voice, DEFAULT_HOST_NAME)
 	cohost_nombre = VOICE_NAMES.get(cohost_voice, DEFAULT_COHOST_DISPLAY_NAME)
 
-	intro_candidates = filter_by_context(RADIO_INTROS, ctx) or list(RADIO_INTROS)
+	intro_candidates = filter_by_context(RADIO_INTROS, ctx, "intro") or list(RADIO_INTROS)
 	intro = weighted_choice_by_recency(intro_candidates, category="intro", db_path=db_path)
 	hora_seg, minuto_seg, _ = get_modular_time_segments(effective_dt)
 	seg_cat = resolve_segment_category(fortuna)
 	outro_pool = get_outros_for_category(seg_cat, outro_mode)
-	outro_candidates = filter_by_context(outro_pool, ctx) or list(outro_pool)
+	outro_candidates = filter_by_context(outro_pool, ctx, "salida") or list(outro_pool)
 	outro = weighted_choice_by_recency(outro_candidates, category="salida", db_path=db_path)
 
 	is_dialogue = dialogue_mode if dialogue_mode is not None else (random.random() < 0.85)
@@ -810,12 +810,52 @@ async def create_radio_announcement(
 			for text, v, category, allow_cache in speech_turns
 		]
 		raw_segments = await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=total_timeout)
-		segment_results: list[tuple[bytes, str, str, str, list[tuple[float, float, str]] | None]] = []
+
+		def _turn_block_id(idx: int) -> str:
+			cat = speech_turns[idx][2]
+			if cat == "intro":
+				return "intro"
+			if cat == "salida":
+				return "salida"
+			if cat in ("hora", "minuto"):
+				return "hora"
+			if cat in ("pase", "clima"):
+				return "clima"
+			if cat in ("lead_in", "fortuna", "aviso", "alerta_criolla", "oyentes", "chismes", "novela"):
+				return "contenido"
+			if cat == "reaccion" or "reaccion" in cat:
+				for prev_idx in range(idx - 1, -1, -1):
+					prev_cat = speech_turns[prev_idx][2]
+					if prev_cat in ("pase", "clima"):
+						return "clima"
+					if prev_cat in ("lead_in", "fortuna", "aviso", "alerta_criolla", "oyentes", "chismes", "novela"):
+						return "contenido"
+			return cat
+
+		turn_blocks = [_turn_block_id(i) for i in range(len(speech_turns))]
+		failed_blocks: set[str] = set()
 		for i, res in enumerate(raw_segments):
 			if isinstance(res, Exception):
+				blk = turn_blocks[i]
+				failed_blocks.add(blk)
 				logger.warning(
-					f"📻 El Carpincho: no se pudo sintetizar el segmento '{speech_turns[i][2]}': {res}. Omitiendo para no frenar la locución..."
+					f"📻 El Carpincho: no se pudo sintetizar el segmento '{speech_turns[i][2]}' (bloque '{blk}'): {res}."
 				)
+
+		if "intro" in failed_blocks or "salida" in failed_blocks:
+			exc_list = [r for r in raw_segments if isinstance(r, Exception)]
+			nested_msgs = "; ".join(
+				f"{type(sub).__name__}: {sub}" if str(sub) else type(sub).__name__ for sub in exc_list
+			)
+			err_msg = (
+				f"Error de síntesis ({nested_msgs})" if nested_msgs else "Falló un segmento obligatorio (intro/salida)."
+			)
+			logger.warning(f"📻 El Carpincho: {err_msg}")
+			return RadioAnnouncementResult(ok=False, display_title="", script="", error=err_msg, outro_mode=outro_mode)
+
+		segment_results: list[tuple[bytes, str, str, str, list[tuple[float, float, str]] | None]] = []
+		for i, res in enumerate(raw_segments):
+			if isinstance(res, Exception) or turn_blocks[i] in failed_blocks:
 				continue
 			if isinstance(res, tuple) and len(res) == 2:
 				seg_bytes, seg_cues = res
@@ -823,7 +863,8 @@ async def create_radio_announcement(
 				seg_bytes, seg_cues = res, None  # type: ignore[assignment]
 			segment_results.append((seg_bytes, speech_turns[i][2], speech_turns[i][1], speech_turns[i][0], seg_cues))
 
-		if not segment_results:
+		middle_segments = [s for s in segment_results if s[1] not in ("intro", "salida")]
+		if not segment_results or not middle_segments or segment_results[-1][1] != "salida":
 			exc_list = [r for r in raw_segments if isinstance(r, Exception)]
 			if exc_list:
 				nested_msgs = "; ".join(
@@ -834,6 +875,8 @@ async def create_radio_announcement(
 				err_msg = "Ningún segmento de locución pudo ser sintetizado."
 			logger.warning(f"📻 El Carpincho: {err_msg}")
 			return RadioAnnouncementResult(ok=False, display_title="", script="", error=err_msg, outro_mode=outro_mode)
+
+		full_script = " ".join(s[3].strip() for s in segment_results if s[3].strip())
 
 		if is_dialogue:
 			logger.info(f"🎙️ Locución radial en cabina ({locutor_nombre} y {cohost_nombre}): '{full_script}'")
@@ -859,21 +902,45 @@ async def create_radio_announcement(
 			logger.warning(f"📻 El Carpincho: {err_msg}")
 			return RadioAnnouncementResult(ok=False, display_title="", script="", error=err_msg, outro_mode=outro_mode)
 
-		if pending_weather_slot:
-			set_radio_state("last_weather_hour", pending_weather_slot, db_path=db_path)
-		if pending_weather_ts is not None:
-			set_radio_state("last_weather_timestamp", pending_weather_ts, db_path=db_path)
+		if "clima" not in failed_blocks:
+			if pending_weather_slot:
+				set_radio_state("last_weather_hour", pending_weather_slot, db_path=db_path)
+			if pending_weather_ts is not None:
+				set_radio_state("last_weather_timestamp", pending_weather_ts, db_path=db_path)
 
-		reactions_in_plan = [text for text, _v, cat, _c in plan if cat == "reaccion" or "reaccion" in cat]
+		def _plan_item_block(idx: int) -> str:
+			cat = plan[idx][2]
+			if cat == "intro":
+				return "intro"
+			if cat == "salida":
+				return "salida"
+			if cat in ("hora", "minuto"):
+				return "hora"
+			if cat in ("pase", "clima"):
+				return "clima"
+			if cat in ("lead_in", "fortuna", "aviso", "alerta_criolla", "oyentes", "chismes", "novela"):
+				return "contenido"
+			if cat == "reaccion" or "reaccion" in cat:
+				for prev_idx in range(idx - 1, -1, -1):
+					prev_cat = plan[prev_idx][2]
+					if prev_cat in ("pase", "clima"):
+						return "clima"
+					if prev_cat in ("lead_in", "fortuna", "aviso", "alerta_criolla", "oyentes", "chismes", "novela"):
+						return "contenido"
+			return cat
+
+		spoken_plan = [plan[i] for i in range(len(plan)) if _plan_item_block(i) not in failed_blocks]
+
+		reactions_in_plan = [text for text, _v, cat, _c in spoken_plan if cat == "reaccion" or "reaccion" in cat]
 		if reactions_in_plan:
 			set_radio_state("last_reaction", reactions_in_plan[-1], db_path=db_path)
 
-		for seg_text, _v, cat, _c in plan:
+		for seg_text, _v, cat, _c in spoken_plan:
 			clean_s = seg_text.strip()
 			if clean_s:
 				record_phrase_played(clean_s, category=cat, timestamp=now_ts, db_path=db_path)
 
-		stem_segs = segment_results[:-1] if len(segment_results) > 1 else []
+		stem_segs = [s for s in segment_results if s[1] != "salida"]
 		return RadioAnnouncementResult(
 			ok=True,
 			display_title=display_title,
@@ -929,7 +996,7 @@ async def replace_announcement_outro(
 	ctx = build_radio_context(effective_dt, temp_c=_recent_temp_c(now_ts, db_path=db_path))
 
 	outro_pool = get_outros_for_category(seg_cat, outro_mode) if seg_cat else get_outros_for_mode(outro_mode)
-	outro_candidates = filter_by_context(outro_pool, ctx) or list(outro_pool)
+	outro_candidates = filter_by_context(outro_pool, ctx, "salida") or list(outro_pool)
 	raw_outro = weighted_choice_by_recency(outro_candidates, category="salida", db_path=db_path)
 	outro_text = render_tracked_phrase(raw_outro, ctx)
 	effective_voice = host_voice if host_voice in VOICES else VOICE_TOMAS
@@ -1180,7 +1247,12 @@ class RadioService:
 		pre_mode = pre.get("outro_mode")
 		stem_segments = pre.get("stem_segments")
 		pre_artist = pre.get("display_artist", DEFAULT_RADIO_ARTIST)
-		if pre_mode is not None and pre_mode != outro_mode and stem_segments:
+		if pre_mode is not None and pre_mode != outro_mode:
+			if not stem_segments:
+				logger.warning(
+					f"📻 Transmisión de Cabina: Anuncio pregenerado descartado (modo '{pre_mode}' != '{outro_mode}' y sin segmentos troncales)."
+				)
+				return False, "", ""
 			swapped_res = await replace_announcement_outro(
 				stem_segments=stem_segments,
 				host_voice=pre.get("host_voice") or "",
@@ -1194,6 +1266,10 @@ class RadioService:
 			if swapped_res.ok:
 				pre["display_artist"] = swapped_res.display_artist
 				return True, swapped_res.display_title, swapped_res.script
+			logger.warning(
+				f"📻 Transmisión de Cabina: Falló el reemplazo de cierre ('{pre_mode}' -> '{outro_mode}'); descartando pregenerado."
+			)
+			return False, "", ""
 
 		if await self.apply_hot_mix_to_announcement(
 			pre_p,

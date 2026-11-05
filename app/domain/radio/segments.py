@@ -351,10 +351,9 @@ WEATHER_TEMPLATES: tuple[str, ...] = (
 	"{lead} Actualizamos los números del tiempo en {location}: clava {temp_str}.{desc_phrase} Hoy la marca irá de {min_today_str} a {max_today_str}. Y mirando a mañana, pronostican {range_tomorrow_str}. {lluvia_desc}",
 )
 
-PASES_A_CLIMA: tuple[str, ...] = (
+PASES_A_CLIMA_NEUTROS: tuple[str, ...] = (
 	"Che {cohost}, asomate al bañado y decime si viene el pampero.",
 	"{cohost}, ¿cómo está la temperatura para meter panzada al río?",
-	"Tirame la data del cielo, {cohost}, que se me están enfriando las patas.",
 	"Decime qué onda afuera, {cohost}, ¿sale mate caliente o tereré?",
 	"A ver {vocativo} {cohost}, cantame cómo pinta la mano meteorológica.",
 	"Y para el tiempo, {cohost}, ¿cómo viene la mano?",
@@ -365,15 +364,36 @@ PASES_A_CLIMA: tuple[str, ...] = (
 	"Contame qué dice el servicio meteorológico, {cohost}.",
 	"¿Qué tenemos en el pronóstico para hoy, {cohost}?",
 	"Che, {cohost}, ¿cómo pinta el clima en el bañado?",
-	"Che {cohost}, con esta sudestada que amaga con subir el río, ¿qué dice el pronóstico?",
-	"Decime {cohost}, con esta humedad que te riza hasta los bigotes, ¿se viene el chaparrón o zafamos?",
 	"A ver {cohost}, asomate al muelle y decime si el viento del este nos trae agua.",
 	"{cohost}, tirame la posta del tiempo: ¿está para meter panzada al río o nos refugiamos en la cueva?",
 	"Che {cohost}, mirá cómo vuelan bajo las golondrinas... ¿qué marca el radar para hoy?",
-	"Cantame los números del clima {cohost}, que {momento} está tan pesada que ni los mosquitos vuelan.",
 	"¿Cómo viene la mano con el cielo {cohost}, sale sol para secar el cuero o preparamos el piloto?",
 	"{cohost}, {vocativo} de cabina, ¿cómo pinta el tiempo para los que andan navegando la cuenca?",
 )
+
+PASES_A_CLIMA_POR_CONDICION: dict[str, tuple[str, ...]] = {
+	"frio": ("Tirame la data del cielo, {cohost}, que se me están enfriando las patas.",),
+	"lluvia": (
+		"Che {cohost}, con esta sudestada que amaga con subir el río, ¿qué dice el pronóstico?",
+		"Decime {cohost}, con esta humedad que te riza hasta los bigotes, ¿se viene el chaparrón o zafamos?",
+	),
+	"calor": ("Cantame los números del clima {cohost}, que {momento} está tan pesada que ni los mosquitos vuelan.",),
+}
+
+PASES_A_CLIMA: tuple[str, ...] = (
+	*PASES_A_CLIMA_NEUTROS,
+	*PASES_A_CLIMA_POR_CONDICION["frio"],
+	*PASES_A_CLIMA_POR_CONDICION["lluvia"],
+	*PASES_A_CLIMA_POR_CONDICION["calor"],
+)
+
+
+def get_pases_for_weather_condition(condition: str | None = None) -> tuple[str, ...]:
+	"""Devuelve los pases al clima compatibles con la condición meteorológica actual."""
+	cond = (condition or "agradable").lower()
+	extra = PASES_A_CLIMA_POR_CONDICION.get(cond, ())
+	return (*PASES_A_CLIMA_NEUTROS, *extra)
+
 
 RADIO_HANDOFFS: tuple[str, ...] = (
 	"¿Cómo viene la mano afuera, che?",
