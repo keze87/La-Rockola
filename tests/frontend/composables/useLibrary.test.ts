@@ -1,6 +1,13 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useLibrary } from '@/composables/player/useLibrary';
-import { currentTracks, originalTracks, trackMap, urlParams } from '@/composables/player/state';
+import {
+	activeSort,
+	currentTracks,
+	defaultSort,
+	originalTracks,
+	trackMap,
+	urlParams,
+} from '@/composables/player/state';
 import type { Track } from '@/types';
 
 describe('useLibrary', () => {
@@ -14,6 +21,8 @@ describe('useLibrary', () => {
 		originalTracks.value = [...sampleTracks];
 		currentTracks.value = [...sampleTracks];
 		trackMap.value = {};
+		activeSort.value = 'time';
+		defaultSort.value = 'time';
 		delete urlParams.vibra;
 	});
 
@@ -31,10 +40,11 @@ describe('useLibrary', () => {
 		expect(web.display_artist).toBe('🌐 De la Internet');
 	});
 
-	it('sortLibrary sorts by artist and title alphabetically', () => {
+	it('sortLibrary sorts by artist and title alphabetically and updates activeSort', () => {
 		const { sortLibrary } = useLibrary();
 
 		sortLibrary('artist');
+		expect(activeSort.value).toBe('artist');
 		expect(currentTracks.value.map((t) => t.title)).toEqual([
 			'Demoliendo hoteles',
 			'Nos siguen pegando abajo',
@@ -42,10 +52,11 @@ describe('useLibrary', () => {
 		]);
 	});
 
-	it('sortLibrary sorts by mood_score descending', () => {
+	it('sortLibrary sorts by mood_score descending and updates activeSort', () => {
 		const { sortLibrary } = useLibrary();
 
 		sortLibrary('mood');
+		expect(activeSort.value).toBe('mood');
 		expect(currentTracks.value.map((t) => t.title)).toEqual([
 			'Demoliendo hoteles',
 			'Nos siguen pegando abajo',
@@ -53,10 +64,11 @@ describe('useLibrary', () => {
 		]);
 	});
 
-	it('sortLibrary with shuffle generates reproducible seed', () => {
+	it('sortLibrary with shuffle generates reproducible seed and updates activeSort', () => {
 		const { sortLibrary } = useLibrary();
 
 		sortLibrary('shuffle');
+		expect(activeSort.value).toBe('shuffle');
 		const generatedSeed = urlParams.vibra;
 		expect(generatedSeed).toBeDefined();
 
@@ -64,5 +76,43 @@ describe('useLibrary', () => {
 
 		sortLibrary('shuffle', true);
 		expect(currentTracks.value.map((t) => t.path)).toEqual(firstShuffleOrder);
+	});
+
+	it('loadLibrary respects defaultSort when loading tracks without vibra parameter', async () => {
+		defaultSort.value = 'artist';
+		activeSort.value = 'artist';
+		global.fetch = vi.fn().mockResolvedValue({
+			ok: true,
+			json: () => Promise.resolve({ status: 'ok', data: [...sampleTracks] }),
+		} as unknown as Response);
+
+		const { loadLibrary } = useLibrary();
+		await loadLibrary(false);
+
+		expect(currentTracks.value.map((t) => t.title)).toEqual([
+			'Demoliendo hoteles',
+			'Nos siguen pegando abajo',
+			'11 y 6',
+		]);
+	});
+
+	it('saveDefaultSort dispatches command and updates defaultSort', async () => {
+		const fetchMock = vi.fn().mockResolvedValue({
+			ok: true,
+			json: () => Promise.resolve({ status: 'ok' }),
+		} as unknown as Response);
+		global.fetch = fetchMock;
+
+		const { saveDefaultSort } = useLibrary();
+		await saveDefaultSort('mood');
+
+		expect(defaultSort.value).toBe('mood');
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({
+				method: 'POST',
+				body: JSON.stringify({ cmd: 'set_default_sort', sort: 'mood' }),
+			})
+		);
 	});
 });

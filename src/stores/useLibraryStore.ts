@@ -20,10 +20,14 @@ export const originalTracks = ref<Track[]>([]);
 export const trackMap = ref<Record<string, Track>>({});
 export const urlMetadata = ref<Record<string, Track>>({});
 export const urlParams = useUrlSearchParams<{ vibra?: string }>('history');
+export const activeSort = ref<'time' | 'artist' | 'mood' | 'shuffle'>('time');
+export const defaultSort = ref<'time' | 'artist' | 'mood' | 'shuffle'>('time');
 
 export function useLibraryStore() {
 	return {
+		activeSort,
 		currentTracks,
+		defaultSort,
 		favorites,
 		isScanning,
 		scanStatus,

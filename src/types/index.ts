@@ -1,5 +1,6 @@
 export interface Track {
 	artist?: string;
+	bpm?: number;
 	count?: number;
 	display_artist: string;
 	display_title: string;
@@ -48,6 +49,7 @@ export interface PlayerState {
 	url_metadata?: Record<string, Track>;
 	volume?: number;
 	weather_location?: string;
+	default_sort?: 'time' | 'artist' | 'mood' | 'shuffle';
 }
 
 export interface ApiResponse<T = unknown> {
@@ -87,6 +89,7 @@ export interface CommandPayloads {
 	move_queue_to_history: { index: number; history_index?: number };
 	play_from_queue: { index: number };
 	move_in_playlist: { index: number; new_index: number };
+	set_default_sort: { sort: 'time' | 'artist' | 'mood' | 'shuffle' };
 }
 
 export type CommandName = keyof CommandPayloads;

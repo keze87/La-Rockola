@@ -30,6 +30,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
 	"weather_location": DEFAULT_WEATHER_LOCATION,
 	"log_level": "INFO",
 	"better_lyrics_token": None,
+	"default_sort": "time",
+	"radio_mode_enabled": True,
+	"mpv_visible": True,
 }
 
 
@@ -153,6 +156,9 @@ class Settings(BaseSettings):
 	log_level: str = Field(default="INFO", description="Nivel de logs (DEBUG, INFO, WARNING, ERROR)")
 	debug: bool = Field(default=False, description="Modo debug habilitado")
 	better_lyrics_token: str | None = Field(default=None, description="Token JWT para la API de BetterLyrics")
+	default_sort: str = Field(default="time", description="Modo de ordenamiento por defecto de la biblioteca")
+	radio_mode_enabled: bool = Field(default=True, description="Locutor de radio habilitado por defecto")
+	mpv_visible: bool = Field(default=True, description="Mostrar ventana de MPV por defecto")
 
 	@classmethod
 	def from_config_file(cls, path: Path | None = None) -> Settings:

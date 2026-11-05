@@ -33,6 +33,7 @@ class CommandRequest(BaseModel):
 	history_index: int | None = Field(default=None, description="Índice de destino en historial")
 	location: str | None = Field(default=None, description="Ubicación meteorológica")
 	type: str | None = Field(default=None, description="Tipo de salto o entidad")
+	sort: str | None = Field(default=None, description="Modo de ordenamiento de la biblioteca")
 
 
 class TrackSchema(BaseModel):

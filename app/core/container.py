@@ -32,6 +32,9 @@ class AppContainer:
 				secondary_dir=self.settings.music_dir2,
 				open_browser=self.settings.open_browser,
 				db_path=self.db_path,
+				default_sort=self.settings.default_sort,
+				radio_mode_enabled=self.settings.radio_mode_enabled,
+				mpv_visible=self.settings.mpv_visible,
 			)
 		return self.orchestrator
 

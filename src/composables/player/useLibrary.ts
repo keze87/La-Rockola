@@ -1,8 +1,9 @@
 import { useApi } from '../useApi';
 import { useToasts } from './useToasts';
 import {
-	activeTab,
+	activeSort,
 	currentTracks,
+	defaultSort,
 	isScanning,
 	originalTracks,
 	queueState,
@@ -55,10 +56,15 @@ export function useLibrary() {
 				data.data.forEach((t: Track) => (map[t.path] = t));
 				trackMap.value = map;
 
+				if (data.default_sort) {
+					defaultSort.value = data.default_sort as 'time' | 'artist' | 'mood' | 'shuffle';
+				}
+
 				if (urlParams.vibra !== undefined) {
 					sortLibrary('shuffle', true);
 				} else {
-					currentTracks.value = [...data.data];
+					const targetSort = activeSort.value || defaultSort.value || 'time';
+					sortLibrary(targetSort, false);
 				}
 			}
 		} catch (err) {
@@ -69,20 +75,30 @@ export function useLibrary() {
 		}
 	}
 
+	async function saveDefaultSort(sort: 'time' | 'artist' | 'mood' | 'shuffle') {
+		await api.command('set_default_sort', { sort });
+		defaultSort.value = sort;
+	}
+
 	function sortLibrary(type: 'time' | 'artist' | 'mood' | 'shuffle', keepSeed: boolean = false) {
+		activeSort.value = type;
+		const source = originalTracks.value.length > 0 ? originalTracks.value : currentTracks.value;
+
 		if (type === 'time') {
 			delete urlParams.vibra;
-			currentTracks.value = [...originalTracks.value];
+			currentTracks.value = [...source];
 		} else if (type === 'artist') {
 			delete urlParams.vibra;
-			currentTracks.value = [...currentTracks.value].sort((a, b) => {
+			currentTracks.value = [...source].sort((a, b) => {
 				const cmp = (a.artist || '').localeCompare(b.artist || '');
 				return cmp === 0 ? (a.title || '').localeCompare(b.title || '') : cmp;
 			});
 		} else if (type === 'mood') {
 			delete urlParams.vibra;
-			currentTracks.value = [...currentTracks.value].sort((a, b) => {
-				return (b.mood_score || 0) - (a.mood_score || 0);
+			currentTracks.value = [...source].sort((a, b) => {
+				const scoreB = b.mood_score !== undefined ? b.mood_score : (b.bpm ?? 0);
+				const scoreA = a.mood_score !== undefined ? a.mood_score : (a.bpm ?? 0);
+				return scoreB - scoreA;
 			});
 		} else if (type === 'shuffle') {
 			let seed: number;
@@ -104,14 +120,13 @@ export function useLibrary() {
 				return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 			};
 
-			const array = [...originalTracks.value];
+			const array = [...source];
 			for (let i = array.length - 1; i > 0; i--) {
 				const j = Math.floor(randomFunc() * (i + 1));
 				[array[i], array[j]] = [array[j], array[i]];
 			}
 			currentTracks.value = array;
 		}
-		activeTab.value = 'library';
 	}
 
 	if (typeof window !== 'undefined') {
@@ -120,5 +135,5 @@ export function useLibrary() {
 		});
 	}
 
-	return { getTrackInfo, loadLibrary, queueIndex, sortLibrary };
+	return { getTrackInfo, loadLibrary, queueIndex, saveDefaultSort, sortLibrary };
 }

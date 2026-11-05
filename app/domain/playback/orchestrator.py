@@ -67,11 +67,15 @@ class PlaybackOrchestrator:
 		secondary_dir: str | None = None,
 		open_browser: bool = True,
 		db_path: Path | str | None = None,
+		default_sort: str = "time",
+		radio_mode_enabled: bool = True,
+		mpv_visible: bool = True,
 	) -> None:
 		self.db_path = Path(db_path) if db_path else get_default_db_path()
 		self.initial_dir = initial_dir
 		self.secondary_dir = secondary_dir
 		self.open_browser = open_browser
+		self.default_sort = default_sort
 
 		# Componentes de dominio delegados
 		self.queue_manager = QueueManager()
@@ -122,7 +126,7 @@ class PlaybackOrchestrator:
 		self.server_muted: bool = False
 
 		# Modo Radio
-		self.radio_mode_enabled: bool = True
+		self.radio_mode_enabled: bool = radio_mode_enabled
 		self.last_radio_time: float = 0.0
 		self.radio_time_until_next: float = float(random.randint(300, 900))
 		self.is_playing_radio_announcement: bool = False
@@ -152,7 +156,7 @@ class PlaybackOrchestrator:
 			},
 			state_ref=self,
 		)
-		self.mpv_visible: bool = getattr(self._mpv, "has_display", True)
+		self.mpv_visible: bool = bool(mpv_visible and getattr(self._mpv, "has_display", True))
 
 	@property
 	def mpv(self) -> Any:
@@ -377,6 +381,7 @@ class PlaybackOrchestrator:
 			"volume": self.volume,
 			"weather_location": self.weather_location,
 			"has_local_player": self._has_local_player(),
+			"default_sort": getattr(self, "default_sort", "time"),
 		}
 
 		if include_library:

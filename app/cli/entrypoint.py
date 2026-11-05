@@ -528,6 +528,9 @@ def main() -> None:
 		initial_dir=settings.music_dir,
 		secondary_dir=settings.music_dir2,
 		open_browser=settings.open_browser,
+		default_sort=settings.default_sort,
+		radio_mode_enabled=settings.radio_mode_enabled,
+		mpv_visible=settings.mpv_visible,
 	)
 	state.weather_location = settings.weather_location
 	state.server_host = settings.host

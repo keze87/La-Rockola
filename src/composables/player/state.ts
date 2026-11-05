@@ -26,7 +26,9 @@ export {
 export { queueState } from '../../stores/useQueueStore';
 
 export {
+	activeSort,
 	currentTracks,
+	defaultSort,
 	favorites,
 	isScanning,
 	librarySearchQuery,

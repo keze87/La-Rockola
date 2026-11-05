@@ -32,7 +32,7 @@ async def get_library() -> dict[str, Any]:
 	clean_library = [
 		{k: v for k, v in track.items() if k not in keys_to_exclude} for track in getattr(state, "tracks_cache", [])
 	]
-	return {"status": "ok", "data": clean_library}
+	return {"status": "ok", "data": clean_library, "default_sort": getattr(state, "default_sort", "time")}
 
 
 @router.get("/scan")

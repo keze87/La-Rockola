@@ -21,6 +21,8 @@
 	} = usePlaybackControls();
 
 	const {
+		activeSort,
+		defaultSort,
 		djBaraEnabled,
 		djSafeModeEnabled,
 		handleScroll,
@@ -34,14 +36,41 @@
 		mpvVisible,
 		radioModeEnabled,
 		returnToServerSpeakers,
+		saveDefaultSort,
 		scanStatus,
 		serverMuted,
 		setVolume,
+		showToast,
 		sortLibrary,
 		toggleMpvVisibility,
 		volIcon,
 		volume,
 	} = usePlayer();
+
+	async function handleSortClick(type: 'time' | 'artist' | 'mood' | 'shuffle') {
+		if (activeSort.value === type) {
+			try {
+				await saveDefaultSort(type);
+				showToast('¡Joyita! Guardado como orden por defecto', 'success');
+				haptic();
+			} catch (err) {
+				console.error(err);
+				showToast('Uy, no se pudo guardar la configuración', 'error');
+			}
+		} else {
+			sortLibrary(type);
+			haptic();
+		}
+	}
+
+	function getSortTooltip(type: 'time' | 'artist' | 'mood' | 'shuffle') {
+		if (activeSort.value === type) {
+			return defaultSort.value === type
+				? 'Orden actual y por defecto en configuración'
+				: 'Orden actual. Apretá de nuevo para guardar por defecto en la configuración';
+		}
+		return defaultSort.value === type ? 'Guardado como orden por defecto' : 'Ordenar sólo por esta sesión';
+	}
 
 	const isWeatherModalOpen = ref(false);
 
@@ -222,17 +251,56 @@
 		</div>
 
 		<div class="mb-8 flex flex-wrap justify-center gap-3">
-			<PillButton icon="access_time" @click="sortLibrary('time')">Como llegaron</PillButton>
-			<PillButton icon="person" @click="sortLibrary('artist')">Por el que canta</PillButton>
+			<PillButton
+				icon="access_time"
+				:title="getSortTooltip('time')"
+				:color-class="
+					activeSort === 'time'
+						? 'bg-amber-700 hover:bg-amber-600 ring-2 ring-carpincho-warning'
+						: 'bg-gray-800 hover:bg-gray-700'
+				"
+				@click="handleSortClick('time')"
+			>
+				Como llegaron
+			</PillButton>
+			<PillButton
+				icon="person"
+				:title="getSortTooltip('artist')"
+				:color-class="
+					activeSort === 'artist'
+						? 'bg-amber-700 hover:bg-amber-600 ring-2 ring-carpincho-warning'
+						: 'bg-gray-800 hover:bg-gray-700'
+				"
+				@click="handleSortClick('artist')"
+			>
+				Por el que canta
+			</PillButton>
 			<PillButton
 				v-if="hasFfmpeg"
 				icon="bolt"
+				:title="getSortTooltip('mood')"
 				:disabled="Boolean(scanStatus?.is_analyzing_mood)"
-				@click="sortLibrary('mood')"
+				:color-class="
+					activeSort === 'mood'
+						? 'bg-amber-700 hover:bg-amber-600 ring-2 ring-carpincho-warning'
+						: 'bg-gray-800 hover:bg-gray-700'
+				"
+				@click="handleSortClick('mood')"
 			>
 				{{ scanStatus?.is_analyzing_mood ? 'Sintonizando vibra...' : 'Más Manija' }}
 			</PillButton>
-			<PillButton icon="shuffle" @click="sortLibrary('shuffle', false)">Mezcladito (A lo loco)</PillButton>
+			<PillButton
+				icon="shuffle"
+				:title="getSortTooltip('shuffle')"
+				:color-class="
+					activeSort === 'shuffle'
+						? 'bg-amber-700 hover:bg-amber-600 ring-2 ring-carpincho-warning'
+						: 'bg-gray-800 hover:bg-gray-700'
+				"
+				@click="handleSortClick('shuffle')"
+			>
+				Mezcladito (A lo loco)
+			</PillButton>
 		</div>
 
 		<!-- Interruptores de opciones -->

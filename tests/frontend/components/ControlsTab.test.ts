@@ -3,7 +3,9 @@ import { mount, flushPromises } from '@vue/test-utils';
 import ControlsTab from '@/components/ControlsTab.vue';
 import QRCode from 'qrcode.vue';
 import {
+	activeSort,
 	currentTracks,
+	defaultSort,
 	djBaraEnabled,
 	djSafeModeEnabled,
 	hasEdgeTts,
@@ -391,5 +393,50 @@ describe('ControlsTab.vue', () => {
 		const btn = wrapper.findAllComponents({ name: 'PillButton' }).find((b) => b.text().includes('Ocultar MPV'));
 		expect(btn).toBeDefined();
 		expect(btn?.props('icon')).toBe('visibility_off');
+	});
+
+	it('clicking an inactive sort button changes activeSort for session only without saving config', async () => {
+		activeSort.value = 'time';
+		defaultSort.value = 'time';
+		const wrapper = mount(ControlsTab);
+
+		const artistBtn = wrapper
+			.findAllComponents({ name: 'PillButton' })
+			.find((b) => b.text().includes('Por el que canta'));
+		expect(artistBtn).toBeDefined();
+
+		await artistBtn!.trigger('click');
+
+		expect(activeSort.value).toBe('artist');
+		expect(defaultSort.value).toBe('time');
+		expect(fetchMock).not.toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({
+				method: 'POST',
+				body: expect.stringContaining('set_default_sort'),
+			})
+		);
+	});
+
+	it('clicking an active sort button again saves defaultSort to config via API', async () => {
+		activeSort.value = 'artist';
+		defaultSort.value = 'time';
+		const wrapper = mount(ControlsTab);
+
+		const artistBtn = wrapper
+			.findAllComponents({ name: 'PillButton' })
+			.find((b) => b.text().includes('Por el que canta'));
+		expect(artistBtn).toBeDefined();
+
+		await artistBtn!.trigger('click');
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({
+				method: 'POST',
+				body: JSON.stringify({ cmd: 'set_default_sort', sort: 'artist' }),
+			})
+		);
+		expect(defaultSort.value).toBe('artist');
 	});
 });

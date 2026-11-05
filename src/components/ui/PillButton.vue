@@ -4,11 +4,13 @@
 			icon?: string | null;
 			colorClass?: string;
 			disabled?: boolean;
+			title?: string;
 		}>(),
 		{
 			icon: null,
 			colorClass: 'bg-gray-800 hover:bg-gray-700',
 			disabled: false,
+			title: undefined,
 		}
 	);
 	defineEmits<{
@@ -19,6 +21,7 @@
 <template>
 	<button
 		:disabled="disabled"
+		:title="title"
 		class="flex items-center gap-2 rounded-full px-5 py-2 font-medium text-white transition active:scale-95 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50"
 		:class="colorClass"
 		@click="!disabled && $emit('click')"

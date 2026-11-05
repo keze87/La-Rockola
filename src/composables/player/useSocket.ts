@@ -5,6 +5,7 @@ import { useWebSocket } from '@vueuse/core';
 import {
 	currentTrackPath,
 	currentTracks,
+	defaultSort,
 	djBaraEnabled,
 	djNextTrack,
 	djSafeModeEnabled,
@@ -144,6 +145,7 @@ export function useSocket() {
 						if (state.url_metadata) urlMetadata.value = state.url_metadata;
 						if (state.volume !== undefined) volume.value = state.volume;
 						if (state.weather_location !== undefined) weatherLocation.value = state.weather_location;
+						if (state.default_sort !== undefined) defaultSort.value = state.default_sort;
 
 						if (state.time_pos !== undefined) {
 							timePos.value = state.time_pos;
