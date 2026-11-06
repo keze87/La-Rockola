@@ -109,12 +109,31 @@ def _migration_rev_5(conn: sqlite3.Connection) -> None:
 	""")
 
 
+def _migration_rev_6(conn: sqlite3.Connection) -> None:
+	"""Rev 6: Tablas persistentes para el estado del locutor radial y el historial de recencia de frases."""
+	c = conn.cursor()
+	c.execute("""
+		CREATE TABLE IF NOT EXISTS radio_state (
+			key TEXT PRIMARY KEY,
+			value_json TEXT,
+			updated_at REAL
+		)
+	""")
+	c.execute("""
+		CREATE TABLE IF NOT EXISTS radio_phrase_history (
+			norm_key TEXT PRIMARY KEY,
+			played_at REAL
+		)
+	""")
+
+
 MIGRATIONS: list[tuple[int, Callable[[sqlite3.Connection], None], str]] = [
 	(1, _migration_rev_1, "Tablas iniciales de rockola"),
 	(2, _migration_rev_2, "Columnas mtime y file_size"),
 	(3, _migration_rev_3, "Columnas de análisis acústico y mood"),
 	(4, _migration_rev_4, "Columna de huella acústica fingerprint"),
 	(5, _migration_rev_5, "Purga de locuciones radiales en historial"),
+	(6, _migration_rev_6, "Estado persistente e historial de frases del locutor radial"),
 ]
 
 

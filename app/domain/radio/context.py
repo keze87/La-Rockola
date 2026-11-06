@@ -95,6 +95,11 @@ def build_radio_context(dt: datetime | None = None, temp_c: float | None = None)
 	)
 
 
+TEMP_CALOR_MIN_C: int = 26
+TEMP_FRIO_MAX_C: int = 14
+TEMP_BICHOS_MIN_C: int = 16
+
+
 def context_allows(cond: str, ctx: RadioContext) -> bool:
 	"""
 	Filtro de verosimilitud climática y estacional para la atmósfera satírica de la radio.
@@ -102,11 +107,11 @@ def context_allows(cond: str, ctx: RadioContext) -> bool:
 	"""
 	t = ctx.temp_c
 	if cond == "calor":
-		return t >= 26 if t is not None else ctx.mes in (11, 12, 1, 2, 3)
+		return t >= TEMP_CALOR_MIN_C if t is not None else ctx.mes in (11, 12, 1, 2, 3)
 	if cond == "frio":
-		return t <= 14 if t is not None else ctx.mes in (5, 6, 7, 8)
+		return t <= TEMP_FRIO_MAX_C if t is not None else ctx.mes in (5, 6, 7, 8)
 	if cond == "bichos":
-		return t >= 16 if t is not None else ctx.mes in (10, 11, 12, 1, 2, 3, 4)
+		return t >= TEMP_BICHOS_MIN_C if t is not None else ctx.mes in (10, 11, 12, 1, 2, 3, 4)
 	return True
 
 

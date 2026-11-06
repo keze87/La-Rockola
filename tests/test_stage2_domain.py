@@ -162,8 +162,8 @@ def test_radio_nlp_and_dialogue_builder() -> None:
 
 	plan = build_radio_dialogue_plan(
 		dt=dt,
-		fortune="Siempre que llovió, paró y salió el sol.",
-		weather_phrase="En Tucumán hacen 25 grados con cielo despejado.",
+		fortuna="Siempre que llovió, paró y salió el sol.",
+		weather_text="En Tucumán hacen 25 grados con cielo despejado.",
 		weather_condition="agradable",
 		outro_mode="continue",
 	)

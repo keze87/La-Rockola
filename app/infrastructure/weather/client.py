@@ -15,7 +15,7 @@ import urllib.request
 from typing import Any
 
 from app.domain.radio.classification import resolve_weather_desc_category
-from app.domain.radio.context import RadioContext
+from app.domain.radio.context import TEMP_CALOR_MIN_C, TEMP_FRIO_MAX_C, RadioContext
 from app.domain.radio.phrase_banks.weather import (
 	DEFAULT_WEATHER_LOCATION,
 	PRECIPITATING_CATEGORIES,
@@ -153,12 +153,17 @@ def get_weather_condition(
 	llueve_hoy: bool = False,
 	llueve_manana: bool = False,
 ) -> str:
-	"""Clasifica la condición climática en 'lluvia', 'calor', 'frio' o 'agradable'."""
-	if llueve_hoy or llueve_manana:
+	"""
+	Clasifica la condición climática actual en 'lluvia', 'calor', 'frio' o 'agradable'.
+	Usa la misma fuente de umbrales que `context_allows` y prioriza la lluvia del día de hoy
+	(que llueva mañana se informa en `describir_lluvias` sin distorsionar la condición actual).
+	"""
+	_ = llueve_manana
+	if llueve_hoy:
 		return "lluvia"
-	if current_temp >= 30:
+	if current_temp >= TEMP_CALOR_MIN_C:
 		return "calor"
-	if current_temp <= 10:
+	if current_temp <= TEMP_FRIO_MAX_C:
 		return "frio"
 	return "agradable"
 

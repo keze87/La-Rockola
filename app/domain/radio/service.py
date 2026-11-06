@@ -41,7 +41,6 @@ from app.domain.radio.nlp import (
 )
 from app.domain.radio.phrase_banks.weather import DEFAULT_WEATHER_LOCATION
 from app.domain.radio.segments import (
-	RADIO_INTROS,
 	get_outros_for_category,
 	get_outros_for_mode,
 )
@@ -96,6 +95,7 @@ class RadioAnnouncementResult:
 	host_voice: str = ""
 	stem_segments: list[Any] | None = None
 	display_artist: str = "Transmisión de Cabina 🎙️"
+	seg_cat: str = "fortuna"
 
 	def __iter__(self):
 		yield self.ok
@@ -755,23 +755,18 @@ async def create_radio_announcement(
 	locutor_nombre = VOICE_NAMES.get(host_voice, DEFAULT_HOST_NAME)
 	cohost_nombre = VOICE_NAMES.get(cohost_voice, DEFAULT_COHOST_DISPLAY_NAME)
 
-	intro_candidates = filter_by_context(RADIO_INTROS, ctx, "intro") or list(RADIO_INTROS)
-	intro = weighted_choice_by_recency(intro_candidates, category="intro", db_path=db_path)
 	hora_seg, minuto_seg, _ = get_modular_time_segments(effective_dt)
 	seg_cat = resolve_segment_category(fortuna)
-	outro_pool = get_outros_for_category(seg_cat, outro_mode)
-	outro_candidates = filter_by_context(outro_pool, ctx, "salida") or list(outro_pool)
-	outro = weighted_choice_by_recency(outro_candidates, category="salida", db_path=db_path)
 
 	is_dialogue = dialogue_mode if dialogue_mode is not None else (random.random() < 0.85)
 	last_reaction = get_radio_state("last_reaction", db_path=db_path)
 
 	plan = build_radio_dialogue_plan(
-		intro=intro,
+		intro=None,
 		hora_seg=hora_seg,
 		minuto_seg=minuto_seg,
 		fortuna=fortuna,
-		outro=outro,
+		outro=None,
 		host_voice=host_voice,
 		cohost_voice=cohost_voice,
 		is_system_fortune=is_sys,
@@ -781,6 +776,7 @@ async def create_radio_announcement(
 		last_reaction=last_reaction,
 		db_path=db_path,
 		ctx=ctx,
+		outro_mode=outro_mode,
 	)
 
 	full_script = " ".join(t[0].strip() for t in plan if t[0].strip())
@@ -950,6 +946,7 @@ async def create_radio_announcement(
 			host_voice=host_voice,
 			stem_segments=stem_segs,
 			display_artist=display_artist,
+			seg_cat=seg_cat,
 		)
 
 	except Exception as e:
@@ -1156,6 +1153,7 @@ class RadioService:
 						"outro_mode": res.outro_mode,
 						"host_voice": res.host_voice,
 						"stem_segments": res.stem_segments,
+						"seg_cat": getattr(res, "seg_cat", "fortuna"),
 					}
 			except asyncio.CancelledError:
 				pass
@@ -1262,6 +1260,7 @@ class RadioService:
 				bg_offset=bg_offset,
 				bg_volume=0.1,
 				db_path=self.db_path,
+				seg_cat=pre.get("seg_cat") or "fortuna",
 			)
 			if swapped_res.ok:
 				pre["display_artist"] = swapped_res.display_artist
@@ -1336,6 +1335,7 @@ class RadioService:
 					display_artist = pre.get("display_artist", DEFAULT_RADIO_ARTIST)
 			except Exception as wait_e:
 				logger.debug(f"Espera de pregeneración agotada o falló: {wait_e}")
+				self.cancel_pregeneration()
 			finally:
 				if not ok and on_synthesis_status:
 					res_notify = on_synthesis_status(False)

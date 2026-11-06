@@ -5,14 +5,17 @@ filtros de listas negras y limpieza de fortunas en español para el Modo Radio.
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 import random
 import re
 import shutil
+import sqlite3
 import subprocess
 import sys
 import time
+from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
@@ -38,7 +41,13 @@ from app.domain.radio.linguistics import (
 )
 from app.domain.radio.segments import (
 	LEAD_INS_BY_CATEGORY,
+	OUTROS_BY_CATEGORY,
 	PASES_A_CLIMA,
+	RADIO_INTROS,
+	RADIO_OUTROS,
+	RADIO_OUTROS_BREAK,
+	RADIO_OUTROS_DJ,
+	RADIO_OUTROS_PAUSE,
 	REACCIONES_BY_CATEGORY,
 	REACCIONES_CLIMA,
 )
@@ -49,33 +58,138 @@ from app.domain.radio.templates import (
 
 logger = logging.getLogger("RockolaCarpincho")
 
-# Estado volátil en memoria para el locutor de radio
+_MAX_RENDERED_CACHE_SIZE = 2048
+
+# Estado en memoria (respaldado por SQLite cuando se provee db_path) para el locutor de radio
 _RADIO_MEMORY_STATE: dict[str, Any] = {}
 _PHRASE_HISTORY_MEMORY: dict[str, float] = {}
-_RENDERED_TO_TEMPLATE_KEY: dict[str, str] = {}
+_RENDERED_TO_TEMPLATE_KEY: OrderedDict[str, str] = OrderedDict()
+_STATIC_VARIANT_TO_TEMPLATE_MAP: dict[str, str] | None = None
+_LOADED_DB_PATHS: set[str] = set()
 _SPANISH_FORTUNE_DBS_CACHE: list[str] | None = None
 _BUNDLED_FORTUNES_CACHE: list[str] | None = None
 
 
+def _clean_phrase_text(text: str) -> str:
+	return text.strip().strip("\"'«»").rstrip(".!?:;…").lower()
+
+
+def _get_static_variant_map() -> dict[str, str]:
+	"""Construye perezosamente el mapa de variantes habladas -> plantilla limpia para todos los bancos con placeholders."""
+	global _STATIC_VARIANT_TO_TEMPLATE_MAP
+	if _STATIC_VARIANT_TO_TEMPLATE_MAP is None:
+		mapping: dict[str, str] = {}
+		all_templates: list[str] = [
+			*RADIO_INTROS,
+			*RADIO_OUTROS,
+			*RADIO_OUTROS_PAUSE,
+			*RADIO_OUTROS_BREAK,
+			*RADIO_OUTROS_DJ,
+			*PASES_A_CLIMA,
+		]
+		for lst in LEAD_INS_BY_CATEGORY.values():
+			all_templates.extend(lst)
+		for lst in OUTROS_BY_CATEGORY.values():
+			all_templates.extend(lst)
+		for lst in REACCIONES_BY_CATEGORY.values():
+			all_templates.extend(lst)
+		for lst in REACCIONES_CLIMA.values():
+			all_templates.extend(lst)
+		for rp in CARPINCHO_PHRASES:
+			if "{" in rp.text:
+				all_templates.append(rp.text)
+
+		for tpl in all_templates:
+			if "{" in tpl:
+				clean_tpl = _clean_phrase_text(tpl)
+				for variant in expand_phrase_variants(tpl):
+					mapping[_clean_phrase_text(variant)] = clean_tpl
+		_STATIC_VARIANT_TO_TEMPLATE_MAP = mapping
+	return _STATIC_VARIANT_TO_TEMPLATE_MAP
+
+
+def _ensure_radio_tables(conn: sqlite3.Connection) -> None:
+	conn.execute("CREATE TABLE IF NOT EXISTS radio_state (key TEXT PRIMARY KEY, value_json TEXT, updated_at REAL)")
+	conn.execute("CREATE TABLE IF NOT EXISTS radio_phrase_history (norm_key TEXT PRIMARY KEY, played_at REAL)")
+
+
+def _sync_from_db_if_needed(db_path: Path | str | None) -> Path | None:
+	if not db_path:
+		return None
+	p = Path(db_path)
+	key = str(p.resolve())
+	if key in _LOADED_DB_PATHS or not p.exists():
+		return p
+	try:
+		with sqlite3.connect(str(p), timeout=5.0) as conn:
+			_ensure_radio_tables(conn)
+			for k, val_json in conn.execute("SELECT key, value_json FROM radio_state"):
+				if k not in _RADIO_MEMORY_STATE:
+					try:
+						_RADIO_MEMORY_STATE[k] = json.loads(val_json)
+					except Exception:
+						_RADIO_MEMORY_STATE[k] = val_json
+			for norm_k, played_at in conn.execute("SELECT norm_key, played_at FROM radio_phrase_history"):
+				if norm_k not in _PHRASE_HISTORY_MEMORY and played_at is not None:
+					_PHRASE_HISTORY_MEMORY[norm_k] = float(played_at)
+		_LOADED_DB_PATHS.add(key)
+	except Exception as e:
+		logger.debug(f"No se pudo sincronizar estado radial desde {p}: {e}")
+	return p
+
+
 def get_radio_state(key: str, default: Any = None, db_path: Path | str | None = None) -> Any:
-	"""Recupera un valor de estado en memoria del locutor de radio."""
-	return _RADIO_MEMORY_STATE.get(key, default)
+	"""Recupera un valor de estado del locutor de radio (memoria con respaldo en SQLite)."""
+	_sync_from_db_if_needed(db_path)
+	if key in _RADIO_MEMORY_STATE:
+		return _RADIO_MEMORY_STATE[key]
+	if db_path and Path(db_path).exists():
+		try:
+			with sqlite3.connect(str(db_path), timeout=5.0) as conn:
+				_ensure_radio_tables(conn)
+				row = conn.execute("SELECT value_json FROM radio_state WHERE key = ?", (key,)).fetchone()
+				if row is not None:
+					val = json.loads(row[0])
+					_RADIO_MEMORY_STATE[key] = val
+					return val
+		except Exception as e:
+			logger.debug(f"No se pudo leer '{key}' desde radio_state: {e}")
+	return default
 
 
 def set_radio_state(key: str, value: Any, db_path: Path | str | None = None) -> None:
-	"""Almacena o actualiza un valor de estado en memoria del locutor de radio."""
+	"""Almacena o actualiza un valor de estado del locutor de radio en memoria y en SQLite."""
 	_RADIO_MEMORY_STATE[key] = value
+	if db_path:
+		try:
+			p = Path(db_path)
+			p.parent.mkdir(parents=True, exist_ok=True)
+			with sqlite3.connect(str(p), timeout=5.0) as conn:
+				_ensure_radio_tables(conn)
+				conn.execute(
+					"INSERT OR REPLACE INTO radio_state (key, value_json, updated_at) VALUES (?, ?, ?)",
+					(key, json.dumps(value, ensure_ascii=False), time.time()),
+				)
+				conn.commit()
+		except Exception as e:
+			logger.debug(f"No se pudo persistir '{key}' en radio_state: {e}")
 
 
-def reset_radio_memory_state() -> None:
-	"""Limpia el estado en memoria del locutor de radio."""
+def reset_radio_memory_state(clear_db: bool = True, db_path: Path | str | None = None) -> None:
+	"""Limpia el estado en memoria del locutor de radio (y opcionalmente en SQLite)."""
 	_RADIO_MEMORY_STATE.clear()
 	_PHRASE_HISTORY_MEMORY.clear()
 	_RENDERED_TO_TEMPLATE_KEY.clear()
-
-
-def _clean_phrase_text(text: str) -> str:
-	return text.strip().strip("\"'«»").rstrip(".!?:;…").lower()
+	_LOADED_DB_PATHS.clear()
+	if clear_db and db_path and Path(db_path).exists():
+		try:
+			with sqlite3.connect(str(db_path), timeout=5.0) as conn:
+				_ensure_radio_tables(conn)
+				conn.execute("DELETE FROM radio_state")
+				conn.execute("DELETE FROM radio_phrase_history")
+				conn.commit()
+		except Exception as e:
+			logger.debug(f"No se pudo limpiar estado radial en SQLite: {e}")
 
 
 def _normalize_phrase_key(phrase: str | tuple[str, str] | RadioPhrase, category: str = "") -> str:
@@ -86,7 +200,10 @@ def _normalize_phrase_key(phrase: str | tuple[str, str] | RadioPhrase, category:
 	else:
 		phrase_text = str(phrase)
 	cleaned = _clean_phrase_text(phrase_text)
-	cleaned = _RENDERED_TO_TEMPLATE_KEY.get(cleaned, cleaned)
+	if cleaned in _RENDERED_TO_TEMPLATE_KEY:
+		cleaned = _RENDERED_TO_TEMPLATE_KEY[cleaned]
+	else:
+		cleaned = _get_static_variant_map().get(cleaned, cleaned)
 	return f"{category}:{cleaned}" if category else cleaned
 
 
@@ -96,10 +213,14 @@ def render_tracked_phrase(
 	addressee_voice: str | None = None,
 	cohost_name: str | None = None,
 ) -> str:
-	"""Resuelve placeholders y recuerda de qué plantilla salió el texto para ponderar recencia."""
+	"""Resuelve placeholders y recuerda de qué plantilla salió el texto (con caché LRU acotada)."""
 	rendered = render_phrase(template, ctx, addressee_voice=addressee_voice, cohost_name=cohost_name)
 	if rendered != template:
-		_RENDERED_TO_TEMPLATE_KEY[_clean_phrase_text(rendered)] = _clean_phrase_text(template)
+		clean_r = _clean_phrase_text(rendered)
+		_RENDERED_TO_TEMPLATE_KEY[clean_r] = _clean_phrase_text(template)
+		_RENDERED_TO_TEMPLATE_KEY.move_to_end(clean_r)
+		while len(_RENDERED_TO_TEMPLATE_KEY) > _MAX_RENDERED_CACHE_SIZE:
+			_RENDERED_TO_TEMPLATE_KEY.popitem(last=False)
 	return rendered
 
 
@@ -125,6 +246,7 @@ def get_phrase_last_played(
 	db_path: Path | str | None = None,
 ) -> float | None:
 	"""Recupera la marca de tiempo en que una frase fue reproducida por última vez."""
+	_sync_from_db_if_needed(db_path)
 	if isinstance(phrase, (tuple, list)):
 		phrase_text = phrase[0] if len(phrase) > 0 else ""
 		if not category and len(phrase) > 1:
@@ -159,7 +281,8 @@ def record_phrase_played(
 	timestamp: float | None = None,
 	db_path: Path | str | None = None,
 ) -> None:
-	"""Registra en memoria la reproducción de una frase actualizando su marca de tiempo."""
+	"""Registra en memoria y en SQLite la reproducción de una frase actualizando su marca de tiempo."""
+	_sync_from_db_if_needed(db_path)
 	if isinstance(phrase, (tuple, list)):
 		phrase_text = phrase[0] if len(phrase) > 0 else ""
 		if not category and len(phrase) > 1:
@@ -167,34 +290,50 @@ def record_phrase_played(
 	else:
 		phrase_text = str(phrase)
 	ts = timestamp if timestamp is not None else time.time()
+	keys_to_update: dict[str, float] = {}
 	norm_key = _normalize_phrase_key(phrase_text, category)
-	_PHRASE_HISTORY_MEMORY[norm_key] = ts
+	keys_to_update[norm_key] = ts
 
 	if category == "lead_in" or category.startswith("lead_in_"):
-		_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(phrase_text, "lead_in")] = ts
+		keys_to_update[_normalize_phrase_key(phrase_text, "lead_in")] = ts
 		for cat_name, cat_list in LEAD_INS_BY_CATEGORY.items():
 			match = next((item for item in cat_list if _same_phrase(phrase_text, item)), None)
 			if match is not None:
-				_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(match, f"lead_in_{cat_name}")] = ts
+				keys_to_update[_normalize_phrase_key(match, f"lead_in_{cat_name}")] = ts
 				break
 	elif category == "reaccion" or category.startswith("reaccion_"):
-		_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(phrase_text, "reaccion")] = ts
+		keys_to_update[_normalize_phrase_key(phrase_text, "reaccion")] = ts
 		for cat_name, cat_list in REACCIONES_BY_CATEGORY.items():
 			match = next((item for item in cat_list if _same_phrase(phrase_text, item)), None)
 			if match is not None:
-				_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(match, "reaccion")] = ts
-				_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(match, f"reaccion_{cat_name}")] = ts
+				keys_to_update[_normalize_phrase_key(match, "reaccion")] = ts
+				keys_to_update[_normalize_phrase_key(match, f"reaccion_{cat_name}")] = ts
 				break
 		for clim_list in REACCIONES_CLIMA.values():
 			match = next((item for item in clim_list if _same_phrase(phrase_text, item)), None)
 			if match is not None:
-				_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(match, "reaccion")] = ts
-				_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(match, "reaccion_clima")] = ts
+				keys_to_update[_normalize_phrase_key(match, "reaccion")] = ts
+				keys_to_update[_normalize_phrase_key(match, "reaccion_clima")] = ts
 				break
 	elif category == "pase":
 		tpl = _find_pase_template(phrase_text)
 		if tpl is not None:
-			_PHRASE_HISTORY_MEMORY[_normalize_phrase_key(tpl, "pase")] = ts
+			keys_to_update[_normalize_phrase_key(tpl, "pase")] = ts
+
+	_PHRASE_HISTORY_MEMORY.update(keys_to_update)
+	if db_path:
+		try:
+			p = Path(db_path)
+			p.parent.mkdir(parents=True, exist_ok=True)
+			with sqlite3.connect(str(p), timeout=5.0) as conn:
+				_ensure_radio_tables(conn)
+				conn.executemany(
+					"INSERT OR REPLACE INTO radio_phrase_history (norm_key, played_at) VALUES (?, ?)",
+					list(keys_to_update.items()),
+				)
+				conn.commit()
+		except Exception as e:
+			logger.debug(f"No se pudo persistir historial de frases en SQLite: {e}")
 
 
 def weighted_choice_by_recency(
@@ -205,17 +344,18 @@ def weighted_choice_by_recency(
 	tau: float = 1800.0,
 	min_weight: float = 0.02,
 ) -> Any:
-	"""Selecciona una frase de la lista candidata ponderando por antigüedad de última reproducción."""
+	"""Selecciona una frase de la lista candidata ponderando por antigüedad de última reproducción (con sincronización por lote)."""
 	if not candidates:
 		raise ValueError("La lista de frases candidatas no puede estar vacía.")
 	if len(candidates) == 1:
 		return candidates[0]
 
+	_sync_from_db_if_needed(db_path)
 	now = current_time if current_time is not None else time.time()
 	weights: list[float] = []
 
 	for phrase in candidates:
-		last_played = get_phrase_last_played(phrase, category=category, db_path=db_path)
+		last_played = get_phrase_last_played(phrase, category=category, db_path=None)
 		if last_played is None or last_played <= 0:
 			weights.append(1.0)
 		else:

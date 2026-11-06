@@ -47,6 +47,7 @@ from app.domain.radio.segments import (
 	REACCIONES_CLIMA,
 	REACCIONES_FORTUNA,
 	SPECIAL_HOURS,
+	get_intros_for_first_block,
 	get_lead_ins_for_category,
 	get_outros_for_category,
 	get_pases_for_weather_condition,
@@ -272,13 +273,6 @@ def get_modular_time_segments(dt: datetime | None = None) -> tuple[str, str | No
 	return hora_seg, minuto_seg, full_time_str
 
 
-def get_fortune_voice(is_system_fortune: bool, host_voice: str) -> str:
-	"""Determina la voz para sintetizar la fortuna radial."""
-	if is_system_fortune:
-		return VOICE_ELENA
-	return host_voice
-
-
 logger = logging.getLogger("RockolaCarpincho")
 
 BLOCK_ALIASES: dict[str, str] = {
@@ -324,24 +318,19 @@ def build_radio_dialogue_plan(
 	ctx: RadioContext | None = None,
 	*,
 	dt: datetime | None = None,
-	fortune: str | tuple[str, str] | RadioPhrase | None = None,
-	weather_phrase: str | None = None,
 	outro_mode: str = "continue",
 	block_order: Sequence[str] | None = None,
 ) -> list[tuple[str, str, str, bool]]:
 	"""
 	Construye el plan estructurado de segmentos para la locución radial (texto, voz, categoría, allow_cache).
-	Acepta tanto componentes individuales explícitos como argumentos de alto nivel (dt, fortune, weather_phrase, outro_mode).
 	Permuta modularmente los bloques intermedios (hora, clima, contenido) para mayor naturalidad radiofónica.
 	"""
 	effective_dt = dt if dt is not None else datetime.now(UTC).astimezone()
 	if ctx is None:
 		ctx = build_radio_context(effective_dt)
 
-	effective_fortuna = (
-		fortuna if fortuna is not None else (fortune if fortune is not None else "Siempre que llovió, paró.")
-	)
-	effective_weather = weather_text if weather_text is not None else weather_phrase
+	effective_fortuna = fortuna if fortuna is not None else "Siempre que llovió, paró."
+	effective_weather = weather_text
 
 	if host_voice is None or cohost_voice is None:
 		auto_host, auto_cohost = select_radio_hosts(host_voice=host_voice, is_system_fortune=is_system_fortune)
@@ -351,8 +340,15 @@ def build_radio_dialogue_plan(
 	if hora_seg is None:
 		hora_seg, minuto_seg, _ = get_modular_time_segments(effective_dt)
 
+	# El orden de bloques se resuelve ANTES de elegir la intro y las reacciones,
+	# para filtrar intros incompatibles con el primer bloque y mantener la anti-repetición de reacciones.
+	valid_block_keys = ["hora", "contenido"] + (["clima"] if effective_weather else [])
+	ordered_keys = _resolve_block_order(block_order, valid_block_keys)
+	first_block = ordered_keys[0] if ordered_keys else "hora"
+
 	if intro is None:
-		intro_candidates = filter_by_context(RADIO_INTROS, ctx, "intro") or list(RADIO_INTROS)
+		raw_intros = get_intros_for_first_block(first_block)
+		intro_candidates = filter_by_context(raw_intros, ctx, "intro") or list(raw_intros)
 		intro = weighted_choice_by_recency(intro_candidates, category="intro", db_path=db_path)
 
 	time_phrase = f"{hora_seg} {minuto_seg}".strip() if minuto_seg else hora_seg.strip()
@@ -395,8 +391,6 @@ def build_radio_dialogue_plan(
 		if effective_weather:
 			available_blocks["clima"] = [(effective_weather, host_voice, "clima", False)]
 
-		ordered_keys = _resolve_block_order(block_order, list(available_blocks.keys()))
-
 		solo_plan: list[tuple[str, str, str, bool]] = [
 			(rendered_intro, host_voice, "intro", True),
 		]
@@ -406,10 +400,6 @@ def build_radio_dialogue_plan(
 		return solo_plan
 
 	time_block = [(time_phrase, host_voice, "hora", True)]
-
-	# El orden de bloques se resuelve ANTES de elegir las reacciones, así la anti-repetición
-	# (ni repetir la reacción previa ni dos iguales seguidas) sigue el orden real de locución.
-	ordered_keys = _resolve_block_order(block_order, ["hora", "contenido"] + (["clima"] if effective_weather else []))
 
 	prev_key = _normalize_phrase_key(last_reaction) if last_reaction else None
 

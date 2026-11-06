@@ -351,6 +351,31 @@ WEATHER_TEMPLATES: tuple[str, ...] = (
 	"{lead} Actualizamos los números del tiempo en {location}: clava {temp_str}.{desc_phrase} Hoy la marca irá de {min_today_str} a {max_today_str}. Y mirando a mañana, pronostican {range_tomorrow_str}. {lluvia_desc}",
 )
 
+INTROS_REQUIRING_HORA_FIRST: frozenset[str] = frozenset(
+	{
+		"La hora en La Rockola.",
+		"Aviso críptico de cabina: el zorro vuela de noche con poncho azul. Y ahora, música.",
+	}
+)
+
+
+def get_intros_for_first_block(first_block: str | None = None) -> tuple[str, ...]:
+	"""Devuelve el banco de intros filtrando las que presuponen que el primer bloque sea la hora."""
+	if first_block in (None, "hora"):
+		return RADIO_INTROS
+	return tuple(i for i in RADIO_INTROS if i not in INTROS_REQUIRING_HORA_FIRST)
+
+
+RADIO_HANDOFFS: tuple[str, ...] = (
+	"¿Cómo viene la mano afuera, che?",
+	"Contame qué dice el servicio meteorológico.",
+	"¿Qué tenemos en el pronóstico para hoy?",
+	"Tirate esa data de la laguna.",
+	"Pará que quiero saber qué dice el oráculo.",
+	"¿Qué nos espera en el cielo, {vocativo}?",
+	"Tirame el parte meteorológico carpincho.",
+)
+
 PASES_A_CLIMA_NEUTROS: tuple[str, ...] = (
 	"Che {cohost}, asomate al bañado y decime si viene el pampero.",
 	"{cohost}, ¿cómo está la temperatura para meter panzada al río?",
@@ -369,6 +394,7 @@ PASES_A_CLIMA_NEUTROS: tuple[str, ...] = (
 	"Che {cohost}, mirá cómo vuelan bajo las golondrinas... ¿qué marca el radar para hoy?",
 	"¿Cómo viene la mano con el cielo {cohost}, sale sol para secar el cuero o preparamos el piloto?",
 	"{cohost}, {vocativo} de cabina, ¿cómo pinta el tiempo para los que andan navegando la cuenca?",
+	*(h for h in RADIO_HANDOFFS if "oráculo" not in h.lower()),
 )
 
 PASES_A_CLIMA_POR_CONDICION: dict[str, tuple[str, ...]] = {
@@ -394,16 +420,6 @@ def get_pases_for_weather_condition(condition: str | None = None) -> tuple[str, 
 	extra = PASES_A_CLIMA_POR_CONDICION.get(cond, ())
 	return (*PASES_A_CLIMA_NEUTROS, *extra)
 
-
-RADIO_HANDOFFS: tuple[str, ...] = (
-	"¿Cómo viene la mano afuera, che?",
-	"Contame qué dice el servicio meteorológico.",
-	"¿Qué tenemos en el pronóstico para hoy?",
-	"Tirate esa data de la laguna.",
-	"Pará que quiero saber qué dice el oráculo.",
-	"¿Qué nos espera en el cielo, {vocativo}?",
-	"Tirame el parte meteorológico carpincho.",
-)
 
 REACCIONES_CLIMA: dict[str, tuple[str, ...]] = {
 	"calor": (
@@ -519,24 +535,6 @@ REACCIONES_NOVELA: tuple[str, ...] = (
 	"¡Esto es cine total! ¡Qué radioteatro nos estamos armando en plena cabina!",
 )
 
-REACCIONES_UNKNOWN: tuple[str, ...] = (
-	"¡Clarito como el agua de la orilla!",
-	"¡Tal cual, ni más ni menos!",
-	"¡Así se habla en el litoral!",
-	"¡Impecable, mensaje recibido!",
-	"¡Directo y al pie, como tiene que ser!",
-)
-
-REACCIONES_BY_CATEGORY: dict[str, tuple[str, ...]] = {
-	"fortuna": REACCIONES_FORTUNA,
-	"aviso": REACCIONES_AVISOS,
-	"oyentes": REACCIONES_OYENTES,
-	"alerta_criolla": REACCIONES_ALERTAS,
-	"chismes": REACCIONES_CHISMES,
-	"novela": REACCIONES_NOVELA,
-	"unknown": REACCIONES_UNKNOWN,
-}
-
 RADIO_REACTIONS: tuple[str, ...] = (
 	"¡Qué lo tiró, che!",
 	"Mirá vos, qué momento.",
@@ -557,6 +555,25 @@ RADIO_REACTIONS: tuple[str, ...] = (
 	"Ese tema te levanta cualquier día nublado.",
 	"¡Qué swing ribereño metió esa banda!",
 )
+
+REACCIONES_UNKNOWN: tuple[str, ...] = (
+	"¡Clarito como el agua de la orilla!",
+	"¡Tal cual, ni más ni menos!",
+	"¡Así se habla en el litoral!",
+	"¡Impecable, mensaje recibido!",
+	"¡Directo y al pie, como tiene que ser!",
+	*RADIO_REACTIONS,
+)
+
+REACCIONES_BY_CATEGORY: dict[str, tuple[str, ...]] = {
+	"fortuna": REACCIONES_FORTUNA,
+	"aviso": REACCIONES_AVISOS,
+	"oyentes": REACCIONES_OYENTES,
+	"alerta_criolla": REACCIONES_ALERTAS,
+	"chismes": REACCIONES_CHISMES,
+	"novela": REACCIONES_NOVELA,
+	"unknown": REACCIONES_UNKNOWN,
+}
 
 # ---------------------------------------------------------------------------
 
@@ -588,10 +605,4 @@ def get_outros_for_category(category: str, outro_mode: str = "continue") -> tupl
 
 def get_outros_for_mode(outro_mode: str = "continue") -> tuple[str, ...]:
 	"""Devuelve el banco de cierres radiales acorde al modo ('continue', 'pause', 'break' o 'dj')."""
-	if outro_mode == "pause":
-		return RADIO_OUTROS_PAUSE
-	if outro_mode == "break":
-		return RADIO_OUTROS_BREAK
-	if outro_mode == "dj":
-		return RADIO_OUTROS_DJ
-	return RADIO_OUTROS
+	return get_outros_for_category("", outro_mode=outro_mode)
