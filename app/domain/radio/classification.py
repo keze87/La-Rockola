@@ -7,7 +7,11 @@ from __future__ import annotations
 import re
 from typing import NamedTuple
 
-from app.domain.radio.phrase_banks.advertisements import CARPINCHO_ADS
+from app.domain.radio.phrase_banks.advertisements import (
+	AVISOS_PARROQUIALES_Y_EXTRAVIOS,
+	CARPINCHO_ADS,
+	PUBLICIDADES_COMERCIALES,
+)
 from app.domain.radio.phrase_banks.fortunes import CARPINCHO_SABIDURIA
 from app.domain.radio.phrase_banks.gossip import CHISMES_CARPINCHOS
 from app.domain.radio.phrase_banks.listeners import (
@@ -38,6 +42,11 @@ CARPINCHO_PHRASES: tuple[RadioPhrase, ...] = (
 )
 
 PHRASE_TO_CATEGORY: dict[str, str] = {p.text: p.category for p in CARPINCHO_PHRASES}
+
+_COMMUNITY_NOTICE_SET: frozenset[str] = frozenset(AVISOS_PARROQUIALES_Y_EXTRAVIOS)
+_COMMERCIAL_AD_SET: frozenset[str] = frozenset(PUBLICIDADES_COMERCIALES)
+_TRANSIT_ALERT_SET: frozenset[str] = frozenset(TRANSITO_FLUVIAL_Y_CAMINOS)
+_CLIMATE_ALERT_SET: frozenset[str] = frozenset(ALERTAS_INCOMODIDAD_CRIOLLA)
 
 
 def resolve_weather_desc_category(
@@ -306,3 +315,142 @@ def resolve_segment_category(text: str | tuple[str, str] | RadioPhrase, default:
 		return "fortuna"
 
 	return default
+
+
+def resolve_segment_subcategory(
+	text: str | tuple[str, str] | RadioPhrase,
+	category: str | None = None,
+) -> str:
+	"""
+	Determina la subcategoría fina de un segmento para alinear aperturas (lead-ins) y reacciones:
+	- 'aviso_comunitario' vs 'aviso_comercial' (dentro de 'aviso')
+	- 'alerta_transito' vs 'alerta_clima' (dentro de 'alerta_criolla')
+	- 'oyentes_pedido' vs 'oyentes_saludo' (dentro de 'oyentes')
+	- 'fortuna_musical' vs 'fortuna_reflexiva' (dentro de 'fortuna')
+	"""
+	raw_text = text[0] if isinstance(text, (tuple, RadioPhrase)) and len(text) >= 1 else str(text or "")
+	text_clean = raw_text.strip()
+	cat = category or resolve_segment_category(text, default="fortuna")
+	low = text_clean.lower()
+
+	if cat == "aviso":
+		if text_clean in _COMMUNITY_NOTICE_SET:
+			return "aviso_comunitario"
+		if text_clean in _COMMERCIAL_AD_SET:
+			return "aviso_comercial"
+		if any(
+			k in low
+			for k in (
+				"se busca",
+				"se extravió",
+				"se perdió",
+				"apareció",
+				"encontraron",
+				"se rescató",
+				"se escapó",
+				"se escaparon",
+				"edicto",
+				"catastro",
+				"concejo deliberante",
+				"resolución",
+				"destacamento",
+				"dirección de rentas",
+				"misa",
+				"sacristán",
+				"rifa",
+				"bingo",
+				"trueque",
+				"parroquial",
+				"recompensa",
+				"gratificará",
+				"centro vecinal",
+				"taller de payadas",
+			)
+		):
+			return "aviso_comunitario"
+		return "aviso_comercial"
+
+	if cat in ("alerta_criolla", "transito"):
+		if text_clean in _TRANSIT_ALERT_SET or cat == "transito":
+			return "alerta_transito"
+		if text_clean in _CLIMATE_ALERT_SET:
+			return "alerta_clima"
+		if any(
+			k in low
+			for k in (
+				"lancha",
+				"balsa",
+				"camino",
+				"terraplén",
+				"puente",
+				"canal",
+				"remolcador",
+				"embarcadero",
+				"ruta",
+				"paso a nivel",
+				"banco de arena",
+				"calzada",
+				"tránsito",
+				"navegantes",
+				"embalsado",
+			)
+		):
+			return "alerta_transito"
+		return "alerta_clima"
+
+	if cat == "oyentes":
+		if any(
+			k in low
+			for k in (
+				"pide",
+				"piden",
+				"pedimos",
+				"queremos",
+				"quería pedir",
+				"que suene",
+				"esperando que suene",
+				"esperando escuchar",
+				"pongan",
+				"poné",
+				"ponete",
+				"pasame",
+				"pasate",
+				"si pueden poner",
+				"si podés pasar",
+				"tirate un",
+				"largate un",
+				"largate una",
+				"mandate un",
+				"mandate una",
+				"solicitamos",
+			)
+		):
+			return "oyentes_pedido"
+		return "oyentes_saludo"
+
+	if cat == "fortuna":
+		if any(
+			k in low
+			for k in (
+				"música",
+				"canción",
+				"tema",
+				"temazo",
+				"volumen",
+				"cumbia",
+				"chamamé",
+				"rock",
+				"cuarteto",
+				"folclore",
+				"tango",
+				"play",
+				"ritmo",
+				"estribillo",
+				"acordeón",
+				"rockola",
+			)
+		):
+			return "fortuna_musical"
+		return "fortuna_reflexiva"
+
+	return cat

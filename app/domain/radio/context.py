@@ -37,6 +37,7 @@ class RadioContext(NamedTuple):
 	estacion: str = "primavera"
 	mes: int = 10
 	temp_c: int | None = None
+	outro_mode: str = "continue"
 
 
 def get_franja_horaria(hour: int) -> str:
@@ -76,7 +77,11 @@ def get_estacion(month: int) -> str:
 	return "primavera"
 
 
-def build_radio_context(dt: datetime | None = None, temp_c: float | None = None) -> RadioContext:
+def build_radio_context(
+	dt: datetime | None = None,
+	temp_c: float | None = None,
+	outro_mode: str = "continue",
+) -> RadioContext:
 	"""Arma el contexto de la transmisión a partir de la fecha/hora local y (opcional) la temperatura actual."""
 	if dt is None:
 		dt = datetime.now().astimezone()
@@ -92,6 +97,7 @@ def build_radio_context(dt: datetime | None = None, temp_c: float | None = None)
 		estacion=get_estacion(dt.month),
 		mes=dt.month,
 		temp_c=None if temp_c is None else round(float(temp_c)),
+		outro_mode=outro_mode,
 	)
 
 
@@ -140,12 +146,12 @@ def _rule(
 
 
 _CAT_CLIMA_CRIOLLA = ("alerta_criolla", "aviso", "oyentes")
-_CAT_LOCUCION_EN_VIVO = ("intro", "clima", "salida", "pase")
+_CAT_LOCUCION_EN_VIVO = ("intro", "clima", "salida", "pase", "reaccion", "reaccion_clima")
 
 # Una frase que cumple una regla solo se puede decir cuando el contexto la satisface (todas las que apliquen).
 CONTEXT_RULES: list[_ContextRule] = [
 	# --- Franja horaria para locución y clima en vivo ---
-	# Saludos y reportes temporales inmediatos (intros, clima, salidas, pases)
+	# Saludos y reportes temporales inmediatos (intros, clima, salidas, pases, reacciones)
 	_rule(r"\btard(?:e|ecit\w*)\b", franjas=("tarde",), only_categories=_CAT_LOCUCION_EN_VIVO),
 	_rule(r"\bmadrugada\b", franjas=("madrugada", "mañana"), only_categories=_CAT_LOCUCION_EN_VIVO),
 	_rule(
@@ -157,9 +163,19 @@ CONTEXT_RULES: list[_ContextRule] = [
 	_rule(r"\bse nos viene la noche\b", franjas=("mediodia", "tarde")),
 	# El sol en sentido meteorológico literal (no metafórico como 'trapitos al sol' ni marcas comerciales)
 	_rule(
-		r"(?<!trapitos al )(?<!panadería el )\bsol(?:azo|cito)?\b",
+		r"(?<!trapitos al )(?<!panadería el )\bsol(?:azo|cito)?\b|\bprotector solar\b|\bsecarse al sol\b",
 		franjas=("mañana", "mediodia", "tarde"),
-		only_categories=("clima", "alerta_criolla", "pase"),
+		only_categories=("clima", "alerta_criolla", "pase", "reaccion", "reaccion_clima"),
+	),
+	_rule(
+		r"\b(?:a la sombra|sombrita|chapuzón|en el agua todo el día|tereré)\b",
+		franjas=("mañana", "mediodia", "tarde"),
+		only_categories=("clima", "alerta_criolla", "pase", "reaccion", "reaccion_clima"),
+	),
+	_rule(
+		r"(?<!se nos viene la )\bnoche\b",
+		franjas=("noche", "madrugada"),
+		only_categories=_CAT_LOCUCION_EN_VIVO,
 	),
 	_rule(r"\bsol cae\b|\bcae el sol\b", franjas=("tarde",), only_categories=_CAT_LOCUCION_EN_VIVO),
 	_rule(r"\bgolondrinas?\b", franjas=("mañana", "mediodia", "tarde"), only_categories=("clima", "pase")),
@@ -199,6 +215,24 @@ def phrase_fits_context(text: str, ctx: RadioContext | None, category: str | Non
 	"""True si la frase es coherente con la franja horaria, el día y el clima actuales (ctx None => siempre)."""
 	if ctx is None or not text:
 		return True
+	if ctx.outro_mode in ("pause", "break"):
+		low = text.lower()
+		if any(
+			k in low
+			for k in (
+				"temazo que viene",
+				"próximo tema",
+				"mandale play",
+				"seguimos con más música",
+				"no te vayas que ya suena",
+				"continúa la música",
+				"sigue sonando",
+				"subí el volumen que",
+				"que suene el próximo",
+				"dejate llevar por el ritmo que sigue",
+			)
+		):
+			return False
 	for rule in CONTEXT_RULES:
 		if rule.only_categories and category not in rule.only_categories:
 			continue

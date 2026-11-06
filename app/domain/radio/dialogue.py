@@ -14,6 +14,7 @@ from pathlib import Path
 from app.domain.radio.classification import (
 	RadioPhrase,
 	resolve_segment_category,
+	resolve_segment_subcategory,
 )
 from app.domain.radio.context import (
 	RadioContext,
@@ -59,6 +60,7 @@ from app.domain.radio.templates import (
 )
 from app.domain.radio.voices import (
 	DEFAULT_COHOST_NAME,
+	HOST_PROFILES,
 	VOICE_ELENA,
 	VOICE_NAMES,
 	VOICES,
@@ -66,6 +68,11 @@ from app.domain.radio.voices import (
 from app.infrastructure.weather.client import format_temperature
 
 __all__ = [
+	"NEUTRAL_INTROS",
+	"NEUTRAL_LEAD_INS",
+	"NEUTRAL_OUTROS",
+	"NEUTRAL_PASES",
+	"NEUTRAL_WEATHER_REACTIONS",
 	"NO_MERGE_CATEGORIES",
 	"apply_rioplatense_tts_phonetics",
 	"build_radio_dialogue_plan",
@@ -78,16 +85,69 @@ __all__ = [
 	"select_radio_hosts",
 ]
 
-NO_MERGE_CATEGORIES: set[str] = {"intro", "hora", "minuto", "clima", "salida"}
+NO_MERGE_CATEGORIES: set[str] = {"intro", "hora", "minuto", "clima", "salida", "lead_in", "reaccion", "pase"}
+
+# Fallbacks neutrales y universales cuando filter_by_context descarta candidatos específicos
+NEUTRAL_INTROS: tuple[str, ...] = (
+	"Estás en La Rockola del Carpincho, noventa y ocho punto siete en el dial.",
+	"Transmite La Rockola del Carpincho desde el Delta.",
+	"En el aire de La Rockola del Carpincho.",
+)
+
+NEUTRAL_OUTROS: dict[str, tuple[str, ...]] = {
+	"continue": (
+		"Seguimos con buena música en el aire de La Rockola.",
+		"Continúa la música en La Rockola del Carpincho.",
+	),
+	"dj": (
+		"Queda la música sonando en cabina con DJ Bara al control.",
+		"Música en continuado con la selección de DJ Bara.",
+	),
+	"pause": (
+		"Frenamos la música un momento. Enseguida volvemos con la transmisión.",
+		"Hacemos un alto en la música; ya regresamos con más.",
+	),
+	"break": (
+		"Hacemos una pausa en la cabina; cuando gustes cargá más música al dial.",
+		"Pausa en la transmisión; volvemos enseguida cuando sumen más canciones.",
+	),
+}
+
+NEUTRAL_LEAD_INS: dict[str, tuple[str, ...]] = {
+	"aviso": ("Mensaje de la comunidad en La Rockola:",),
+	"alerta_criolla": ("Reporte especial en el aire de la radio:",),
+	"oyentes": ("Nos llega este mensaje de la audiencia:",),
+	"chismes": ("Historias y novedades de la zona:",),
+	"novela": ("Capítulo y novedades del barrio:",),
+	"fortuna": ("Compartimos esta reflexión en el aire:",),
+}
+
+NEUTRAL_PASES: tuple[str, ...] = (
+	"{cohost}, ¿cómo vienen los datos del tiempo afuera?",
+	"Contame {cohost}, ¿qué marca el pronóstico meteorológico?",
+)
+
+NEUTRAL_WEATHER_REACTIONS: dict[str, tuple[str, ...]] = {
+	"frio": ("¡A abrigarse bien y tener los mates calientes listos!",),
+	"calor": ("¡A hidratarse y cuidarse del calor en la cuenca!",),
+	"lluvia": ("¡A circular con precaución y tener el paraguas a mano!",),
+	"agradable": ("¡Clima agradable para disfrutar con buena música!",),
+}
 
 
 def select_radio_hosts(
 	host_voice: str | None = None,
 	is_system_fortune: bool = False,
+	category: str | None = None,
 ) -> tuple[str, str]:
-	"""Selecciona el locutor principal (host) y el co-conductor (cohost), garantizando host != cohost."""
+	"""Selecciona el locutor principal (host) y el co-conductor (cohost), orientando según perfiles editoriales."""
 	if not host_voice or host_voice not in VOICES:
-		host = random.choice(VOICES)
+		candidates = list(VOICES)
+		if category:
+			preferred = [v for v in VOICES if category in HOST_PROFILES.get(v, {}).get("preferred_categories", ())]
+			host = random.choice(preferred) if preferred else random.choice(candidates)
+		else:
+			host = random.choice(candidates)
 	else:
 		host = host_voice
 
@@ -95,6 +155,12 @@ def select_radio_hosts(
 
 	if is_system_fortune:
 		cohost = random.choice(other_voices) if host == VOICE_ELENA else VOICE_ELENA
+	elif category in ("chismes", "novela") and "es-UY-ValentinaNeural" in other_voices:
+		cohost = "es-UY-ValentinaNeural"
+	elif category in ("aviso", "oyentes") and "es-AR-ElenaNeural" in other_voices:
+		cohost = "es-AR-ElenaNeural"
+	elif category in ("alerta_criolla",) and "es-AR-TomasNeural" in other_voices:
+		cohost = "es-AR-TomasNeural"
 	else:
 		cohost = random.choice(other_voices)
 
@@ -332,8 +398,22 @@ def build_radio_dialogue_plan(
 	effective_fortuna = fortuna if fortuna is not None else "Siempre que llovió, paró."
 	effective_weather = weather_text
 
+	fortune_text = str(
+		effective_fortuna[0]
+		if isinstance(effective_fortuna, tuple)
+		else getattr(effective_fortuna, "text", effective_fortuna)
+	).strip("\"'")
+	if not fortune_text.endswith((".", "!", "?")):
+		fortune_text += "."
+	seg_cat = resolve_segment_category(effective_fortuna)
+	seg_subcat = resolve_segment_subcategory(effective_fortuna, category=seg_cat)
+
 	if host_voice is None or cohost_voice is None:
-		auto_host, auto_cohost = select_radio_hosts(host_voice=host_voice, is_system_fortune=is_system_fortune)
+		auto_host, auto_cohost = select_radio_hosts(
+			host_voice=host_voice,
+			is_system_fortune=is_system_fortune,
+			category=seg_cat,
+		)
 		host_voice = host_voice or auto_host
 		cohost_voice = cohost_voice or auto_cohost
 
@@ -348,17 +428,20 @@ def build_radio_dialogue_plan(
 
 	if intro is None:
 		raw_intros = get_intros_for_first_block(first_block)
-		intro_candidates = filter_by_context(raw_intros, ctx, "intro") or list(raw_intros)
+		intro_candidates = filter_by_context(raw_intros, ctx, "intro")
+		if not intro_candidates:
+			intro_candidates = filter_by_context(NEUTRAL_INTROS, ctx, "intro") or list(NEUTRAL_INTROS)
 		intro = weighted_choice_by_recency(intro_candidates, category="intro", db_path=db_path)
 
 	time_phrase = f"{hora_seg} {minuto_seg}".strip() if minuto_seg else hora_seg.strip()
-	fortune_text = format_fortune_for_speech(effective_fortuna)
-	seg_cat = resolve_segment_category(effective_fortuna)
 	cohost_name = VOICE_NAMES.get(cohost_voice, DEFAULT_COHOST_NAME)
 
 	if outro is None:
 		outro_pool = get_outros_for_category(seg_cat, outro_mode)
-		outro_candidates = filter_by_context(outro_pool, ctx, "salida") or list(outro_pool)
+		outro_candidates = filter_by_context(outro_pool, ctx, "salida")
+		if not outro_candidates:
+			neutrals = NEUTRAL_OUTROS.get(outro_mode, NEUTRAL_OUTROS["continue"])
+			outro_candidates = filter_by_context(neutrals, ctx, "salida") or list(neutrals)
 		outro = weighted_choice_by_recency(outro_candidates, category="salida", db_path=db_path)
 
 	rendered_intro = render_tracked_phrase(intro, ctx)
@@ -367,10 +450,13 @@ def build_radio_dialogue_plan(
 	if lead_in is not None:
 		effective_lead_in = render_tracked_phrase(lead_in, ctx)
 	else:
-		raw_lead_ins = get_lead_ins_for_category(seg_cat)
-		cat_lead_ins = filter_by_context(raw_lead_ins, ctx, "lead_in") or list(raw_lead_ins)
+		raw_lead_ins = get_lead_ins_for_category(seg_cat, subcategory=seg_subcat)
+		cat_lead_ins = filter_by_context(raw_lead_ins, ctx, "lead_in")
+		if not cat_lead_ins:
+			neutrals = NEUTRAL_LEAD_INS.get(seg_cat, ("Compartimos este espacio en La Rockola:",))
+			cat_lead_ins = filter_by_context(neutrals, ctx, "lead_in") or list(neutrals)
 		effective_lead_in = render_tracked_phrase(
-			weighted_choice_by_recency(cat_lead_ins, category=f"lead_in_{seg_cat}", db_path=db_path), ctx
+			weighted_choice_by_recency(cat_lead_ins, category=f"lead_in_{seg_subcat}", db_path=db_path), ctx
 		)
 
 	fortune_category = (
@@ -406,12 +492,17 @@ def build_radio_dialogue_plan(
 	def _build_weather_block() -> list[tuple[str, str, str, bool]]:
 		cond = weather_condition or "agradable"
 		raw_pases = get_pases_for_weather_condition(cond)
-		pase_pool = filter_by_context(raw_pases, ctx, "pase") or list(raw_pases)
+		pase_pool = filter_by_context(raw_pases, ctx, "pase")
+		if not pase_pool:
+			pase_pool = filter_by_context(NEUTRAL_PASES, ctx, "pase") or list(NEUTRAL_PASES)
 		pase_template = weighted_choice_by_recency(pase_pool, category="pase", db_path=db_path)
 		pase_text = render_tracked_phrase(pase_template, ctx, addressee_voice=cohost_voice, cohost_name=cohost_name)
 
 		cond_options = REACCIONES_CLIMA.get(cond, REACCIONES_CLIMA["agradable"])
-		candidates = filter_by_context(cond_options, ctx, "reaccion") or list(cond_options)
+		candidates = filter_by_context(cond_options, ctx, "reaccion")
+		if not candidates:
+			neutrals = NEUTRAL_WEATHER_REACTIONS.get(cond, NEUTRAL_WEATHER_REACTIONS["agradable"])
+			candidates = filter_by_context(neutrals, ctx, "reaccion") or list(neutrals)
 		valid_reactions = [r for r in candidates if _normalize_phrase_key(r) != prev_key]
 		pool_clima = valid_reactions if valid_reactions else candidates
 		reaccion_clima = render_tracked_phrase(
@@ -430,20 +521,25 @@ def build_radio_dialogue_plan(
 	addressee_voice = cohost_voice if react_voice == host_voice else host_voice
 
 	def _build_content_block() -> list[tuple[str, str, str, bool]]:
-		raw_reactions = get_reactions_for_category(seg_cat)
-		cat_reactions = filter_by_context(raw_reactions, ctx, "reaccion") or list(raw_reactions)
-		valid_fortune_reactions = [r for r in cat_reactions if _normalize_phrase_key(r) != prev_key]
-		pool_fortuna = valid_fortune_reactions if valid_fortune_reactions else cat_reactions
-		reaccion_fortuna = render_tracked_phrase(
-			weighted_choice_by_recency(pool_fortuna, category=f"reaccion_{seg_cat}", db_path=db_path),
-			ctx,
-			addressee_voice=addressee_voice,
-		)
-		return [
+		raw_reactions = get_reactions_for_category(seg_cat, subcategory=seg_subcat)
+		cat_reactions = filter_by_context(raw_reactions, ctx, "reaccion")
+		reaccion_fortuna: str | None = None
+		if cat_reactions:
+			valid_fortune_reactions = [r for r in cat_reactions if _normalize_phrase_key(r) != prev_key]
+			pool_fortuna = valid_fortune_reactions if valid_fortune_reactions else cat_reactions
+			reaccion_fortuna = render_tracked_phrase(
+				weighted_choice_by_recency(pool_fortuna, category=f"reaccion_{seg_subcat}", db_path=db_path),
+				ctx,
+				addressee_voice=addressee_voice,
+			)
+
+		turns: list[tuple[str, str, str, bool]] = [
 			(effective_lead_in, host_voice, "lead_in", True),
 			(fortune_text, fortune_voice, fortune_category, True),
-			(reaccion_fortuna, react_voice, "reaccion", True),
 		]
+		if reaccion_fortuna:
+			turns.append((reaccion_fortuna, react_voice, "reaccion", True))
+		return turns
 
 	available_dialogue_blocks: dict[str, list[tuple[str, str, str, bool]]] = {}
 	for k in ordered_keys:
@@ -515,18 +611,26 @@ def generate_modular_radio_script(
 	if not voice or voice not in VOICES:
 		voice = random.choice(VOICES)
 
-	ctx = build_radio_context(dt)
-	intro_candidates = filter_by_context(RADIO_INTROS, ctx, "intro") or list(RADIO_INTROS)
+	ctx = build_radio_context(dt, outro_mode=outro_mode)
+	intro_candidates = filter_by_context(RADIO_INTROS, ctx, "intro")
+	if not intro_candidates:
+		intro_candidates = filter_by_context(NEUTRAL_INTROS, ctx, "intro") or list(NEUTRAL_INTROS)
 	intro = render_phrase(random.choice(intro_candidates), ctx)
 	hora_seg, minuto_seg, _ = get_modular_time_segments(dt)
 	phrase, is_system_fortune = select_radio_phrase(force_system_fortune, ctx=ctx)
 	fortuna = phrase.text
 	seg_cat = phrase.category
 	cat_lead_ins = get_lead_ins_for_category(seg_cat)
-	filtered_lead_ins = filter_by_context(cat_lead_ins, ctx, "lead_in") or list(cat_lead_ins)
+	filtered_lead_ins = filter_by_context(cat_lead_ins, ctx, "lead_in")
+	if not filtered_lead_ins:
+		neutrals = NEUTRAL_LEAD_INS.get(seg_cat, ("Compartimos este espacio en La Rockola:",))
+		filtered_lead_ins = filter_by_context(neutrals, ctx, "lead_in") or list(neutrals)
 	lead_in = random.choice(filtered_lead_ins)
 	outro_pool = get_outros_for_category(seg_cat, outro_mode)
-	filtered_outros = filter_by_context(outro_pool, ctx, "salida") or list(outro_pool)
+	filtered_outros = filter_by_context(outro_pool, ctx, "salida")
+	if not filtered_outros:
+		neutrals_out = NEUTRAL_OUTROS.get(outro_mode, NEUTRAL_OUTROS["continue"])
+		filtered_outros = filter_by_context(neutrals_out, ctx, "salida") or list(neutrals_out)
 	outro = render_phrase(random.choice(filtered_outros), ctx)
 	hora_full = f"{hora_seg} {minuto_seg}" if minuto_seg else hora_seg
 	fort_speech = format_fortune_for_speech(fortuna)

@@ -29,6 +29,7 @@ from app.domain.radio.classification import (
 	CARPINCHO_PHRASES,
 )
 from app.domain.radio.context import (
+	RadioContext,
 	build_radio_context,
 )
 from app.domain.radio.dialogue import build_radio_dialogue_plan, group_plan_into_speech_turns
@@ -116,6 +117,70 @@ def _build_variant_lookup(
 	return lookup
 
 
+def get_simulated_weather_phrase(cond: str, temp: int, ctx: RadioContext) -> str:
+	"""Genera una frase meteorológica variada y coherente con el contexto temporal y temperatura simulada."""
+	is_night = ctx.franja in ("noche", "madrugada")
+	momento = ctx.momento
+
+	if cond == "calor":
+		if is_night:
+			variants = [
+				f"En Tigre tenemos {temp} grados y la noche se mantiene pesadita sobre el río.",
+				f"Reporte nocturno desde Tigre: el termómetro marca {temp} grados, ideal para dejar la ventana abierta.",
+				f"Actualizamos desde Tigre: {temp} grados de temperatura en una noche cálida junto a la ribera.",
+			]
+		else:
+			variants = [
+				f"En Tigre el termómetro acusa {temp} grados con un sol que calienta fuerte toda la cuenca.",
+				f"Actualizamos desde Tigre: clavamos {temp} grados en {momento} y el calor se hace sentir en el humedal.",
+				f"Para Tigre tenemos {temp} grados en este momento, a buscar la sombra del sauce y tomar mucha agua.",
+				f"Reporte desde Tigre: {temp} grados de temperatura bajo cielo despejado en este tramo de {momento}.",
+			]
+	elif cond == "frio":
+		if is_night:
+			variants = [
+				f"En Tigre el termómetro acusa {temp} grados en esta noche bien fresca con viento sur.",
+				f"Reporte nocturno desde Tigre: clavamos {temp} grados, hora de arrimar el poncho y el abrigo.",
+				f"Actualizamos desde Tigre: {temp} grados en la ribera con aire frío y cielo despejado.",
+			]
+		else:
+			variants = [
+				f"En Tigre el termómetro marca {temp} grados y el viento sur se hace sentir en la orilla.",
+				f"Actualizamos desde Tigre: tenemos {temp} grados en {momento}, lindo para meter leña al fuego y no soltar el mate caliente.",
+				f"Reporte ribereño en Tigre: {temp} grados de temperatura con cielo claro y aire bien fresco.",
+				f"Para Tigre el termómetro acusa {temp} grados, ideal para abrigarse bien antes de salir a la intemperie.",
+			]
+	elif cond == "lluvia":
+		if is_night:
+			variants = [
+				f"En Tigre tenemos {temp} grados con lluvias intermitentes sobre el Delta en esta noche fresca.",
+				f"Reporte nocturno en Tigre: el termómetro marca {temp} grados mientras sigue cayendo agua en los arroyos.",
+				f"Actualizamos desde Tigre: {temp} grados con precipitaciones continuas y viento moderado del este.",
+			]
+		else:
+			variants = [
+				f"En Tigre registramos {temp} grados con chaparrones persistentes sobre la cuenca; circular con cuidado por los caminos.",
+				f"Actualizamos desde Tigre: el termómetro marca {temp} grados mientras sigue lloviendo en toda la zona.",
+				f"Para Tigre tenemos {temp} grados en {momento} con cielo cubierto y lloviznas intermitentes.",
+				f"Reporte desde Tigre: {temp} grados con precipitaciones constantes sobre el río.",
+			]
+	else:  # agradable
+		if is_night:
+			variants = [
+				f"En Tigre la noche se presenta con {temp} grados, cielo estrellado y una brisa calma desde el río.",
+				f"Reporte nocturno en Tigre: clima agradable con {temp} grados para disfrutar la tranquilidad de la orilla.",
+				f"Actualizamos desde Tigre: noche serena con {temp} grados y condiciones inmejorables en el Delta.",
+			]
+		else:
+			variants = [
+				f"En Tigre disfrutamos de {temp} grados con cielo despejado y una brisa hermosa en el Delta.",
+				f"Actualizamos desde Tigre: una jornada impecable con {temp} grados en {momento}, ideal para estar al aire libre.",
+				f"Para Tigre el termómetro marca {temp} grados con sol suave y excelente visibilidad en el río.",
+				f"Reporte del tiempo en Tigre: {temp} grados de temperatura con condiciones óptimas para navegar o descansar.",
+			]
+	return random.choice(variants)
+
+
 def run_mock_radio_simulation(
 	iterations: int = 3000,
 	db_path: Path | str | None = None,
@@ -151,12 +216,6 @@ def run_mock_radio_simulation(
 
 	# Muestras sintéticas de clima y modos de cierre
 	weather_conditions = ["agradable", "calor", "frio", "lluvia"]
-	weather_samples = {
-		"agradable": "En Tigre hacen 22 grados con cielo despejado y una brisa hermosa.",
-		"calor": "En Tigre la térmica trepa a los 34 grados con un sol que raja la tierra.",
-		"frio": "En Tigre el termómetro marca 6 grados y el viento sur se hace sentir.",
-		"lluvia": "En Tigre llueve copiosamente y se vienen chaparrones fuertes para la tarde.",
-	}
 	outro_modes = ["continue", "dj", "pause", "break"]
 
 	sim_hours = [2, 8, 12, 16, 21]
@@ -172,13 +231,20 @@ def run_mock_radio_simulation(
 		h = random.choice(sim_hours)
 		minute = random.randint(0, 59)
 		cond = random.choice(weather_conditions)
-		temp = 32 if cond == "calor" else (8 if cond == "frio" else 22)
+		if cond == "calor":
+			temp = random.choice([31, 32, 33, 34])
+		elif cond == "frio":
+			temp = random.choice([6, 7, 8, 9])
+		elif cond == "lluvia":
+			temp = random.choice([14, 15, 16])
+		else:
+			temp = random.choice([20, 21, 22, 23])
 		dt = datetime(2026, m, d, h, minute)
-		ctx = build_radio_context(dt, temp_c=temp)
+		o_mode = random.choice(outro_modes)
+		ctx = build_radio_context(dt, temp_c=temp, outro_mode=o_mode)
 
 		phrase, _is_sys = select_radio_phrase(force_system_fortune=False, db_path=db_path, ctx=ctx)
-		w_text = weather_samples[cond] if random.random() < 0.85 else None
-		o_mode = random.choice(outro_modes)
+		w_text = get_simulated_weather_phrase(cond, temp, ctx=ctx) if random.random() < 0.85 else None
 
 		is_dialogue = random.random() < 0.85
 		plan = build_radio_dialogue_plan(
