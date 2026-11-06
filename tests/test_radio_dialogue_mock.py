@@ -90,6 +90,11 @@ def test_simulation_reaches_high_coverage_and_all_categories(tmp_path: Path):
 
 	coverage_pct = results["coverage_percentage"]
 	category_coverage = results["category_coverage"]
+	generated = results["generated_locutions"]
+
+	assert len(generated) == 2500
+	assert "turns" in generated[0]
+	assert "speaker" in generated[0]["turns"][0]
 
 	# Todas las 30 categorías deben haber sido impactadas
 	assert len(category_coverage) >= 30

@@ -31,7 +31,7 @@ from app.domain.radio.classification import (
 from app.domain.radio.context import (
 	build_radio_context,
 )
-from app.domain.radio.dialogue import build_radio_dialogue_plan
+from app.domain.radio.dialogue import build_radio_dialogue_plan, group_plan_into_speech_turns
 from app.domain.radio.linguistics import format_fortune_for_speech
 from app.domain.radio.nlp import (
 	_clean_phrase_text,
@@ -53,6 +53,7 @@ from app.domain.radio.segments import (
 	REACCIONES_CLIMA,
 )
 from app.domain.radio.templates import expand_phrase_variants
+from app.domain.radio.voices import VOICE_NAMES
 
 
 def collect_all_radio_banks() -> dict[str, list[str]]:
@@ -163,6 +164,7 @@ def run_mock_radio_simulation(
 	sim_days = [2, 5, 6]  # Miércoles, Sábado, Domingo
 
 	last_reaction: str | None = None
+	generated_locutions: list[dict[str, Any]] = []
 
 	for i in range(iterations):
 		m = random.choice(sim_months)
@@ -188,6 +190,21 @@ def run_mock_radio_simulation(
 			ctx=ctx,
 			outro_mode=o_mode,
 			dt=dt,
+		)
+
+		speech_turns = group_plan_into_speech_turns(plan)
+		formatted_turns: list[dict[str, str]] = []
+		for text, voice, category, _allow_cache in speech_turns:
+			speaker = VOICE_NAMES.get(voice, voice)
+			formatted_turns.append({"speaker": speaker, "category": category, "text": text})
+
+		generated_locutions.append(
+			{
+				"index": i + 1,
+				"context": f"{ctx.dia_nombre} {ctx.franja} ({h}:{minute:02d}) - {cond} {temp}°C - modo:{o_mode}",
+				"turns": formatted_turns,
+				"full_text": " ".join(t["text"] for t in formatted_turns),
+			}
 		)
 
 		for seg_text, _voice, cat, _allow_cache in plan:
@@ -233,6 +250,7 @@ def run_mock_radio_simulation(
 		"hit_templates": total_hit_templates,
 		"coverage_percentage": round(overall_pct, 2),
 		"category_coverage": category_coverage,
+		"generated_locutions": generated_locutions,
 	}
 
 
@@ -254,6 +272,13 @@ def main() -> None:
 		default=42,
 		help="Semilla determinista para números aleatorios",
 	)
+	parser.add_argument(
+		"--max-display",
+		"-m",
+		type=int,
+		default=None,
+		help="Cantidad máxima de locuciones a imprimir antes del resumen (por defecto: todas)",
+	)
 	args = parser.parse_args()
 
 	print(f"🧉 Iniciando simulación mock de radio ({args.iterations} emisiones)...")
@@ -261,6 +286,22 @@ def main() -> None:
 	results = run_mock_radio_simulation(iterations=args.iterations, seed=args.seed)
 	elapsed = time.time() - t0
 
+	locutions_to_show = results["generated_locutions"]
+	if args.max_display is not None and args.max_display >= 0:
+		locutions_to_show = locutions_to_show[: args.max_display]
+
+	print("\n📻 --- LOCUCIONES GENERADAS ---")
+	for loc in locutions_to_show:
+		print(f"\n🎙️ Emisión #{loc['index']} [{loc['context']}]:")
+		for turn in loc["turns"]:
+			print(f'   [{turn["speaker"]}]: "{turn["text"]}"')
+
+	if args.max_display is not None and len(results["generated_locutions"]) > len(locutions_to_show):
+		print(
+			f"\n... (mostrando {len(locutions_to_show)} de {len(results['generated_locutions'])} locuciones generadas)"
+		)
+
+	print("\n" + "=" * 70)
 	print(f"⏱️ Simulación finalizada en {elapsed:.2f}s.")
 	print(
 		f"📊 Cobertura general: {results['hit_templates']}/{results['total_templates']} plantillas ({results['coverage_percentage']}%)"
