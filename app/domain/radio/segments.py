@@ -398,12 +398,30 @@ PASES_A_CLIMA_NEUTROS: tuple[str, ...] = (
 )
 
 PASES_A_CLIMA_POR_CONDICION: dict[str, tuple[str, ...]] = {
-	"frio": ("Tirame la data del cielo, {cohost}, que se me están enfriando las patas.",),
+	"frio": (
+		"Tirame la data del cielo, {cohost}, que se me están enfriando las patas.",
+		"Che {cohost}, se me congelan los bigotes con este chucho de frío... ¿cuánto marca el termómetro?",
+		"{cohost}, {vocativo}, asomate con poncho a la ventana y decime si afloja esta helada.",
+		"Decime qué onda afuera, {cohost}, ¿sale mate hirviendo para sacarnos este fresquete?",
+		"A ver {cohost}, cantame los números del tiempo antes de que se nos escarten los dedos.",
+		"¿Qué dice el radar de la cuenca, {cohost}? Mirá que el viento sur nos viene castigando lindo.",
+	),
 	"lluvia": (
 		"Che {cohost}, con esta sudestada que amaga con subir el río, ¿qué dice el pronóstico?",
 		"Decime {cohost}, con esta humedad que te riza hasta los bigotes, ¿se viene el chaparrón o zafamos?",
+		"A ver {cohost}, mirá ese cielo encapotado sobre las islas... ¿se larga el diluvio o es puro amague?",
+		"{cohost}, ¿escuchás ese tronar a lo lejos? Cantame cómo viene el parte de tormentas.",
+		"Tirate la data del cielo, {cohost}: ¿aprontamos las botas para el barro o para el goterío?",
+		"Che {cohost}, {vocativo}, ¿cómo viene el frente de tormenta para la muchachada ribereña?",
 	),
-	"calor": ("Cantame los números del clima {cohost}, que {momento} está tan pesada que ni los mosquitos vuelan.",),
+	"calor": (
+		"Cantame los números del clima {cohost}, que {momento} está tan pesada que ni los mosquitos vuelan.",
+		"Che {cohost}, con este bochorno que derrite hasta las piedras, ¿cuánto acusa el termómetro?",
+		"{cohost}, {vocativo}, no se aguanta la chapa del techo... decime si refresca un poco o seguimos sufriendo.",
+		"A ver {cohost}, tirame la posta del calor: ¿está para clavar siesta abajo del sauce con tereré?",
+		"Decime cómo viene la térmica afuera, {cohost}, que el sol nos está cocinando a fuego lento.",
+		"¿Qué marca el parte meteorológico, {cohost}? Este calorón no da tregua en la ribera.",
+	),
 }
 
 PASES_A_CLIMA: tuple[str, ...] = (

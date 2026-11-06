@@ -192,9 +192,18 @@ def test_point2_weather_handoff_matches_weather_condition():
 	# Con clima agradable (22°C, sin lluvia ni calor pesado), no deben salir pases de frío extremo, lluvia/sudestada ni calor pesado
 	forbidden_in_agradable = (
 		"enfriando las patas",
+		"se me congelan los bigotes",
+		"helada",
+		"chucho de frío",
 		"sudestada",
 		"humedad que te riza",
+		"goterío",
+		"diluvio",
+		"cielo encapotado",
 		"está tan pesada que ni los mosquitos",
+		"bochorno",
+		"chapa del techo",
+		"siesta abajo del sauce",
 	)
 	for _ in range(50):
 		plan = build_radio_dialogue_plan(
@@ -210,11 +219,17 @@ def test_point2_weather_handoff_matches_weather_condition():
 		for bad in forbidden_in_agradable:
 			assert bad not in pase_texts[0], f"Pase contradictorio para clima agradable: {pase_texts[0]!r}"
 
-	# Con frío (8°C), no deben salir pases de calor pesado ni sudestada
+	# Con frío (8°C), no deben salir pases de calor pesado ni lluvia
 	forbidden_in_frio = (
 		"sudestada",
 		"humedad que te riza",
+		"goterío",
+		"diluvio",
+		"cielo encapotado",
 		"está tan pesada que ni los mosquitos",
+		"bochorno",
+		"chapa del techo",
+		"siesta abajo del sauce",
 	)
 	for _ in range(40):
 		plan = build_radio_dialogue_plan(
@@ -228,6 +243,14 @@ def test_point2_weather_handoff_matches_weather_condition():
 		pase_texts = [t.lower() for t, _v, cat, _c in plan if cat == "pase"]
 		for bad in forbidden_in_frio:
 			assert bad not in pase_texts[0], f"Pase contradictorio para clima frío: {pase_texts[0]!r}"
+
+	# Verificación de variedad y consistencia en PASES_A_CLIMA_POR_CONDICION
+	from app.domain.radio.segments import PASES_A_CLIMA_POR_CONDICION
+
+	for cond in ("frio", "lluvia", "calor"):
+		assert len(PASES_A_CLIMA_POR_CONDICION[cond]) >= 5, (
+			f"La condición '{cond}' debe tener al menos 5 frases de pase para garantizar variedad radial"
+		)
 
 
 from pathlib import Path
