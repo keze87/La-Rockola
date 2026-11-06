@@ -180,11 +180,12 @@ def run_mock_radio_simulation(
 		w_text = weather_samples[cond] if random.random() < 0.85 else None
 		o_mode = random.choice(outro_modes)
 
+		is_dialogue = random.random() < 0.85
 		plan = build_radio_dialogue_plan(
 			fortuna=phrase,
 			weather_text=w_text,
 			weather_condition=cond,
-			dialogue_mode=(random.random() < 0.85),
+			dialogue_mode=is_dialogue,
 			last_reaction=last_reaction,
 			db_path=db_path,
 			ctx=ctx,
@@ -194,14 +195,21 @@ def run_mock_radio_simulation(
 
 		speech_turns = group_plan_into_speech_turns(plan)
 		formatted_turns: list[dict[str, str]] = []
+		speakers_in_locution: set[str] = set()
 		for text, voice, category, _allow_cache in speech_turns:
 			speaker = VOICE_NAMES.get(voice, voice)
+			speakers_in_locution.add(speaker)
 			formatted_turns.append({"speaker": speaker, "category": category, "text": text})
+
+		speaker_count = len(speakers_in_locution)
+		locution_type = "dúo" if is_dialogue and speaker_count > 1 else "solo"
 
 		generated_locutions.append(
 			{
 				"index": i + 1,
-				"context": f"{ctx.dia_nombre} {ctx.franja} ({h}:{minute:02d}) - {cond} {temp}°C - modo:{o_mode}",
+				"context": f"{ctx.dia_nombre} {ctx.franja} ({h}:{minute:02d}) - {cond} {temp}°C - {locution_type} ({speaker_count} locutor{'es' if speaker_count > 1 else ''}) - modo:{o_mode}",
+				"is_dialogue": is_dialogue,
+				"speaker_count": speaker_count,
 				"turns": formatted_turns,
 				"full_text": " ".join(t["text"] for t in formatted_turns),
 			}
