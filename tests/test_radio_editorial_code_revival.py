@@ -45,7 +45,6 @@ from app.domain.radio.segments import (
 	REACCIONES_AVISOS_COMUNITARIOS,
 	REACCIONES_CLIMA_ALERTAS,
 	REACCIONES_TRANSITO,
-	SPECIAL_HOURS,
 	get_lead_ins_for_category,
 	get_reactions_for_category,
 )
