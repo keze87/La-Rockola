@@ -4,6 +4,8 @@ Definición de locutores de cabina, nombres, géneros y perfiles de prosodia par
 
 from __future__ import annotations
 
+from typing import Any
+
 VOICE_TOMAS = "es-AR-TomasNeural"
 VOICE_ELENA = "es-AR-ElenaNeural"
 VOICE_MARIA = "es-CR-MariaNeural"
@@ -29,6 +31,42 @@ DEFAULT_GENDER: str = "m"
 VOCATIVOS: dict[str, str] = {"m": "compadre", "f": "comadre"}
 COMPANEROS: dict[str, str] = {"m": "compañero", "f": "compañera"}
 FILOSOFOS: dict[str, str] = {"m": "filósofo", "f": "filósofa"}
+
+# Perfiles editoriales de cabina: definen la personalidad, afinidades y registro de cada voz
+HOST_PROFILES: dict[str, dict[str, Any]] = {
+	VOICE_TOMAS: {
+		"name": "Tomás",
+		"role": "Conductor de piso e histórico de la ribera",
+		"style": "Cálido, pausado, observador y con humor seco; conoce cada arroyo, muelle y vecino del Delta.",
+		"register": "sereno_costero",
+		"preferred_categories": ("alerta_criolla", "aviso", "fortuna"),
+		"pacing": "pausado",
+	},
+	VOICE_ELENA: {
+		"name": "Elena",
+		"role": "Conductora principal y voz de compañía",
+		"style": "Serena, empática, reflexiva y precisa en los servicios a la comunidad y reportes fluviales.",
+		"register": "calido_comunitario",
+		"preferred_categories": ("aviso", "oyentes", "fortuna"),
+		"pacing": "sereno",
+	},
+	VOICE_VALENTINA: {
+		"name": "Valentina",
+		"role": "Co-conductora rioplatense y cronista de aire",
+		"style": "Ágil, espontánea, irónica sin perder cercanía; ideal para el ida y vuelta con oyentes y el radiopasillo.",
+		"register": "espontaneo_rioplatense",
+		"preferred_categories": ("chismes", "novela", "oyentes"),
+		"pacing": "agil",
+	},
+	VOICE_MARIA: {
+		"name": "María",
+		"role": "Locutora de musicalización y enlace comunitario",
+		"style": "Clara, entusiasta medida, atenta al ritmo de la tanda musical y a las historias cotidianas del pueblo.",
+		"register": "fresco_musical",
+		"preferred_categories": ("oyentes", "clima", "musica"),
+		"pacing": "dinamico",
+	},
+}
 
 # Prosodia fija por locutor (personajes con impronta propia para sonar naturales y no robóticos)
 VOICE_PROSODY: dict[str, dict[str, str]] = {

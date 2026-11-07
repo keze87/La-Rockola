@@ -14,6 +14,7 @@ from pathlib import Path
 from app.domain.radio.classification import (
 	RadioPhrase,
 	resolve_segment_category,
+	resolve_segment_subcategory,
 )
 from app.domain.radio.context import (
 	RadioContext,
@@ -59,8 +60,11 @@ from app.domain.radio.templates import (
 )
 from app.domain.radio.voices import (
 	DEFAULT_COHOST_NAME,
+	HOST_PROFILES,
 	VOICE_ELENA,
 	VOICE_NAMES,
+	VOICE_TOMAS,
+	VOICE_VALENTINA,
 	VOICES,
 )
 from app.infrastructure.weather.client import format_temperature
@@ -78,16 +82,22 @@ __all__ = [
 	"select_radio_hosts",
 ]
 
-NO_MERGE_CATEGORIES: set[str] = {"intro", "hora", "minuto", "clima", "salida"}
+NO_MERGE_CATEGORIES: set[str] = {"intro", "hora", "minuto", "clima", "salida", "lead_in", "reaccion", "pase"}
 
 
 def select_radio_hosts(
 	host_voice: str | None = None,
 	is_system_fortune: bool = False,
+	category: str | None = None,
 ) -> tuple[str, str]:
-	"""Selecciona el locutor principal (host) y el co-conductor (cohost), garantizando host != cohost."""
+	"""Selecciona el locutor principal (host) y el co-conductor (cohost), orientando según perfiles editoriales."""
 	if not host_voice or host_voice not in VOICES:
-		host = random.choice(VOICES)
+		candidates = list(VOICES)
+		if category:
+			preferred = [v for v in VOICES if category in HOST_PROFILES.get(v, {}).get("preferred_categories", ())]
+			host = random.choice(preferred) if preferred else random.choice(candidates)
+		else:
+			host = random.choice(candidates)
 	else:
 		host = host_voice
 
@@ -95,6 +105,12 @@ def select_radio_hosts(
 
 	if is_system_fortune:
 		cohost = random.choice(other_voices) if host == VOICE_ELENA else VOICE_ELENA
+	elif category in ("chismes", "novela") and VOICE_VALENTINA in other_voices:
+		cohost = VOICE_VALENTINA
+	elif category in ("aviso", "oyentes") and VOICE_ELENA in other_voices:
+		cohost = VOICE_ELENA
+	elif category in ("alerta_criolla",) and VOICE_TOMAS in other_voices:
+		cohost = VOICE_TOMAS
 	else:
 		cohost = random.choice(other_voices)
 
@@ -332,8 +348,15 @@ def build_radio_dialogue_plan(
 	effective_fortuna = fortuna if fortuna is not None else "Siempre que llovió, paró."
 	effective_weather = weather_text
 
+	seg_cat = resolve_segment_category(effective_fortuna)
+	seg_subcat = resolve_segment_subcategory(effective_fortuna, category=seg_cat)
+
 	if host_voice is None or cohost_voice is None:
-		auto_host, auto_cohost = select_radio_hosts(host_voice=host_voice, is_system_fortune=is_system_fortune)
+		auto_host, auto_cohost = select_radio_hosts(
+			host_voice=host_voice,
+			is_system_fortune=is_system_fortune,
+			category=seg_cat,
+		)
 		host_voice = host_voice or auto_host
 		cohost_voice = cohost_voice or auto_cohost
 
@@ -353,7 +376,6 @@ def build_radio_dialogue_plan(
 
 	time_phrase = f"{hora_seg} {minuto_seg}".strip() if minuto_seg else hora_seg.strip()
 	fortune_text = format_fortune_for_speech(effective_fortuna)
-	seg_cat = resolve_segment_category(effective_fortuna)
 	cohost_name = VOICE_NAMES.get(cohost_voice, DEFAULT_COHOST_NAME)
 
 	if outro is None:
@@ -367,10 +389,10 @@ def build_radio_dialogue_plan(
 	if lead_in is not None:
 		effective_lead_in = render_tracked_phrase(lead_in, ctx)
 	else:
-		raw_lead_ins = get_lead_ins_for_category(seg_cat)
+		raw_lead_ins = get_lead_ins_for_category(seg_cat, subcategory=seg_subcat)
 		cat_lead_ins = filter_by_context(raw_lead_ins, ctx, "lead_in") or list(raw_lead_ins)
 		effective_lead_in = render_tracked_phrase(
-			weighted_choice_by_recency(cat_lead_ins, category=f"lead_in_{seg_cat}", db_path=db_path), ctx
+			weighted_choice_by_recency(cat_lead_ins, category=f"lead_in_{seg_subcat}", db_path=db_path), ctx
 		)
 
 	fortune_category = (
@@ -430,12 +452,12 @@ def build_radio_dialogue_plan(
 	addressee_voice = cohost_voice if react_voice == host_voice else host_voice
 
 	def _build_content_block() -> list[tuple[str, str, str, bool]]:
-		raw_reactions = get_reactions_for_category(seg_cat)
+		raw_reactions = get_reactions_for_category(seg_cat, subcategory=seg_subcat)
 		cat_reactions = filter_by_context(raw_reactions, ctx, "reaccion") or list(raw_reactions)
 		valid_fortune_reactions = [r for r in cat_reactions if _normalize_phrase_key(r) != prev_key]
 		pool_fortuna = valid_fortune_reactions if valid_fortune_reactions else cat_reactions
 		reaccion_fortuna = render_tracked_phrase(
-			weighted_choice_by_recency(pool_fortuna, category=f"reaccion_{seg_cat}", db_path=db_path),
+			weighted_choice_by_recency(pool_fortuna, category=f"reaccion_{seg_subcat}", db_path=db_path),
 			ctx,
 			addressee_voice=addressee_voice,
 		)

@@ -355,7 +355,8 @@ def weighted_choice_by_recency(
 	weights: list[float] = []
 
 	for phrase in candidates:
-		last_played = get_phrase_last_played(phrase, category=category, db_path=None)
+		cat = getattr(phrase, "category", category) or category
+		last_played = get_phrase_last_played(phrase, category=cat, db_path=db_path)
 		if last_played is None or last_played <= 0:
 			weights.append(1.0)
 		else:
@@ -699,8 +700,8 @@ def select_radio_phrase(
 	ctx: RadioContext | None = None,
 ) -> tuple[RadioPhrase, bool]:
 	"""Selecciona una frase o fortuna radial explícita (RadioPhrase, es_del_sistema)."""
-	# Sorteo 50/50: mitad y mitad de probabilidad de meter una fortuna
-	if force_system_fortune is not False and (force_system_fortune is True or random.random() < 0.5):
+	# Sorteo de fortuna del sistema cuando se fuerza explícitamente
+	if force_system_fortune is True:
 		sys_fort = get_system_fortune()
 		if sys_fort and is_spanish_text(sys_fort) and phrase_fits_context(sys_fort, ctx):
 			return RadioPhrase(sys_fort, "fortuna"), True
@@ -712,7 +713,26 @@ def select_radio_phrase(
 	if not pool:
 		# Fallback explícito: si el contexto descarta todo, recurrimos a fortunas neutras o al pool general
 		pool = [p for p in CARPINCHO_PHRASES if getattr(p, "category", None) == "fortuna"] or list(CARPINCHO_PHRASES)
-	chosen = weighted_choice_by_recency(pool, category="fortuna", db_path=db_path)
+
+	# Balanceo probabilístico por categoría para dar presencia justa a todos los bancos
+	pool_by_cat: dict[str, list[RadioPhrase]] = {}
+	for p in pool:
+		c = getattr(p, "category", "fortuna")
+		pool_by_cat.setdefault(c, []).append(p)
+
+	categories = sorted(pool_by_cat.keys())
+	chosen_category = random.choice(categories)
+
+	if chosen_category == "fortuna" and force_system_fortune is not False and random.random() < 0.5:
+		sys_fort = get_system_fortune()
+		if sys_fort and is_spanish_text(sys_fort) and phrase_fits_context(sys_fort, ctx):
+			return RadioPhrase(sys_fort, "fortuna"), True
+		bundled = get_bundled_fortune(db_path=db_path)
+		if bundled and is_spanish_text(bundled) and phrase_fits_context(bundled, ctx):
+			return RadioPhrase(bundled, "fortuna"), True
+
+	sub_pool = pool_by_cat[chosen_category]
+	chosen = weighted_choice_by_recency(sub_pool, category=chosen_category, db_path=db_path)
 	return chosen, False
 
 

@@ -37,6 +37,7 @@ class RadioContext(NamedTuple):
 	estacion: str = "primavera"
 	mes: int = 10
 	temp_c: int | None = None
+	outro_mode: str = "continue"
 
 
 def get_franja_horaria(hour: int) -> str:
@@ -76,7 +77,11 @@ def get_estacion(month: int) -> str:
 	return "primavera"
 
 
-def build_radio_context(dt: datetime | None = None, temp_c: float | None = None) -> RadioContext:
+def build_radio_context(
+	dt: datetime | None = None,
+	temp_c: float | None = None,
+	outro_mode: str = "continue",
+) -> RadioContext:
 	"""Arma el contexto de la transmisión a partir de la fecha/hora local y (opcional) la temperatura actual."""
 	if dt is None:
 		dt = datetime.now().astimezone()
@@ -92,6 +97,7 @@ def build_radio_context(dt: datetime | None = None, temp_c: float | None = None)
 		estacion=get_estacion(dt.month),
 		mes=dt.month,
 		temp_c=None if temp_c is None else round(float(temp_c)),
+		outro_mode=outro_mode,
 	)
 
 
