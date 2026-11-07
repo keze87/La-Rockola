@@ -112,6 +112,8 @@ CARPINCHO_SABIDURIA: tuple[str, ...] = (
 	"Señoras y señores, recuerden el consejo del día: la vida es como un carpincho tomando sol al costado del río... hay que tomársela con calma y que nada te altere.",
 	"¿Problemas de dinero? ¿Problemas de amor? Olvidadlo por tres minutos y medio. Dejate llevar por el ritmo de la Rockola del Carpincho.",
 	"Me preguntan por privado de qué especie es el Carpincho de la Rockola. Es de la especie que sabe disfrutar de la buena música, chamigo.",
+	"Filosofía de la ribera: al mate y a las buenas amistades hay que cuidarlos de la misma manera... cebados a tiempo, con paciencia y sin dejar que se enfríen por puro descuido.",
+	"Sabiduría criolla de La Rockola: más vale un amigo que caiga de sorpresa al taller con una bolsa de bizcochitos de grasa, que cien promesas de visita por teléfono.",
 	# "Gisella, ya salió el Gerardo el Magias 3, con Gerardo de Revilla y su caballo maravilloso. ¡No te lo pierdas!",
 )
 

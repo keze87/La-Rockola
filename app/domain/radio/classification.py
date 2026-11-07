@@ -301,8 +301,13 @@ def resolve_segment_category(text: str | tuple[str, str] | RadioPhrase, default:
 	):
 		return "chismes"
 
-	# 9. Citas literarias o filosóficas con atribución de autor (e.g. '— Heráclito', '— Proverbio')
-	if " — " in text_clean or "— " in text_clean or re.search(r"—\s*[A-ZÁÉÍÓÚÑ]", text_clean):
+	# 9. Citas literarias o filosóficas con atribución de autor (e.g. '— Heráclito', '— Proverbio') o prefijos reflexivos
+	if (
+		any(text_clean.startswith(p) for p in ("Sabiduría", "Filosofía", "Reflexión", "Consejo"))
+		or " — " in text_clean
+		or "— " in text_clean
+		or re.search(r"—\s*[A-ZÁÉÍÓÚÑ]", text_clean)
+	):
 		return "fortuna"
 
 	return default

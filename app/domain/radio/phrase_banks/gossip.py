@@ -32,5 +32,6 @@ CHISMES_CARPINCHOS: tuple[str, ...] = (
 	"Chisme en la botica: Se rumorea que Don Anselmo compró tres damajuanas de vino blanco y una carpa estructural, y nadie en el pago sabe para qué lado piensa arrancar.",
 	"Se filtró en la peluquería de Gladys: Cacho el del taller anduvo averiguando discretamente cuánto sale teñirse las patillas para parecer diez años más joven.",
 	"Radio pasillo ribereño: Pocho el botero jura que vio al comisario jubilado sacando un sábalo de diez kilos con una caña mojarrera y sin ponerle carnada.",
+	"Radio pasillo ribereño: corre el rumor entre los boteros de que abajo del muelle viejo las nutrias armaron un club social clandestino con derecho de admisión, y rebotan sin piedad a cualquier perro de la orilla que no lleve corbata.",
 	"Se filtró en la despensa: La maestra de la escuela rural y el jefe de la estafeta postal se mandan recados doblados en forma de barquito de papel.",
 )
