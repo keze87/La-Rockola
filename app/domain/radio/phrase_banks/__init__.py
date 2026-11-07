@@ -7,7 +7,6 @@ from __future__ import annotations
 from app.domain.radio.phrase_banks.advertisements import (
 	AVISOS_PARROQUIALES_Y_EXTRAVIOS,
 	CARPINCHO_ADS,
-	PUBLICIDADES_COMERCIALES,
 )
 from app.domain.radio.phrase_banks.fortunes import (
 	CARPINCHO_FORTUNES,
@@ -50,7 +49,6 @@ __all__ = [
 	"DEFAULT_WEATHER_LOCATION",
 	"NOVELA_VECINAL",
 	"PRECIPITATING_CATEGORIES",
-	"PUBLICIDADES_COMERCIALES",
 	"RAIN_BOTH_DAYS",
 	"RAIN_DESCRIPTIONS",
 	"RAIN_NO_RAIN",

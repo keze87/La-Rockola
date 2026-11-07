@@ -79,26 +79,16 @@ LEAD_INS_FORTUNA: tuple[str, ...] = (
 	"Para vos que andás medio a las corridas, prestale atención a esta joyita.",
 )
 
-LEAD_INS_AVISOS_COMUNITARIOS: tuple[str, ...] = (
+LEAD_INS_AVISOS: tuple[str, ...] = (
+	"Espacio publicitario en La Rockola.",
 	"Atenti a este aviso de la comunidad carpinchera.",
+	"Mensaje de nuestros queridos auspiciantes.",
 	"Aviso importante de la vecindad de los bañados.",
 	"Atendé lo que nos bajó la capitanía de la laguna.",
 	"Llegó un aviso urgente a la mesa de control; pará la oreja:",
+	"Parte comunitario y comercial en el aire de La Rockola:",
 	"Avisos parroquiales y novedades de la cuenca; tomá nota:",
 	"Llegó un mensaje en botella al terraplén; escuchá...",
-)
-
-LEAD_INS_AVISOS_COMERCIALES: tuple[str, ...] = (
-	"Espacio publicitario en La Rockola.",
-	"Mensaje de nuestros queridos auspiciantes.",
-	"Parte comercial en el aire de La Rockola.",
-	"Auspicia este bloque de la radio la siguiente firma amiga:",
-	"Mensaje de los comercios que le ponen el hombro a la transmisión:",
-)
-
-LEAD_INS_AVISOS: tuple[str, ...] = (
-	*LEAD_INS_AVISOS_COMERCIALES,
-	*LEAD_INS_AVISOS_COMUNITARIOS,
 )
 
 LEAD_INS_OYENTES: tuple[str, ...] = (
@@ -111,24 +101,14 @@ LEAD_INS_OYENTES: tuple[str, ...] = (
 	"La audiencia se hace sentir en el WhatsApp de la radio; atendé:",
 )
 
-LEAD_INS_TRANSITO: tuple[str, ...] = (
-	"Reporte urgente desde los caminos y canales; ojo al piojo:",
-	"Nos llega este parte especial de tránsito fluvial desde las islas:",
-	"Corresponsalía fluvial nos manda este parte de rutas y arroyos:",
-	"Así están los pasos río abajo, nos cuentan desde la otra orilla:",
-	"Reporte que nos envían desde los canales de navegación ribereños:",
-)
-
-LEAD_INS_ALERTAS_CLIMA: tuple[str, ...] = (
-	"Reporte meteorológico especial desde la costa; ojo al piojo:",
-	"Cable que nos tira la gente del litoral sobre el tiempo pesado:",
-	"Parte criollo del bañado sobre el clima en la ribera:",
-	"Alerta de incomodidad criolla que nos llega desde la cuenca:",
-)
-
 LEAD_INS_ALERTAS: tuple[str, ...] = (
-	*LEAD_INS_TRANSITO,
-	*LEAD_INS_ALERTAS_CLIMA,
+	"Reporte urgente desde la costa; ojo al piojo:",
+	"Nos llega este parte especial desde las islas:",
+	"Corresponsalía fluvial nos manda este flash, escuchá:",
+	"Así están las cosas río abajo, nos cuentan desde la otra orilla:",
+	"Cable urgente que nos tira la gente del litoral:",
+	"Parte que nos acerca la posta del bañado, allá lejos:",
+	"Reporte que nos envían desde los canales de navegación ribereños:",
 )
 
 LEAD_INS_CHISMES: tuple[str, ...] = (
@@ -286,7 +266,7 @@ RADIO_OUTROS_BREAK: tuple[str, ...] = (
 
 SPECIAL_HOURS: dict[int, str] = {
 	0: "Las doce de la noche en punto, arranca la trasnoche en La Rockola.",
-	1: "Las una de la madrugada en punto, calma y silencio en el arroyo.",
+	1: "Las una en punto, es hora de mimir.",
 	2: "Las dos de la madrugada en punto, silencio en la laguna.",
 	3: "Las tres de la mañana en punto, hora de los carpinchos sonámbulos.",
 	4: "Las cuatro de la mañana en punto, el que no duerme pega en el palo.",
@@ -313,7 +293,7 @@ SPECIAL_HOURS: dict[int, str] = {
 
 HOUR_NAMES: tuple[str, ...] = (
 	"Las doce",
-	"La una",
+	"Las una",
 	"Las dos",
 	"Las tres",
 	"Las cuatro",
@@ -359,14 +339,14 @@ WEATHER_LEAD_INS: tuple[str, ...] = (
 WEATHER_TEMPLATES: tuple[str, ...] = (
 	# Plantilla 1: Directa y clásica
 	"{lead} En {location}, tenemos {temp_str} de temperatura actual.{desc_phrase} Para hoy la mínima es de {min_today_str} y la máxima alcanzará los {max_today_str}. Para mañana esperamos {range_tomorrow_str}. {lluvia_desc}",
-	# Plantilla 2: Centrada en la perspectiva
+	# Plantilla 2: Centrada en la sensación térmica y perspectiva
 	"{lead} Para {location}, la temperatura en este momento marca {temp_str}.{desc_phrase} Hoy el termómetro se moverá entre {min_today_str} de mínima y {max_today_str} de máxima. Mañana vamos a andar {range_tomorrow_str}. {lluvia_desc}",
 	# Plantilla 3: Coloquial carpinchera
 	"{lead} Clavamos {temp_str} en {location}.{desc_phrase} Para lo que queda del día esperamos entre {min_today_str} y {max_today_str}. Y ojo a mañana que esperamos {range_tomorrow_str}. {lluvia_desc}",
 	# Plantilla 4: Costera / orilla
 	"{lead} Reporte fresco desde {location}: el termómetro acusa {temp_str}.{desc_phrase} Para hoy calculamos entre {min_today_str} y {max_today_str}. Mañana nos espera {range_tomorrow_str}. {lluvia_desc}",
 	# Plantilla 5: Enfocada en la jornada
-	"{lead} Así pinta la cosa por {location}: tenemos {temp_str} de temperatura.{desc_phrase} La mínima prevista para hoy ronda los {min_today_str} y la máxima trepará a {max_today_str}. Mañana andaremos {range_tomorrow_str}. {lluvia_desc}",
+	"{lead} Así pinta la cosa por {location}: tenemos {temp_str} de térmica.{desc_phrase} La mínima prevista para hoy ronda los {min_today_str} y la máxima trepará a {max_today_str}. Mañana andaremos {range_tomorrow_str}. {lluvia_desc}",
 	# Plantilla 6: Radiofónica dinámica
 	"{lead} Actualizamos los números del tiempo en {location}: clava {temp_str}.{desc_phrase} Hoy la marca irá de {min_today_str} a {max_today_str}. Y mirando a mañana, pronostican {range_tomorrow_str}. {lluvia_desc}",
 )
@@ -466,10 +446,6 @@ REACCIONES_CLIMA: dict[str, tuple[str, ...]] = {
 		"¡Pesadito el calor! No te olvides el protector solar.",
 		"¡Está para quedarse a la sombra tomando mates fríos!",
 		"¡Qué solazo! A buscar la sombrita del ceibo urgente.",
-		"¡Noche pesadita en la ribera! A prender el ventilador y tomar algo bien fresco.",
-		"¡Pesada la noche en la cuenca! No corre una gota de aire junto al arroyo.",
-		"¡Noche calurosa en el Delta! Lindo para sentarse afuera a esperar que refresque.",
-		"¡Aire caliente que no afloja! A hidratarse y buscar el fresco.",
 	),
 	"frio": (
 		"¡Fresquito para poncho! Metan más leña al fuego.",
@@ -479,11 +455,11 @@ REACCIONES_CLIMA: dict[str, tuple[str, ...]] = {
 		"¡Pucha que está fresco! Lindo para unas tortas fritas.",
 	),
 	"lluvia": (
-		"¡Se vino el agua nomás! A disfrutar del olorcito a tierra mojada bajo techo.",
-		"¡Hermoso para matear adentro y escuchar buena música mientras llueve!",
-		"¡A resguardarse del agua y circular con precaución!",
-		"¡Al pelo la lluvia para meter descanso y radio!",
-		"¡Chaparrón en la zona! A esperar que pase con unos buenos amargos.",
+		"¡Clima soñado de lluvia para andar chapoteando en el agua!",
+		"¡Qué hermosura de agua! La laguna nos sonríe.",
+		"¡Se viene el agua nomás! A disfrutar del olorcito a tierra mojada.",
+		"¡Al pelo la lluvia para meter siesta carpincha!",
+		"¡Chaparrón a la vista! El río va a estar una pinturita.",
 	),
 	"agradable": (
 		"¡Una pinturita de día para andar al aire libre!",
@@ -524,60 +500,36 @@ REACCIONES_FORTUNA: tuple[str, ...] = (
 	"¡Posta pura! Al que no le guste, que vaya a rumiar pasto amargo.",
 )
 
-REACCIONES_AVISOS_COMERCIALES: tuple[str, ...] = (
-	"¡Comercio amigo y de primera en el humedal!",
-	"¡Auspiciante de fierro que acompaña a La Rockola!",
-	"Dato clave para tener en cuenta en el pago.",
-	"¡Calidad y confianza para los vecinos de la zona!",
-)
-
-REACCIONES_AVISOS_COMUNITARIOS: tuple[str, ...] = (
+REACCIONES_AVISOS: tuple[str, ...] = (
 	"¡Buen dato para los vecinos de la zona!",
 	"Excelente servicio a la comunidad, como siempre en La Rockola.",
-	"A tenerlo muy en cuenta la vecindad de la orilla.",
-	"Ojo al piojo los que anden por ahí, tomen nota si encuentran algo.",
-	"¡Solidaridad de primera en el humedal!",
-	"¡Qué gran servicio! Siempre atentos a lo que pasa entre vecinos.",
-)
-
-REACCIONES_AVISOS: tuple[str, ...] = (
-	*REACCIONES_AVISOS_COMERCIALES,
-	*REACCIONES_AVISOS_COMUNITARIOS,
+	"A tenerlo muy en cuenta la muchachada de la orilla.",
+	"Ojo al piojo los que anden por ahí, tomen nota.",
+	"¡Comercio y comunidad de primera en el humedal!",
+	"¡Qué gran servicio! Siempre atentos a lo que pasa en el pago.",
+	"Dato clave para no quedarse a pata en el río.",
 )
 
 REACCIONES_OYENTES: tuple[str, ...] = (
 	"¡Un abrazo gigante para toda esa linda gente que hace el aguante!",
+	"¡Qué temazo que pidieron, ya mismo se lo mandamos al aire!",
 	"¡Saludos a la barra y gracias por acompañarnos siempre!",
-	"¡Al pelo ese mensaje, aguante la audiencia de La Rockola!",
-	"¡Gente laburadora y de primera sintonizando la radio!",
+	"¡Al pelo ese mensaje, aguante la audiencia carpincha!",
+	"¡Música y mate para todos ellos, que se sientan como en casa!",
+	"¡Gente laburadora y de primera sintonizando La Rockola!",
 	"¡Un saludo cariñoso para toda la muchachada que escucha!",
 )
 
-REACCIONES_OYENTES_PEDIDO: tuple[str, ...] = (
-	"¡Hermoso tema que recuerdan los oyentes!",
-	"¡Qué buen gusto musical tiene la muchachada que nos escribe!",
-	"¡Un clásico de aquellos para alegrar la jornada de trabajo!",
-	"¡Saludos a los muchachos y gracias por compartir sus canciones favoritas!",
-)
-
-REACCIONES_TRANSITO: tuple[str, ...] = (
-	"¡Dato clave para no quedarse a pata en el río!",
-	"¡A navegar con calma y sin apuro por los canales!",
-	"¡Paciencia en los caminos y a cuidar el vehículo en la huella!",
-	"¡Aviso fundamental para los boteros y conductores de la zona!",
-	"Fuerza a los que andan cruzando ese paso ahora mismo.",
-)
-
-REACCIONES_CLIMA_ALERTAS: tuple[str, ...] = (
-	"¡Qué lo tiró, che! Prendan el espiral y cierren las ventanas.",
-	"¡Mamita querida, qué pesadez ambiental! A hidratarse y buscar la sombra.",
-	"¡Terrible situación con los mosquitos! Aguanten los trapos que ya va a refrescar.",
-	"A tener paciencia con el clima y cuidarse del solazo.",
-)
-
 REACCIONES_ALERTAS: tuple[str, ...] = (
-	*REACCIONES_TRANSITO,
-	*REACCIONES_CLIMA_ALERTAS,
+	"¡Qué lo tiró, che! Prendan el espiral y cierren las ventanas.",
+	"¡Mamita querida, qué plaga brava! Vayan a refugiarse en la cueva.",
+	"¡Terrible situación! Aguanten los trapos que ya va a pasar.",
+	"¡Uy, qué quilombo allá en las islas, eh!",
+	"¡Fuerza a los que andan cruzando ese paso ahora mismo!",
+	"¡Qué panorama bravo por allá; un abrazo grande a los isleños!",
+	"Que se cuiden los que están en la zona, nosotros les mandamos un abrazo desde la cabina.",
+	"¡Mamita querida lo que les toca pasar allá lejos! A tener paciencia y cuidarse.",
+	"Mucha fuerza para la gente de la costa que le está haciendo frente a la correntada.",
 )
 
 REACCIONES_CHISMES: tuple[str, ...] = (
@@ -644,31 +596,13 @@ REACCIONES_BY_CATEGORY: dict[str, tuple[str, ...]] = {
 # ---------------------------------------------------------------------------
 
 
-def get_lead_ins_for_category(category: str, subcategory: str | None = None) -> tuple[str, ...]:
-	"""Devuelve los lead-ins pertinentes a la categoría o subcategoría del segmento."""
-	if subcategory == "aviso_comercial":
-		return LEAD_INS_AVISOS_COMERCIALES
-	if subcategory == "aviso_comunitario":
-		return LEAD_INS_AVISOS_COMUNITARIOS
-	if subcategory == "alerta_transito":
-		return LEAD_INS_TRANSITO
-	if subcategory == "alerta_clima":
-		return LEAD_INS_ALERTAS_CLIMA
+def get_lead_ins_for_category(category: str) -> tuple[str, ...]:
+	"""Devuelve los lead-ins pertinentes a la categoría del segmento."""
 	return LEAD_INS_BY_CATEGORY.get(category, LEAD_INS_UNKNOWN)
 
 
-def get_reactions_for_category(category: str, subcategory: str | None = None) -> tuple[str, ...]:
-	"""Devuelve las reacciones de cabina pertinentes a la categoría o subcategoría del segmento."""
-	if subcategory == "aviso_comercial":
-		return REACCIONES_AVISOS_COMERCIALES
-	if subcategory == "aviso_comunitario":
-		return REACCIONES_AVISOS_COMUNITARIOS
-	if subcategory == "alerta_transito":
-		return REACCIONES_TRANSITO
-	if subcategory == "alerta_clima":
-		return REACCIONES_CLIMA_ALERTAS
-	if subcategory == "oyentes_pedido":
-		return (*REACCIONES_OYENTES, *REACCIONES_OYENTES_PEDIDO)
+def get_reactions_for_category(category: str) -> tuple[str, ...]:
+	"""Devuelve las reacciones de cabina pertinentes a la categoría del segmento."""
 	return REACCIONES_BY_CATEGORY.get(category, REACCIONES_UNKNOWN)
 
 
