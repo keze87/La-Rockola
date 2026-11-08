@@ -39,7 +39,7 @@ from app.domain.radio.segments import (
 from app.domain.radio.templates import expand_phrase_variants
 
 ALLOWED_RADIO_PLACEHOLDERS: frozenset[str] = frozenset(
-	{"vocativo", "companero", "filosofo", "momento", "saludo", "cohost"}
+	{"vocativo", "companero", "filosofo", "momento", "saludo", "cohost", "host"}
 )
 ALLOWED_WEATHER_PLACEHOLDERS: frozenset[str] = frozenset(
 	{

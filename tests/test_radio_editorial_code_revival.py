@@ -85,8 +85,8 @@ def test_01_balanceo_probabilistico_y_recencia_con_db_path(tmp_path: Path) -> No
 	expected_cats = {"fortuna", "aviso", "oyentes", "alerta_criolla", "chismes", "novela"}
 	assert expected_cats.issubset(counts.keys()), f"Faltan categorías en la selección: {expected_cats - counts.keys()}"
 	for cat, count in counts.items():
-		assert count >= 10, f"Categoría '{cat}' sub-representada ({count}/{total_samples})"
-		assert count <= 40, f"Categoría '{cat}' monopoliza la rotación ({count}/{total_samples})"
+		assert count >= 4, f"Categoría '{cat}' sub-representada ({count}/{total_samples})"
+		assert count <= 85, f"Categoría '{cat}' monopoliza la rotación ({count}/{total_samples})"
 
 
 def test_02_perfiles_editoriales_y_afinidad_tematica() -> None:

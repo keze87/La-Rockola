@@ -79,7 +79,7 @@ def get_all_weather_desc_phrases() -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-_PLACEHOLDER_RE = re.compile(r"\{(vocativo|companero|filosofo|momento|saludo|cohost)\}")
+_PLACEHOLDER_RE = re.compile(r"\{(vocativo|companero|filosofo|momento|saludo|cohost|host)\}")
 
 
 def _placeholder_values(
@@ -87,6 +87,7 @@ def _placeholder_values(
 	momento: str,
 	saludo: str,
 	cohost_name: str | None,
+	host_name: str | None = None,
 ) -> dict[str, str]:
 	return {
 		"vocativo": VOCATIVOS.get(gender, VOCATIVOS[DEFAULT_GENDER]),
@@ -95,6 +96,7 @@ def _placeholder_values(
 		"momento": momento,
 		"saludo": saludo,
 		"cohost": cohost_name or DEFAULT_COHOST_NAME,
+		"host": host_name or "Tomás",
 	}
 
 
@@ -103,10 +105,12 @@ def render_phrase(
 	ctx: RadioContext | None = None,
 	addressee_voice: str | None = None,
 	cohost_name: str | None = None,
+	host_name: str | None = None,
+	host_voice: str | None = None,
 ) -> str:
 	"""
 	Resuelve los placeholders de una frase: {vocativo}, {companero}, {filosofo} (concuerdan con el género de
-	quien recibe el mensaje, addressee_voice), {momento}, {saludo} (según la franja horaria) y {cohost}.
+	quien recibe el mensaje, addressee_voice), {momento}, {saludo} (según la franja horaria), {cohost} y {host}.
 	Sin ctx usa fórmulas neutras ("la jornada", "Muy buenas"). Las llaves desconocidas se dejan intactas.
 	"""
 	if "{" not in template:
@@ -114,7 +118,8 @@ def render_phrase(
 	gender = VOICE_GENDERS.get(addressee_voice or "", DEFAULT_GENDER)
 	momento = ctx.momento if ctx else "la jornada"
 	saludo = ctx.saludo if ctx else "Muy buenas"
-	values = _placeholder_values(gender, momento, saludo, cohost_name)
+	effective_host = host_name or (VOICE_NAMES.get(host_voice, "Tomás") if host_voice else "Tomás")
+	values = _placeholder_values(gender, momento, saludo, cohost_name, effective_host)
 	return _PLACEHOLDER_RE.sub(lambda m: values[m.group(1)], template)
 
 
@@ -123,7 +128,7 @@ def _expand_phrase_variants_cached(template: str) -> tuple[str, ...]:
 	needs = set(_PLACEHOLDER_RE.findall(template))
 	if not needs:
 		return (template,)
-	if "cohost" in needs:
+	if needs & {"cohost", "host"}:
 		subjects: list[tuple[str | None, str]] = [
 			(name, VOICE_GENDERS.get(v, DEFAULT_GENDER)) for v, name in VOICE_NAMES.items()
 		]
@@ -137,7 +142,7 @@ def _expand_phrase_variants_cached(template: str) -> tuple[str, ...]:
 	for name, gender in subjects:
 		for momento in momentos:
 			for saludo in saludos:
-				values = _placeholder_values(gender, momento, saludo, name)
+				values = _placeholder_values(gender, momento, saludo, cohost_name=name, host_name=name)
 				text = _PLACEHOLDER_RE.sub(lambda m, v=values: v[m.group(1)], template)
 				if text not in out:
 					out.append(text)

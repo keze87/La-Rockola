@@ -51,6 +51,15 @@ BASE_RADIO_INTROS: tuple[str, ...] = (
 	"Silencio en el bajo. Escuchá lo que se viene.",
 	"Sin rodeos: consola prendida, dial sintonizado y tema puesto.",
 	"Directo al hueso. Así suena La Rockola.",
+	# Presentaciones personales del conductor / carpincho al aire
+	"Acá {host}, siempre listo para acompañarte y ponerle música a tu vida.",
+	"Acá {host} en los controles de La Rockola, firme en la cabina para hacerte compañía.",
+	"Les habla {host} desde la ribera: acomodá la radio que tenemos tanda asegurada.",
+	"Acá {host} reportándose al micrófono, con el mate a punto y los mejores temas del pago.",
+	"Habla {host} desde el control central: subí el volumen que el dial hoy es nuestro.",
+	"En el micrófono quien les habla, {host}, listo para remarla juntos con buena música.",
+	"Acá {host} desde los pilotes del estudio, sintonizando la frecuencia justa para tu día.",
+	"Por acá {host}, transmitiendo en vivo para que no te falte una buena melodía en la jornada.",
 )
 RADIO_INTROS: tuple[str, ...] = (*BASE_RADIO_INTROS, *SEPARADORES_Y_SLOGANS)
 

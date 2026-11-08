@@ -212,9 +212,18 @@ def render_tracked_phrase(
 	ctx: RadioContext | None = None,
 	addressee_voice: str | None = None,
 	cohost_name: str | None = None,
+	host_name: str | None = None,
+	host_voice: str | None = None,
 ) -> str:
 	"""Resuelve placeholders y recuerda de qué plantilla salió el texto (con caché LRU acotada)."""
-	rendered = render_phrase(template, ctx, addressee_voice=addressee_voice, cohost_name=cohost_name)
+	rendered = render_phrase(
+		template,
+		ctx,
+		addressee_voice=addressee_voice,
+		cohost_name=cohost_name,
+		host_name=host_name,
+		host_voice=host_voice,
+	)
 	if rendered != template:
 		clean_r = _clean_phrase_text(rendered)
 		_RENDERED_TO_TEMPLATE_KEY[clean_r] = _clean_phrase_text(template)
@@ -694,14 +703,26 @@ def get_bundled_fortune(db_path: Path | str | None = None) -> str | None:
 	return weighted_choice_by_recency(_BUNDLED_FORTUNES_CACHE, category="fortuna_bundled", db_path=db_path)
 
 
+# Ponderación probabilística por categoría: 'fortuna' cuenta con un banco local nutrido y más de
+# 10.000 citas importadas de fortune, por lo que tiene mayor probabilidad que bancos reducidos.
+CATEGORY_WEIGHTS: dict[str, float] = {
+	"fortuna": 1.2,
+	"aviso": 1.2,
+	"oyentes": 1.0,
+	"alerta_criolla": 1.0,
+	"novela": 0.8,
+	"chismes": 0.8,
+}
+
+
 def select_radio_phrase(
 	force_system_fortune: bool | None = None,
 	db_path: Path | str | None = None,
 	ctx: RadioContext | None = None,
 ) -> tuple[RadioPhrase, bool]:
 	"""Selecciona una frase o fortuna radial explícita (RadioPhrase, es_del_sistema)."""
-	# Sorteo de fortuna del sistema cuando se fuerza explícitamente
-	if force_system_fortune is True:
+	# Sorteo de fortuna del sistema o bundled con alta probabilidad (50%) por su enorme variedad
+	if force_system_fortune is not False and (force_system_fortune is True or random.random() < 0.5):
 		sys_fort = get_system_fortune()
 		if sys_fort and is_spanish_text(sys_fort) and phrase_fits_context(sys_fort, ctx):
 			return RadioPhrase(sys_fort, "fortuna"), True
@@ -714,22 +735,15 @@ def select_radio_phrase(
 		# Fallback explícito: si el contexto descarta todo, recurrimos a fortunas neutras o al pool general
 		pool = [p for p in CARPINCHO_PHRASES if getattr(p, "category", None) == "fortuna"] or list(CARPINCHO_PHRASES)
 
-	# Balanceo probabilístico por categoría para dar presencia justa a todos los bancos
+	# Balanceo probabilístico por categoría entre los bancos de frases locales
 	pool_by_cat: dict[str, list[RadioPhrase]] = {}
 	for p in pool:
 		c = getattr(p, "category", "fortuna")
 		pool_by_cat.setdefault(c, []).append(p)
 
 	categories = sorted(pool_by_cat.keys())
-	chosen_category = random.choice(categories)
-
-	if chosen_category == "fortuna" and force_system_fortune is not False and random.random() < 0.5:
-		sys_fort = get_system_fortune()
-		if sys_fort and is_spanish_text(sys_fort) and phrase_fits_context(sys_fort, ctx):
-			return RadioPhrase(sys_fort, "fortuna"), True
-		bundled = get_bundled_fortune(db_path=db_path)
-		if bundled and is_spanish_text(bundled) and phrase_fits_context(bundled, ctx):
-			return RadioPhrase(bundled, "fortuna"), True
+	weights = [CATEGORY_WEIGHTS.get(cat, 1.0) for cat in categories]
+	chosen_category = random.choices(categories, weights=weights, k=1)[0]
 
 	sub_pool = pool_by_cat[chosen_category]
 	chosen = weighted_choice_by_recency(sub_pool, category=chosen_category, db_path=db_path)

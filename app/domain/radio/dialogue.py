@@ -383,8 +383,9 @@ def build_radio_dialogue_plan(
 		outro_candidates = filter_by_context(outro_pool, ctx, "salida") or list(outro_pool)
 		outro = weighted_choice_by_recency(outro_candidates, category="salida", db_path=db_path)
 
-	rendered_intro = render_tracked_phrase(intro, ctx)
-	rendered_outro = render_tracked_phrase(outro, ctx)
+	host_name = VOICE_NAMES.get(host_voice, "Tomás")
+	rendered_intro = render_tracked_phrase(intro, ctx, host_name=host_name, host_voice=host_voice)
+	rendered_outro = render_tracked_phrase(outro, ctx, host_name=host_name, host_voice=host_voice)
 
 	if lead_in is not None:
 		effective_lead_in = render_tracked_phrase(lead_in, ctx)
@@ -539,7 +540,8 @@ def generate_modular_radio_script(
 
 	ctx = build_radio_context(dt)
 	intro_candidates = filter_by_context(RADIO_INTROS, ctx, "intro") or list(RADIO_INTROS)
-	intro = render_phrase(random.choice(intro_candidates), ctx)
+	host_name = VOICE_NAMES.get(voice, "Tomás")
+	intro = render_phrase(random.choice(intro_candidates), ctx, host_name=host_name, host_voice=voice)
 	hora_seg, minuto_seg, _ = get_modular_time_segments(dt)
 	phrase, is_system_fortune = select_radio_phrase(force_system_fortune, ctx=ctx)
 	fortuna = phrase.text
