@@ -238,6 +238,25 @@ def test_carpincho_dating_ex_and_levante_phrases() -> None:
 	assert any("de levante" in str(b) for b in RADIO_OUTROS_BREAK)
 
 
+def test_carpincho_previa_romance_and_gender_habits() -> None:
+	"""Verifica frases de previa, romance isleño y hábitos de carpinchos machos vs carpinchas."""
+	from app.domain.radio.segments import BASE_RADIO_INTROS, RADIO_OUTROS
+
+	# 1. Previa en intros y outros
+	assert any("previa" in str(i).lower() for i in BASE_RADIO_INTROS)
+	assert any("previa" in str(o).lower() for o in RADIO_OUTROS)
+
+	# 2. Romance y actos románticos carpinchos (camalotes, juncos, serenatas)
+	assert any(
+		"camalote" in str(o) and ("romance" in str(o) or "enamor" in str(o) or "ramo" in str(o)) for o in RADIO_OUTROS
+	)
+
+	# 3. Hábitos de machos (hacer fuerza con caranchos) vs carpinchas (pestañas y pintarse las garras)
+	intros_gv = [i for i in BASE_RADIO_INTROS if isinstance(i, GenderVariant)]
+	assert any("fuerza con caranchos" in i.m and ("pestañas" in i.f or "garras" in i.f) for i in intros_gv)
+	assert any("pintarme las garras" in i.f or "pintarse las garras" in i.f for i in intros_gv)
+
+
 def test_static_validation_passes_with_gender_variants() -> None:
 	"""Verifica que validate_radio_banks valide la integridad sin placeholders obsoletos."""
 	validate_radio_banks(strict=True)

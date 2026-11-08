@@ -118,6 +118,24 @@ BASE_RADIO_INTROS: tuple[str | GenderVariant, ...] = (
 		m="Acá {host}, con el corazón libre y muchas pretendientes en la orilla... ¡arranca otra tanda al rojo vivo!",
 		f="Acá {host}, con el corazón libre y muchos pretendientes en la orilla... ¡arranca otra tanda al rojo vivo!",
 	),
+	# Hábitos de carpinchos machos vs carpinchas y modo previa
+	GenderVariant(
+		m="Acá {host}: terminé de hacer fuerza con caranchos en el bañado y me vine derecho a la radio a poner temazos.",
+		f="Acá {host}: me terminé de poner las pestañas y de pintarme las garras, y me vine divina a la radio a poner temazos.",
+	),
+	GenderVariant(
+		m="Les habla {host}: lomo curtido a puro sol, garras afiladas y listo para domar el dial.",
+		f="Les habla {host}: mascarilla de barro termal recién sacada, garras esculpidas y lista para domar el dial.",
+	),
+	GenderVariant(
+		m="Acá {host}, un macho de ley marcando territorio en la consola con el mejor chamamé y cumbia.",
+		f="Acá {host}, una carpincha empoderada marcando territorio en la consola con el mejor chamamé y cumbia.",
+	),
+	GenderVariant(
+		m="Acá {host}, armando la previa en el control: un carpincho con la birra helada y la consola que echa humo.",
+		f="Acá {host}, armando la previa en el control: una carpincha con la birra helada y la consola que echa humo.",
+	),
+	"¡Prendete a La Rockola que acá arranca la previa oficial del humedal! Mates, fernet y cumbia al palo.",
 	"Acá {host} desde los pilotes del estudio, sintonizando la frecuencia justa para tu día.",
 	"Por acá {host}, transmitiendo en vivo para que no te falte una buena melodía en la jornada.",
 )
@@ -323,6 +341,20 @@ RADIO_OUTROS: tuple[str | GenderVariant, ...] = (
 	),
 	"¡Subile dos rayitas al parlante! Esta noche salgo de levante por la ribera y este tema me pone a punto caramelo.",
 	"Con este ritmo me perfumo, me lustro las garras y salgo de levante sin pedir permiso. ¡Mandale play!",
+	# Modo previa y romance carpincho
+	"¡Subile al parlante que esta es la previa que te merecés! Armate un fernet en jarra y dejate llevar.",
+	GenderVariant(
+		m="¡A meterle ritmo a la previa! Este carpincho se toma el último trago de la jarra y le manda cumbia.",
+		f="¡A meterle ritmo a la previa! Esta carpincha se toma el último trago de la jarra y le manda cumbia.",
+	),
+	GenderVariant(
+		m="Este tema es puro romance isleño: para llevarle un ramo de juncos frescos a tu amor y flotar en el camalote.",
+		f="Este tema es puro romance isleño: para que te traigan un ramo de juncos frescos y flotar en el camalote.",
+	),
+	GenderVariant(
+		m="Un tema para enamorarse en la ribera: un galán cantando serenatas entre los juncos a la luz de la luna.",
+		f="Un tema para enamorarse en la ribera: una reina recibiendo serenatas entre los juncos a la luz de la luna.",
+	),
 	# "¡Para Maru que nos escucha desde casa, te deseamos que tengas un buen día! ¡Un carpinchazo de tema para vos; cambiame la música!",
 )
 
@@ -832,6 +864,15 @@ RADIO_REACTIONS: tuple[str | GenderVariant, ...] = (
 	GenderVariant(
 		m="¡Qué peligro ese tema! Te hace acordar de tu ex y te dan ganas de salir de levante al toque, compadre.",
 		f="¡Qué peligro ese tema! Te hace acordar de tu ex y te dan ganas de salir de levante al toque, comadre.",
+	),
+	# Romance carpincho
+	GenderVariant(
+		m="¡Qué ternura de tema! Me dieron ganas de regalarle un ramo de camalotes en flor a mi amada, compadre.",
+		f="¡Qué ternura de tema! Me dieron ganas de regalarle un ramo de camalotes en flor a mi amado, comadre.",
+	),
+	GenderVariant(
+		m="Eso no es música, ¡es poesía de los esteros! Ideal para acurrucarse en la orilla con tu carpincha.",
+		f="Eso no es música, ¡es poesía de los esteros! Ideal para acurrucarse en la orilla con tu carpincho.",
 	),
 )
 
