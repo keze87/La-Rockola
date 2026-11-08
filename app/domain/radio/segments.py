@@ -8,7 +8,7 @@ from app.domain.radio.phrase_banks.listeners import SEPARADORES_Y_SLOGANS
 from app.domain.radio.templates import resolve_bank_for_gender
 from app.domain.radio.voices import GenderVariant
 
-BASE_RADIO_INTROS: tuple[str, ...] = (
+BASE_RADIO_INTROS: tuple[str | GenderVariant, ...] = (
 	"Micrófono abierto, patas en el agua. Así arranca La Rockola.",
 	"¿Quién dejó la pava en el control central? Bueno, no importa... ¡al aire en La Rockola!",
 	"Directo desde el juncal para toda la cuenca: transmite La Rockola del Carpincho.",
@@ -77,6 +77,30 @@ BASE_RADIO_INTROS: tuple[str, ...] = (
 	GenderVariant(
 		m="Acá {host}, el rey del bañado, firme al pie del cañón.",
 		f="Acá {host}, la reina del bañado, firme al pie del cañón.",
+	),
+	GenderVariant(
+		m="Hoy me vine con unas bermudas de jean y se me congelan las patas, pero acá {host} no afloja al micrófono.",
+		f="Hoy me vine con una mini re cortita y se me congelan las patas, pero acá {host} no afloja al micrófono.",
+	),
+	GenderVariant(
+		m="Acá {host}, hoy me vine de camisa hawaiana y bermudas floreadas, listo para ponerle color al dial.",
+		f="Acá {host}, hoy me vine con un solerito re fresco y sandalias bajas, lista para ponerle color al dial.",
+	),
+	GenderVariant(
+		m="Acá {host}, peinado a la gomina con agua del arroyo y con las bermudas planchadas a la perfección.",
+		f="Acá {host}, hoy me vine divina, con rodete tirante y vincha para que la humedad del Delta no me arruine el peinado.",
+	),
+	GenderVariant(
+		m="Acá {host}, un carpincho coqueto y con onda, firme en la consola para musicalizar tu día.",
+		f="Acá {host}, una carpincha coqueta y con onda, firme en la consola para musicalizar tu día.",
+	),
+	GenderVariant(
+		m="Acá {host}, de musculosa, bermudas de lino y mate en mano; facha ribereña al cien por ciento.",
+		f="Acá {host}, de calzas cómodas, remera solapada y mate en mano; elegancia isleña al cien por ciento.",
+	),
+	GenderVariant(
+		m="Acá {host}, el galán del bañado, transmitiendo en vivo entre los camalotes.",
+		f="Acá {host}, la diva del bañado, transmitiendo en vivo entre los camalotes.",
 	),
 	"Acá {host} desde los pilotes del estudio, sintonizando la frecuencia justa para tu día.",
 	"Por acá {host}, transmitiendo en vivo para que no te falte una buena melodía en la jornada.",
@@ -209,7 +233,7 @@ RADIO_LEAD_INS: tuple[str, ...] = (
 	+ LEAD_INS_UNKNOWN
 )
 
-RADIO_OUTROS: tuple[str, ...] = (
+RADIO_OUTROS: tuple[str | GenderVariant, ...] = (
 	"Dejamos de parlotear y que hable el bajo. ¡Mandale play!",
 	"Acomodá el lomo en la orilla que este tema arranca al palo.",
 	"Menos charla y más cumbia. ¡Cambiame la música!",
@@ -249,6 +273,19 @@ RADIO_OUTROS: tuple[str, ...] = (
 	"¡Suficiente cháchara por ahora! Subile dos rayitas al parlante y disfrutá este temazo que se viene.",
 	"Se acaba la charla en la cabina pero empieza el baile del otro lado. ¡Mandale play nomás!",
 	"Cambiamos de ritmo sin doblar la esquina y nos metemos de lleno en el próximo temazo. ¡Mandale play que la mezcla no frena!",
+	# Estilismo y pista de baile
+	GenderVariant(
+		m="¡A mover el esqueleto! Me acomodo las bermudas y que reviente el parlante con este tema.",
+		f="¡A mover el esqueleto! Me acomodo la pollera y que reviente el parlante con este tema.",
+	),
+	GenderVariant(
+		m="Bueno, me calzo las alpargatas de fiesta y los dejo bailando con esto que se viene. ¡Mandale play!",
+		f="Bueno, me calzo las sandalias de fiesta y los dejo bailando con esto que se viene. ¡Mandale play!",
+	),
+	GenderVariant(
+		m="¡A sacudir las tabas! Un carpincho con facha no se queda sentado cuando suena este ritmo.",
+		f="¡A sacudir las tabas! Una carpincha con glamour no se queda sentada cuando suena este ritmo.",
+	),
 	# "¡Para Maru que nos escucha desde casa, te deseamos que tengas un buen día! ¡Un carpinchazo de tema para vos; cambiame la música!",
 )
 
@@ -472,6 +509,10 @@ PASES_A_CLIMA_POR_CONDICION: dict[str, tuple[str | GenderVariant, ...]] = {
 			m="{cohost}, compadre, asomate con poncho a la ventana y decime si afloja esta helada.",
 			f="{cohost}, comadre, asomate con poncho a la ventana y decime si afloja esta helada.",
 		),
+		GenderVariant(
+			m="Che {cohost}, hoy te viniste de bermudas y te vas a congelar las patas... ¿cuánto marca el termómetro?",
+			f="Che {cohost}, hoy te viniste con una mini re cortita y se te van a congelar las patas... ¿cuánto marca el termómetro?",
+		),
 		"Decime qué onda afuera, {cohost}, ¿sale mate hirviendo para sacarnos este fresquete?",
 		"A ver {cohost}, cantame los números del tiempo antes de que se nos escarten los dedos.",
 		"¿Qué dice el radar de la cuenca, {cohost}? Mirá que el viento sur nos viene castigando lindo.",
@@ -493,6 +534,10 @@ PASES_A_CLIMA_POR_CONDICION: dict[str, tuple[str | GenderVariant, ...]] = {
 		GenderVariant(
 			m="{cohost}, compadre, no se aguanta la chapa del techo... decime si refresca un poco o seguimos sufriendo.",
 			f="{cohost}, comadre, no se aguanta la chapa del techo... decime si refresca un poco o seguimos sufriendo.",
+		),
+		GenderVariant(
+			m="Che {cohost}, ¿te viniste de musculosa y bermudas para aguantar la térmica? Cantame cómo viene el solazo.",
+			f="Che {cohost}, ¿te viniste con solero y sandalias para aguantar la térmica? Cantame cómo viene el solazo.",
 		),
 		"A ver {cohost}, tirame la posta del calor: ¿está para clavar siesta abajo del sauce con tereré?",
 		"Decime cómo viene la térmica afuera, {cohost}, que el sol nos está cocinando a fuego lento.",
@@ -586,6 +631,14 @@ REACCIONES_FORTUNA: tuple[str | GenderVariant, ...] = (
 	GenderVariant(
 		m="¡Naaa, qué filósofo de bañado tenemos hoy!",
 		f="¡Naaa, qué filósofa de bañado tenemos hoy!",
+	),
+	GenderVariant(
+		m="¡Miralo al tipo, filósofo de bermudas y mate amargo! Qué profundidad.",
+		f="¡Mirala a la dama, filósofa con solero y mate amargo! Qué profundidad.",
+	),
+	GenderVariant(
+		m="¡Qué facha de pensador tenés hoy, compadre! Impecable esa reflexión.",
+		f="¡Qué facha de pensadora tenés hoy, comadre! Impecable esa reflexión.",
 	),
 	"¡Aplaudo de pie con las dos patas delanteras!",
 	"¡Esa frase te acomoda las ideas de una sola cebada!",

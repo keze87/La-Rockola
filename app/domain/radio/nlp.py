@@ -253,7 +253,13 @@ def _get_gv_counterparts_map() -> dict[str, list[str]]:
 	if _GV_COUNTERPARTS_CACHE:
 		return _GV_COUNTERPARTS_CACHE
 	gv_items: list[GenderVariant] = []
-	for bank in [RADIO_INTROS, PASES_A_CLIMA, *REACCIONES_BY_CATEGORY.values(), *REACCIONES_CLIMA.values()]:
+	for bank in [
+		RADIO_INTROS,
+		RADIO_OUTROS,
+		PASES_A_CLIMA,
+		*REACCIONES_BY_CATEGORY.values(),
+		*REACCIONES_CLIMA.values(),
+	]:
 		for item in bank:
 			if isinstance(item, GenderVariant) and item not in gv_items:
 				gv_items.append(item)

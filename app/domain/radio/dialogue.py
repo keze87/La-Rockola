@@ -477,12 +477,6 @@ def build_radio_dialogue_plan(
 			(reaccion_fortuna, react_voice, "reaccion", True),
 		]
 
-		return [
-			(effective_lead_in, host_voice, "lead_in", True),
-			(fortune_text, fortune_voice, fortune_category, True),
-			(reaccion_fortuna, react_voice, "reaccion", True),
-		]
-
 	available_dialogue_blocks: dict[str, list[tuple[str, str, str, bool]]] = {}
 	for k in ordered_keys:
 		if k == "hora":

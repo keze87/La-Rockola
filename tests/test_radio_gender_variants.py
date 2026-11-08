@@ -181,6 +181,43 @@ def test_recency_anti_repetition_couples_gender_variants(tmp_path: Path) -> None
 	assert last_m == 50000.0
 
 
+def test_build_content_block_has_no_unreachable_code() -> None:
+	"""Verifica por AST que _build_content_block no tenga sentencias inalcanzables tras el return."""
+	import ast
+
+	dialogue_path = Path("app/domain/radio/dialogue.py")
+	tree = ast.parse(dialogue_path.read_text(encoding="utf-8"))
+
+	content_block_fn = None
+	for node in ast.walk(tree):
+		if isinstance(node, ast.FunctionDef) and node.name == "_build_content_block":
+			content_block_fn = node
+			break
+
+	assert content_block_fn is not None, "No se encontró la función _build_content_block"
+	returns = [stmt for stmt in content_block_fn.body if isinstance(stmt, ast.Return)]
+	assert len(returns) == 1, f"Se esperaba exactamente 1 return en _build_content_block, pero hay {len(returns)}"
+	assert isinstance(content_block_fn.body[-1], ast.Return), "La última sentencia debe ser el return"
+
+
+def test_carpincho_gender_styling_phrases_in_banks() -> None:
+	"""Verifica que los bancos contengan frases que retraten la feminidad y masculinidad carpincha (ropa, facha, looks)."""
+	from app.domain.radio.segments import PASES_A_CLIMA, RADIO_OUTROS
+
+	# 1. Intros con bermudas / mini / looks
+	intros_gv = [i for i in BASE_RADIO_INTROS if isinstance(i, GenderVariant)]
+	assert any("mini re cortita" in i.f and "bermudas" in i.m for i in intros_gv)
+	assert any("congelan las patas" in i.f for i in intros_gv)
+
+	# 2. Outros con pollera / bermudas o calzado festivo
+	outros_gv = [o for o in RADIO_OUTROS if isinstance(o, GenderVariant)]
+	assert any("pollera" in o.f and "bermudas" in o.m for o in outros_gv)
+
+	# 3. Pases al clima con looks de frío / calor
+	pases_gv = [p for p in PASES_A_CLIMA if isinstance(p, GenderVariant)]
+	assert any("mini re cortita" in p.f or "solero" in p.f for p in pases_gv)
+
+
 def test_static_validation_passes_with_gender_variants() -> None:
 	"""Verifica que validate_radio_banks valide la integridad sin placeholders obsoletos."""
 	validate_radio_banks(strict=True)
