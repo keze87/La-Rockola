@@ -19,7 +19,7 @@
 			<li
 				v-for="(t, i) in topPlayedState"
 				:key="t.path"
-				class="border-carpincho-border hover:bg-carpincho-panel flex cursor-pointer items-center rounded-lg border-b p-4 transition active:scale-[0.98]"
+				class="border-carpincho-border hover:bg-carpincho-panel flex cursor-pointer items-center rounded-lg border-b p-4 transition select-none active:scale-[0.98]"
 				@click="toggleQueue(t.path)"
 				v-on="useContextMenuBindings(() => getTrackInfo(t.path), 'library')"
 			>

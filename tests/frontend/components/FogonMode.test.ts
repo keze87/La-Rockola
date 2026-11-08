@@ -3,11 +3,14 @@ import { mount } from '@vue/test-utils';
 import FogonMode from '@/components/FogonMode.vue';
 import { useContextMenu } from '@/composables/useContextMenu';
 import {
+	activeTab,
 	currentTrackPath,
 	djBaraEnabled,
 	djNextTrack,
 	isFogonMode,
 	isPaused,
+	queueState,
+	showFogonVolume,
 	trackMap,
 	volume,
 } from '@/composables/player/state';
@@ -575,5 +578,60 @@ Dialogue: 0,0:00:20.00,0:00:25.00,Default,,0,0,0,,{\\kf100}Ultimo {\\kf100}verso
 		await wrapper.vm.$nextTick();
 		const progressFill = wrapper.find('.bg-carpincho-warning.absolute.top-0.left-0.h-full');
 		expect(progressFill.attributes('style')).toContain('width: 100%');
+	});
+
+	it('renders next song card for wide screens below controls and navigates to queue on click', async () => {
+		trackMap.value['/music/next_track.mp3'] = {
+			path: '/music/next_track.mp3',
+			display_title: 'Próxima Canción',
+			display_artist: 'El Artista',
+		};
+		queueState.value = ['/music/next_track.mp3'];
+
+		const wrapper = mount(FogonMode);
+		const nextSongCard = wrapper.find('.fogon-next-song');
+		expect(nextSongCard.exists()).toBe(true);
+		expect(nextSongCard.classes()).toContain('hidden');
+		expect(nextSongCard.classes()).toContain('md:flex');
+		expect(nextSongCard.text()).toContain('Próximo Temazo');
+		expect(nextSongCard.text()).toContain('Próxima Canción - El Artista');
+
+		// Click navigates to queue and closes fogon
+		await nextSongCard.trigger('click');
+		expect(isFogonMode.value).toBe(false);
+		expect(activeTab.value).toBe('queue');
+	});
+
+	it('positions volume slider as a floating overlay on z-axis without overlapping volume button', async () => {
+		showFogonVolume.value = true;
+		const wrapper = mount(FogonMode);
+
+		const volumeBar = wrapper.find('.fogon-volume-bar');
+		expect(volumeBar.exists()).toBe(true);
+		// Debe estar posicionado con absolute y z-index alto para flotar sobre el fogón
+		expect(volumeBar.classes()).toContain('absolute');
+		expect(volumeBar.classes()).toContain('z-50');
+		// Debe estar posicionado de forma que no solape el botón de volumen (ej: bottom-full)
+		expect(volumeBar.classes()).toContain('bottom-full');
+
+		// El botón de volumen debe seguir siendo clickeable para cerrarlo
+		const volBtn = wrapper.find('button[aria-label="Ajustar volumen"]');
+		expect(volBtn.exists()).toBe(true);
+		await volBtn.trigger('click');
+		expect(showFogonVolume.value).toBe(false);
+	});
+
+	it('prevents text selection on song info during long press', () => {
+		const wrapper = mount(FogonMode);
+		const trackInfo = wrapper.find('.fogon-track-info');
+		expect(trackInfo.exists()).toBe(true);
+		expect(trackInfo.classes()).toContain('select-none');
+	});
+
+	it('passes inset button position to FavoritableCover to prevent heart cutoff', () => {
+		const wrapper = mount(FogonMode);
+		const favCover = wrapper.findComponent({ name: 'FavoritableCover' });
+		expect(favCover.exists()).toBe(true);
+		expect(favCover.props('buttonPosition')).toBe('right-3 bottom-3 md:right-4 md:bottom-4');
 	});
 });

@@ -14,6 +14,7 @@
 			sizePx?: number | null;
 			unloadWhenHidden?: boolean;
 			showFavorite?: boolean;
+			buttonPosition?: string;
 		}>(),
 		{
 			size: 'h-10 w-10',
@@ -24,6 +25,7 @@
 			sizePx: 512,
 			unloadWhenHidden: true,
 			showFavorite: true,
+			buttonPosition: '-right-2 -bottom-2',
 		}
 	);
 
@@ -45,8 +47,8 @@
 		<button
 			v-if="showFavorite"
 			type="button"
-			class="bg-carpincho-panel absolute -right-2 -bottom-2 flex cursor-pointer items-center justify-center rounded-full shadow transition active:scale-90"
-			:class="buttonSize"
+			class="bg-carpincho-panel absolute flex cursor-pointer items-center justify-center rounded-full shadow transition select-none active:scale-90"
+			:class="[buttonPosition, buttonSize]"
 			:aria-label="isFavorite ? 'Quitar de favoritos' : 'Agregar a favoritos'"
 			@click.stop.prevent="toggleFavorite"
 		>

@@ -51,6 +51,9 @@ describe('TopTab.vue', () => {
 		expect(wrapper.text()).toContain('#2');
 		expect(wrapper.text()).toContain('De Música Ligera');
 		expect(wrapper.text()).toContain('Soda Stereo • Sonó 28 veces');
+
+		const rows = wrapper.findAll('li');
+		expect(rows[0].classes()).toContain('select-none');
 	});
 
 	it('toggles track queue when top played row is clicked', async () => {

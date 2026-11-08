@@ -28,6 +28,7 @@
 		localPlayerRef,
 		localTimePos,
 		pauseAfterPath,
+		queueState,
 		serverMuted,
 		showFogonVolume,
 		togglePauseAfterCurrent,
@@ -314,6 +315,32 @@
 		return { title: 'Silencio estampa', artist: 'Nadie', isComing: false };
 	});
 
+	const upNextTitle = computed(() => {
+		if (isSynthesizingRadio.value) return 'Transmisión de Cabina - Acomodando los micrófonos... 🎙️';
+
+		if (queueState.value.length > 0) {
+			const t = player.getTrackInfo(queueState.value[0]);
+			return `${t.display_title} - ${t.display_artist}`;
+		}
+
+		if (djBaraEnabled.value && djNextTrack.value) {
+			const t = djNextTrack.value;
+			return `${t.display_title || t.title} - ${t.display_artist || t.artist}`;
+		}
+
+		if (djBaraEnabled.value) return 'DJ Bara eligiendo...';
+
+		return currentTrackPath.value ? 'Termina este y nos re vimos' : "Agregá algo pa' escuchar";
+	});
+
+	const upNextPath = computed(() => {
+		if (queueState.value.length > 0) return queueState.value[0];
+		if (djBaraEnabled.value && djNextTrack.value) return djNextTrack.value?.path;
+		return null;
+	});
+
+	const { coverUrl: upNextCoverUrl, onCoverError: onUpNextCoverError } = useCover(upNextPath, { size: 512 });
+
 	const playPauseIcon = computed(() => (isPlaying.value ? 'pause' : 'play_arrow'));
 	const muteIcon = computed(() => (serverMuted.value || volume.value == 0 ? 'volume_off' : 'volume_down'));
 
@@ -348,6 +375,12 @@
 	// --- Manejadores de acciones ---
 	function closeFogon() {
 		isFogonMode.value = false;
+		haptic();
+	}
+
+	function goToQueueFromFogon() {
+		closeFogon();
+		player.switchTab('queue');
 		haptic();
 	}
 
@@ -464,7 +497,7 @@
 			</button>
 
 			<!-- Capa para cerrar el popup de volumen al tocar afuera -->
-			<div v-if="showFogonVolume" class="fixed inset-0 z-30" @click="showFogonVolume = false" />
+			<div v-if="showFogonVolume" class="fixed inset-0 z-10" @click="showFogonVolume = false" />
 
 			<!-- Contenedor principal expandido (estilo Apple Music / blyrics) -->
 			<div
@@ -512,6 +545,7 @@
 									:unload-when-hidden="false"
 									button-size="h-10 w-10 md:h-12 md:w-12"
 									button-icon-size="!text-xl md:!text-2xl"
+									button-position="right-3 bottom-3 md:right-4 md:bottom-4"
 									:show-favorite="!isSynthesizingRadio && !isPlayingRadioAnnouncement"
 								/>
 								<i v-else class="material-icons text-carpincho-warning !text-[8rem]">album</i>
@@ -520,7 +554,7 @@
 
 						<!-- Bloque central: Información del tema clavado en el centro vertical de la pantalla en móviles -->
 						<div
-							class="fogon-track-info flex w-full shrink-0 flex-col items-center text-center"
+							class="fogon-track-info flex w-full shrink-0 flex-col items-center text-center select-none"
 							:class="[hasLyrics ? 'my-2 sm:my-3 md:my-0' : '']"
 						>
 							<!-- Info del tema -->
@@ -600,6 +634,26 @@
 							<div
 								class="fogon-controls-row relative z-30 mt-2 flex w-full items-center justify-center gap-5 sm:mt-3 sm:gap-7 md:mt-4"
 							>
+								<!-- Barra de volumen desplegable flotante (sobre el modo fogon en eje z, sin solapar el botón de volumen) -->
+								<div
+									v-if="showFogonVolume"
+									class="fogon-volume-bar bg-carpincho-bg/95 border-carpincho-border text-carpincho-text absolute bottom-full left-1/2 z-50 mb-3 flex w-[90%] max-w-xs -translate-x-1/2 items-center gap-4 rounded-full border px-4 py-2 opacity-95 shadow-2xl backdrop-blur-md transition select-none hover:opacity-100 sm:max-w-sm"
+								>
+									<button aria-label="Silenciar" @click="toggleMute">
+										<i class="material-icons cursor-pointer text-sm hover:text-white">
+											{{ muteIcon }}
+										</i>
+									</button>
+
+									<DragSlider
+										:model-value="volume"
+										:max="110"
+										@update:model-value="handleVolumeUpdate"
+										@commit="handleVolumeCommit"
+									/>
+									<i class="material-icons text-sm" aria-hidden="true">volume_up</i>
+								</div>
+
 								<button
 									aria-label="Ajustar volumen"
 									class="hover:text-carpincho-warning z-20 p-2 text-white transition active:scale-90"
@@ -645,22 +699,55 @@
 								</button>
 							</div>
 
-							<!-- Barra de volumen desplegable -->
+							<!-- Next song en pantallas anchas (abajo de los controles, similar al floating player) -->
 							<div
-								v-if="showFogonVolume"
-								class="bg-carpincho-bg/95 border-carpincho-border text-carpincho-text relative z-40 mt-3 flex w-full max-w-xs items-center gap-4 rounded-full border px-4 py-1.5 opacity-95 shadow-lg transition select-none hover:opacity-100 sm:max-w-sm md:max-w-none"
+								class="fogon-next-song border-carpincho-border/60 from-carpincho-panel/90 hover:border-carpincho-warning/40 mt-4 hidden w-full cursor-pointer items-center justify-between rounded-xl border bg-gradient-to-br to-[#2a2420]/90 p-3 text-left shadow-lg backdrop-blur-sm transition select-none hover:scale-[1.01] active:scale-[0.99] md:flex"
+								title="Ver cola de reproducción"
+								@click="goToQueueFromFogon"
 							>
-								<button aria-label="Silenciar" @click="toggleMute">
-									<i class="material-icons cursor-pointer text-sm hover:text-white">{{ muteIcon }}</i>
-								</button>
+								<div class="flex w-full items-center overflow-hidden">
+									<div
+										class="bg-carpincho-bg border-carpincho-border/40 relative mr-3 flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg border"
+									>
+										<img
+											v-if="upNextCoverUrl"
+											:src="upNextCoverUrl"
+											class="absolute h-full w-full object-cover"
+											@error="onUpNextCoverError"
+										/>
+										<i
+											v-else-if="djBaraEnabled && queueState.length === 0"
+											class="material-icons text-carpincho-warning animate-pulse !text-[1.75rem]"
+										>
+											auto_awesome
+										</i>
+										<i v-else class="material-icons text-carpincho-warning !text-[1.75rem]">
+											album
+										</i>
+									</div>
 
-								<DragSlider
-									:model-value="volume"
-									:max="110"
-									@update:model-value="handleVolumeUpdate"
-									@commit="handleVolumeCommit"
-								/>
-								<i class="material-icons text-sm" aria-hidden="true">volume_up</i>
+									<div class="flex grow flex-col justify-center overflow-hidden">
+										<div
+											class="text-carpincho-primary text-[0.65rem] font-bold tracking-wider uppercase"
+										>
+											{{
+												queueState.length > 0
+													? 'Próximo Temazo'
+													: djBaraEnabled
+														? djNextTrack
+															? '🦦 Arranca en unos segundos...'
+															: 'Eligiendo...'
+														: 'Fin de la fila'
+											}}
+										</div>
+										<div class="text-carpincho-text truncate text-sm font-bold">
+											{{ upNextTitle }}
+										</div>
+									</div>
+									<i class="material-icons text-carpincho-text/40 ml-2 shrink-0 text-lg">
+										chevron_right
+									</i>
+								</div>
 							</div>
 						</div>
 

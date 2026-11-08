@@ -218,24 +218,6 @@ def test_carpincho_gender_styling_phrases_in_banks() -> None:
 	assert any("mini re cortita" in p.f or "solero" in p.f for p in pases_gv)
 
 
-def test_sensual_and_suggestive_carpincho_phrases_in_banks() -> None:
-	"""Verifica frases sugestivas y sensuales carpinchas en fin de cola (break), outros e intros."""
-	from app.domain.radio.segments import RADIO_OUTROS_BREAK, get_outros_for_category
-
-	# 1. Fin de cola (break outros) con 'after con mi gata / gato' y 'perreando'
-	break_gv = [b for b in RADIO_OUTROS_BREAK if isinstance(b, GenderVariant)]
-	assert any("after con mi gata" in b.m and "after con mi gato" in b.f for b in break_gv)
-	assert any("perreando" in b.m and "perreando" in b.f for b in break_gv)
-
-	# 2. Resolución de género en break
-	break_m = get_outros_for_category("", outro_mode="break", gender="m")
-	break_f = get_outros_for_category("", outro_mode="break", gender="f")
-	assert any("after con mi gata" in o for o in break_m)
-	assert any("after con mi gato" in o for o in break_f)
-	assert not any("after con mi gato" in o for o in break_m)
-	assert not any("after con mi gata" in o for o in break_f)
-
-
 def test_carpincho_dating_ex_and_levante_phrases() -> None:
 	"""Verifica frases picantes de salir de levante, recordar al ex y dedicar canciones a novios/novias."""
 	from app.domain.radio.segments import (

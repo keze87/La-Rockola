@@ -50,7 +50,7 @@
 <template>
 	<div
 		:id="isCurrent ? 'current-library-row' : undefined"
-		class="border-carpincho-border hover:bg-carpincho-border grid h-[72px] cursor-pointer grid-cols-[5rem_minmax(0,1fr)_minmax(0,1fr)] items-center border-b transition-colors active:scale-[0.98] sm:grid-cols-[5rem_minmax(0,1fr)_minmax(0,1fr)_5rem]"
+		class="border-carpincho-border hover:bg-carpincho-border grid h-[72px] cursor-pointer grid-cols-[5rem_minmax(0,1fr)_minmax(0,1fr)] items-center border-b transition-colors select-none active:scale-[0.98] sm:grid-cols-[5rem_minmax(0,1fr)_minmax(0,1fr)_5rem]"
 		v-on="bindings"
 		@click="emit('click', track)"
 	>

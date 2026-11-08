@@ -27,6 +27,7 @@ describe('TrackRow.vue', () => {
 		expect(wrapper.text()).toContain('Seguir viviendo sin tu amor');
 		expect(wrapper.text()).toContain('Luis Alberto Spinetta');
 		expect(wrapper.text()).toContain('2:40');
+		expect(wrapper.classes()).toContain('select-none');
 	});
 
 	it('emits click event when clicked', async () => {

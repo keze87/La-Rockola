@@ -63,4 +63,21 @@ describe('FavoritableCover.vue', () => {
 			})
 		);
 	});
+
+	it('applies custom buttonPosition when provided and defaults to -right-2 -bottom-2', () => {
+		const defaultWrapper = mount(FavoritableCover, {
+			props: { track: mockTrack },
+		});
+		expect(defaultWrapper.find('button').classes()).toContain('-right-2');
+		expect(defaultWrapper.find('button').classes()).toContain('-bottom-2');
+
+		const customWrapper = mount(FavoritableCover, {
+			props: {
+				track: mockTrack,
+				buttonPosition: 'right-3 bottom-3 md:right-4 md:bottom-4',
+			},
+		});
+		expect(customWrapper.find('button').classes()).toContain('right-3');
+		expect(customWrapper.find('button').classes()).toContain('bottom-3');
+	});
 });

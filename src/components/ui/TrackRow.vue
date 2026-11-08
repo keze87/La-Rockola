@@ -55,7 +55,7 @@
 
 <template>
 	<div
-		class="border-carpincho-border hover:bg-carpincho-border grid h-[72px] w-full cursor-pointer grid-cols-[4rem_minmax(0,1fr)_minmax(0,1fr)] items-center border-b transition-colors active:scale-[0.98] sm:grid-cols-[4rem_minmax(0,1fr)_minmax(0,1fr)_5.5rem]"
+		class="border-carpincho-border hover:bg-carpincho-border grid h-[72px] w-full cursor-pointer grid-cols-[4rem_minmax(0,1fr)_minmax(0,1fr)] items-center border-b transition-colors select-none active:scale-[0.98] sm:grid-cols-[4rem_minmax(0,1fr)_minmax(0,1fr)_5.5rem]"
 		:class="{ 'bg-carpincho-panel': isPlaying }"
 		v-bind="{
 			'data-history-path': props.dataHistoryPath,

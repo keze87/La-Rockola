@@ -32,6 +32,7 @@ describe('LibraryRow.vue', () => {
 		expect(wrapper.text()).toContain('Mi Buenos Aires Querido');
 		expect(wrapper.text()).toContain('Carlos Gardel');
 		expect(wrapper.text()).toContain('2:35');
+		expect(wrapper.classes()).toContain('select-none');
 	});
 
 	it('emits click event with track data when clicked', async () => {
