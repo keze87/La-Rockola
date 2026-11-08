@@ -57,6 +57,7 @@ from app.domain.radio.segments import (
 from app.domain.radio.templates import (
 	expand_phrase_variants,
 	render_phrase,
+	resolve_bank_for_gender,
 )
 from app.domain.radio.voices import (
 	DEFAULT_COHOST_NAME,
@@ -66,6 +67,7 @@ from app.domain.radio.voices import (
 	VOICE_TOMAS,
 	VOICE_VALENTINA,
 	VOICES,
+	resolve_voice_gender,
 )
 from app.infrastructure.weather.client import format_temperature
 
@@ -360,6 +362,9 @@ def build_radio_dialogue_plan(
 		host_voice = host_voice or auto_host
 		cohost_voice = cohost_voice or auto_cohost
 
+	host_gender = resolve_voice_gender(host_voice)
+	cohost_gender = resolve_voice_gender(cohost_voice)
+
 	if hora_seg is None:
 		hora_seg, minuto_seg, _ = get_modular_time_segments(effective_dt)
 
@@ -370,7 +375,7 @@ def build_radio_dialogue_plan(
 	first_block = ordered_keys[0] if ordered_keys else "hora"
 
 	if intro is None:
-		raw_intros = get_intros_for_first_block(first_block)
+		raw_intros = get_intros_for_first_block(first_block, gender=host_gender)
 		intro_candidates = filter_by_context(raw_intros, ctx, "intro") or list(raw_intros)
 		intro = weighted_choice_by_recency(intro_candidates, category="intro", db_path=db_path)
 
@@ -379,7 +384,7 @@ def build_radio_dialogue_plan(
 	cohost_name = VOICE_NAMES.get(cohost_voice, DEFAULT_COHOST_NAME)
 
 	if outro is None:
-		outro_pool = get_outros_for_category(seg_cat, outro_mode)
+		outro_pool = get_outros_for_category(seg_cat, outro_mode, gender=host_gender)
 		outro_candidates = filter_by_context(outro_pool, ctx, "salida") or list(outro_pool)
 		outro = weighted_choice_by_recency(outro_candidates, category="salida", db_path=db_path)
 
@@ -428,12 +433,15 @@ def build_radio_dialogue_plan(
 
 	def _build_weather_block() -> list[tuple[str, str, str, bool]]:
 		cond = weather_condition or "agradable"
-		raw_pases = get_pases_for_weather_condition(cond)
+		raw_pases = get_pases_for_weather_condition(cond, gender=cohost_gender)
 		pase_pool = filter_by_context(raw_pases, ctx, "pase") or list(raw_pases)
 		pase_template = weighted_choice_by_recency(pase_pool, category="pase", db_path=db_path)
 		pase_text = render_tracked_phrase(pase_template, ctx, addressee_voice=cohost_voice, cohost_name=cohost_name)
 
-		cond_options = REACCIONES_CLIMA.get(cond, REACCIONES_CLIMA["agradable"])
+		cond_options = resolve_bank_for_gender(
+			REACCIONES_CLIMA.get(cond, REACCIONES_CLIMA["agradable"]),
+			cohost_gender,
+		)
 		candidates = filter_by_context(cond_options, ctx, "reaccion") or list(cond_options)
 		valid_reactions = [r for r in candidates if _normalize_phrase_key(r) != prev_key]
 		pool_clima = valid_reactions if valid_reactions else candidates
@@ -451,9 +459,10 @@ def build_radio_dialogue_plan(
 	fortune_voice = VOICE_ELENA if is_system_fortune else cohost_voice
 	react_voice = host_voice if fortune_voice == cohost_voice else cohost_voice
 	addressee_voice = cohost_voice if react_voice == host_voice else host_voice
+	addressee_gender = resolve_voice_gender(addressee_voice)
 
 	def _build_content_block() -> list[tuple[str, str, str, bool]]:
-		raw_reactions = get_reactions_for_category(seg_cat, subcategory=seg_subcat)
+		raw_reactions = get_reactions_for_category(seg_cat, subcategory=seg_subcat, gender=addressee_gender)
 		cat_reactions = filter_by_context(raw_reactions, ctx, "reaccion") or list(raw_reactions)
 		valid_fortune_reactions = [r for r in cat_reactions if _normalize_phrase_key(r) != prev_key]
 		pool_fortuna = valid_fortune_reactions if valid_fortune_reactions else cat_reactions
@@ -462,6 +471,12 @@ def build_radio_dialogue_plan(
 			ctx,
 			addressee_voice=addressee_voice,
 		)
+		return [
+			(effective_lead_in, host_voice, "lead_in", True),
+			(fortune_text, fortune_voice, fortune_category, True),
+			(reaccion_fortuna, react_voice, "reaccion", True),
+		]
+
 		return [
 			(effective_lead_in, host_voice, "lead_in", True),
 			(fortune_text, fortune_voice, fortune_category, True),
@@ -539,7 +554,9 @@ def generate_modular_radio_script(
 		voice = random.choice(VOICES)
 
 	ctx = build_radio_context(dt)
-	intro_candidates = filter_by_context(RADIO_INTROS, ctx, "intro") or list(RADIO_INTROS)
+	voice_gender = resolve_voice_gender(voice)
+	raw_intros = get_intros_for_first_block("hora", gender=voice_gender)
+	intro_candidates = filter_by_context(raw_intros, ctx, "intro") or list(raw_intros)
 	host_name = VOICE_NAMES.get(voice, "Tomás")
 	intro = render_phrase(random.choice(intro_candidates), ctx, host_name=host_name, host_voice=voice)
 	hora_seg, minuto_seg, _ = get_modular_time_segments(dt)
@@ -549,9 +566,10 @@ def generate_modular_radio_script(
 	cat_lead_ins = get_lead_ins_for_category(seg_cat)
 	filtered_lead_ins = filter_by_context(cat_lead_ins, ctx, "lead_in") or list(cat_lead_ins)
 	lead_in = random.choice(filtered_lead_ins)
-	outro_pool = get_outros_for_category(seg_cat, outro_mode)
+	outro_pool = get_outros_for_category(seg_cat, outro_mode, gender=voice_gender)
 	filtered_outros = filter_by_context(outro_pool, ctx, "salida") or list(outro_pool)
 	outro = render_phrase(random.choice(filtered_outros), ctx)
+
 	hora_full = f"{hora_seg} {minuto_seg}" if minuto_seg else hora_seg
 	fort_speech = format_fortune_for_speech(fortuna)
 	full_script = f"{intro} {hora_full} {lead_in} {fort_speech} {outro}"

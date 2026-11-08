@@ -93,26 +93,28 @@ def collect_all_radio_banks() -> dict[str, list[str]]:
 
 
 def _build_variant_lookup(
-	all_banks: dict[str, list[str]],
-) -> dict[tuple[str, str], tuple[str, str]]:
+	all_banks: dict[str, list[Any]],
+) -> dict[tuple[str, str], tuple[str, Any]]:
 	"""
 	Mapea (categoría, texto_normalizado) -> (categoría, plantilla_canónica).
 	Permite asociar locuciones renderizadas y formateadas fonéticamente a su plantilla original.
 	"""
-	lookup: dict[tuple[str, str], tuple[str, str]] = {}
+	lookup: dict[tuple[str, str], tuple[str, Any]] = {}
 	for category, templates in all_banks.items():
 		is_content = category.startswith("carpincho_")
-		for tpl in templates:
-			clean_tpl = _clean_phrase_text(tpl)
-			lookup[(category, clean_tpl)] = (category, tpl)
-			if is_content:
-				formatted = format_fortune_for_speech(tpl)
-				lookup[(category, _clean_phrase_text(formatted))] = (category, tpl)
-			if "{" in tpl:
-				for var in expand_phrase_variants(tpl):
-					lookup[(category, _clean_phrase_text(var))] = (category, tpl)
-					if is_content:
-						lookup[(category, _clean_phrase_text(format_fortune_for_speech(var)))] = (category, tpl)
+		for item in templates:
+			sub_items = item.all_variants() if hasattr(item, "all_variants") else (item,)
+			for tpl in sub_items:
+				clean_tpl = _clean_phrase_text(tpl)
+				lookup[(category, clean_tpl)] = (category, item)
+				if is_content:
+					formatted = format_fortune_for_speech(tpl)
+					lookup[(category, _clean_phrase_text(formatted))] = (category, item)
+				if "{" in tpl:
+					for var in expand_phrase_variants(tpl):
+						lookup[(category, _clean_phrase_text(var))] = (category, item)
+						if is_content:
+							lookup[(category, _clean_phrase_text(format_fortune_for_speech(var)))] = (category, item)
 	return lookup
 
 

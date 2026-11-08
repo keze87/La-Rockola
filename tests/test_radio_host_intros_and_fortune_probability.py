@@ -16,12 +16,19 @@ from app.domain.radio.voices import VOICE_ELENA, VOICE_NAMES
 
 def test_intros_contain_host_presentation_variants() -> None:
 	"""Verifica que RADIO_INTROS contenga versiones donde el locutor/carpincho se presenta con {host}."""
-	host_intros = [intro for intro in RADIO_INTROS if "{host}" in intro]
+	host_intros = [
+		intro
+		for intro in RADIO_INTROS
+		if (isinstance(intro, str) and "{host}" in intro)
+		or (hasattr(intro, "all_variants") and any("{host}" in v for v in intro.all_variants()))
+	]
 	assert len(host_intros) >= 3, "Debe haber al menos 3 intros con presentación dinámica de {host}"
 
 	# Validar que esté la frase solicitada por el usuario
 	expected = "Acá {host}, siempre listo para acompañarte y ponerle música a tu vida."
-	assert any(expected in intro for intro in host_intros), f"No se encontró la intro esperada: '{expected}'"
+	assert any(expected == intro or (hasattr(intro, "m") and expected == intro.m) for intro in host_intros), (
+		f"No se encontró la intro esperada: '{expected}'"
+	)
 
 
 def test_render_phrase_resolves_host_placeholder() -> None:

@@ -37,10 +37,10 @@ from app.domain.radio.segments import (
 	WEATHER_TEMPLATES,
 )
 from app.domain.radio.templates import expand_phrase_variants
+from app.domain.radio.voices import GenderVariant
 
-ALLOWED_RADIO_PLACEHOLDERS: frozenset[str] = frozenset(
-	{"vocativo", "companero", "filosofo", "momento", "saludo", "cohost", "host"}
-)
+ALLOWED_RADIO_PLACEHOLDERS: frozenset[str] = frozenset({"momento", "saludo", "cohost", "host"})
+
 ALLOWED_WEATHER_PLACEHOLDERS: frozenset[str] = frozenset(
 	{
 		"lead",
@@ -85,15 +85,17 @@ def validate_radio_banks(strict: bool = False) -> list[str]:
 
 	for bank_name, phrases in banks_to_check.items():
 		seen: set[str] = set()
-		for p in phrases:
-			if not p or not p.strip():
-				issues.append(f"{bank_name}: contiene frase vacía o sólo espacios.")
-			elif p in seen:
-				issues.append(f"{bank_name}: frase duplicada detectada: '{p[:40]}...'")
-			seen.add(p)
+		for item in phrases:
+			sub_items = item.all_variants() if isinstance(item, GenderVariant) else (item,)
+			for p in sub_items:
+				if not p or not p.strip():
+					issues.append(f"{bank_name}: contiene frase vacía o sólo espacios.")
+				elif p in seen:
+					issues.append(f"{bank_name}: frase duplicada detectada: '{p[:40]}...'")
+				seen.add(p)
 
 	# 1 & 5. Placeholders desconocidos y explosión de variantes
-	templates_to_check: dict[str, Sequence[str]] = {
+	templates_to_check: dict[str, Sequence[str | GenderVariant]] = {
 		"RADIO_INTROS": RADIO_INTROS,
 		"RADIO_LEAD_INS": RADIO_LEAD_INS,
 		"RADIO_OUTROS": RADIO_OUTROS,
@@ -106,17 +108,18 @@ def validate_radio_banks(strict: bool = False) -> list[str]:
 		templates_to_check[f"OUTROS_{cat}"] = outro_list
 
 	for name, collection in templates_to_check.items():
-		for tpl in collection:
-			found = set(PLACEHOLDER_REGEX.findall(tpl))
-			unknown = found - ALLOWED_RADIO_PLACEHOLDERS
-			if unknown:
-				issues.append(f"{name}: placeholders desconocidos {unknown} en '{tpl}'")
-			if "{" in tpl:
-				vars_count = len(expand_phrase_variants(tpl))
-				if vars_count > MAX_ALLOWED_VARIANTS_PER_TEMPLATE:
-					issues.append(
-						f"{name}: explosión de variantes ({vars_count} > {MAX_ALLOWED_VARIANTS_PER_TEMPLATE}) en '{tpl}'"
-					)
+		for item in collection:
+			sub_templates = item.all_variants() if isinstance(item, GenderVariant) else (item,)
+			for tpl in sub_templates:
+				found = set(PLACEHOLDER_REGEX.findall(tpl))
+				unknown = found - ALLOWED_RADIO_PLACEHOLDERS
+				if unknown:
+					issues.append(f"{name}: placeholders desconocidos {unknown} en '{tpl}'")
+			vars_count = len(expand_phrase_variants(item))
+			if vars_count > MAX_ALLOWED_VARIANTS_PER_TEMPLATE:
+				issues.append(
+					f"{name}: explosión de variantes ({vars_count} > {MAX_ALLOWED_VARIANTS_PER_TEMPLATE}) en '{item}'"
+				)
 
 	# Plantillas de clima
 	for tpl in WEATHER_TEMPLATES:

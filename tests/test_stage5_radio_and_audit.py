@@ -218,14 +218,14 @@ class TestRadioContextualAndCoherenceSuite:
 	def test_05_placeholder_rendering_by_slot_and_gender(self) -> None:
 		morning_ctx = build_radio_context(datetime(2026, 10, 17, 9, 0))
 		night_ctx = build_radio_context(datetime(2026, 10, 17, 22, 0))
-		template = "{saludo} {vocativo}, qué linda está {momento} con {cohost}."
-		rendered_m = render_phrase(template, morning_ctx, addressee_voice=VOICE_ELENA, cohost_name="Elena")
-		rendered_n = render_phrase(template, night_ctx, addressee_voice=VOICE_TOMAS, cohost_name="Tomás")
-		assert "Buen día" in rendered_m and "comadre" in rendered_m and "la mañana" in rendered_m
-		assert "Buenas noches" in rendered_n and "compadre" in rendered_n and "la noche" in rendered_n
+		template = "{saludo}, qué linda está {momento} con {cohost}."
+		rendered_m = render_phrase(template, morning_ctx, cohost_name="Elena")
+		rendered_n = render_phrase(template, night_ctx, cohost_name="Tomás")
+		assert "Buen día" in rendered_m and "la mañana" in rendered_m and "Elena" in rendered_m
+		assert "Buenas noches" in rendered_n and "la noche" in rendered_n and "Tomás" in rendered_n
 
 	def test_06_expand_phrase_variants_removes_placeholders(self) -> None:
-		variants = expand_phrase_variants("{saludo} {vocativo} en {momento} con {companero}")
+		variants = expand_phrase_variants("{saludo} en {momento} con {cohost}")
 		assert len(variants) >= 4
 		assert all("{" not in v and "}" not in v for v in variants)
 
@@ -551,7 +551,6 @@ class TestRadioContextualAndCoherenceSuite:
 			phrase_fits_context,
 		)
 		from app.domain.radio.templates import expand_phrase_variants, render_phrase
-		from app.domain.radio.voices import VOICE_ELENA, VOICE_TOMAS
 
 		# 1. Clasificación: Cada frase declarada recibe su categoría correspondiente
 		for phrase in [
@@ -591,26 +590,25 @@ class TestRadioContextualAndCoherenceSuite:
 		# 5. Renderizado de plantillas: Placeholders conocidos son reemplazados
 		morning_ctx = build_radio_context(datetime(2026, 10, 17, 9, 0))
 		rendered = render_phrase(
-			"{saludo} {vocativo}, qué linda está {momento} con {cohost}.",
+			"{saludo}, qué linda está {momento} con {cohost}.",
 			morning_ctx,
-			addressee_voice=VOICE_TOMAS,
 			cohost_name="Tomás",
 		)
 		assert "{saludo}" not in rendered
-		assert "{vocativo}" not in rendered
 		assert "{momento}" not in rendered
 		assert "{cohost}" not in rendered
 		assert "Buen día" in rendered
 		assert "Tomás" in rendered
 
-		# 6. Concordancia de género: Vocativos y adjetivos concuerdan con el destinatario
-		rendered_m = render_phrase("{vocativo} {companero} {filosofo}", morning_ctx, addressee_voice=VOICE_TOMAS)
-		assert rendered_m == "compadre compañero filósofo"
-		rendered_f = render_phrase("{vocativo} {companero} {filosofo}", morning_ctx, addressee_voice=VOICE_ELENA)
-		assert rendered_f == "comadre compañera filósofa"
+		# 6. Variantes de género: GenderVariant resuelve según el género
+		from app.domain.radio.voices import GenderVariant
+
+		gv = GenderVariant(m="el jefe compadre", f="la jefa comadre")
+		assert gv.for_gender("m") == "el jefe compadre"
+		assert gv.for_gender("f") == "la jefa comadre"
 
 		# 7. Expansión de variantes: Abarca combinaciones de ejecución y elimina placeholders
-		template = "{saludo} {vocativo} en {momento}"
+		template = "{saludo} en {momento} con {cohost}"
 		variants = expand_phrase_variants(template)
 		assert len(variants) > 1
 		for var in variants:
@@ -655,7 +653,7 @@ class TestRadioContextualAndCoherenceSuite:
 		assert found_bureaucratic >= 3, f"Faltan avisos burocráticos absurdos (encontrados: {found_bureaucratic})"
 
 		# 2. Interrupciones surrealistas y transiciones secas en intros y outros
-		intros_outros_text = " ".join(RADIO_INTROS + RADIO_OUTROS).lower()
+		intros_outros_text = " ".join(str(i) for i in (RADIO_INTROS + RADIO_OUTROS)).lower()
 		surreal_or_punchy_cues = [
 			"interferencia",
 			"aviso críptico",
@@ -824,7 +822,12 @@ class TestRadioContextualAndCoherenceSuite:
 			(16, "Buenas tardes"),
 			(22, "Buenas noches"),
 		]
-		template = "{saludo} {vocativo} {companero}, qué linda está {momento} con {cohost}."
+		from app.domain.radio.voices import GenderVariant
+
+		gv = GenderVariant(
+			m="{saludo} compadre compañero, qué linda está {momento} con {cohost}.",
+			f="{saludo} comadre compañera, qué linda está {momento} con {cohost}.",
+		)
 
 		for hour, expected_saludo in sample_hours:
 			ctx = build_radio_context(datetime(2026, 10, 17, hour, 0))
@@ -834,9 +837,8 @@ class TestRadioContextualAndCoherenceSuite:
 				(VOICE_ELENA, "comadre", "compañera"),
 			]:
 				rendered = render_phrase(
-					template,
+					gv.for_gender("m" if voice == VOICE_TOMAS else "f"),
 					ctx=ctx,
-					addressee_voice=voice,
 					cohost_name="Tomás" if voice == VOICE_ELENA else "Elena",
 				)
 				assert "{" not in rendered and "}" not in rendered

@@ -55,6 +55,7 @@ from app.domain.radio.templates import (
 	expand_phrase_variants,
 	render_phrase,
 )
+from app.domain.radio.voices import GenderVariant
 
 logger = logging.getLogger("RockolaCarpincho")
 
@@ -233,7 +234,9 @@ def render_tracked_phrase(
 	return rendered
 
 
-def _same_phrase(spoken: str, template: str) -> bool:
+def _same_phrase(spoken: str, template: str | GenderVariant) -> bool:
+	if isinstance(template, GenderVariant):
+		return any(_same_phrase(spoken, v) for v in template.all_variants())
 	target = _clean_phrase_text(spoken)
 	if target == _clean_phrase_text(template):
 		return True
@@ -242,7 +245,40 @@ def _same_phrase(spoken: str, template: str) -> bool:
 	return False
 
 
-def _find_pase_template(spoken: str) -> str | None:
+_GV_COUNTERPARTS_CACHE: dict[str, list[str]] = {}
+
+
+def _get_gv_counterparts_map() -> dict[str, list[str]]:
+	global _GV_COUNTERPARTS_CACHE
+	if _GV_COUNTERPARTS_CACHE:
+		return _GV_COUNTERPARTS_CACHE
+	gv_items: list[GenderVariant] = []
+	for bank in [RADIO_INTROS, PASES_A_CLIMA, *REACCIONES_BY_CATEGORY.values(), *REACCIONES_CLIMA.values()]:
+		for item in bank:
+			if isinstance(item, GenderVariant) and item not in gv_items:
+				gv_items.append(item)
+	mapping: dict[str, list[str]] = {}
+	for item in gv_items:
+		pair = [item.m, item.f]
+		for var in (item.m, item.f):
+			mapping[_clean_phrase_text(var)] = pair
+			if "{" in var:
+				for exp in expand_phrase_variants(var):
+					mapping[_clean_phrase_text(exp)] = pair
+	_GV_COUNTERPARTS_CACHE = mapping
+	return _GV_COUNTERPARTS_CACHE
+
+
+def _find_gender_variant_counterparts(phrase_text: str, category: str = "") -> list[str]:
+	"""Encuentra todas las variantes (m y f) del GenderVariant asociado a una frase o plantilla hablada."""
+	if category and category not in ("intro", "salida", "pase", "reaccion") and not category.startswith("reaccion_"):
+		return []
+	target = _clean_phrase_text(phrase_text)
+	gv_map = _get_gv_counterparts_map()
+	return gv_map.get(target, [])
+
+
+def _find_pase_template(spoken: str) -> str | GenderVariant | None:
 	for tpl in PASES_A_CLIMA:
 		if _same_phrase(spoken, tpl):
 			return tpl
@@ -267,6 +303,13 @@ def get_phrase_last_played(
 	if val is not None:
 		return val
 
+	# Si es parte de un GenderVariant, comprobamos si la contraparte fue reproducida
+	counterparts = _find_gender_variant_counterparts(phrase_text, category)
+	for cp in counterparts:
+		cp_val = _PHRASE_HISTORY_MEMORY.get(_normalize_phrase_key(cp, category))
+		if cp_val is not None:
+			return cp_val
+
 	if category.startswith("lead_in_"):
 		val = _PHRASE_HISTORY_MEMORY.get(_normalize_phrase_key(phrase_text, "lead_in"))
 		if val is not None:
@@ -278,7 +321,8 @@ def get_phrase_last_played(
 	elif category == "pase":
 		tpl = _find_pase_template(phrase_text)
 		if tpl is not None:
-			val = _PHRASE_HISTORY_MEMORY.get(_normalize_phrase_key(tpl, "pase"))
+			tpl_str = tpl.m if isinstance(tpl, GenderVariant) else tpl
+			val = _PHRASE_HISTORY_MEMORY.get(_normalize_phrase_key(tpl_str, "pase"))
 			if val is not None:
 				return val
 	return None
@@ -303,6 +347,11 @@ def record_phrase_played(
 	norm_key = _normalize_phrase_key(phrase_text, category)
 	keys_to_update[norm_key] = ts
 
+	# Acoplamos las variantes de género para que ambas queden marcadas como reproducidas
+	counterparts = _find_gender_variant_counterparts(phrase_text, category)
+	for cp in counterparts:
+		keys_to_update[_normalize_phrase_key(cp, category)] = ts
+
 	if category == "lead_in" or category.startswith("lead_in_"):
 		keys_to_update[_normalize_phrase_key(phrase_text, "lead_in")] = ts
 		for cat_name, cat_list in LEAD_INS_BY_CATEGORY.items():
@@ -315,19 +364,22 @@ def record_phrase_played(
 		for cat_name, cat_list in REACCIONES_BY_CATEGORY.items():
 			match = next((item for item in cat_list if _same_phrase(phrase_text, item)), None)
 			if match is not None:
-				keys_to_update[_normalize_phrase_key(match, "reaccion")] = ts
-				keys_to_update[_normalize_phrase_key(match, f"reaccion_{cat_name}")] = ts
+				match_str = match.m if isinstance(match, GenderVariant) else match
+				keys_to_update[_normalize_phrase_key(match_str, "reaccion")] = ts
+				keys_to_update[_normalize_phrase_key(match_str, f"reaccion_{cat_name}")] = ts
 				break
 		for clim_list in REACCIONES_CLIMA.values():
 			match = next((item for item in clim_list if _same_phrase(phrase_text, item)), None)
 			if match is not None:
-				keys_to_update[_normalize_phrase_key(match, "reaccion")] = ts
-				keys_to_update[_normalize_phrase_key(match, "reaccion_clima")] = ts
+				match_str = match.m if isinstance(match, GenderVariant) else match
+				keys_to_update[_normalize_phrase_key(match_str, "reaccion")] = ts
+				keys_to_update[_normalize_phrase_key(match_str, "reaccion_clima")] = ts
 				break
 	elif category == "pase":
 		tpl = _find_pase_template(phrase_text)
 		if tpl is not None:
-			keys_to_update[_normalize_phrase_key(tpl, "pase")] = ts
+			tpl_str = tpl.m if isinstance(tpl, GenderVariant) else tpl
+			keys_to_update[_normalize_phrase_key(tpl_str, "pase")] = ts
 
 	_PHRASE_HISTORY_MEMORY.update(keys_to_update)
 	if db_path:

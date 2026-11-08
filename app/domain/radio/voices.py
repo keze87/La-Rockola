@@ -4,7 +4,22 @@ Definición de locutores de cabina, nombres, géneros y perfiles de prosodia par
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, NamedTuple
+
+
+class GenderVariant(NamedTuple):
+	"""Variante de frase según el género gramatical (masculino/femenino) del locutor o destinatario."""
+
+	m: str
+	f: str
+	key: str | None = None
+
+	def for_gender(self, gender: str) -> str:
+		return self.f if gender == "f" else self.m
+
+	def all_variants(self) -> tuple[str, ...]:
+		return (self.m, self.f)
+
 
 VOICE_TOMAS = "es-AR-TomasNeural"
 VOICE_ELENA = "es-AR-ElenaNeural"
@@ -28,9 +43,11 @@ VOICE_GENDERS: dict[str, str] = {
 }
 DEFAULT_GENDER: str = "m"
 
-VOCATIVOS: dict[str, str] = {"m": "compadre", "f": "comadre"}
-COMPANEROS: dict[str, str] = {"m": "compañero", "f": "compañera"}
-FILOSOFOS: dict[str, str] = {"m": "filósofo", "f": "filósofa"}
+
+def resolve_voice_gender(voice: str | None) -> str:
+	"""Resuelve el género gramatical ('m' o 'f') de una voz de cabina."""
+	return VOICE_GENDERS.get(voice or "", DEFAULT_GENDER)
+
 
 # Perfiles editoriales de cabina: definen la personalidad, afinidades y registro de cada voz
 HOST_PROFILES: dict[str, dict[str, Any]] = {

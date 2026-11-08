@@ -104,7 +104,7 @@ def test_banks_orthography_clean_without_forced_enclitic_accents() -> None:
 		*RADIO_INTROS,
 		*RADIO_OUTROS,
 	]
-	full_corpus = " ".join(all_phrases)
+	full_corpus = " ".join(str(p) for p in all_phrases)
 
 	assert "DiYei" not in full_corpus, "Se encontró 'DiYei' en los bancos de frases; debe ser 'DJ'"
 

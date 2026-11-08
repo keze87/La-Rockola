@@ -18,13 +18,9 @@ from app.domain.radio.context import (
 )
 from app.domain.radio.phrase_banks.weather import WEATHER_DESC_PHRASES
 from app.domain.radio.voices import (
-	COMPANEROS,
 	DEFAULT_COHOST_NAME,
-	DEFAULT_GENDER,
-	FILOSOFOS,
-	VOCATIVOS,
-	VOICE_GENDERS,
 	VOICE_NAMES,
+	GenderVariant,
 )
 
 
@@ -79,20 +75,31 @@ def get_all_weather_desc_phrases() -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-_PLACEHOLDER_RE = re.compile(r"\{(vocativo|companero|filosofo|momento|saludo|cohost|host)\}")
+_PLACEHOLDER_RE = re.compile(r"\{(momento|saludo|cohost|host)\}")
+
+
+def resolve_phrase_for_gender(phrase: str | GenderVariant, gender: str) -> str:
+	"""Resuelve una frase o GenderVariant al texto correspondiente para el género solicitado ('m' o 'f')."""
+	if isinstance(phrase, GenderVariant):
+		return phrase.for_gender(gender)
+	return str(phrase)
+
+
+def resolve_bank_for_gender(
+	bank: list[str | GenderVariant] | tuple[str | GenderVariant, ...],
+	gender: str,
+) -> list[str]:
+	"""Resuelve una colección de frases o GenderVariants a una lista de cadenas acordes al género ('m' o 'f')."""
+	return [resolve_phrase_for_gender(p, gender) for p in bank]
 
 
 def _placeholder_values(
-	gender: str,
 	momento: str,
 	saludo: str,
 	cohost_name: str | None,
 	host_name: str | None = None,
 ) -> dict[str, str]:
 	return {
-		"vocativo": VOCATIVOS.get(gender, VOCATIVOS[DEFAULT_GENDER]),
-		"companero": COMPANEROS.get(gender, COMPANEROS[DEFAULT_GENDER]),
-		"filosofo": FILOSOFOS.get(gender, FILOSOFOS[DEFAULT_GENDER]),
 		"momento": momento,
 		"saludo": saludo,
 		"cohost": cohost_name or DEFAULT_COHOST_NAME,
@@ -107,19 +114,18 @@ def render_phrase(
 	cohost_name: str | None = None,
 	host_name: str | None = None,
 	host_voice: str | None = None,
+	**kwargs: object,
 ) -> str:
 	"""
-	Resuelve los placeholders de una frase: {vocativo}, {companero}, {filosofo} (concuerdan con el género de
-	quien recibe el mensaje, addressee_voice), {momento}, {saludo} (según la franja horaria), {cohost} y {host}.
+	Resuelve los placeholders de una plantilla radial: {momento}, {saludo} (según la franja horaria), {cohost} y {host}.
 	Sin ctx usa fórmulas neutras ("la jornada", "Muy buenas"). Las llaves desconocidas se dejan intactas.
 	"""
 	if "{" not in template:
 		return template
-	gender = VOICE_GENDERS.get(addressee_voice or "", DEFAULT_GENDER)
 	momento = ctx.momento if ctx else "la jornada"
 	saludo = ctx.saludo if ctx else "Muy buenas"
 	effective_host = host_name or (VOICE_NAMES.get(host_voice, "Tomás") if host_voice else "Tomás")
-	values = _placeholder_values(gender, momento, saludo, cohost_name, effective_host)
+	values = _placeholder_values(momento, saludo, cohost_name, effective_host)
 	return _PLACEHOLDER_RE.sub(lambda m: values[m.group(1)], template)
 
 
@@ -129,26 +135,29 @@ def _expand_phrase_variants_cached(template: str) -> tuple[str, ...]:
 	if not needs:
 		return (template,)
 	if needs & {"cohost", "host"}:
-		subjects: list[tuple[str | None, str]] = [
-			(name, VOICE_GENDERS.get(v, DEFAULT_GENDER)) for v, name in VOICE_NAMES.items()
-		]
-	elif needs & {"vocativo", "companero", "filosofo"}:
-		subjects = [(None, "m"), (None, "f")]
+		subjects: list[str | None] = [name for name in VOICE_NAMES.values()]
 	else:
-		subjects = [(None, DEFAULT_GENDER)]
+		subjects = [None]
 	momentos: list[str] = list(dict.fromkeys(MOMENTO_POR_FRANJA.values())) if "momento" in needs else [""]
 	saludos: list[str] = list(SALUDOS_UNICOS) if "saludo" in needs else [""]
 	out: list[str] = []
-	for name, gender in subjects:
+	for name in subjects:
 		for momento in momentos:
 			for saludo in saludos:
-				values = _placeholder_values(gender, momento, saludo, cohost_name=name, host_name=name)
+				values = _placeholder_values(momento, saludo, cohost_name=name, host_name=name)
 				text = _PLACEHOLDER_RE.sub(lambda m, v=values: v[m.group(1)], template)
 				if text not in out:
 					out.append(text)
 	return tuple(out)
 
 
-def expand_phrase_variants(template: str) -> list[str]:
-	"""Todas las versiones habladas posibles de una plantilla (útil para precargar la caché de TTS)."""
+def expand_phrase_variants(template: str | GenderVariant) -> list[str]:
+	"""Todas las versiones habladas posibles de una plantilla o GenderVariant (útil para precargar la caché de TTS)."""
+	if isinstance(template, GenderVariant):
+		res: list[str] = []
+		for variant_text in template.all_variants():
+			for expanded in _expand_phrase_variants_cached(variant_text):
+				if expanded not in res:
+					res.append(expanded)
+		return res
 	return list(_expand_phrase_variants_cached(template))

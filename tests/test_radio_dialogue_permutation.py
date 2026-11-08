@@ -444,9 +444,11 @@ def test_point6_radio_state_and_phrase_history_persist_in_sqlite_across_restarts
 	set_radio_state("last_temp_c", 28, db_path=db_file)
 
 	ctx = build_radio_context(datetime(2026, 11, 5, 16, 0))
-	tpl_with_placeholder = next(r for r in REACCIONES_CLIMA["agradable"] if "{vocativo}" in r)
+	tpl_item = next(r for r in REACCIONES_CLIMA["agradable"] if hasattr(r, "for_gender"))
+	tpl_with_placeholder = tpl_item.for_gender("f")
 	spoken = render_tracked_phrase(tpl_with_placeholder, ctx, addressee_voice=VOICE_ELENA)
 	set_radio_state("last_reaction", spoken, db_path=db_file)
+
 	record_phrase_played(spoken, category="reaccion", timestamp=123456.0, db_path=db_file)
 
 	# Simulamos un reinicio completo vaciando todos los diccionarios en memoria

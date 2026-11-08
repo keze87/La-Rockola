@@ -7,7 +7,10 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 from datetime import datetime
-from typing import Any, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple
+
+if TYPE_CHECKING:
+	from app.domain.radio.voices import GenderVariant
 
 FRANJAS: tuple[str, ...] = ("madrugada", "mañana", "mediodia", "tarde", "noche")
 FRANJAS_DIURNAS: frozenset[str] = frozenset({"mañana", "mediodia", "tarde"})
@@ -192,8 +195,10 @@ CONTEXT_RULES: list[_ContextRule] = [
 ]
 
 
-def _split_item(item: object, category: str | None = None) -> tuple[str, str | None]:
-	"""Extrae (texto, categoría) de un str, una tupla o un RadioPhrase."""
+def _split_item(item: object, category: str | None = None) -> tuple[Any, str | None]:
+	"""Extrae (texto, categoría) de un str, una tupla, un RadioPhrase o un GenderVariant."""
+	if hasattr(item, "all_variants"):
+		return item, category
 	if isinstance(item, tuple):
 		text = item[0] if item else ""
 		cat = item[1] if len(item) > 1 and item[1] else category
@@ -201,10 +206,12 @@ def _split_item(item: object, category: str | None = None) -> tuple[str, str | N
 	return str(item), category
 
 
-def phrase_fits_context(text: str, ctx: RadioContext | None, category: str | None = None) -> bool:
+def phrase_fits_context(text: str | GenderVariant, ctx: RadioContext | None, category: str | None = None) -> bool:
 	"""True si la frase es coherente con la franja horaria, el día y el clima actuales (ctx None => siempre)."""
 	if ctx is None or not text:
 		return True
+	if hasattr(text, "all_variants"):
+		return any(phrase_fits_context(v, ctx, category) for v in text.all_variants())
 	for rule in CONTEXT_RULES:
 		if rule.only_categories and category not in rule.only_categories:
 			continue

@@ -5,6 +5,8 @@ Estructura de segmentos radiales: intros, lead-ins, horas, cierres (outros), pas
 from __future__ import annotations
 
 from app.domain.radio.phrase_banks.listeners import SEPARADORES_Y_SLOGANS
+from app.domain.radio.templates import resolve_bank_for_gender
+from app.domain.radio.voices import GenderVariant
 
 BASE_RADIO_INTROS: tuple[str, ...] = (
 	"Micrófono abierto, patas en el agua. Así arranca La Rockola.",
@@ -52,16 +54,35 @@ BASE_RADIO_INTROS: tuple[str, ...] = (
 	"Sin rodeos: consola prendida, dial sintonizado y tema puesto.",
 	"Directo al hueso. Así suena La Rockola.",
 	# Presentaciones personales del conductor / carpincho al aire
-	"Acá {host}, siempre listo para acompañarte y ponerle música a tu vida.",
+	GenderVariant(
+		m="Acá {host}, siempre listo para acompañarte y ponerle música a tu vida.",
+		f="Acá {host}, siempre lista para acompañarte y ponerle música a tu vida.",
+	),
 	"Acá {host} en los controles de La Rockola, firme en la cabina para hacerte compañía.",
 	"Les habla {host} desde la ribera: acomodá la radio que tenemos tanda asegurada.",
 	"Acá {host} reportándose al micrófono, con el mate a punto y los mejores temas del pago.",
 	"Habla {host} desde el control central: subí el volumen que el dial hoy es nuestro.",
-	"En el micrófono quien les habla, {host}, listo para remarla juntos con buena música.",
+	GenderVariant(
+		m="En el micrófono quien les habla, {host}, listo para remarla juntos con buena música.",
+		f="En el micrófono quien les habla, {host}, lista para remarla juntos con buena música.",
+	),
+	GenderVariant(
+		m="Acá {host}, el jefe de la mañana, acomodando los papeles y la música en La Rockola.",
+		f="Acá {host}, la jefa de la mañana, acomodando los papeles y la música en La Rockola.",
+	),
+	GenderVariant(
+		m="Acá {host}, su humilde servidor en los controles de La Rockola.",
+		f="Acá {host}, su humilde servidora en los controles de La Rockola.",
+	),
+	GenderVariant(
+		m="Acá {host}, el rey del bañado, firme al pie del cañón.",
+		f="Acá {host}, la reina del bañado, firme al pie del cañón.",
+	),
 	"Acá {host} desde los pilotes del estudio, sintonizando la frecuencia justa para tu día.",
 	"Por acá {host}, transmitiendo en vivo para que no te falte una buena melodía en la jornada.",
 )
-RADIO_INTROS: tuple[str, ...] = (*BASE_RADIO_INTROS, *SEPARADORES_Y_SLOGANS)
+RADIO_INTROS: tuple[str | GenderVariant, ...] = (*BASE_RADIO_INTROS, *SEPARADORES_Y_SLOGANS)
+
 
 LEAD_INS_FORTUNA: tuple[str, ...] = (
 	"Momento de rumiar una idea mientras chupás la bombilla...",
@@ -388,28 +409,42 @@ INTROS_REQUIRING_HORA_FIRST: frozenset[str] = frozenset(
 )
 
 
-def get_intros_for_first_block(first_block: str | None = None) -> tuple[str, ...]:
-	"""Devuelve el banco de intros filtrando las que presuponen que el primer bloque sea la hora."""
-	if first_block in (None, "hora"):
-		return RADIO_INTROS
-	return tuple(i for i in RADIO_INTROS if i not in INTROS_REQUIRING_HORA_FIRST)
+def get_intros_for_first_block(
+	first_block: str | None = None,
+	gender: str | None = None,
+) -> tuple[str, ...] | tuple[str | GenderVariant, ...]:
+	"""Devuelve el banco de intros filtrando las que presuponen que el primer bloque sea la hora, y opcionalmente resuelve género."""
+	raw = (
+		RADIO_INTROS
+		if first_block in (None, "hora")
+		else tuple(i for i in RADIO_INTROS if i not in INTROS_REQUIRING_HORA_FIRST)
+	)
+	if gender is not None:
+		return tuple(resolve_bank_for_gender(raw, gender))
+	return raw
 
 
-RADIO_HANDOFFS: tuple[str, ...] = (
+RADIO_HANDOFFS: tuple[str | GenderVariant, ...] = (
 	"¿Cómo viene la mano afuera, che?",
 	"Contame qué dice el servicio meteorológico.",
 	"¿Qué tenemos en el pronóstico para hoy?",
 	"Tirate esa data de la laguna.",
 	"Pará que quiero saber qué dice el oráculo.",
-	"¿Qué nos espera en el cielo, {vocativo}?",
+	GenderVariant(
+		m="¿Qué nos espera en el cielo, compadre?",
+		f="¿Qué nos espera en el cielo, comadre?",
+	),
 	"Tirame el parte meteorológico carpincho.",
 )
 
-PASES_A_CLIMA_NEUTROS: tuple[str, ...] = (
+PASES_A_CLIMA_NEUTROS: tuple[str | GenderVariant, ...] = (
 	"Che {cohost}, asomate al bañado y decime si viene el pampero.",
 	"{cohost}, ¿cómo está la temperatura para meter panzada al río?",
 	"Decime qué onda afuera, {cohost}, ¿sale mate caliente o tereré?",
-	"A ver {vocativo} {cohost}, cantame cómo pinta la mano meteorológica.",
+	GenderVariant(
+		m="A ver compadre {cohost}, cantame cómo pinta la mano meteorológica.",
+		f="A ver comadre {cohost}, cantame cómo pinta la mano meteorológica.",
+	),
 	"Y para el tiempo, {cohost}, ¿cómo viene la mano?",
 	"A ver, {cohost}, ¿qué nos canta el cielo hoy?",
 	"{cohost}, tirate el parte meteorológico carpincho.",
@@ -422,15 +457,21 @@ PASES_A_CLIMA_NEUTROS: tuple[str, ...] = (
 	"{cohost}, tirame la posta del tiempo: ¿está para meter panzada al río o nos refugiamos en la cueva?",
 	"Che {cohost}, mirá cómo vuelan bajo las golondrinas... ¿qué marca el radar para hoy?",
 	"¿Cómo viene la mano con el cielo {cohost}, sale sol para secar el cuero o preparamos el piloto?",
-	"{cohost}, {vocativo} de cabina, ¿cómo pinta el tiempo para los que andan navegando la cuenca?",
-	*(h for h in RADIO_HANDOFFS if "oráculo" not in h.lower()),
+	GenderVariant(
+		m="{cohost}, compadre de cabina, ¿cómo pinta el tiempo para los que andan navegando la cuenca?",
+		f="{cohost}, comadre de cabina, ¿cómo pinta el tiempo para los que andan navegando la cuenca?",
+	),
+	*(h for h in RADIO_HANDOFFS if not (isinstance(h, str) and "oráculo" in h.lower())),
 )
 
-PASES_A_CLIMA_POR_CONDICION: dict[str, tuple[str, ...]] = {
+PASES_A_CLIMA_POR_CONDICION: dict[str, tuple[str | GenderVariant, ...]] = {
 	"frio": (
 		"Tirame la data del cielo, {cohost}, que se me están enfriando las patas.",
 		"Che {cohost}, se me congelan los bigotes con este chucho de frío... ¿cuánto marca el termómetro?",
-		"{cohost}, {vocativo}, asomate con poncho a la ventana y decime si afloja esta helada.",
+		GenderVariant(
+			m="{cohost}, compadre, asomate con poncho a la ventana y decime si afloja esta helada.",
+			f="{cohost}, comadre, asomate con poncho a la ventana y decime si afloja esta helada.",
+		),
 		"Decime qué onda afuera, {cohost}, ¿sale mate hirviendo para sacarnos este fresquete?",
 		"A ver {cohost}, cantame los números del tiempo antes de que se nos escarten los dedos.",
 		"¿Qué dice el radar de la cuenca, {cohost}? Mirá que el viento sur nos viene castigando lindo.",
@@ -441,19 +482,25 @@ PASES_A_CLIMA_POR_CONDICION: dict[str, tuple[str, ...]] = {
 		"A ver {cohost}, mirá ese cielo encapotado sobre las islas... ¿se larga el diluvio o es puro amague?",
 		"{cohost}, ¿escuchás ese tronar a lo lejos? Cantame cómo viene el parte de tormentas.",
 		"Tirate la data del cielo, {cohost}: ¿aprontamos las botas para el barro o para el goterío?",
-		"Che {cohost}, {vocativo}, ¿cómo viene el frente de tormenta para la muchachada ribereña?",
+		GenderVariant(
+			m="Che {cohost}, compadre, ¿cómo viene el frente de tormenta para la muchachada ribereña?",
+			f="Che {cohost}, comadre, ¿cómo viene el frente de tormenta para la muchachada ribereña?",
+		),
 	),
 	"calor": (
 		"Cantame los números del clima {cohost}, que {momento} está tan pesada que ni los mosquitos vuelan.",
 		"Che {cohost}, con este bochorno que derrite hasta las piedras, ¿cuánto acusa el termómetro?",
-		"{cohost}, {vocativo}, no se aguanta la chapa del techo... decime si refresca un poco o seguimos sufriendo.",
+		GenderVariant(
+			m="{cohost}, compadre, no se aguanta la chapa del techo... decime si refresca un poco o seguimos sufriendo.",
+			f="{cohost}, comadre, no se aguanta la chapa del techo... decime si refresca un poco o seguimos sufriendo.",
+		),
 		"A ver {cohost}, tirame la posta del calor: ¿está para clavar siesta abajo del sauce con tereré?",
 		"Decime cómo viene la térmica afuera, {cohost}, que el sol nos está cocinando a fuego lento.",
 		"¿Qué marca el parte meteorológico, {cohost}? Este calorón no da tregua en la ribera.",
 	),
 }
 
-PASES_A_CLIMA: tuple[str, ...] = (
+PASES_A_CLIMA: tuple[str | GenderVariant, ...] = (
 	*PASES_A_CLIMA_NEUTROS,
 	*PASES_A_CLIMA_POR_CONDICION["frio"],
 	*PASES_A_CLIMA_POR_CONDICION["lluvia"],
@@ -461,14 +508,20 @@ PASES_A_CLIMA: tuple[str, ...] = (
 )
 
 
-def get_pases_for_weather_condition(condition: str | None = None) -> tuple[str, ...]:
-	"""Devuelve los pases al clima compatibles con la condición meteorológica actual."""
+def get_pases_for_weather_condition(
+	condition: str | None = None,
+	gender: str | None = None,
+) -> tuple[str, ...] | tuple[str | GenderVariant, ...]:
+	"""Devuelve los pases al clima compatibles con la condición meteorológica actual y opcionalmente resuelve género."""
 	cond = (condition or "agradable").lower()
 	extra = PASES_A_CLIMA_POR_CONDICION.get(cond, ())
-	return (*PASES_A_CLIMA_NEUTROS, *extra)
+	res = (*PASES_A_CLIMA_NEUTROS, *extra)
+	if gender is not None:
+		return tuple(resolve_bank_for_gender(res, gender))
+	return res
 
 
-REACCIONES_CLIMA: dict[str, tuple[str, ...]] = {
+REACCIONES_CLIMA: dict[str, tuple[str | GenderVariant, ...]] = {
 	"calor": (
 		"¡Mamita querida, qué calorón para estar en el agua todo el día!",
 		"¡Hermoso para un chapuzón en la laguna con tereré!",
@@ -478,7 +531,10 @@ REACCIONES_CLIMA: dict[str, tuple[str, ...]] = {
 	),
 	"frio": (
 		"¡Fresquito para poncho! Metan más leña al fuego.",
-		"¡Qué frescor, {vocativo}! Salen esos mates bien calientes.",
+		GenderVariant(
+			m="¡Qué frescor, compadre! Salen esos mates bien calientes.",
+			f="¡Qué frescor, comadre! Salen esos mates bien calientes.",
+		),
 		"¡Está para invernar abajo de la paja brava!",
 		"¡Se vino el frío de golpe! A cuidar las orejas.",
 		"¡Pucha que está fresco! Lindo para unas tortas fritas.",
@@ -494,21 +550,30 @@ REACCIONES_CLIMA: dict[str, tuple[str, ...]] = {
 		"¡Una pinturita de día para andar al aire libre!",
 		"¡Joya total! El clima ideal para unos amargos en la orilla.",
 		"¡Ni frío ni calor, qué más querés para pasarla bomba!",
-		"¡Clima perfecto, {vocativo}! A disfrutarlo a pleno.",
+		GenderVariant(
+			m="¡Clima perfecto, compadre! A disfrutarlo a pleno.",
+			f="¡Clima perfecto, comadre! A disfrutarlo a pleno.",
+		),
 		"¡Está de diez afuera! Ni una queja podemos meter.",
 	),
 }
 
-REACCIONES_FORTUNA: tuple[str, ...] = (
+REACCIONES_FORTUNA: tuple[str | GenderVariant, ...] = (
 	"¡Olvídate! Mejor explicado, imposible.",
 	"¡Uh, qué bárbaro! Me dejó recalculando.",
-	"Tal cual, {vocativo}... no le saques ni una coma.",
+	GenderVariant(
+		m="Tal cual, compadre... no le saques ni una coma.",
+		f="Tal cual, comadre... no le saques ni una coma.",
+	),
 	"¡Mamita querida! Metiste el dedo en la llaga.",
 	"Naaa, qué momento. Piel de carpincho se me puso.",
 	"Tranqui, fiera... que no cunda el pánico en el pajonal.",
 	"¡Qué personaje! Firmo abajo.",
 	"¡Ja! Qué sabio el oráculo.",
-	"¡Tal cual, {vocativo}! La pura verdad.",
+	GenderVariant(
+		m="¡Tal cual, compadre! La pura verdad.",
+		f="¡Tal cual, comadre! La pura verdad.",
+	),
 	"¡Qué lo tiró! Sabiduría pura de la laguna.",
 	"¡Amén! Más claro, echale agua.",
 	"¡Posta! Tomá nota de esa.",
@@ -518,16 +583,23 @@ REACCIONES_FORTUNA: tuple[str, ...] = (
 	"¡Palabra santa! A guardarla en el corazón.",
 	"¡De una! Nada más que agregar.",
 	"¡Clarito como agua de arroyo en bajante!",
-	"¡Naaa, qué {filosofo} de bañado tenemos hoy!",
+	GenderVariant(
+		m="¡Naaa, qué filósofo de bañado tenemos hoy!",
+		f="¡Naaa, qué filósofa de bañado tenemos hoy!",
+	),
 	"¡Aplaudo de pie con las dos patas delanteras!",
 	"¡Esa frase te acomoda las ideas de una sola cebada!",
 	"¡Una obra de arte! Ni un poeta del Delta lo decía mejor.",
 	"¡Totalmente! Guardalo en un frasco de mermelada y no lo pierdas.",
-	"¡Qué profundidad criolla! Me quedé sin palabras, {vocativo}.",
+	GenderVariant(
+		m="¡Qué profundidad criolla! Me quedé sin palabras, compadre.",
+		f="¡Qué profundidad criolla! Me quedé sin palabras, comadre.",
+	),
 	"¡Eso no fue un consejo, fue una caricia al alma!",
 	"¡Para ponerlo en un cartelito de madera en la entrada del rancho!",
 	"¡Posta pura! Al que no le guste, que vaya a rumiar pasto amargo.",
 )
+
 
 REACCIONES_AVISOS_COMERCIALES: tuple[str, ...] = (
 	"¡Comercio amigo y de primera en el humedal!",
@@ -608,12 +680,15 @@ REACCIONES_NOVELA: tuple[str, ...] = (
 	"¡Esto es cine total! ¡Qué radioteatro nos estamos armando en plena cabina!",
 )
 
-RADIO_REACTIONS: tuple[str, ...] = (
+RADIO_REACTIONS: tuple[str | GenderVariant, ...] = (
 	"¡Qué lo tiró, che!",
 	"Mirá vos, qué momento.",
 	"Lindo momento para unos buenos mates.",
 	"Una pinturita.",
-	"Totalmente, {vocativo}.",
+	GenderVariant(
+		m="Totalmente, compadre.",
+		f="Totalmente, comadre.",
+	),
 	"Tal cual, fiera.",
 	"¡Qué temazo metiste!",
 	"La posta pura.",
@@ -622,14 +697,17 @@ RADIO_REACTIONS: tuple[str, ...] = (
 	"¡Qué pedazo de tema, por favor!",
 	"Ese solo te afloja hasta las junturas.",
 	"¡Inolvidable! Para escucharlo en loop todo el domingo.",
-	"¡Qué ritmo sabroso, {vocativo}!",
+	GenderVariant(
+		m="¡Qué ritmo sabroso, compadre!",
+		f="¡Qué ritmo sabroso, comadre!",
+	),
 	"Te deja con el corazón saltando como boga en la red.",
 	"¡Una locura total! Música de la buena.",
 	"Ese tema te levanta cualquier día nublado.",
 	"¡Qué swing ribereño metió esa banda!",
 )
 
-REACCIONES_UNKNOWN: tuple[str, ...] = (
+REACCIONES_UNKNOWN: tuple[str | GenderVariant, ...] = (
 	"¡Clarito como el agua de la orilla!",
 	"¡Tal cual, ni más ni menos!",
 	"¡Así se habla en el litoral!",
@@ -638,7 +716,7 @@ REACCIONES_UNKNOWN: tuple[str, ...] = (
 	*RADIO_REACTIONS,
 )
 
-REACCIONES_BY_CATEGORY: dict[str, tuple[str, ...]] = {
+REACCIONES_BY_CATEGORY: dict[str, tuple[str | GenderVariant, ...]] = {
 	"fortuna": REACCIONES_FORTUNA,
 	"aviso": REACCIONES_AVISOS,
 	"oyentes": REACCIONES_OYENTES,
@@ -664,36 +742,56 @@ def get_lead_ins_for_category(category: str, subcategory: str | None = None) -> 
 	return LEAD_INS_BY_CATEGORY.get(category, LEAD_INS_UNKNOWN)
 
 
-def get_reactions_for_category(category: str, subcategory: str | None = None) -> tuple[str, ...]:
-	"""Devuelve las reacciones de cabina pertinentes a la categoría o subcategoría del segmento."""
+def get_reactions_for_category(
+	category: str,
+	subcategory: str | None = None,
+	gender: str | None = None,
+) -> tuple[str, ...] | tuple[str | GenderVariant, ...]:
+	"""Devuelve las reacciones de cabina pertinentes a la categoría o subcategoría del segmento, opcionalmente resueltas por género."""
 	if subcategory == "aviso_comercial":
-		return REACCIONES_AVISOS_COMERCIALES
-	if subcategory == "aviso_comunitario":
-		return REACCIONES_AVISOS_COMUNITARIOS
-	if subcategory == "alerta_transito":
-		return REACCIONES_TRANSITO
-	if subcategory == "alerta_clima":
-		return REACCIONES_CLIMA_ALERTAS
-	if subcategory == "oyentes_pedido":
-		return (*REACCIONES_OYENTES, *REACCIONES_OYENTES_PEDIDO)
-	return REACCIONES_BY_CATEGORY.get(category, REACCIONES_UNKNOWN)
+		res = REACCIONES_AVISOS_COMERCIALES
+	elif subcategory == "aviso_comunitario":
+		res = REACCIONES_AVISOS_COMUNITARIOS
+	elif subcategory == "alerta_transito":
+		res = REACCIONES_TRANSITO
+	elif subcategory == "alerta_clima":
+		res = REACCIONES_CLIMA_ALERTAS
+	elif subcategory == "oyentes_pedido":
+		res = (*REACCIONES_OYENTES, *REACCIONES_OYENTES_PEDIDO)
+	else:
+		res = REACCIONES_BY_CATEGORY.get(category, REACCIONES_UNKNOWN)
+
+	if gender is not None:
+		return tuple(resolve_bank_for_gender(res, gender))
+	return res
 
 
-def get_outros_for_category(category: str, outro_mode: str = "continue") -> tuple[str, ...]:
-	"""Devuelve el banco de cierres pertinentes a la categoría o según el modo de salida."""
+def get_outros_for_category(
+	category: str,
+	outro_mode: str = "continue",
+	gender: str | None = None,
+) -> tuple[str, ...] | tuple[str | GenderVariant, ...]:
+	"""Devuelve el banco de cierres pertinentes a la categoría o según el modo de salida, opcionalmente resuelto por género."""
 	if outro_mode == "pause":
-		return RADIO_OUTROS_PAUSE
-	if outro_mode == "break":
-		return RADIO_OUTROS_BREAK
-	if outro_mode == "dj":
-		return RADIO_OUTROS_DJ
-	if category == "chismes":
-		return OUTROS_CHISMES
-	if category == "novela":
-		return OUTROS_NOVELA
-	return OUTROS_BY_CATEGORY.get(category, RADIO_OUTROS)
+		res = RADIO_OUTROS_PAUSE
+	elif outro_mode == "break":
+		res = RADIO_OUTROS_BREAK
+	elif outro_mode == "dj":
+		res = RADIO_OUTROS_DJ
+	elif category == "chismes":
+		res = OUTROS_CHISMES
+	elif category == "novela":
+		res = OUTROS_NOVELA
+	else:
+		res = OUTROS_BY_CATEGORY.get(category, RADIO_OUTROS)
+
+	if gender is not None:
+		return tuple(resolve_bank_for_gender(res, gender))
+	return res
 
 
-def get_outros_for_mode(outro_mode: str = "continue") -> tuple[str, ...]:
+def get_outros_for_mode(
+	outro_mode: str = "continue", gender: str | None = None
+) -> tuple[str, ...] | tuple[str | GenderVariant, ...]:
 	"""Devuelve el banco de cierres radiales acorde al modo ('continue', 'pause', 'break' o 'dj')."""
-	return get_outros_for_category("", outro_mode=outro_mode)
+	return get_outros_for_category("", outro_mode=outro_mode, gender=gender)
