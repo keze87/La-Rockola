@@ -102,6 +102,14 @@ BASE_RADIO_INTROS: tuple[str | GenderVariant, ...] = (
 		m="Acá {host}, el galán del bañado, transmitiendo en vivo entre los camalotes.",
 		f="Acá {host}, la diva del bañado, transmitiendo en vivo entre los camalotes.",
 	),
+	GenderVariant(
+		m="Acá {host}, transmitiendo con poca ropa y mucho ritmo, calentando los motores de La Rockola.",
+		f="Acá {host}, transmitiendo con poca ropa y mucho ritmo, calentando los motores de La Rockola.",
+	),
+	GenderVariant(
+		m="Acá {host}, tirando facha ribereña, perfume salvaje y miradas seductoras a través del micrófono.",
+		f="Acá {host}, tirando glamour isleño, perfume salvaje y miradas seductoras a través del micrófono.",
+	),
 	"Acá {host} desde los pilotes del estudio, sintonizando la frecuencia justa para tu día.",
 	"Por acá {host}, transmitiendo en vivo para que no te falte una buena melodía en la jornada.",
 )
@@ -286,6 +294,18 @@ RADIO_OUTROS: tuple[str | GenderVariant, ...] = (
 		m="¡A sacudir las tabas! Un carpincho con facha no se queda sentado cuando suena este ritmo.",
 		f="¡A sacudir las tabas! Una carpincha con glamour no se queda sentada cuando suena este ritmo.",
 	),
+	GenderVariant(
+		m="¡A mover las caderas! Este tema pide perreo lento y apretadito en el barro. ¡Mandale play!",
+		f="¡A mover las caderas! Este tema pide perreo lento y apretadito en el barro. ¡Mandale play!",
+	),
+	GenderVariant(
+		m="¡Uh, mirá con qué bomba venimos! Está para bailarlo bien pegadito y sin vergüenza. ¡Subile al volumen!",
+		f="¡Uh, mirá con qué bomba venimos! Está para bailarlo bien pegadito y sin vergüenza. ¡Subile al volumen!",
+	),
+	GenderVariant(
+		m="Cuidado que con este ritmo la cabina se pone caliente... ¡a tirar pasos sensuales en la pista!",
+		f="Cuidado que con este ritmo la cabina se pone caliente... ¡a tirar pasos sensuales en la pista!",
+	),
 	# "¡Para Maru que nos escucha desde casa, te deseamos que tengas un buen día! ¡Un carpinchazo de tema para vos; cambiame la música!",
 )
 
@@ -335,12 +355,31 @@ RADIO_OUTROS_PAUSE: tuple[str, ...] = (
 	"Queda la consola en pausa como pidieron. Andá tranquilo que los carpinchos te cuidan el lugar.",
 )
 
-RADIO_OUTROS_BREAK: tuple[str, ...] = (
+RADIO_OUTROS_BREAK: tuple[str | GenderVariant, ...] = (
 	"Se nos secó la fila de temas por ahora, así que los carpinchos nos tomamos un recreo en la laguna hasta que elijan más música.",
 	"Llegamos al final de la lista en La Rockola. Cerramos el micrófono un ratito; cuando quieran más ritmo, tiren otro tema a la cola.",
 	"No quedaron más canciones en la gatera, che. Nos vamos a flotar un rato al arroyo hasta que alguien ponga otra ficha.",
 	"Hasta acá llegó la fila de hoy. Dejamos la consola descansando a la sombra del sauce; sumá unos temas cuando quieras seguir.",
-	"Se acabó el repertorio de la cola, compadre. Hacemos un alto en la orilla y volvemos apenas carguen más música.",
+	GenderVariant(
+		m="Se acabó el repertorio de la cola, compadre. Hacemos un alto en la orilla y volvemos apenas carguen más música.",
+		f="Se acabó el repertorio de la cola, comadre. Hacemos un alto en la orilla y volvemos apenas carguen más música.",
+	),
+	GenderVariant(
+		m="Bueno, se terminó el programa; ahora me voy pal after con mi gata, a seguir perreando toda la noche.",
+		f="Bueno, se terminó el programa; ahora me voy pal after con mi gata, a seguir perreando toda la noche.",
+	),
+	GenderVariant(
+		m="Se vació la cola de temas... yo ya cumplí en la cabina; ahora me bajo al barro a tirar unos pasos prohibidos y seductores.",
+		f="Se vació la cola de temas... yo ya cumplí en la cabina; ahora me bajo al barro a tirar unos pasos prohibidos y seductores.",
+	),
+	GenderVariant(
+		m="Último tema de la fila. Apago el micrófono y me voy a menear apretadito al muelle hasta que salga el sol.",
+		f="Último tema de la fila. Apago el micrófono y me voy a menear apretadito al muelle hasta que salga el sol.",
+	),
+	GenderVariant(
+		m="Nos quedamos sin música en la gatera. Me voy a la madriguera a mimar y calentar la cueva con mi compañera.",
+		f="Nos quedamos sin música en la gatera. Me voy a la madriguera a mimar y calentar la cueva con mi compañero.",
+	),
 	"Último tema de la lista cumplido. Los locutores nos vamos a cebar unos amargos; ¡agregá canciones cuando quieras que acá estamos!",
 	"Bolsillos vacíos de canciones por este rato en La Rockola. Nos tomamos un descanso en el juncal hasta la próxima tanda.",
 	"Se terminó la fila de reproducción, gente linda. Apagamos los parlantes por un ratito, pero el micrófono queda listo para cuando vuelvan.",

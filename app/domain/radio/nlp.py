@@ -256,6 +256,7 @@ def _get_gv_counterparts_map() -> dict[str, list[str]]:
 	for bank in [
 		RADIO_INTROS,
 		RADIO_OUTROS,
+		RADIO_OUTROS_BREAK,
 		PASES_A_CLIMA,
 		*REACCIONES_BY_CATEGORY.values(),
 		*REACCIONES_CLIMA.values(),
