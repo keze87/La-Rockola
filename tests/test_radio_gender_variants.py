@@ -236,6 +236,26 @@ def test_sensual_and_suggestive_carpincho_phrases_in_banks() -> None:
 	assert not any("after con mi gata" in o for o in break_f)
 
 
+def test_carpincho_dating_ex_and_levante_phrases() -> None:
+	"""Verifica frases picantes de salir de levante, recordar al ex y dedicar canciones a novios/novias."""
+	from app.domain.radio.segments import (
+		RADIO_OUTROS,
+		RADIO_OUTROS_BREAK,
+		RADIO_REACTIONS,
+	)
+
+	# 1. Outros dedicados a novios / novias y salir de levante
+	outros_gv = [o for o in RADIO_OUTROS if isinstance(o, GenderVariant)]
+	assert any("dedico a una de mis novias" in o.m and "dedico a uno de mis novios" in o.f for o in outros_gv)
+	assert any("de levante" in str(o) for o in RADIO_OUTROS)
+
+	# 2. Reacciones a la canción anterior recordando al ex
+	assert any("acordar a mi ex" in str(r) or "acordar de mi ex" in str(r) for r in RADIO_REACTIONS)
+
+	# 3. Fin de cola saliendo de levante
+	assert any("de levante" in str(b) for b in RADIO_OUTROS_BREAK)
+
+
 def test_static_validation_passes_with_gender_variants() -> None:
 	"""Verifica que validate_radio_banks valide la integridad sin placeholders obsoletos."""
 	validate_radio_banks(strict=True)

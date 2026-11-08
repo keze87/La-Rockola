@@ -103,12 +103,20 @@ BASE_RADIO_INTROS: tuple[str | GenderVariant, ...] = (
 		f="Acá {host}, la diva del bañado, transmitiendo en vivo entre los camalotes.",
 	),
 	GenderVariant(
-		m="Acá {host}, transmitiendo con poca ropa y mucho ritmo, calentando los motores de La Rockola.",
-		f="Acá {host}, transmitiendo con poca ropa y mucho ritmo, calentando los motores de La Rockola.",
+		m="Acá {host}, transmitiendo con poca ropa y mucho ritmo, un carpincho calentando los motores de La Rockola.",
+		f="Acá {host}, transmitiendo con poca ropa y mucho ritmo, una carpincha calentando los motores de La Rockola.",
 	),
 	GenderVariant(
 		m="Acá {host}, tirando facha ribereña, perfume salvaje y miradas seductoras a través del micrófono.",
 		f="Acá {host}, tirando glamour isleño, perfume salvaje y miradas seductoras a través del micrófono.",
+	),
+	GenderVariant(
+		m="Acá {host}, soltero codiciado de la cuenca, conduciendo La Rockola y con el radar de levante prendido.",
+		f="Acá {host}, soltera codiciada de la cuenca, conduciendo La Rockola y con el radar de levante prendido.",
+	),
+	GenderVariant(
+		m="Acá {host}, con el corazón libre y muchas pretendientes en la orilla... ¡arranca otra tanda al rojo vivo!",
+		f="Acá {host}, con el corazón libre y muchos pretendientes en la orilla... ¡arranca otra tanda al rojo vivo!",
 	),
 	"Acá {host} desde los pilotes del estudio, sintonizando la frecuencia justa para tu día.",
 	"Por acá {host}, transmitiendo en vivo para que no te falte una buena melodía en la jornada.",
@@ -294,18 +302,27 @@ RADIO_OUTROS: tuple[str | GenderVariant, ...] = (
 		m="¡A sacudir las tabas! Un carpincho con facha no se queda sentado cuando suena este ritmo.",
 		f="¡A sacudir las tabas! Una carpincha con glamour no se queda sentada cuando suena este ritmo.",
 	),
+	"¡A mover las caderas! Este tema pide perreo lento y apretadito en el barro. ¡Mandale play!",
 	GenderVariant(
-		m="¡A mover las caderas! Este tema pide perreo lento y apretadito en el barro. ¡Mandale play!",
-		f="¡A mover las caderas! Este tema pide perreo lento y apretadito en el barro. ¡Mandale play!",
+		m="¡Uh, mirá con qué bomba venimos! Estoy listo para bailarlo bien pegadito y sin vergüenza. ¡Subile al volumen!",
+		f="¡Uh, mirá con qué bomba venimos! Estoy lista para bailarlo bien pegadito y sin vergüenza. ¡Subile al volumen!",
 	),
 	GenderVariant(
 		m="¡Uh, mirá con qué bomba venimos! Está para bailarlo bien pegadito y sin vergüenza. ¡Subile al volumen!",
 		f="¡Uh, mirá con qué bomba venimos! Está para bailarlo bien pegadito y sin vergüenza. ¡Subile al volumen!",
 	),
+	"Cuidado que con este ritmo la cabina se pone caliente... ¡a tirar pasos sensuales en la pista!",
+	# Dedicatorias a novios / novias y salir de levante
 	GenderVariant(
-		m="Cuidado que con este ritmo la cabina se pone caliente... ¡a tirar pasos sensuales en la pista!",
-		f="Cuidado que con este ritmo la cabina se pone caliente... ¡a tirar pasos sensuales en la pista!",
+		m="Esta canción se la dedico a una de mis novias que me está escuchando desde el muelle... ¡atendé, beba!",
+		f="Esta canción se la dedico a uno de mis novios que me está escuchando desde el muelle... ¡atendé, bombón!",
 	),
+	GenderVariant(
+		m="Tema especial que va con dedicatoria para una de mis novias del Delta; mirá cómo te pienso.",
+		f="Tema especial que va con dedicatoria para uno de mis novios del Delta; mirá cómo te pienso.",
+	),
+	"¡Subile dos rayitas al parlante! Esta noche salgo de levante por la ribera y este tema me pone a punto caramelo.",
+	"Con este ritmo me perfumo, me lustro las garras y salgo de levante sin pedir permiso. ¡Mandale play!",
 	# "¡Para Maru que nos escucha desde casa, te deseamos que tengas un buen día! ¡Un carpinchazo de tema para vos; cambiame la música!",
 )
 
@@ -364,21 +381,23 @@ RADIO_OUTROS_BREAK: tuple[str | GenderVariant, ...] = (
 		m="Se acabó el repertorio de la cola, compadre. Hacemos un alto en la orilla y volvemos apenas carguen más música.",
 		f="Se acabó el repertorio de la cola, comadre. Hacemos un alto en la orilla y volvemos apenas carguen más música.",
 	),
+	"Bueno, se terminó el programa; ahora me voy pal after con mi gata, a seguir perreando toda la noche.",
+	"Se vació la cola de temas... yo ya cumplí en la cabina; ahora me bajo al barro a tirar unos pasos prohibidos y seductores.",
 	GenderVariant(
-		m="Bueno, se terminó el programa; ahora me voy pal after con mi gata, a seguir perreando toda la noche.",
-		f="Bueno, se terminó el programa; ahora me voy pal after con mi gata, a seguir perreando toda la noche.",
-	),
-	GenderVariant(
-		m="Se vació la cola de temas... yo ya cumplí en la cabina; ahora me bajo al barro a tirar unos pasos prohibidos y seductores.",
-		f="Se vació la cola de temas... yo ya cumplí en la cabina; ahora me bajo al barro a tirar unos pasos prohibidos y seductores.",
-	),
-	GenderVariant(
-		m="Último tema de la fila. Apago el micrófono y me voy a menear apretadito al muelle hasta que salga el sol.",
-		f="Último tema de la fila. Apago el micrófono y me voy a menear apretadito al muelle hasta que salga el sol.",
+		m="Último tema de la fila. Apago el micrófono y me voy a menear apretadito al muelle como galán suelto hasta que salga el sol.",
+		f="Último tema de la fila. Apago el micrófono y me voy a menear apretadito al muelle como diva suelta hasta que salga el sol.",
 	),
 	GenderVariant(
 		m="Nos quedamos sin música en la gatera. Me voy a la madriguera a mimar y calentar la cueva con mi compañera.",
 		f="Nos quedamos sin música en la gatera. Me voy a la madriguera a mimar y calentar la cueva con mi compañero.",
+	),
+	GenderVariant(
+		m="Se vació la fila en la radio... los carpinchos cerramos la transmisión y salgo de levante por los mejores bares de la costa.",
+		f="Se vació la fila en la radio... las carpinchas cerramos la transmisión y salgo de levante por los mejores bares de la costa.",
+	),
+	GenderVariant(
+		m="Último tema cumplido: me saco los auriculares, me pongo fachero y salgo de levante a ver quién me mima esta noche.",
+		f="Último tema cumplido: me saco los auriculares, me pongo diosa y salgo de levante a ver quién me mima esta noche.",
 	),
 	"Último tema de la lista cumplido. Los locutores nos vamos a cebar unos amargos; ¡agregá canciones cuando quieras que acá estamos!",
 	"Bolsillos vacíos de canciones por este rato en La Rockola. Nos tomamos un descanso en el juncal hasta la próxima tanda.",
@@ -797,6 +816,23 @@ RADIO_REACTIONS: tuple[str | GenderVariant, ...] = (
 	"¡Una locura total! Música de la buena.",
 	"Ese tema te levanta cualquier día nublado.",
 	"¡Qué swing ribereño metió esa banda!",
+	# Nostalgia del ex y salir de levante
+	GenderVariant(
+		m="Uff, ese temazo me hace acordar a mi ex novia... menos mal que en el bañado un clavo saca otro clavo.",
+		f="Uff, ese temazo me hace acordar a mi ex novio... menos mal que en el bañado un clavo saca otro clavo.",
+	),
+	GenderVariant(
+		m="¡Naaa, qué golpe bajo! Esa canción me hace acordar tanto a mi ex que casi le mando un mensaje a su madriguera, compadre.",
+		f="¡Naaa, qué golpe bajo! Esa canción me hace acordar tanto a mi ex que casi le mando un mensaje a su madriguera, comadre.",
+	),
+	GenderVariant(
+		m="¡Qué temón nostálgico! Me hizo acordar de mi ex, pero por suerte ya tengo el corazón ocupado por otra.",
+		f="¡Qué temón nostálgico! Me hizo acordar de mi ex, pero por suerte ya tengo el corazón ocupado por otro.",
+	),
+	GenderVariant(
+		m="¡Qué peligro ese tema! Te hace acordar de tu ex y te dan ganas de salir de levante al toque, compadre.",
+		f="¡Qué peligro ese tema! Te hace acordar de tu ex y te dan ganas de salir de levante al toque, comadre.",
+	),
 )
 
 REACCIONES_UNKNOWN: tuple[str | GenderVariant, ...] = (
