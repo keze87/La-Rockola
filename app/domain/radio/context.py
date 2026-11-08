@@ -130,6 +130,7 @@ class _ContextRule(NamedTuple):
 	dias: frozenset[int] | None = None
 	cond: str | None = None
 	only_categories: frozenset[str] | None = None
+	outro_modes: frozenset[str] | None = None
 
 
 def _rule(
@@ -138,6 +139,7 @@ def _rule(
 	dias: tuple[int, ...] | None = None,
 	cond: str | None = None,
 	only_categories: tuple[str, ...] | None = None,
+	outro_modes: tuple[str, ...] | None = None,
 ) -> _ContextRule:
 	return _ContextRule(
 		re.compile(pattern, re.IGNORECASE),
@@ -145,6 +147,7 @@ def _rule(
 		frozenset(dias) if dias else None,
 		cond,
 		frozenset(only_categories) if only_categories else None,
+		frozenset(outro_modes) if outro_modes else None,
 	)
 
 
@@ -164,6 +167,12 @@ CONTEXT_RULES: list[_ContextRule] = [
 	),
 	_rule(r"\b(?:noche larga|turno noche|cuadrilla de la noche|trasnoch\w*)\b", franjas=("noche", "madrugada")),
 	_rule(r"\bse nos viene la noche\b", franjas=("mediodia", "tarde")),
+	# Referencias nocturnas, de previa, fernet, perreo y levante (no deben salir a la mañana ni al mediodía)
+	_rule(
+		r"\b(?:esta noche|salgo de levante|perreo|pegadito|a la luz de la luna|cabina se pone caliente|pasos sensuales|previa|fernet)\b",
+		franjas=("noche", "madrugada"),
+		only_categories=("intro", "salida"),
+	),
 	# El sol en sentido meteorológico literal (no metafórico como 'trapitos al sol' ni marcas comerciales)
 	_rule(
 		r"(?<!trapitos al )(?<!panadería el )\bsol(?:azo|cito)?\b",
@@ -174,6 +183,12 @@ CONTEXT_RULES: list[_ContextRule] = [
 	_rule(r"\bgolondrinas?\b", franjas=("mañana", "mediodia", "tarde"), only_categories=("clima", "pase")),
 	_rule(r"\barriba, arriba\b", franjas=("madrugada", "mañana"), only_categories=("intro", "salida")),
 	_rule(r"\byendo a laburar\b", franjas=("mañana", "mediodia", "tarde", "noche")),
+	# --- Modo de salida (en pause/break no prometer música inmediata ni continuada) ---
+	_rule(
+		r"\b(?:la música no para|y ahora, música|tema puesto|dejate llevar por el ritmo|cambiame la música|empieza el baile|próximo temazo|arranca otra tanda)\b",
+		outro_modes=("continue", "dj"),
+		only_categories=("intro", "salida"),
+	),
 	# --- Día de la semana (convocatorias futuras vs menciones cotidianas/históricas) ---
 	_rule(
 		r"\b(?:este|el próximo)\s+domingo\b|\bel domingo\s+después de misa\b",
@@ -207,7 +222,7 @@ def _split_item(item: object, category: str | None = None) -> tuple[Any, str | N
 
 
 def phrase_fits_context(text: str | GenderVariant, ctx: RadioContext | None, category: str | None = None) -> bool:
-	"""True si la frase es coherente con la franja horaria, el día y el clima actuales (ctx None => siempre)."""
+	"""True si la frase es coherente con la franja horaria, el día, el clima y el modo de salida actuales (ctx None => siempre)."""
 	if ctx is None or not text:
 		return True
 	if hasattr(text, "all_variants"):
@@ -222,6 +237,8 @@ def phrase_fits_context(text: str | GenderVariant, ctx: RadioContext | None, cat
 		if rule.dias and ctx.dia_semana not in rule.dias:
 			return False
 		if rule.cond and not context_allows(rule.cond, ctx):
+			return False
+		if rule.outro_modes and ctx.outro_mode not in rule.outro_modes:
 			return False
 	return True
 

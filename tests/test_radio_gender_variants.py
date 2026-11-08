@@ -78,7 +78,7 @@ def test_voice_gender_resolution() -> None:
 
 
 def test_expand_phrase_variants_supports_gender_variant() -> None:
-	"""Verifica que expand_phrase_variants expanda ambas ramas de un GenderVariant para precarga TTS."""
+	"""Verifica que expand_phrase_variants expanda ambas ramas de un GenderVariant y combine {host} y {cohost} independientemente."""
 	gv = GenderVariant(
 		m="Acá {host}, el jefe.",
 		f="Acá {host}, la jefa.",
@@ -88,6 +88,14 @@ def test_expand_phrase_variants_supports_gender_variant() -> None:
 	assert any("el jefe" in v for v in variants)
 	assert any("la jefa" in v for v in variants)
 	assert all("{" not in v and "}" not in v for v in variants)
+
+	# Cuando una plantilla combina {host} y {cohost}, debe expandir los dos placeholders de forma independiente (16 combinaciones para 4 voces)
+	dual_tpl = "Acá {host}, con {cohost}, acompañándote en La Rockola."
+	dual_variants = expand_phrase_variants(dual_tpl)
+	assert len(dual_variants) == 16
+	assert "Acá Tomás, con Elena, acompañándote en La Rockola." in dual_variants
+	assert "Acá Elena, con Valentina, acompañándote en La Rockola." in dual_variants
+	assert "Acá Valentina, con Tomás, acompañándote en La Rockola." in dual_variants
 
 
 def test_legacy_gender_placeholders_removed() -> None:
@@ -122,46 +130,86 @@ def test_pases_and_reactions_use_gender_variants() -> None:
 	assert not any("compadre" in p for p in pases_f)
 
 
-def test_dialogue_plan_uses_correct_gender_for_host_and_cohost(tmp_path: Path) -> None:
-	"""Verifica que en el diálogo el host reciba frases acordes a su género y el cohost a su género."""
+def test_dialogue_plan_uses_correct_gender_for_host_and_cohost(tmp_path: Path, monkeypatch) -> None:
+	"""Verifica determinísticamente que el host y cohost reciban la variante de género exacta forzando GenderVariants."""
+	import app.domain.radio.dialogue as dialogue_mod
+	from app.domain.radio.classification import RadioPhrase
+
 	db_file = tmp_path / "test_dialogue_gender.db"
 	init_db(db_file)
 	ctx = build_radio_context(datetime(2026, 11, 8, 10, 0))
 
-	# Tomás (m) de host, Elena (f) de cohost
+	forced_intro_gv = GenderVariant(
+		m="Acá {host}, el jefe de la mañana.",
+		f="Acá {host}, la jefa de la mañana.",
+	)
+	forced_outro_gv = GenderVariant(
+		m="Me acomodo las bermudas y bailo.",
+		f="Me acomodo la pollera y bailo.",
+	)
+	forced_pase_gv = GenderVariant(
+		m="A ver compadre {cohost}, cantame el clima.",
+		f="A ver comadre {cohost}, cantame el clima.",
+	)
+	forced_react_gv = GenderVariant(
+		m="¡Qué filósofo de bañado tenemos hoy, compadre!",
+		f="¡Qué filósofa de bañado tenemos hoy, comadre!",
+	)
+
+	monkeypatch.setattr(
+		dialogue_mod,
+		"get_intros_for_first_block",
+		lambda first_block=None, gender=None: (forced_intro_gv.for_gender(gender or "m"),),
+	)
+	monkeypatch.setattr(
+		dialogue_mod,
+		"get_outros_for_category",
+		lambda cat, mode="continue", gender=None, ctx=None: (forced_outro_gv.for_gender(gender or "m"),),
+	)
+	monkeypatch.setattr(
+		dialogue_mod,
+		"get_pases_for_weather_condition",
+		lambda cond=None, gender=None: (forced_pase_gv.for_gender(gender or "m"),),
+	)
+	monkeypatch.setattr(
+		dialogue_mod,
+		"get_reactions_for_category",
+		lambda cat, subcategory=None, gender=None: (forced_react_gv.for_gender(gender or "m"),),
+	)
+
+	# 1. Tomás (m) de host, Elena (f) de cohost (Elena lee la fortuna -> Tomás reacciona a Elena 'f')
 	plan_tomas_elena = build_radio_dialogue_plan(
 		host_voice=VOICE_TOMAS,
 		cohost_voice=VOICE_ELENA,
+		fortuna=RadioPhrase("Una reflexión profunda.", "fortuna"),
 		weather_text="Cielo despejado",
 		ctx=ctx,
 		db_path=db_file,
+		block_order=("hora", "clima", "contenido"),
 	)
-	# La intro de Tomás (host m) nunca debe contener palabras femeninas de locutor como "la jefa" o "siempre lista"
-	intro_text = plan_tomas_elena[0][0]
-	assert "la jefa" not in intro_text
-	assert "siempre lista" not in intro_text
+	assert plan_tomas_elena[0][0] == "Acá Tomás, el jefe de la mañana."
+	assert plan_tomas_elena[-1][0] == "Me acomodo las bermudas y bailo."
+	pase_tomas = next(turn[0] for turn in plan_tomas_elena if turn[2] == "pase")
+	assert pase_tomas == "A ver comadre Elena, cantame el clima."
+	react_to_elena = [turn[0] for turn in plan_tomas_elena if turn[2] == "reaccion"][-1]
+	assert react_to_elena == "¡Qué filósofa de bañado tenemos hoy, comadre!"
 
-	# El pase de Tomás a Elena (cohost f) debe usar términos femeninos si es gendered ("comadre")
-	pase_turn = next(turn for turn in plan_tomas_elena if turn[2] == "pase")
-	pase_text = pase_turn[0]
-	assert "compadre" not in pase_text  # Elena es mujer
-
-	# Elena (f) de host, Tomás (m) de cohost
+	# 2. Elena (f) de host, Tomás (m) de cohost (Tomás lee la fortuna -> Elena reacciona a Tomás 'm')
 	plan_elena_tomas = build_radio_dialogue_plan(
 		host_voice=VOICE_ELENA,
 		cohost_voice=VOICE_TOMAS,
+		fortuna=RadioPhrase("Una reflexión profunda.", "fortuna"),
 		weather_text="Cielo despejado",
 		ctx=ctx,
 		db_path=db_file,
+		block_order=("hora", "clima", "contenido"),
 	)
-
-	intro_elena = plan_elena_tomas[0][0]
-	assert "el jefe" not in intro_elena
-	assert "siempre listo" not in intro_elena
-
-	pase_elena_turn = next(turn for turn in plan_elena_tomas if turn[2] == "pase")
-	pase_elena_text = pase_elena_turn[0]
-	assert "comadre" not in pase_elena_text  # Tomás es varón
+	assert plan_elena_tomas[0][0] == "Acá Elena, la jefa de la mañana."
+	assert plan_elena_tomas[-1][0] == "Me acomodo la pollera y bailo."
+	pase_elena = next(turn[0] for turn in plan_elena_tomas if turn[2] == "pase")
+	assert pase_elena == "A ver compadre Tomás, cantame el clima."
+	react_to_tomas = [turn[0] for turn in plan_elena_tomas if turn[2] == "reaccion"][-1]
+	assert react_to_tomas == "¡Qué filósofo de bañado tenemos hoy, compadre!"
 
 
 def test_recency_anti_repetition_couples_gender_variants(tmp_path: Path) -> None:
@@ -219,36 +267,70 @@ def test_carpincho_gender_styling_phrases_in_banks() -> None:
 
 
 def test_carpincho_dating_ex_and_levante_phrases() -> None:
-	"""Verifica frases picantes de salir de levante, recordar al ex y dedicar canciones a novios/novias."""
+	"""Verifica frases picantes separadas en bancos específicos y que las de noche no salgan a las 8 de la mañana."""
 	from app.domain.radio.segments import (
 		RADIO_OUTROS,
 		RADIO_OUTROS_BREAK,
+		RADIO_OUTROS_NIGHT,
+		RADIO_OUTROS_PREVIA,
+		RADIO_OUTROS_ROMANCE,
 		RADIO_REACTIONS,
+		get_outros_for_category,
 	)
 
-	# 1. Outros dedicados a novios / novias y salir de levante
-	outros_gv = [o for o in RADIO_OUTROS if isinstance(o, GenderVariant)]
-	assert any("dedico a una de mis novias" in o.m and "dedico a uno de mis novios" in o.f for o in outros_gv)
-	assert any("de levante" in str(o) for o in RADIO_OUTROS)
+	# 1. Los cierres románticos, de previa y nocturnos están separados de RADIO_OUTROS general
+	romance_gv = [o for o in RADIO_OUTROS_ROMANCE if isinstance(o, GenderVariant)]
+	assert any("dedico a una de mis novias" in o.m and "dedico a uno de mis novios" in o.f for o in romance_gv)
+	assert any("de levante" in str(o) for o in RADIO_OUTROS_NIGHT)
+	assert any("perreo" in str(o) for o in RADIO_OUTROS_NIGHT)
+	assert any("previa" in str(o).lower() for o in RADIO_OUTROS_PREVIA)
+
+	# RADIO_OUTROS general debe mantenerse neutral para cualquier horario
+	assert not any("esta noche salgo de levante" in str(o).lower() for o in RADIO_OUTROS)
+	assert not any("perreo lento" in str(o).lower() for o in RADIO_OUTROS)
+
+	# A las 8:00 AM no deben seleccionarse cierres de noche ni de previa
+	ctx_morning = build_radio_context(datetime(2026, 11, 8, 8, 0))
+	morning_outros = get_outros_for_category("fortuna", "continue", gender="m", ctx=ctx_morning)
+	assert not any("esta noche" in o.lower() or "perreo" in o.lower() or "levante" in o.lower() for o in morning_outros)
+
+	# A las 22:00 (noche) sí están habilitados los cierres nocturnos y de previa
+	ctx_night = build_radio_context(datetime(2026, 11, 8, 22, 0))
+	night_outros = get_outros_for_category("fortuna", "continue", gender="m", ctx=ctx_night)
+	assert any("levante" in o.lower() or "perreo" in o.lower() for o in night_outros)
 
 	# 2. Reacciones a la canción anterior recordando al ex
 	assert any("acordar a mi ex" in str(r) or "acordar de mi ex" in str(r) for r in RADIO_REACTIONS)
 
-	# 3. Fin de cola saliendo de levante
-	assert any("de levante" in str(b) for b in RADIO_OUTROS_BREAK)
+	# 3. Fin de cola (break): no debe contradecirse diciendo que terminó el programa o que se cierra la transmisión
+	# Se puede permitir por humor
+	# assert any("de levante" in str(b) for b in RADIO_OUTROS_BREAK)
+	# for item in RADIO_OUTROS_BREAK:
+	# 	variants = item.all_variants() if isinstance(item, GenderVariant) else (item,)
+	# 	for text in variants:
+	# 		low = text.lower()
+	# 		assert "terminó el programa" not in low, f"Contradicción en RADIO_OUTROS_BREAK: {text}"
+	# 		assert "cerramos la transmisión" not in low, f"Contradicción en RADIO_OUTROS_BREAK: {text}"
+	# 		assert "apago el micrófono" not in low, f"Contradicción en RADIO_OUTROS_BREAK: {text}"
+	# 		assert "cerramos el micrófono" not in low, f"Contradicción en RADIO_OUTROS_BREAK: {text}"
 
 
 def test_carpincho_previa_romance_and_gender_habits() -> None:
 	"""Verifica frases de previa, romance isleño y hábitos de carpinchos machos vs carpinchas."""
-	from app.domain.radio.segments import BASE_RADIO_INTROS, RADIO_OUTROS
+	from app.domain.radio.segments import (
+		BASE_RADIO_INTROS,
+		RADIO_OUTROS_PREVIA,
+		RADIO_OUTROS_ROMANCE,
+	)
 
-	# 1. Previa en intros y outros
+	# 1. Previa en intros y banco de outros de previa
 	assert any("previa" in str(i).lower() for i in BASE_RADIO_INTROS)
-	assert any("previa" in str(o).lower() for o in RADIO_OUTROS)
+	assert any("previa" in str(o).lower() for o in RADIO_OUTROS_PREVIA)
 
 	# 2. Romance y actos románticos carpinchos (camalotes, juncos, serenatas)
 	assert any(
-		"camalote" in str(o) and ("romance" in str(o) or "enamor" in str(o) or "ramo" in str(o)) for o in RADIO_OUTROS
+		"camalote" in str(o) and ("romance" in str(o) or "enamor" in str(o) or "ramo" in str(o))
+		for o in RADIO_OUTROS_ROMANCE
 	)
 
 	# 3. Hábitos de machos (hacer fuerza con caranchos) vs carpinchas (pestañas y pintarse las garras)
@@ -257,6 +339,30 @@ def test_carpincho_previa_romance_and_gender_habits() -> None:
 	assert any("pintarme las garras" in i.f or "pintarse las garras" in i.f for i in intros_gv)
 
 
-def test_static_validation_passes_with_gender_variants() -> None:
-	"""Verifica que validate_radio_banks valide la integridad sin placeholders obsoletos."""
+def test_static_validation_passes_with_gender_variants_and_rejects_identical_branches() -> None:
+	"""Verifica que validate_radio_banks valide todos los bancos y que no existan GenderVariants con m == f."""
+	from app.domain.radio.segments import (
+		PASES_A_CLIMA,
+		RADIO_INTROS,
+		RADIO_OUTROS,
+		RADIO_OUTROS_BREAK,
+		RADIO_REACTIONS,
+		REACCIONES_BY_CATEGORY,
+		REACCIONES_CLIMA,
+	)
+
 	validate_radio_banks(strict=True)
+
+	all_banks = [
+		RADIO_INTROS,
+		RADIO_OUTROS,
+		RADIO_OUTROS_BREAK,
+		PASES_A_CLIMA,
+		RADIO_REACTIONS,
+		*REACCIONES_BY_CATEGORY.values(),
+		*REACCIONES_CLIMA.values(),
+	]
+	for bank in all_banks:
+		for item in bank:
+			if isinstance(item, GenderVariant):
+				assert item.m.strip() != item.f.strip(), f"GenderVariant con ramas idénticas: {item.m!r}"

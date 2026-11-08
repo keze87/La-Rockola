@@ -142,7 +142,7 @@ BASE_RADIO_INTROS: tuple[str | GenderVariant, ...] = (
 RADIO_INTROS: tuple[str | GenderVariant, ...] = (*BASE_RADIO_INTROS, *SEPARADORES_Y_SLOGANS)
 
 
-LEAD_INS_FORTUNA: tuple[str, ...] = (
+LEAD_INS_FORTUNA_REFLEXIVA: tuple[str, ...] = (
 	"Momento de rumiar una idea mientras chupás la bombilla...",
 	"Pará la oreja que esto no te lo enseñan en la escuela de natación.",
 	"Un consejo milenario directo del barro profundo.",
@@ -165,6 +165,20 @@ LEAD_INS_FORTUNA: tuple[str, ...] = (
 	"Palabra santa que llega navegando entre los camalotes.",
 	"Abrí la mente y sentí la posta que nos trae la corriente.",
 	"Para vos que andás medio a las corridas, prestale atención a esta joyita.",
+)
+
+LEAD_INS_FORTUNA_MUSICAL: tuple[str, ...] = (
+	"Pensando en lo que suena y en cómo nos acompaña el dial, escuchate esta:",
+	"Hablando de canciones que nos marcan el pulso en la orilla, mirá esta posta:",
+	"Una verdad musical que resuena fuerte acá en la cabina de La Rockola:",
+	"Antes de soltar el próximo acorde, quedate con esta reflexión sobre la música:",
+	"Para los que viven con auriculares o parlante al hombro, el oráculo musical dice:",
+	"Entre tema y tema, una máxima bien afinada desde el bañado:",
+)
+
+LEAD_INS_FORTUNA: tuple[str, ...] = (
+	*LEAD_INS_FORTUNA_REFLEXIVA,
+	*LEAD_INS_FORTUNA_MUSICAL,
 )
 
 LEAD_INS_AVISOS_COMUNITARIOS: tuple[str, ...] = (
@@ -307,7 +321,7 @@ RADIO_OUTROS: tuple[str | GenderVariant, ...] = (
 	"¡Suficiente cháchara por ahora! Subile dos rayitas al parlante y disfrutá este temazo que se viene.",
 	"Se acaba la charla en la cabina pero empieza el baile del otro lado. ¡Mandale play nomás!",
 	"Cambiamos de ritmo sin doblar la esquina y nos metemos de lleno en el próximo temazo. ¡Mandale play que la mezcla no frena!",
-	# Estilismo y pista de baile
+	# Estilismo y pista de baile aptos para cualquier horario
 	GenderVariant(
 		m="¡A mover el esqueleto! Me acomodo las bermudas y que reviente el parlante con este tema.",
 		f="¡A mover el esqueleto! Me acomodo la pollera y que reviente el parlante con este tema.",
@@ -320,17 +334,10 @@ RADIO_OUTROS: tuple[str | GenderVariant, ...] = (
 		m="¡A sacudir las tabas! Un carpincho con facha no se queda sentado cuando suena este ritmo.",
 		f="¡A sacudir las tabas! Una carpincha con glamour no se queda sentada cuando suena este ritmo.",
 	),
-	"¡A mover las caderas! Este tema pide perreo lento y apretadito en el barro. ¡Mandale play!",
-	GenderVariant(
-		m="¡Uh, mirá con qué bomba venimos! Estoy listo para bailarlo bien pegadito y sin vergüenza. ¡Subile al volumen!",
-		f="¡Uh, mirá con qué bomba venimos! Estoy lista para bailarlo bien pegadito y sin vergüenza. ¡Subile al volumen!",
-	),
-	GenderVariant(
-		m="¡Uh, mirá con qué bomba venimos! Está para bailarlo bien pegadito y sin vergüenza. ¡Subile al volumen!",
-		f="¡Uh, mirá con qué bomba venimos! Está para bailarlo bien pegadito y sin vergüenza. ¡Subile al volumen!",
-	),
-	"Cuidado que con este ritmo la cabina se pone caliente... ¡a tirar pasos sensuales en la pista!",
-	# Dedicatorias a novios / novias y salir de levante
+	# "¡Para Maru que nos escucha desde casa, te deseamos que tengas un buen día! ¡Un carpinchazo de tema para vos; cambiame la música!",
+)
+
+RADIO_OUTROS_ROMANCE: tuple[str | GenderVariant, ...] = (
 	GenderVariant(
 		m="Esta canción se la dedico a una de mis novias que me está escuchando desde el muelle... ¡atendé, beba!",
 		f="Esta canción se la dedico a uno de mis novios que me está escuchando desde el muelle... ¡atendé, bombón!",
@@ -338,14 +345,6 @@ RADIO_OUTROS: tuple[str | GenderVariant, ...] = (
 	GenderVariant(
 		m="Tema especial que va con dedicatoria para una de mis novias del Delta; mirá cómo te pienso.",
 		f="Tema especial que va con dedicatoria para uno de mis novios del Delta; mirá cómo te pienso.",
-	),
-	"¡Subile dos rayitas al parlante! Esta noche salgo de levante por la ribera y este tema me pone a punto caramelo.",
-	"Con este ritmo me perfumo, me lustro las garras y salgo de levante sin pedir permiso. ¡Mandale play!",
-	# Modo previa y romance carpincho
-	"¡Subile al parlante que esta es la previa que te merecés! Armate un fernet en jarra y dejate llevar.",
-	GenderVariant(
-		m="¡A meterle ritmo a la previa! Este carpincho se toma el último trago de la jarra y le manda cumbia.",
-		f="¡A meterle ritmo a la previa! Esta carpincha se toma el último trago de la jarra y le manda cumbia.",
 	),
 	GenderVariant(
 		m="Este tema es puro romance isleño: para llevarle un ramo de juncos frescos a tu amor y flotar en el camalote.",
@@ -355,7 +354,27 @@ RADIO_OUTROS: tuple[str | GenderVariant, ...] = (
 		m="Un tema para enamorarse en la ribera: un galán cantando serenatas entre los juncos a la luz de la luna.",
 		f="Un tema para enamorarse en la ribera: una reina recibiendo serenatas entre los juncos a la luz de la luna.",
 	),
-	# "¡Para Maru que nos escucha desde casa, te deseamos que tengas un buen día! ¡Un carpinchazo de tema para vos; cambiame la música!",
+)
+
+RADIO_OUTROS_PREVIA: tuple[str | GenderVariant, ...] = (
+	"¡Subile al parlante que esta es la previa que te merecés! Armate un fernet en jarra y dejate llevar.",
+	GenderVariant(
+		m="¡A meterle ritmo a la previa! Este carpincho se toma el último trago de la jarra y le manda cumbia.",
+		f="¡A meterle ritmo a la previa! Esta carpincha se toma el último trago de la jarra y le manda cumbia.",
+	),
+	"¡Arranca la previa en la costanera! Hielo en el vaso, parlante al mango y que suene este temazo.",
+)
+
+RADIO_OUTROS_NIGHT: tuple[str | GenderVariant, ...] = (
+	"¡A mover las caderas! Este tema pide perreo lento y apretadito en el barro. ¡Mandale play!",
+	GenderVariant(
+		m="¡Uh, mirá con qué bomba venimos! Estoy listo para bailarlo bien pegadito y sin vergüenza. ¡Subile al volumen!",
+		f="¡Uh, mirá con qué bomba venimos! Estoy lista para bailarlo bien pegadito y sin vergüenza. ¡Subile al volumen!",
+	),
+	"¡Uh, mirá con qué bomba venimos! Está para bailarlo bien pegadito y sin vergüenza. ¡Subile al volumen!",
+	"Cuidado que con este ritmo la cabina se pone caliente... ¡a tirar pasos sensuales en la pista!",
+	"¡Subile dos rayitas al parlante! Esta noche salgo de levante por la ribera y este tema me pone a punto caramelo.",
+	"Con este ritmo me perfumo, me lustro las garras y salgo de levante sin pedir permiso. ¡Mandale play!",
 )
 
 OUTROS_CHISMES: tuple[str, ...] = (
@@ -406,7 +425,7 @@ RADIO_OUTROS_PAUSE: tuple[str, ...] = (
 
 RADIO_OUTROS_BREAK: tuple[str | GenderVariant, ...] = (
 	"Se nos secó la fila de temas por ahora, así que los carpinchos nos tomamos un recreo en la laguna hasta que elijan más música.",
-	"Llegamos al final de la lista en La Rockola. Cerramos el micrófono un ratito; cuando quieran más ritmo, tiren otro tema a la cola.",
+	"Llegamos al final de la lista en La Rockola. Dejamos la cabina en guardia un ratito; cuando quieran más ritmo, tiren otro tema a la cola.",
 	"No quedaron más canciones en la gatera, che. Nos vamos a flotar un rato al arroyo hasta que alguien ponga otra ficha.",
 	"Hasta acá llegó la fila de hoy. Dejamos la consola descansando a la sombra del sauce; sumá unos temas cuando quieras seguir.",
 	GenderVariant(
@@ -415,25 +434,28 @@ RADIO_OUTROS_BREAK: tuple[str | GenderVariant, ...] = (
 	),
 	"Bueno, se terminó el programa; ahora me voy pal after con mi gata, a seguir perreando toda la noche.",
 	"Se vació la cola de temas... yo ya cumplí en la cabina; ahora me bajo al barro a tirar unos pasos prohibidos y seductores.",
+	"Bueno, se vació la lista de temas por ahora; mientras cargan otra tanda me voy al patio a seguir perreando un rato.",
+	"Se vació la cola de temas... mientras esperan para sumar canciones, me bajo al barro a tirar unos pasos prohibidos y seductores.",
 	GenderVariant(
-		m="Último tema de la fila. Apago el micrófono y me voy a menear apretadito al muelle como galán suelto hasta que salga el sol.",
-		f="Último tema de la fila. Apago el micrófono y me voy a menear apretadito al muelle como diva suelta hasta que salga el sol.",
+		m="Último tema de la fila por ahora. Mientras eligen más música, me voy a menear apretadito al muelle como galán suelto.",
+		f="Último tema de la fila por ahora. Mientras eligen más música, me voy a menear apretadita al muelle como diva suelta.",
 	),
 	GenderVariant(
-		m="Nos quedamos sin música en la gatera. Me voy a la madriguera a mimar y calentar la cueva con mi compañera.",
-		f="Nos quedamos sin música en la gatera. Me voy a la madriguera a mimar y calentar la cueva con mi compañero.",
+		m="Nos quedamos sin música en la gatera. Aprovecho el recreo para ir a la madriguera a mimar y calentar la cueva con mi compañera.",
+		f="Nos quedamos sin música en la gatera. Aprovecho el recreo para ir a la madriguera a mimar y calentar la cueva con mi compañero.",
 	),
 	GenderVariant(
-		m="Se vació la fila en la radio... los carpinchos cerramos la transmisión y salgo de levante por los mejores bares de la costa.",
-		f="Se vació la fila en la radio... las carpinchas cerramos la transmisión y salgo de levante por los mejores bares de la costa.",
+		m="Se vació la fila en la radio... este carpincho aprovecha el recreo para salir de levante por los mejores bares de la costa.",
+		f="Se vació la fila en la radio... esta carpincha aprovecha el recreo para salir de levante por los mejores bares de la costa.",
 	),
 	GenderVariant(
-		m="Último tema cumplido: me saco los auriculares, me pongo fachero y salgo de levante a ver quién me mima esta noche.",
-		f="Último tema cumplido: me saco los auriculares, me pongo diosa y salgo de levante a ver quién me mima esta noche.",
+		m="Último tema de la cola cumplido: me saco los auriculares un ratito, me pongo fachero y salgo de levante a ver quién me mima esta noche.",
+		f="Último tema de la cola cumplido: me saco los auriculares un ratito, me pongo diosa y salgo de levante a ver quién me mima esta noche.",
 	),
 	"Último tema de la lista cumplido. Los locutores nos vamos a cebar unos amargos; ¡agregá canciones cuando quieras que acá estamos!",
 	"Bolsillos vacíos de canciones por este rato en La Rockola. Nos tomamos un descanso en el juncal hasta la próxima tanda.",
 	"Se terminó la fila de reproducción, gente linda. Apagamos los parlantes por un ratito, pero el micrófono queda listo para cuando vuelvan.",
+	"Se terminó la fila de reproducción, gente linda. Dejamos la consola en espera un ratito, con el micrófono listo para cuando sumen más temas.",
 )
 
 
@@ -693,7 +715,7 @@ REACCIONES_CLIMA: dict[str, tuple[str | GenderVariant, ...]] = {
 	),
 }
 
-REACCIONES_FORTUNA: tuple[str | GenderVariant, ...] = (
+REACCIONES_FORTUNA_REFLEXIVA: tuple[str | GenderVariant, ...] = (
 	"¡Olvídate! Mejor explicado, imposible.",
 	"¡Uh, qué bárbaro! Me dejó recalculando.",
 	GenderVariant(
@@ -741,6 +763,26 @@ REACCIONES_FORTUNA: tuple[str | GenderVariant, ...] = (
 	"¡Eso no fue un consejo, fue una caricia al alma!",
 	"¡Para ponerlo en un cartelito de madera en la entrada del rancho!",
 	"¡Posta pura! Al que no le guste, que vaya a rumiar pasto amargo.",
+)
+
+REACCIONES_FORTUNA_MUSICAL: tuple[str | GenderVariant, ...] = (
+	"¡Amén! Donde suena una buena canción, no entra la tristeza en la laguna.",
+	"¡Tal cual! La música es el mejor salvavidas cuando sube la marea.",
+	GenderVariant(
+		m="¡Qué gran verdad, compadre! Sin música en la consola no somos nada.",
+		f="¡Qué gran verdad, comadre! Sin música en la consola no somos nada.",
+	),
+	"¡Firmado al pie! Por eso acá en La Rockola los parlantes no descansan nunca.",
+	"¡Posta pura! Un buen estribillo te cura cualquier mambo de una sola pasada.",
+	GenderVariant(
+		m="¡Así se habla, compadre! Que nunca nos falte una melodía en la orilla.",
+		f="¡Así se habla, comadre! Que nunca nos falte una melodía en la orilla.",
+	),
+)
+
+REACCIONES_FORTUNA: tuple[str | GenderVariant, ...] = (
+	*REACCIONES_FORTUNA_REFLEXIVA,
+	*REACCIONES_FORTUNA_MUSICAL,
 )
 
 
@@ -898,16 +940,44 @@ REACCIONES_BY_CATEGORY: dict[str, tuple[str | GenderVariant, ...]] = {
 # ---------------------------------------------------------------------------
 
 
+SUBCATEGORY_TO_PARENT_CATEGORY: dict[str, str] = {
+	"aviso_comercial": "aviso",
+	"aviso_comunitario": "aviso",
+	"alerta_transito": "alerta_criolla",
+	"alerta_clima": "alerta_criolla",
+	"oyentes_pedido": "oyentes",
+	"oyentes_saludo": "oyentes",
+	"fortuna_musical": "fortuna",
+	"fortuna_reflexiva": "fortuna",
+}
+
+LEAD_INS_BY_SUBCATEGORY: dict[str, tuple[str, ...]] = {
+	"aviso_comercial": LEAD_INS_AVISOS_COMERCIALES,
+	"aviso_comunitario": LEAD_INS_AVISOS_COMUNITARIOS,
+	"alerta_transito": LEAD_INS_TRANSITO,
+	"alerta_clima": LEAD_INS_ALERTAS_CLIMA,
+	"oyentes_pedido": LEAD_INS_OYENTES,
+	"oyentes_saludo": LEAD_INS_OYENTES,
+	"fortuna_musical": LEAD_INS_FORTUNA_MUSICAL,
+	"fortuna_reflexiva": LEAD_INS_FORTUNA_REFLEXIVA,
+}
+
+REACCIONES_BY_SUBCATEGORY: dict[str, tuple[str | GenderVariant, ...]] = {
+	"aviso_comercial": REACCIONES_AVISOS_COMERCIALES,
+	"aviso_comunitario": REACCIONES_AVISOS_COMUNITARIOS,
+	"alerta_transito": REACCIONES_TRANSITO,
+	"alerta_clima": REACCIONES_CLIMA_ALERTAS,
+	"oyentes_pedido": (*REACCIONES_OYENTES, *REACCIONES_OYENTES_PEDIDO),
+	"oyentes_saludo": REACCIONES_OYENTES,
+	"fortuna_musical": REACCIONES_FORTUNA_MUSICAL,
+	"fortuna_reflexiva": REACCIONES_FORTUNA_REFLEXIVA,
+}
+
+
 def get_lead_ins_for_category(category: str, subcategory: str | None = None) -> tuple[str, ...]:
 	"""Devuelve los lead-ins pertinentes a la categoría o subcategoría del segmento."""
-	if subcategory == "aviso_comercial":
-		return LEAD_INS_AVISOS_COMERCIALES
-	if subcategory == "aviso_comunitario":
-		return LEAD_INS_AVISOS_COMUNITARIOS
-	if subcategory == "alerta_transito":
-		return LEAD_INS_TRANSITO
-	if subcategory == "alerta_clima":
-		return LEAD_INS_ALERTAS_CLIMA
+	if subcategory and subcategory in LEAD_INS_BY_SUBCATEGORY:
+		return LEAD_INS_BY_SUBCATEGORY[subcategory]
 	return LEAD_INS_BY_CATEGORY.get(category, LEAD_INS_UNKNOWN)
 
 
@@ -917,16 +987,8 @@ def get_reactions_for_category(
 	gender: str | None = None,
 ) -> tuple[str, ...] | tuple[str | GenderVariant, ...]:
 	"""Devuelve las reacciones de cabina pertinentes a la categoría o subcategoría del segmento, opcionalmente resueltas por género."""
-	if subcategory == "aviso_comercial":
-		res = REACCIONES_AVISOS_COMERCIALES
-	elif subcategory == "aviso_comunitario":
-		res = REACCIONES_AVISOS_COMUNITARIOS
-	elif subcategory == "alerta_transito":
-		res = REACCIONES_TRANSITO
-	elif subcategory == "alerta_clima":
-		res = REACCIONES_CLIMA_ALERTAS
-	elif subcategory == "oyentes_pedido":
-		res = (*REACCIONES_OYENTES, *REACCIONES_OYENTES_PEDIDO)
+	if subcategory and subcategory in REACCIONES_BY_SUBCATEGORY:
+		res = REACCIONES_BY_SUBCATEGORY[subcategory]
 	else:
 		res = REACCIONES_BY_CATEGORY.get(category, REACCIONES_UNKNOWN)
 
@@ -939,8 +1001,9 @@ def get_outros_for_category(
 	category: str,
 	outro_mode: str = "continue",
 	gender: str | None = None,
+	ctx: object | None = None,
 ) -> tuple[str, ...] | tuple[str | GenderVariant, ...]:
-	"""Devuelve el banco de cierres pertinentes a la categoría o según el modo de salida, opcionalmente resuelto por género."""
+	"""Devuelve el banco de cierres pertinentes a la categoría, modo de salida y franja horaria, opcionalmente resuelto por género."""
 	if outro_mode == "pause":
 		res = RADIO_OUTROS_PAUSE
 	elif outro_mode == "break":
@@ -951,8 +1014,21 @@ def get_outros_for_category(
 		res = OUTROS_CHISMES
 	elif category == "novela":
 		res = OUTROS_NOVELA
+	elif category in OUTROS_BY_CATEGORY:
+		res = OUTROS_BY_CATEGORY[category]
 	else:
-		res = OUTROS_BY_CATEGORY.get(category, RADIO_OUTROS)
+		franja = getattr(ctx, "franja", None)
+		es_finde = bool(getattr(ctx, "es_finde", False))
+		if franja is None or franja in ("noche", "madrugada"):
+			res = (*RADIO_OUTROS, *RADIO_OUTROS_ROMANCE, *RADIO_OUTROS_PREVIA, *RADIO_OUTROS_NIGHT)
+		elif franja == "tarde":
+			res = (
+				(*RADIO_OUTROS, *RADIO_OUTROS_ROMANCE, *RADIO_OUTROS_PREVIA)
+				if es_finde
+				else (*RADIO_OUTROS, *RADIO_OUTROS_ROMANCE)
+			)
+		else:
+			res = RADIO_OUTROS
 
 	if gender is not None:
 		return tuple(resolve_bank_for_gender(res, gender))
@@ -960,7 +1036,9 @@ def get_outros_for_category(
 
 
 def get_outros_for_mode(
-	outro_mode: str = "continue", gender: str | None = None
+	outro_mode: str = "continue",
+	gender: str | None = None,
+	ctx: object | None = None,
 ) -> tuple[str, ...] | tuple[str | GenderVariant, ...]:
 	"""Devuelve el banco de cierres radiales acorde al modo ('continue', 'pause', 'break' o 'dj')."""
-	return get_outros_for_category("", outro_mode=outro_mode, gender=gender)
+	return get_outros_for_category("", outro_mode=outro_mode, gender=gender, ctx=ctx)

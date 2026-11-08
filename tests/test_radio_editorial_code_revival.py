@@ -9,6 +9,7 @@ Valida:
 
 from __future__ import annotations
 
+import random
 from datetime import datetime
 from pathlib import Path
 
@@ -17,13 +18,15 @@ from app.domain.radio.classification import (
 	RadioPhrase,
 	resolve_segment_subcategory,
 )
-from app.domain.radio.context import RadioContext, build_radio_context
+from app.domain.radio.context import build_radio_context, phrase_fits_context
 from app.domain.radio.dialogue import (
 	NO_MERGE_CATEGORIES,
 	build_radio_dialogue_plan,
+	generate_modular_radio_script,
 	select_radio_hosts,
 )
 from app.domain.radio.nlp import (
+	get_phrase_last_played,
 	record_phrase_played,
 	select_radio_phrase,
 	weighted_choice_by_recency,
@@ -40,10 +43,15 @@ from app.domain.radio.phrase_banks.soap_opera import NOVELA_VECINAL
 from app.domain.radio.segments import (
 	LEAD_INS_AVISOS_COMERCIALES,
 	LEAD_INS_AVISOS_COMUNITARIOS,
+	LEAD_INS_FORTUNA_MUSICAL,
+	LEAD_INS_FORTUNA_REFLEXIVA,
 	LEAD_INS_TRANSITO,
+	RADIO_OUTROS_PAUSE,
 	REACCIONES_AVISOS_COMERCIALES,
 	REACCIONES_AVISOS_COMUNITARIOS,
 	REACCIONES_CLIMA_ALERTAS,
+	REACCIONES_FORTUNA_MUSICAL,
+	REACCIONES_FORTUNA_REFLEXIVA,
 	REACCIONES_TRANSITO,
 	get_lead_ins_for_category,
 	get_reactions_for_category,
@@ -57,73 +65,112 @@ from app.domain.radio.voices import (
 
 
 def test_01_balanceo_probabilistico_y_recencia_con_db_path(tmp_path: Path) -> None:
-	"""1. Verifica propagación de db_path en recencia y distribución equitativa de categorías sin monopolio."""
-	db_file = str(tmp_path / "test_recency_isolation.db")
-	ctx = build_radio_context(dt=datetime(2026, 5, 10, 12, 0), temp_c=22)
+	"""1. Verifica propagación de db_path en recencia y distribución de categorías con semilla determinista."""
+	rng_state = random.getstate()
+	random.seed(20261108)
+	try:
+		db_file = str(tmp_path / "test_recency_isolation.db")
+		ctx = build_radio_context(dt=datetime(2026, 5, 10, 12, 0), temp_c=22)
 
-	# A. Propagación de db_path en weighted_choice_by_recency
-	candidates = list(NOVELA_VECINAL[:5])
-	target_unplayed = candidates[-1]
-	for item in candidates[:-1]:
-		record_phrase_played(item, "novela", db_path=db_file)
+		# A. Propagación de db_path en weighted_choice_by_recency
+		candidates = list(NOVELA_VECINAL[:5])
+		target_unplayed = candidates[-1]
+		for item in candidates[:-1]:
+			record_phrase_played(item, "novela", db_path=db_file)
 
-	picked_count = sum(
-		1
-		for _ in range(30)
-		if weighted_choice_by_recency(candidates, category="novela", db_path=db_file) == target_unplayed
-	)
-	assert picked_count >= 15, f"La frase no jugada no tuvo prioridad con db_path propagado ({picked_count}/30)"
+		picked_count = sum(
+			1
+			for _ in range(30)
+			if weighted_choice_by_recency(candidates, category="novela", db_path=db_file) == target_unplayed
+		)
+		assert picked_count >= 20, f"La frase no jugada no tuvo prioridad con db_path propagado ({picked_count}/30)"
 
-	# B. Distribución equitativa: ninguna categoría debe monopolizar ni quedar olvidada
-	counts: dict[str, int] = {}
-	total_samples = 120
-	for _ in range(total_samples):
-		phrase, _ = select_radio_phrase(ctx=ctx, db_path=db_file)
-		record_phrase_played(phrase.text, phrase.category, db_path=db_file)
-		counts[phrase.category] = counts.get(phrase.category, 0) + 1
+		# B. Distribución con semilla fija: verifica pesos y cobertura de todas las categorías
+		counts: dict[str, int] = {}
+		total_samples = 240
+		for _ in range(total_samples):
+			phrase, _ = select_radio_phrase(ctx=ctx, db_path=db_file)
+			record_phrase_played(phrase.text, phrase.category, db_path=db_file)
+			counts[phrase.category] = counts.get(phrase.category, 0) + 1
 
-	expected_cats = {"fortuna", "aviso", "oyentes", "alerta_criolla", "chismes", "novela"}
-	assert expected_cats.issubset(counts.keys()), f"Faltan categorías en la selección: {expected_cats - counts.keys()}"
-	for cat, count in counts.items():
-		assert count >= 4, f"Categoría '{cat}' sub-representada ({count}/{total_samples})"
-		assert count <= 85, f"Categoría '{cat}' monopoliza la rotación ({count}/{total_samples})"
+		expected_cats = {"fortuna", "aviso", "oyentes", "alerta_criolla", "chismes", "novela"}
+		assert expected_cats.issubset(counts.keys()), (
+			f"Faltan categorías en la selección: {expected_cats - counts.keys()}"
+		)
+		for cat, count in counts.items():
+			assert count >= 6, f"Categoría '{cat}' sub-representada ({count}/{total_samples})"
+			assert count <= 160, f"Categoría '{cat}' monopoliza la rotación ({count}/{total_samples})"
+	finally:
+		random.setstate(rng_state)
 
 
 def test_02_perfiles_editoriales_y_afinidad_tematica() -> None:
-	"""2. Verifica perfiles de locutores en voices.py y selección afín por temática en dialogue.py."""
-	host_profiles = getattr(voices_mod, "HOST_PROFILES", {})
-	assert len(host_profiles) >= 4, "HOST_PROFILES debe definir los 4 perfiles de cabina"
+	"""2. Verifica perfiles de locutores en voices.py, afinidad temática y que host != cohost en los 3 escenarios."""
+	rng_state = random.getstate()
+	random.seed(1337)
+	try:
+		host_profiles = getattr(voices_mod, "HOST_PROFILES", {})
+		assert len(host_profiles) >= 4, "HOST_PROFILES debe definir los 4 perfiles de cabina"
 
-	for v in VOICES:
-		profile = host_profiles.get(v)
-		assert profile is not None, f"Falta perfil para la voz {v}"
-		assert "name" in profile
-		assert "role" in profile
-		assert "style" in profile
-		assert "preferred_categories" in profile
-		assert "pacing" in profile
+		for v in VOICES:
+			profile = host_profiles.get(v)
+			assert profile is not None, f"Falta perfil para la voz {v}"
+			assert "name" in profile
+			assert "role" in profile
+			assert "style" in profile
+			assert "preferred_categories" in profile
+			assert "pacing" in profile
 
-	# Afinidad: Valentina en chismes/novela, Elena en avisos comunitarios, Tomás en alertas
-	chismes_participations = sum(1 for _ in range(30) if VOICE_VALENTINA in select_radio_hosts(category="chismes"))
-	assert chismes_participations >= 20, (
-		f"Valentina debe tener afinidad preponderante en chismes ({chismes_participations}/30)"
-	)
+		# Afinidad: Valentina en chismes/novela, Elena en avisos comunitarios, Tomás en alertas
+		chismes_participations = sum(1 for _ in range(30) if VOICE_VALENTINA in select_radio_hosts(category="chismes"))
+		assert chismes_participations >= 20, (
+			f"Valentina debe tener afinidad preponderante en chismes ({chismes_participations}/30)"
+		)
 
-	aviso_participations = sum(1 for _ in range(30) if VOICE_ELENA in select_radio_hosts(category="aviso"))
-	assert aviso_participations >= 20, f"Elena debe tener afinidad preponderante en avisos ({aviso_participations}/30)"
+		aviso_participations = sum(1 for _ in range(30) if VOICE_ELENA in select_radio_hosts(category="aviso"))
+		assert aviso_participations >= 20, (
+			f"Elena debe tener afinidad preponderante en avisos ({aviso_participations}/30)"
+		)
 
-	alerta_participations = sum(1 for _ in range(30) if VOICE_TOMAS in select_radio_hosts(category="alerta_criolla"))
-	assert alerta_participations >= 20, (
-		f"Tomás debe tener afinidad preponderante en alertas ({alerta_participations}/30)"
-	)
+		alerta_participations = sum(
+			1 for _ in range(30) if VOICE_TOMAS in select_radio_hosts(category="alerta_criolla")
+		)
+		assert alerta_participations >= 20, (
+			f"Tomás debe tener afinidad preponderante en alertas ({alerta_participations}/30)"
+		)
 
-	for _ in range(20):
-		h, c = select_radio_hosts(category="fortuna")
-		assert h != c, f"Host y cohost no pueden ser iguales: ({h}, {c})"
+		# Tres situaciones obligatorias: (a) ninguna voz, (b) solo host, (c) solo cohost
+		for cat in ("fortuna", "aviso", "alerta_criolla", "oyentes", "chismes", "novela"):
+			for _ in range(10):
+				# a) Ninguna voz proporcionada
+				h1, c1 = select_radio_hosts(category=cat)
+				assert h1 != c1
+
+				# b) Solo host proporcionado
+				for v in VOICES:
+					h2, c2 = select_radio_hosts(host_voice=v, category=cat)
+					assert h2 == v and h2 != c2
+
+				# c) Solo cohost proporcionado (incluyendo cohost=VOICE_TOMAS en alerta_criolla)
+				for v in VOICES:
+					h3, c3 = select_radio_hosts(cohost_voice=v, category=cat)
+					assert c3 == v and h3 != c3
+					plan = build_radio_dialogue_plan(
+						cohost_voice=v,
+						fortuna=RadioPhrase("Reporte de prueba.", cat),
+					)
+					host_used = plan[0][1]
+					fortune_used = next(t[1] for t in plan if t[2] == cat)
+					assert host_used != v
+					assert fortune_used == v
+	finally:
+		random.setstate(rng_state)
 
 
-def test_03_subcategorizacion_semantica_fina() -> None:
-	"""3. Verifica clasificación fina de subcategorías y selección coherente de lead-ins y reacciones."""
+def test_03_subcategorizacion_semantica_fina(tmp_path: Path) -> None:
+	"""3. Verifica clasificación fina de subcategorías (incluyendo fortunas) y alineación del historial de recencia."""
+	db_file = tmp_path / "test_subcat_recency.db"
+
 	# A. Avisos comerciales vs avisos comunitarios
 	sample_ad = CARPINCHO_ADS[0]
 	assert resolve_segment_subcategory(sample_ad, category="aviso") == "aviso_comercial"
@@ -144,7 +191,15 @@ def test_03_subcategorizacion_semantica_fina() -> None:
 	assert resolve_segment_subcategory(pedido_msg, category="oyentes") == "oyentes_pedido"
 	assert resolve_segment_subcategory(saludo_msg, category="oyentes") == "oyentes_saludo"
 
-	# D. Coherencia en lead-ins y reacciones
+	# D. Fortunas: musical vs reflexiva con sus bancos específicos
+	assert resolve_segment_subcategory("La música te salva una y otra vez.", category="fortuna") == "fortuna_musical"
+	assert resolve_segment_subcategory("Al que madruga Dios lo ayuda.", category="fortuna") == "fortuna_reflexiva"
+	assert get_lead_ins_for_category("fortuna", subcategory="fortuna_musical") == LEAD_INS_FORTUNA_MUSICAL
+	assert get_lead_ins_for_category("fortuna", subcategory="fortuna_reflexiva") == LEAD_INS_FORTUNA_REFLEXIVA
+	assert get_reactions_for_category("fortuna", subcategory="fortuna_musical") == REACCIONES_FORTUNA_MUSICAL
+	assert get_reactions_for_category("fortuna", subcategory="fortuna_reflexiva") == REACCIONES_FORTUNA_REFLEXIVA
+
+	# E. Coherencia en lead-ins y reacciones de avisos y alertas
 	assert get_lead_ins_for_category("aviso", subcategory="aviso_comercial") == LEAD_INS_AVISOS_COMERCIALES
 	assert get_lead_ins_for_category("aviso", subcategory="aviso_comunitario") == LEAD_INS_AVISOS_COMUNITARIOS
 	assert get_lead_ins_for_category("alerta_criolla", subcategory="alerta_transito") == LEAD_INS_TRANSITO
@@ -154,23 +209,56 @@ def test_03_subcategorizacion_semantica_fina() -> None:
 	assert get_reactions_for_category("alerta_criolla", subcategory="alerta_transito") == REACCIONES_TRANSITO
 	assert get_reactions_for_category("alerta_criolla", subcategory="alerta_clima") == REACCIONES_CLIMA_ALERTAS
 
+	# F. Alineación de historial de recencia entre categoría general ("reaccion" / "lead_in") y subcategorías
+	ad_react = REACCIONES_AVISOS_COMERCIALES[0]
+	record_phrase_played(ad_react, category="reaccion", timestamp=70000.0, db_path=db_file)
+	assert get_phrase_last_played(ad_react, category="reaccion_aviso_comercial", db_path=db_file) == 70000.0
 
-def test_04_outro_mode_fallbacks_y_limpieza_de_horas() -> None:
-	"""4. Verifica suporte de outro_mode, aislamiento de categorías de locución y limpieza de infantilismos."""
+	ad_lead = LEAD_INS_AVISOS_COMERCIALES[0]
+	record_phrase_played(ad_lead, category="lead_in", timestamp=71000.0, db_path=db_file)
+	assert get_phrase_last_played(ad_lead, category="lead_in_aviso_comercial", db_path=db_file) == 71000.0
+
+
+def test_04_outro_mode_fallbacks_y_limpieza_de_horas(monkeypatch) -> None:
+	"""4. Verifica integración real de outro_mode en contexto/generadores y que los fallbacks respeten el contexto."""
+	import app.domain.radio.dialogue as dialogue_mod
+
 	# A. No merge de categorías estructurales
 	assert {"lead_in", "reaccion", "pase"}.issubset(NO_MERGE_CATEGORIES), (
 		f"NO_MERGE_CATEGORIES debe incluir lead_in, reaccion y pase: {NO_MERGE_CATEGORIES}"
 	)
 
-	# B. outro_mode en RadioContext y prevención de promesa falsa de música en pausa/break
-	ctx_pause = build_radio_context(dt=datetime(2026, 5, 10, 14, 0), outro_mode="pause")
-	assert isinstance(ctx_pause, RadioContext)
-	assert ctx_pause.outro_mode == "pause"
-
+	# B. outro_mode se propaga automáticamente cuando build_radio_dialogue_plan y generate_modular_radio_script crean el contexto
+	dt_afternoon = datetime(2026, 5, 10, 14, 0)
 	plan_pause = build_radio_dialogue_plan(
 		fortuna=RadioPhrase("El mate se toma amargo y tranquilo.", "fortuna"),
 		outro_mode="pause",
-		ctx=ctx_pause,
+		dt=dt_afternoon,
 	)
 	text_plan = " ".join(t[0] for t in plan_pause).lower()
 	assert "dejate llevar por el ritmo" not in text_plan, "En pausa no se debe prometer música en continuado"
+	assert "cambiame la música" not in text_plan
+
+	_, _, _, _, _, _, script_outro, _, full_script = generate_modular_radio_script(
+		dt=dt_afternoon,
+		outro_mode="pause",
+	)
+	assert script_outro in RADIO_OUTROS_PAUSE
+	assert "cambiame la música" not in full_script.lower()
+
+	# C. El fallback nunca debe reintroducir frases incompatibles con el contexto si filter_by_context descarta todas las candidatas
+	ctx_morning = build_radio_context(dt=datetime(2026, 5, 10, 9, 0))
+	monkeypatch.setattr(
+		dialogue_mod,
+		"get_intros_for_first_block",
+		lambda first_block=None, gender=None: ("Tardecita dorada en la ribera.",),
+	)
+	plan_fallback = build_radio_dialogue_plan(
+		fortuna=RadioPhrase("Una reflexión.", "fortuna"),
+		ctx=ctx_morning,
+	)
+	chosen_intro = plan_fallback[0][0]
+	assert "tardecita" not in chosen_intro.lower(), (
+		f"El fallback reintrodujo una frase descartada por el filtro: {chosen_intro}"
+	)
+	assert phrase_fits_context(chosen_intro, ctx_morning, "intro")

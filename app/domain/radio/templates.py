@@ -134,20 +134,20 @@ def _expand_phrase_variants_cached(template: str) -> tuple[str, ...]:
 	needs = set(_PLACEHOLDER_RE.findall(template))
 	if not needs:
 		return (template,)
-	if needs & {"cohost", "host"}:
-		subjects: list[str | None] = [name for name in VOICE_NAMES.values()]
-	else:
-		subjects = [None]
+	voice_names: list[str | None] = [name for name in VOICE_NAMES.values()]
+	hosts: list[str | None] = voice_names if "host" in needs else [None]
+	cohosts: list[str | None] = voice_names if "cohost" in needs else [None]
 	momentos: list[str] = list(dict.fromkeys(MOMENTO_POR_FRANJA.values())) if "momento" in needs else [""]
 	saludos: list[str] = list(SALUDOS_UNICOS) if "saludo" in needs else [""]
 	out: list[str] = []
-	for name in subjects:
-		for momento in momentos:
-			for saludo in saludos:
-				values = _placeholder_values(momento, saludo, cohost_name=name, host_name=name)
-				text = _PLACEHOLDER_RE.sub(lambda m, v=values: v[m.group(1)], template)
-				if text not in out:
-					out.append(text)
+	for h_name in hosts:
+		for c_name in cohosts:
+			for momento in momentos:
+				for saludo in saludos:
+					values = _placeholder_values(momento, saludo, cohost_name=c_name, host_name=h_name)
+					text = _PLACEHOLDER_RE.sub(lambda m, v=values: v[m.group(1)], template)
+					if text not in out:
+						out.append(text)
 	return tuple(out)
 
 

@@ -41,15 +41,21 @@ from app.domain.radio.linguistics import (
 )
 from app.domain.radio.segments import (
 	LEAD_INS_BY_CATEGORY,
+	LEAD_INS_BY_SUBCATEGORY,
 	OUTROS_BY_CATEGORY,
 	PASES_A_CLIMA,
 	RADIO_INTROS,
 	RADIO_OUTROS,
 	RADIO_OUTROS_BREAK,
 	RADIO_OUTROS_DJ,
+	RADIO_OUTROS_NIGHT,
 	RADIO_OUTROS_PAUSE,
+	RADIO_OUTROS_PREVIA,
+	RADIO_OUTROS_ROMANCE,
 	REACCIONES_BY_CATEGORY,
+	REACCIONES_BY_SUBCATEGORY,
 	REACCIONES_CLIMA,
+	SUBCATEGORY_TO_PARENT_CATEGORY,
 )
 from app.domain.radio.templates import (
 	expand_phrase_variants,
@@ -83,6 +89,9 @@ def _get_static_variant_map() -> dict[str, str]:
 		all_templates: list[str] = [
 			*RADIO_INTROS,
 			*RADIO_OUTROS,
+			*RADIO_OUTROS_ROMANCE,
+			*RADIO_OUTROS_PREVIA,
+			*RADIO_OUTROS_NIGHT,
 			*RADIO_OUTROS_PAUSE,
 			*RADIO_OUTROS_BREAK,
 			*RADIO_OUTROS_DJ,
@@ -101,10 +110,12 @@ def _get_static_variant_map() -> dict[str, str]:
 				all_templates.append(rp.text)
 
 		for tpl in all_templates:
-			if "{" in tpl:
-				clean_tpl = _clean_phrase_text(tpl)
-				for variant in expand_phrase_variants(tpl):
-					mapping[_clean_phrase_text(variant)] = clean_tpl
+			sub_tpls = tpl.all_variants() if isinstance(tpl, GenderVariant) else (tpl,)
+			for st in sub_tpls:
+				if "{" in st:
+					clean_tpl = _clean_phrase_text(st)
+					for variant in expand_phrase_variants(st):
+						mapping[_clean_phrase_text(variant)] = clean_tpl
 		_STATIC_VARIANT_TO_TEMPLATE_MAP = mapping
 	return _STATIC_VARIANT_TO_TEMPLATE_MAP
 
@@ -256,9 +267,13 @@ def _get_gv_counterparts_map() -> dict[str, list[str]]:
 	for bank in [
 		RADIO_INTROS,
 		RADIO_OUTROS,
+		RADIO_OUTROS_ROMANCE,
+		RADIO_OUTROS_PREVIA,
+		RADIO_OUTROS_NIGHT,
 		RADIO_OUTROS_BREAK,
 		PASES_A_CLIMA,
 		*REACCIONES_BY_CATEGORY.values(),
+		*REACCIONES_BY_SUBCATEGORY.values(),
 		*REACCIONES_CLIMA.values(),
 	]:
 		for item in bank:
@@ -297,7 +312,7 @@ def get_phrase_last_played(
 	category: str = "",
 	db_path: Path | str | None = None,
 ) -> float | None:
-	"""Recupera la marca de tiempo en que una frase fue reproducida por última vez."""
+	"""Recupera la marca de tiempo en que una frase fue reproducida por última vez, compatible con categorías y subcategorías."""
 	_sync_from_db_if_needed(db_path)
 	if isinstance(phrase, (tuple, list)):
 		phrase_text = phrase[0] if len(phrase) > 0 else ""
@@ -318,20 +333,35 @@ def get_phrase_last_played(
 			return cp_val
 
 	if category.startswith("lead_in_"):
+		subcat = category.removeprefix("lead_in_")
+		parent_cat = SUBCATEGORY_TO_PARENT_CATEGORY.get(subcat)
+		if parent_cat:
+			val = _PHRASE_HISTORY_MEMORY.get(_normalize_phrase_key(phrase_text, f"lead_in_{parent_cat}"))
+			if val is not None:
+				return val
 		val = _PHRASE_HISTORY_MEMORY.get(_normalize_phrase_key(phrase_text, "lead_in"))
 		if val is not None:
 			return val
 	elif category.startswith("reaccion_"):
-		val = _PHRASE_HISTORY_MEMORY.get(_normalize_phrase_key(phrase_text, "reaccion"))
-		if val is not None:
-			return val
+		subcat = category.removeprefix("reaccion_")
+		parent_cat = SUBCATEGORY_TO_PARENT_CATEGORY.get(subcat)
+		candidates_to_check = [phrase_text, *counterparts]
+		if parent_cat:
+			for cand in candidates_to_check:
+				val = _PHRASE_HISTORY_MEMORY.get(_normalize_phrase_key(cand, f"reaccion_{parent_cat}"))
+				if val is not None:
+					return val
+		for cand in candidates_to_check:
+			val = _PHRASE_HISTORY_MEMORY.get(_normalize_phrase_key(cand, "reaccion"))
+			if val is not None:
+				return val
 	elif category == "pase":
 		tpl = _find_pase_template(phrase_text)
 		if tpl is not None:
-			tpl_str = tpl.m if isinstance(tpl, GenderVariant) else tpl
-			val = _PHRASE_HISTORY_MEMORY.get(_normalize_phrase_key(tpl_str, "pase"))
-			if val is not None:
-				return val
+			for tpl_str in tpl.all_variants() if isinstance(tpl, GenderVariant) else (tpl,):
+				val = _PHRASE_HISTORY_MEMORY.get(_normalize_phrase_key(tpl_str, "pase"))
+				if val is not None:
+					return val
 	return None
 
 
@@ -341,7 +371,7 @@ def record_phrase_played(
 	timestamp: float | None = None,
 	db_path: Path | str | None = None,
 ) -> None:
-	"""Registra en memoria y en SQLite la reproducción de una frase actualizando su marca de tiempo."""
+	"""Registra en memoria y en SQLite la reproducción de una frase actualizando su marca de tiempo en categorías y subcategorías."""
 	_sync_from_db_if_needed(db_path)
 	if isinstance(phrase, (tuple, list)):
 		phrase_text = phrase[0] if len(phrase) > 0 else ""
@@ -365,28 +395,36 @@ def record_phrase_played(
 			match = next((item for item in cat_list if _same_phrase(phrase_text, item)), None)
 			if match is not None:
 				keys_to_update[_normalize_phrase_key(match, f"lead_in_{cat_name}")] = ts
-				break
+		for subcat_name, subcat_list in LEAD_INS_BY_SUBCATEGORY.items():
+			match = next((item for item in subcat_list if _same_phrase(phrase_text, item)), None)
+			if match is not None:
+				keys_to_update[_normalize_phrase_key(match, f"lead_in_{subcat_name}")] = ts
 	elif category == "reaccion" or category.startswith("reaccion_"):
-		keys_to_update[_normalize_phrase_key(phrase_text, "reaccion")] = ts
+		for cand in (phrase_text, *counterparts):
+			keys_to_update[_normalize_phrase_key(cand, "reaccion")] = ts
 		for cat_name, cat_list in REACCIONES_BY_CATEGORY.items():
 			match = next((item for item in cat_list if _same_phrase(phrase_text, item)), None)
 			if match is not None:
-				match_str = match.m if isinstance(match, GenderVariant) else match
-				keys_to_update[_normalize_phrase_key(match_str, "reaccion")] = ts
-				keys_to_update[_normalize_phrase_key(match_str, f"reaccion_{cat_name}")] = ts
-				break
+				for m_str in match.all_variants() if isinstance(match, GenderVariant) else (match,):
+					keys_to_update[_normalize_phrase_key(m_str, "reaccion")] = ts
+					keys_to_update[_normalize_phrase_key(m_str, f"reaccion_{cat_name}")] = ts
+		for subcat_name, subcat_list in REACCIONES_BY_SUBCATEGORY.items():
+			match = next((item for item in subcat_list if _same_phrase(phrase_text, item)), None)
+			if match is not None:
+				for m_str in match.all_variants() if isinstance(match, GenderVariant) else (match,):
+					keys_to_update[_normalize_phrase_key(m_str, "reaccion")] = ts
+					keys_to_update[_normalize_phrase_key(m_str, f"reaccion_{subcat_name}")] = ts
 		for clim_list in REACCIONES_CLIMA.values():
 			match = next((item for item in clim_list if _same_phrase(phrase_text, item)), None)
 			if match is not None:
-				match_str = match.m if isinstance(match, GenderVariant) else match
-				keys_to_update[_normalize_phrase_key(match_str, "reaccion")] = ts
-				keys_to_update[_normalize_phrase_key(match_str, "reaccion_clima")] = ts
-				break
+				for m_str in match.all_variants() if isinstance(match, GenderVariant) else (match,):
+					keys_to_update[_normalize_phrase_key(m_str, "reaccion")] = ts
+					keys_to_update[_normalize_phrase_key(m_str, "reaccion_clima")] = ts
 	elif category == "pase":
 		tpl = _find_pase_template(phrase_text)
 		if tpl is not None:
-			tpl_str = tpl.m if isinstance(tpl, GenderVariant) else tpl
-			keys_to_update[_normalize_phrase_key(tpl_str, "pase")] = ts
+			for tpl_str in tpl.all_variants() if isinstance(tpl, GenderVariant) else (tpl,):
+				keys_to_update[_normalize_phrase_key(tpl_str, "pase")] = ts
 
 	_PHRASE_HISTORY_MEMORY.update(keys_to_update)
 	if db_path:

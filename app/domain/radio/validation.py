@@ -33,7 +33,15 @@ from app.domain.radio.segments import (
 	RADIO_INTROS,
 	RADIO_LEAD_INS,
 	RADIO_OUTROS,
+	RADIO_OUTROS_BREAK,
+	RADIO_OUTROS_DJ,
+	RADIO_OUTROS_NIGHT,
+	RADIO_OUTROS_PAUSE,
+	RADIO_OUTROS_PREVIA,
+	RADIO_OUTROS_ROMANCE,
 	RADIO_REACTIONS,
+	REACCIONES_BY_CATEGORY,
+	REACCIONES_CLIMA,
 	WEATHER_TEMPLATES,
 )
 from app.domain.radio.templates import expand_phrase_variants
@@ -64,13 +72,13 @@ def validate_radio_banks(strict: bool = False) -> list[str]:
 	1. Placeholders desconocidos en plantillas radiales o de clima.
 	2. Frases vacías o con espacios en blanco únicamente.
 	3. Metadatos de categoría faltantes o inválidos en RadioPhrase.
-	4. Entradas duplicadas en bancos donde se espera unicidad léxica.
+	4. Entradas duplicadas en bancos donde se espera unicidad léxica y GenderVariants con ramas m/f idénticas.
 	5. Conteo de variantes excesivo o explosión combinatoria incontrolada.
 	"""
 	issues: list[str] = []
 
-	# Bancos con verificación de unicidad léxica y no vacíos
-	banks_to_check: dict[str, Sequence[str]] = {
+	# Bancos con verificación de unicidad léxica, no vacíos y variantes de género distintas
+	banks_to_check: dict[str, Sequence[str | GenderVariant]] = {
 		"CARPINCHO_SABIDURIA": CARPINCHO_SABIDURIA,
 		"AVISOS_PARROQUIALES_Y_EXTRAVIOS": AVISOS_PARROQUIALES_Y_EXTRAVIOS,
 		"TRANSITO_FLUVIAL_Y_CAMINOS": TRANSITO_FLUVIAL_Y_CAMINOS,
@@ -79,13 +87,27 @@ def validate_radio_banks(strict: bool = False) -> list[str]:
 		"DEDICATORIAS_OYENTES": DEDICATORIAS_OYENTES,
 		"CHISMES_CARPINCHOS": CHISMES_CARPINCHOS,
 		"NOVELA_VECINAL": NOVELA_VECINAL,
+		"RADIO_INTROS": RADIO_INTROS,
+		"RADIO_OUTROS": RADIO_OUTROS,
+		"RADIO_OUTROS_ROMANCE": RADIO_OUTROS_ROMANCE,
+		"RADIO_OUTROS_PREVIA": RADIO_OUTROS_PREVIA,
+		"RADIO_OUTROS_NIGHT": RADIO_OUTROS_NIGHT,
+		"RADIO_OUTROS_PAUSE": RADIO_OUTROS_PAUSE,
+		"RADIO_OUTROS_BREAK": RADIO_OUTROS_BREAK,
+		"RADIO_OUTROS_DJ": RADIO_OUTROS_DJ,
 		"PASES_A_CLIMA": PASES_A_CLIMA,
 		"RADIO_REACTIONS": RADIO_REACTIONS,
 	}
+	for cat, r_list in REACCIONES_BY_CATEGORY.items():
+		banks_to_check[f"REACCIONES_{cat}"] = r_list
+	for cond, r_list in REACCIONES_CLIMA.items():
+		banks_to_check[f"REACCIONES_CLIMA_{cond}"] = r_list
 
 	for bank_name, phrases in banks_to_check.items():
 		seen: set[str] = set()
 		for item in phrases:
+			if isinstance(item, GenderVariant) and item.m.strip() == item.f.strip():
+				issues.append(f"{bank_name}: GenderVariant con ramas m y f idénticas: '{item.m[:40]}...'")
 			sub_items = item.all_variants() if isinstance(item, GenderVariant) else (item,)
 			for p in sub_items:
 				if not p or not p.strip():
@@ -99,6 +121,12 @@ def validate_radio_banks(strict: bool = False) -> list[str]:
 		"RADIO_INTROS": RADIO_INTROS,
 		"RADIO_LEAD_INS": RADIO_LEAD_INS,
 		"RADIO_OUTROS": RADIO_OUTROS,
+		"RADIO_OUTROS_ROMANCE": RADIO_OUTROS_ROMANCE,
+		"RADIO_OUTROS_PREVIA": RADIO_OUTROS_PREVIA,
+		"RADIO_OUTROS_NIGHT": RADIO_OUTROS_NIGHT,
+		"RADIO_OUTROS_PAUSE": RADIO_OUTROS_PAUSE,
+		"RADIO_OUTROS_BREAK": RADIO_OUTROS_BREAK,
+		"RADIO_OUTROS_DJ": RADIO_OUTROS_DJ,
 		"PASES_A_CLIMA": PASES_A_CLIMA,
 		"RADIO_REACTIONS": RADIO_REACTIONS,
 	}
