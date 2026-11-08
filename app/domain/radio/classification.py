@@ -333,7 +333,7 @@ def resolve_segment_subcategory(
 	"""
 	raw_text = text[0] if isinstance(text, (tuple, RadioPhrase)) and len(text) >= 1 else str(text or "")
 	text_clean = raw_text.strip()
-	cat = category or resolve_segment_category(text, default="fortuna")
+	cat = category or resolve_segment_category(text, default="unknown")
 	low = text_clean.lower()
 
 	if cat == "aviso":

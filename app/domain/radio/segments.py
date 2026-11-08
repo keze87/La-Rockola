@@ -1010,25 +1010,18 @@ def get_outros_for_category(
 		res = RADIO_OUTROS_BREAK
 	elif outro_mode == "dj":
 		res = RADIO_OUTROS_DJ
-	elif category == "chismes":
-		res = OUTROS_CHISMES
-	elif category == "novela":
-		res = OUTROS_NOVELA
-	elif category in OUTROS_BY_CATEGORY:
-		res = OUTROS_BY_CATEGORY[category]
+	elif ctx is None:
+		res = OUTROS_BY_CATEGORY.get(category, RADIO_OUTROS)
 	else:
+		base_outros = list(OUTROS_BY_CATEGORY.get(category, RADIO_OUTROS))
 		franja = getattr(ctx, "franja", None)
 		es_finde = bool(getattr(ctx, "es_finde", False))
-		if franja is None or franja in ("noche", "madrugada"):
-			res = (*RADIO_OUTROS, *RADIO_OUTROS_ROMANCE, *RADIO_OUTROS_PREVIA, *RADIO_OUTROS_NIGHT)
-		elif franja == "tarde":
-			res = (
-				(*RADIO_OUTROS, *RADIO_OUTROS_ROMANCE, *RADIO_OUTROS_PREVIA)
-				if es_finde
-				else (*RADIO_OUTROS, *RADIO_OUTROS_ROMANCE)
-			)
-		else:
-			res = RADIO_OUTROS
+		time_outros: list[str | GenderVariant] = []
+		if franja in ("noche", "madrugada"):
+			time_outros = [*RADIO_OUTROS_ROMANCE, *RADIO_OUTROS_PREVIA, *RADIO_OUTROS_NIGHT]
+		elif franja == "tarde" and category not in OUTROS_BY_CATEGORY:
+			time_outros = [*RADIO_OUTROS_ROMANCE, *RADIO_OUTROS_PREVIA] if es_finde else list(RADIO_OUTROS_ROMANCE)
+		res = tuple(base_outros + time_outros)
 
 	if gender is not None:
 		return tuple(resolve_bank_for_gender(res, gender))

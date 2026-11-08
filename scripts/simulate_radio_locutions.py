@@ -175,12 +175,12 @@ def run_mock_radio_simulation(
 		minute = random.randint(0, 59)
 		cond = random.choice(weather_conditions)
 		temp = 32 if cond == "calor" else (8 if cond == "frio" else 22)
+		o_mode = random.choice(outro_modes)
 		dt = datetime(2026, m, d, h, minute)
-		ctx = build_radio_context(dt, temp_c=temp)
+		ctx = build_radio_context(dt, temp_c=temp, outro_mode=o_mode)
 
 		phrase, _is_sys = select_radio_phrase(force_system_fortune=False, db_path=db_path, ctx=ctx)
 		w_text = weather_samples[cond] if random.random() < 0.85 else None
-		o_mode = random.choice(outro_modes)
 
 		is_dialogue = random.random() < 0.85
 		plan = build_radio_dialogue_plan(
@@ -256,6 +256,8 @@ def run_mock_radio_simulation(
 
 	return {
 		"total_runs": iterations,
+		"total_locutions": len(generated_locutions),
+		"locutions": generated_locutions,
 		"total_templates": total_templates,
 		"hit_templates": total_hit_templates,
 		"coverage_percentage": round(overall_pct, 2),

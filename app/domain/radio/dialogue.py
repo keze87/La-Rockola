@@ -20,6 +20,7 @@ from app.domain.radio.context import (
 	RadioContext,
 	build_radio_context,
 	filter_by_context,
+	phrase_fits_context,
 )
 from app.domain.radio.linguistics import (
 	apply_rioplatense_tts_phonetics,
@@ -337,9 +338,15 @@ def _resolve_block_order(block_order: Sequence[str] | None, valid_keys: list[str
 	return ordered
 
 
+_SAFE_OUTRO_FALLBACKS: dict[str, str] = {
+	"continue": "¡Seguimos con más música!",
+	"dj": "El DJ Bara toma el control de las bandejas.",
+	"pause": "Hacemos una pausita en la orilla y enseguida volvemos.",
+	"break": "Nos tomamos un descanso en el juncal hasta que sumen más temas.",
+}
+
 _SAFE_NEUTRAL_FALLBACKS: dict[str, str] = {
 	"intro": "Transmite La Rockola del Carpincho.",
-	"salida": "¡Seguimos con más música!",
 	"lead_in": "Atenti a lo que compartimos en el aire de La Rockola.",
 	"pase": "¿Cómo viene la mano afuera, {cohost}?",
 	"reaccion": "¡Clarito como el agua de la orilla!",
@@ -354,7 +361,7 @@ def _filter_with_safe_fallback(
 ) -> list[str]:
 	"""
 	Filtra candidatos por contexto y, si todos son descartados, busca en un banco neutral filtrado por el mismo contexto.
-	Nunca reintroduce frases que violen la coherencia temporal o climática.
+	Valida además que el fallback final cumpla phrase_fits_context según modo y franja horaria.
 	"""
 	filtered = filter_by_context(candidates, ctx, category)
 	if filtered:
@@ -363,7 +370,22 @@ def _filter_with_safe_fallback(
 		fallback_filtered = filter_by_context(fallback_pool, ctx, category)
 		if fallback_filtered:
 			return fallback_filtered
-	return [_SAFE_NEUTRAL_FALLBACKS.get(category, "Transmite La Rockola del Carpincho.")]
+
+	mode = getattr(ctx, "outro_mode", "continue") if ctx else "continue"
+	if category == "salida":
+		default_str = _SAFE_OUTRO_FALLBACKS.get(mode, _SAFE_OUTRO_FALLBACKS["continue"])
+	else:
+		default_str = _SAFE_NEUTRAL_FALLBACKS.get(category, "Transmite La Rockola del Carpincho.")
+
+	if phrase_fits_context(default_str, ctx, category):
+		return [default_str]
+	if category == "salida":
+		return [
+			"Hacemos una pausa en la cabina."
+			if mode == "pause"
+			else ("Fin de la lista por ahora." if mode == "break" else "Transmite La Rockola.")
+		]
+	return ["Transmite La Rockola del Carpincho."]
 
 
 def build_radio_dialogue_plan(

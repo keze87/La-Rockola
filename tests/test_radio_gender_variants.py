@@ -270,7 +270,6 @@ def test_carpincho_dating_ex_and_levante_phrases() -> None:
 	"""Verifica frases picantes separadas en bancos específicos y que las de noche no salgan a las 8 de la mañana."""
 	from app.domain.radio.segments import (
 		RADIO_OUTROS,
-		RADIO_OUTROS_BREAK,
 		RADIO_OUTROS_NIGHT,
 		RADIO_OUTROS_PREVIA,
 		RADIO_OUTROS_ROMANCE,
@@ -366,3 +365,46 @@ def test_static_validation_passes_with_gender_variants_and_rejects_identical_bra
 		for item in bank:
 			if isinstance(item, GenderVariant):
 				assert item.m.strip() != item.f.strip(), f"GenderVariant con ramas idénticas: {item.m!r}"
+
+
+def test_all_tts_variants_expand_without_unresolved_placeholders() -> None:
+	"""Verifica que todas las plantillas y variantes de género se expandan limpiamente para TTS sin placeholders huérfanos."""
+	from app.domain.radio.segments import (
+		LEAD_INS_BY_CATEGORY,
+		OUTROS_BY_CATEGORY,
+		PASES_A_CLIMA,
+		RADIO_INTROS,
+		RADIO_OUTROS,
+		RADIO_OUTROS_BREAK,
+		RADIO_OUTROS_DJ,
+		RADIO_OUTROS_NIGHT,
+		RADIO_OUTROS_PAUSE,
+		RADIO_OUTROS_PREVIA,
+		RADIO_OUTROS_ROMANCE,
+		RADIO_REACTIONS,
+		REACCIONES_BY_CATEGORY,
+		REACCIONES_CLIMA,
+	)
+
+	collections = [
+		RADIO_INTROS,
+		RADIO_OUTROS,
+		RADIO_OUTROS_ROMANCE,
+		RADIO_OUTROS_PREVIA,
+		RADIO_OUTROS_NIGHT,
+		RADIO_OUTROS_PAUSE,
+		RADIO_OUTROS_BREAK,
+		RADIO_OUTROS_DJ,
+		PASES_A_CLIMA,
+		RADIO_REACTIONS,
+		*LEAD_INS_BY_CATEGORY.values(),
+		*OUTROS_BY_CATEGORY.values(),
+		*REACCIONES_BY_CATEGORY.values(),
+		*REACCIONES_CLIMA.values(),
+	]
+	for bank in collections:
+		for item in bank:
+			variants = expand_phrase_variants(item)
+			assert variants, f"No se generaron variantes para {item}"
+			for v in variants:
+				assert "{" not in v and "}" not in v, f"Placeholder sin resolver en variante TTS: {v!r}"

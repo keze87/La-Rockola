@@ -218,6 +218,10 @@ def test_03_subcategorizacion_semantica_fina(tmp_path: Path) -> None:
 	record_phrase_played(ad_lead, category="lead_in", timestamp=71000.0, db_path=db_file)
 	assert get_phrase_last_played(ad_lead, category="lead_in_aviso_comercial", db_path=db_file) == 71000.0
 
+	# G. Contenido no reconocido clasifica como 'unknown' y no se convierte silenciosamente en 'fortuna_reflexiva'
+	assert resolve_segment_subcategory("Una frase externa misteriosa 12345XYZ.") == "unknown"
+	assert resolve_segment_subcategory("Una frase externa misteriosa 12345XYZ.", category="unknown") == "unknown"
+
 
 def test_04_outro_mode_fallbacks_y_limpieza_de_horas(monkeypatch) -> None:
 	"""4. Verifica integración real de outro_mode en contexto/generadores y que los fallbacks respeten el contexto."""
@@ -262,3 +266,68 @@ def test_04_outro_mode_fallbacks_y_limpieza_de_horas(monkeypatch) -> None:
 		f"El fallback reintrodujo una frase descartada por el filtro: {chosen_intro}"
 	)
 	assert phrase_fits_context(chosen_intro, ctx_morning, "intro")
+
+	# D. El fallback final de salida debe depender de outro_mode y nunca prometer música en pause o break
+	ctx_pause = build_radio_context(dt=datetime(2026, 5, 10, 15, 0), outro_mode="pause")
+	pause_fallback = dialogue_mod._filter_with_safe_fallback([], ctx_pause, "salida", fallback_pool=[])
+	assert len(pause_fallback) >= 1
+	assert phrase_fits_context(pause_fallback[0], ctx_pause, "salida")
+	assert "seguimos con más música" not in pause_fallback[0].lower()
+	assert "paus" in pause_fallback[0].lower() or "respiro" in pause_fallback[0].lower()
+
+	ctx_break = build_radio_context(dt=datetime(2026, 5, 10, 15, 0), outro_mode="break")
+	break_fallback = dialogue_mod._filter_with_safe_fallback([], ctx_break, "salida", fallback_pool=[])
+	assert len(break_fallback) >= 1
+	assert phrase_fits_context(break_fallback[0], ctx_break, "salida")
+	assert "seguimos con más música" not in break_fallback[0].lower()
+	assert (
+		"recreo" in break_fallback[0].lower()
+		or "descanso" in break_fallback[0].lower()
+		or "cola" in break_fallback[0].lower()
+		or "lista" in break_fallback[0].lower()
+		or "sumen" in break_fallback[0].lower()
+	)
+
+
+def test_05_cierres_nocturnos_y_matutinos_en_todas_las_categorias() -> None:
+	"""5. Verifica que los cierres temporales (noche/previa) se integren en todas las categorías y se excluyan a la mañana."""
+	from app.domain.radio.segments import get_outros_for_category
+
+	ctx_night = build_radio_context(dt=datetime(2026, 5, 10, 22, 0))
+	ctx_morning = build_radio_context(dt=datetime(2026, 5, 10, 8, 0))
+
+	categories_to_test = ("fortuna", "chismes", "novela", "aviso", "oyentes", "alerta_criolla")
+
+	for cat in categories_to_test:
+		# De noche, todas las categorías deben tener acceso a cierres nocturnos y de previa
+		night_outros = get_outros_for_category(cat, "continue", gender="m", ctx=ctx_night)
+		has_night = any("levante" in o.lower() or "perreo" in o.lower() or "previa" in o.lower() for o in night_outros)
+		assert has_night, f"Categoría '{cat}' no incluye cierres nocturnos/de previa en horario nocturno"
+
+		# De mañana, ninguna categoría debe recibir cierres de noche, previa o levante
+		morning_outros = get_outros_for_category(cat, "continue", gender="m", ctx=ctx_morning)
+		has_inappropriate = any(
+			"esta noche" in o.lower() or "perreo" in o.lower() or "levante" in o.lower() or "previa" in o.lower()
+			for o in morning_outros
+		)
+		assert not has_inappropriate, f"Categoría '{cat}' incluyó frases de previa/noche en horario matutino (08:00)"
+
+
+def test_06_simulacion_coherencia_contexto_y_modo() -> None:
+	"""6. Verifica que en el simulador el contexto se construya con el modo de salida elegido y coincidan."""
+	from scripts.simulate_radio_locutions import run_mock_radio_simulation
+
+	result = run_mock_radio_simulation(iterations=300, seed=42)
+	assert result["total_locutions"] == 300
+	for loc in result["locutions"]:
+		# En el contexto descriptivo se guarda 'modo:xyz'
+		ctx_str = loc["context"]
+		assert "modo:" in ctx_str
+		mode = ctx_str.split("modo:")[-1].strip()
+		assert mode in ("continue", "dj", "pause", "break")
+		# Verificamos que ninguna locución en modo pause o break contenga frases que contradigan la pausa
+		full_text = loc["full_text"].lower()
+		if mode in ("pause", "break"):
+			assert "¡seguimos con más música!" not in full_text
+			assert "dejate llevar por el ritmo" not in full_text
+			assert "cambiame la música" not in full_text
