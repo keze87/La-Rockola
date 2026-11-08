@@ -129,8 +129,13 @@ def _sync_from_db_if_needed(db_path: Path | str | None) -> Path | None:
 	if not db_path:
 		return None
 	p = Path(db_path)
-	key = str(p.resolve())
-	if key in _LOADED_DB_PATHS or not p.exists():
+	try:
+		if not p.exists():
+			return p
+		key = str(p.resolve())
+	except OSError:
+		return p
+	if key in _LOADED_DB_PATHS:
 		return p
 	try:
 		with sqlite3.connect(str(p), timeout=5.0) as conn:
@@ -462,7 +467,7 @@ def weighted_choice_by_recency(
 
 	for phrase in candidates:
 		cat = getattr(phrase, "category", category) or category
-		last_played = get_phrase_last_played(phrase, category=cat, db_path=db_path)
+		last_played = get_phrase_last_played(phrase, category=cat, db_path=None)
 		if last_played is None or last_played <= 0:
 			weights.append(1.0)
 		else:
@@ -797,7 +802,10 @@ def get_bundled_fortune(db_path: Path | str | None = None) -> str | None:
 		_BUNDLED_FORTUNES_CACHE = load_bundled_fortunes()
 	if not _BUNDLED_FORTUNES_CACHE:
 		return None
-	return weighted_choice_by_recency(_BUNDLED_FORTUNES_CACHE, category="fortuna_bundled", db_path=db_path)
+	candidates = _BUNDLED_FORTUNES_CACHE
+	if len(candidates) > 200:
+		candidates = random.sample(candidates, 100)
+	return weighted_choice_by_recency(candidates, category="fortuna_bundled", db_path=db_path)
 
 
 # Ponderación probabilística por categoría: 'fortuna' cuenta con un banco local nutrido y más de

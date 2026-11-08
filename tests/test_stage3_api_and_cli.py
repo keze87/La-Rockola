@@ -221,7 +221,7 @@ def test_library_media_system_and_websocket_routes(tmp_path: Path, dummy_audio_f
 		ws.send_json({"type": "local_player_release"})
 
 
-def test_frontend_routes_served_cleanly(tmp_path: Path, dummy_audio_file: Path) -> None:
+def test_frontend_routes_served_cleanly(tmp_path: Path, dummy_audio_file: Path, spa_dist: Path) -> None:
 	"""Verifica que las rutas de frontend (/vibra, /fogon, /queue, etc.) sirvan el index sin 404."""
 	_container, _orch = _setup_test_container(tmp_path, dummy_audio_file)
 	app = create_app()
