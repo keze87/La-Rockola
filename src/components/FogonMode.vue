@@ -344,10 +344,18 @@
 	const playPauseIcon = computed(() => (isPlaying.value ? 'pause' : 'play_arrow'));
 	const muteIcon = computed(() => (serverMuted.value || volume.value == 0 ? 'volume_off' : 'volume_down'));
 
+	const currentTrackKey = computed(() => {
+		if (isSynthesizingRadio.value) return 'radio-synthesizing';
+		if (isPlayingRadioAnnouncement.value) return `radio-announcement-${currentTrackPath.value || ''}`;
+		if (currentTrackPath.value) return currentTrackPath.value;
+		if (djBaraEnabled.value && djNextTrack.value?.path) return `dj-${djNextTrack.value.path}`;
+		return 'empty';
+	});
+
 	// Lógica del botón de temporizador / pausa programada
 	const isTimerActive = computed(() => pauseAfterPath.value === currentTrackPath.value && currentTrackPath.value);
 	const timerClass = computed(() => [
-		'p-2 transition active:scale-90 z-20',
+		'fogon-timer-btn p-2 transition active:scale-90 z-20',
 		isTimerActive.value
 			? 'text-carpincho-warning drop-shadow-[0_0_8px_rgba(233,196,106,0.8)]'
 			: 'text-white hover:text-carpincho-warning',
@@ -490,7 +498,7 @@
 			<!-- Botón flotante para cerrar el fogón (arriba a la derecha) -->
 			<button
 				aria-label="Cerrar vista de fogón"
-				class="text-carpincho-text/70 hover:text-carpincho-warning absolute top-4 right-4 z-40 p-2 transition hover:scale-110 active:scale-95 md:top-8 md:right-8"
+				class="fogon-close-btn text-carpincho-text/70 hover:text-carpincho-warning absolute top-4 right-4 z-40 p-2 transition hover:scale-110 active:scale-95 md:top-8 md:right-8"
 				@click="closeFogon"
 			>
 				<i class="material-icons !text-4xl">keyboard_arrow_down</i>
@@ -508,7 +516,7 @@
 				class="fogon-main-layout relative flex h-full w-full max-w-7xl items-center justify-center transition-all duration-500"
 				:class="[
 					hasLyrics
-						? 'flex-col justify-center md:flex-row md:items-center md:gap-12 lg:gap-16'
+						? 'has-lyrics flex-col justify-center md:flex-row md:items-center md:gap-12 lg:gap-16'
 						: 'mx-auto flex-col justify-center text-center',
 				]"
 			>
@@ -518,13 +526,13 @@
 					:class="[
 						hasLyrics
 							? 'h-full py-2 sm:py-4 md:h-auto md:w-88 md:py-0 lg:w-[380px] xl:w-[420px]'
-							: 'max-w-md',
+							: 'my-auto max-w-md',
 					]"
 				>
 					<div class="fogon-song-info contents" v-on="fogonContextBindings">
 						<!-- Bloque superior: Carátula del álbum bajada hacia el título central en móviles -->
 						<div
-							class="flex w-full flex-col items-center text-center"
+							class="fogon-cover-section flex w-full flex-col items-center text-center"
 							:class="[
 								hasLyrics
 									? 'min-h-0 flex-[6] justify-end pb-1 sm:pb-2 md:h-auto md:flex-none md:shrink-0 md:justify-center md:pb-0'
@@ -537,58 +545,70 @@
 								:class="[
 									hasLyrics
 										? 'aspect-square h-[90vw] max-h-[380px] w-[90vw] max-w-[380px] md:mb-5 md:h-auto md:max-h-none md:w-full md:max-w-none'
-										: 'mb-4 aspect-square h-56 w-56 sm:h-64 sm:w-64 md:mb-6 md:h-80 md:w-80 lg:h-88 lg:w-88',
+										: 'mb-4 aspect-square h-56 max-h-[38vh] w-56 max-w-[38vh] sm:h-64 sm:w-64 md:mb-6 md:h-80 md:w-80 lg:h-88 lg:w-88',
 								]"
 							>
-								<FavoritableCover
-									v-if="coverSource"
-									:track="coverSource"
-									size="h-full w-full"
-									rounded="rounded-2xl md:rounded-3xl"
-									:size-px="512"
-									:unload-when-hidden="false"
-									button-size="h-10 w-10 md:h-12 md:w-12"
-									button-icon-size="!text-xl md:!text-2xl"
-									button-position="right-3 bottom-3 md:right-4 md:bottom-4"
-									:show-favorite="!isSynthesizingRadio && !isPlayingRadioAnnouncement"
-								/>
-								<i v-else class="material-icons text-carpincho-warning !text-[8rem]">album</i>
+								<transition name="fogon-cover" mode="out-in">
+									<FavoritableCover
+										v-if="coverSource"
+										:key="coverSource"
+										:track="coverSource"
+										size="h-full w-full"
+										rounded="rounded-2xl md:rounded-3xl"
+										:size-px="512"
+										:unload-when-hidden="false"
+										button-size="h-10 w-10 md:h-12 md:w-12"
+										button-icon-size="!text-xl md:!text-2xl"
+										button-position="right-3 bottom-3 md:right-4 md:bottom-4"
+										:show-favorite="!isSynthesizingRadio && !isPlayingRadioAnnouncement"
+									/>
+									<i
+										v-else
+										key="empty-cover"
+										class="material-icons text-carpincho-warning !text-[8rem]"
+									>
+										album
+									</i>
+								</transition>
 							</div>
 						</div>
 
-						<!-- Bloque central: Información del tema clavado en el centro vertical de la pantalla en móviles -->
-						<div
-							class="fogon-track-info flex w-full shrink-0 flex-col items-center text-center select-none"
-							:class="[hasLyrics ? 'my-2 sm:my-3 md:my-0' : '']"
-						>
-							<!-- Info del tema -->
-							<h1
-								class="fogon-title mb-1 w-full truncate text-center font-black transition-all"
-								:class="
-									hasLyrics
-										? 'text-xl sm:text-2xl md:text-3xl xl:text-4xl'
-										: 'text-2xl sm:text-3xl md:text-4xl'
-								"
+						<!-- Bloque central: Información del tema con animación de transición -->
+						<transition name="fogon-track" mode="out-in">
+							<div
+								:key="currentTrackKey"
+								class="fogon-track-info flex w-full shrink-0 flex-col items-center text-center select-none"
+								:class="[hasLyrics ? 'my-2 sm:my-3 md:my-0' : 'my-2 md:my-3']"
 							>
-								<span
-									v-if="currentTrackInfo.isComing"
-									class="text-carpincho-warning mb-1 block animate-pulse text-xs tracking-widest uppercase"
+								<!-- Info del tema -->
+								<h1
+									class="fogon-title mb-1 w-full truncate text-center font-black transition-all"
+									:class="
+										hasLyrics
+											? 'text-xl sm:text-2xl md:text-3xl xl:text-4xl'
+											: 'text-2xl sm:text-3xl md:text-4xl'
+									"
 								>
-									🦦 Se viene...
-								</span>
-								{{ currentTrackInfo.title }}
-							</h1>
-							<h2
-								class="fogon-artist text-carpincho-secondary w-full truncate text-center font-medium"
-								:class="
-									hasLyrics
-										? 'text-sm sm:text-base md:text-lg lg:text-xl'
-										: 'text-base sm:text-lg md:text-xl'
-								"
-							>
-								{{ currentTrackInfo.artist }}
-							</h2>
-						</div>
+									<span
+										v-if="currentTrackInfo.isComing"
+										class="text-carpincho-warning mb-1 block animate-pulse text-xs tracking-widest uppercase"
+									>
+										🦦 Se viene...
+									</span>
+									{{ currentTrackInfo.title }}
+								</h1>
+								<h2
+									class="fogon-artist text-carpincho-secondary w-full truncate text-center font-medium"
+									:class="
+										hasLyrics
+											? 'text-sm sm:text-base md:text-lg lg:text-xl'
+											: 'text-base sm:text-lg md:text-xl'
+									"
+								>
+									{{ currentTrackInfo.artist }}
+								</h2>
+							</div>
+						</transition>
 					</div>
 
 					<!-- Bloque inferior: Barra de progreso, controles y letras móviles acercados hacia el centro -->
@@ -597,7 +617,7 @@
 						:class="[
 							hasLyrics
 								? 'min-h-0 flex-[4] justify-start md:h-auto md:flex-none md:shrink-0 md:justify-center'
-								: 'mt-4 shrink-0 sm:mt-5 md:mt-4',
+								: 'mt-3 shrink-0 sm:mt-4 md:mt-4',
 						]"
 					>
 						<!-- Sub-bloque de barra de progreso y controles -->
@@ -608,7 +628,7 @@
 							<!-- Barra de progreso personalizada -->
 							<div
 								v-show="currentTrackPath"
-								class="text-carpincho-secondary flex w-[90vw] max-w-[380px] items-center gap-3 text-xs font-medium select-none md:w-full md:max-w-none"
+								class="fogon-seekbar-wrapper text-carpincho-secondary flex w-[90vw] max-w-[380px] items-center gap-3 text-xs font-medium select-none md:w-full md:max-w-none"
 							>
 								<span class="w-10 shrink-0 text-right">{{ formattedTimePos }}</span>
 
@@ -660,7 +680,7 @@
 
 								<button
 									aria-label="Ajustar volumen"
-									class="hover:text-carpincho-warning z-20 p-2 text-white transition active:scale-90"
+									class="fogon-volume-btn hover:text-carpincho-warning z-20 p-2 text-white transition active:scale-90"
 									@click="toggleVolumePopup"
 								>
 									<i class="material-icons !text-2xl sm:!text-3xl">{{ volIcon }}</i>
@@ -668,7 +688,7 @@
 
 								<button
 									aria-label="Pista anterior"
-									class="hover:text-carpincho-warning z-20 p-1 text-white transition active:scale-90"
+									class="fogon-prev-btn hover:text-carpincho-warning z-20 p-1 text-white transition active:scale-90"
 									@click="skipPrev"
 								>
 									<i class="material-icons !text-3xl sm:!text-4xl">skip_previous</i>
@@ -686,7 +706,7 @@
 
 								<button
 									aria-label="Pista siguiente"
-									class="hover:text-carpincho-warning z-20 p-1 text-white transition active:scale-90"
+									class="fogon-next-btn hover:text-carpincho-warning z-20 p-1 text-white transition active:scale-90"
 									@click="skipNext"
 								>
 									<i class="material-icons !text-3xl sm:!text-4xl">skip_next</i>
@@ -759,7 +779,7 @@
 						<!-- MODO VERTICAL (Mobile / Portrait): Ocupa el 100% del ancho y se posiciona cercano a los controles -->
 						<div
 							v-if="hasLyrics"
-							class="lyrics-mask-vertical relative mt-2 flex min-h-0 w-full flex-1 flex-col items-center justify-start overflow-hidden px-4 pt-1 text-center md:hidden"
+							class="lyrics-mask-vertical fogon-lyrics-mobile relative mt-2 flex min-h-0 w-full flex-1 flex-col items-center justify-start overflow-hidden px-4 pt-1 text-center md:hidden"
 						>
 							<div class="flex flex-col items-center justify-start space-y-2 select-none sm:space-y-3">
 								<div
@@ -799,51 +819,53 @@
 				</div>
 
 				<!-- COLUMNA DERECHA: Letras completas en flujo vertical con estética Carpincha (solo en escritorio / apaisado) -->
-				<div
-					v-if="hasLyrics"
-					class="lyrics-mask fogon-lyrics-container relative hidden h-[78vh] w-full flex-1 flex-col justify-center overflow-hidden md:flex lg:h-[84vh]"
-				>
+				<transition name="fogon-lyrics">
 					<div
-						ref="lyricsContainerRef"
-						class="fogon-lyrics-scroll no-scrollbar h-full w-full space-y-7 overflow-y-auto overscroll-contain scroll-smooth px-6 py-[38vh] select-none md:space-y-8 md:px-12"
-						@scroll="handleUserScroll"
-						@wheel="handleUserScroll"
-						@touchmove="handleUserScroll"
+						v-if="hasLyrics"
+						class="lyrics-mask fogon-lyrics-container relative hidden h-[78vh] w-full flex-1 flex-col justify-center overflow-hidden md:flex lg:h-[84vh]"
 					>
 						<div
-							v-for="(line, idx) in lyrics"
-							:key="idx + '-' + line.time"
-							:ref="(el) => (lineRefs[idx] = el as HTMLElement)"
-							class="cursor-pointer text-left whitespace-pre-wrap transition-[color,opacity,transform] duration-300"
-							:class="[
-								isLineActive(line)
-									? 'origin-left scale-[1.02] text-3xl leading-tight font-black tracking-tight text-white sm:text-4xl lg:text-5xl'
-									: 'text-carpincho-text/35 hover:text-carpincho-text/75 text-xl leading-snug font-extrabold tracking-tight sm:text-2xl lg:text-3xl',
-							]"
-							@click="handleLineClick(line.time)"
+							ref="lyricsContainerRef"
+							class="fogon-lyrics-scroll no-scrollbar h-full w-full space-y-7 overflow-y-auto overscroll-contain scroll-smooth px-6 py-[38vh] select-none md:space-y-8 md:px-12"
+							@scroll="handleUserScroll"
+							@wheel="handleUserScroll"
+							@touchmove="handleUserScroll"
 						>
-							<template v-if="isLineActive(line)">
-								<template v-if="line.syllables && line.syllables.length > 0">
-									<span
-										v-for="(syl, sIdx) in line.syllables"
-										:key="sIdx"
-										:class="getSyllableClass(syl)"
-									>
-										{{ syl.text }}
-									</span>
+							<div
+								v-for="(line, idx) in lyrics"
+								:key="idx + '-' + line.time"
+								:ref="(el) => (lineRefs[idx] = el as HTMLElement)"
+								class="cursor-pointer text-left whitespace-pre-wrap transition-[color,opacity,transform] duration-300"
+								:class="[
+									isLineActive(line)
+										? 'origin-left scale-[1.02] text-3xl leading-tight font-black tracking-tight text-white sm:text-4xl lg:text-5xl'
+										: 'text-carpincho-text/35 hover:text-carpincho-text/75 text-xl leading-snug font-extrabold tracking-tight sm:text-2xl lg:text-3xl',
+								]"
+								@click="handleLineClick(line.time)"
+							>
+								<template v-if="isLineActive(line)">
+									<template v-if="line.syllables && line.syllables.length > 0">
+										<span
+											v-for="(syl, sIdx) in line.syllables"
+											:key="sIdx"
+											:class="getSyllableClass(syl)"
+										>
+											{{ syl.text }}
+										</span>
+									</template>
+									<template v-else>
+										<span class="text-carpincho-warning font-black">
+											{{ line.text }}
+										</span>
+									</template>
 								</template>
 								<template v-else>
-									<span class="text-carpincho-warning font-black">
-										{{ line.text }}
-									</span>
+									<span>{{ line.text }}</span>
 								</template>
-							</template>
-							<template v-else>
-								<span>{{ line.text }}</span>
-							</template>
+							</div>
 						</div>
 					</div>
-				</div>
+				</transition>
 			</div>
 		</div>
 	</transition>
@@ -858,6 +880,78 @@
 	.fogon-enter-from,
 	.fogon-leave-to {
 		opacity: 0;
+	}
+
+	/* Animaciones para cambio de tema (fogon-track) */
+	.fogon-track-enter-active,
+	.fogon-track-leave-active {
+		transition:
+			opacity 0.28s cubic-bezier(0.2, 0, 0, 1),
+			transform 0.28s cubic-bezier(0.2, 0, 0, 1),
+			filter 0.28s ease;
+	}
+
+	.fogon-track-enter-from {
+		opacity: 0;
+		transform: translateY(8px) scale(0.98);
+		filter: blur(2px);
+	}
+
+	.fogon-track-leave-to {
+		opacity: 0;
+		transform: translateY(-8px) scale(0.98);
+		filter: blur(2px);
+	}
+
+	/* Animaciones para cambio de carátula (fogon-cover) */
+	.fogon-cover-enter-active,
+	.fogon-cover-leave-active {
+		transition:
+			opacity 0.35s ease-out,
+			transform 0.35s ease-out;
+	}
+
+	.fogon-cover-enter-from {
+		opacity: 0;
+		transform: scale(0.95);
+	}
+
+	.fogon-cover-leave-to {
+		opacity: 0;
+		transform: scale(1.02);
+	}
+
+	/* Animaciones para carga de letras (fogon-lyrics y fogon-lyrics-mobile) */
+	.fogon-lyrics-enter-active,
+	.fogon-lyrics-leave-active {
+		transition:
+			opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+			transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+
+	.fogon-lyrics-enter-from {
+		opacity: 0;
+		transform: translateY(16px);
+	}
+
+	.fogon-lyrics-leave-to {
+		opacity: 0;
+		transform: translateY(-12px);
+	}
+
+	.fogon-lyrics-mobile {
+		animation: fogon-lyrics-appear 0.35s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+	}
+
+	@keyframes fogon-lyrics-appear {
+		from {
+			opacity: 0;
+			transform: translateY(12px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
 	}
 
 	/* Ocultar barra de scroll en el contenedor de letras */
@@ -881,8 +975,173 @@
 		-webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%);
 	}
 
+	/* Contenedor responsivo con soporte de Container Queries */
+	.fogon-container {
+		container-type: size;
+	}
+
+	/* En pantallas muy chicas (PIP, ventana flotante mini): solo controles play/pause, prev y next */
+	@container (max-height: 360px) or (max-width: 360px) {
+		.fogon-volume-btn,
+		.fogon-timer-btn,
+		.fogon-next-song {
+			display: none !important;
+		}
+
+		.fogon-close-btn {
+			top: 0.25rem !important;
+			right: 0.25rem !important;
+			padding: 0.25rem !important;
+		}
+
+		.fogon-close-btn i {
+			font-size: 1.5rem !important;
+		}
+	}
+
+	@container (max-height: 360px) {
+		.fogon-cover-section,
+		.fogon-cover-wrapper,
+		.fogon-seekbar-wrapper,
+		.fogon-lyrics-container,
+		.lyrics-mask-vertical {
+			display: none !important;
+		}
+
+		.fogon-container {
+			padding: 0.5rem 0.75rem !important;
+		}
+
+		.fogon-player-column {
+			height: 100% !important;
+			max-height: 100% !important;
+			width: 100% !important;
+			max-width: 100% !important;
+			justify-content: center !important;
+		}
+
+		.fogon-track-info {
+			margin: 0.25rem 0 !important;
+		}
+
+		.fogon-title {
+			font-size: 1.125rem !important;
+			line-height: 1.25 !important;
+			margin-bottom: 0 !important;
+		}
+
+		.fogon-artist {
+			font-size: 0.8125rem !important;
+			line-height: 1.2 !important;
+		}
+
+		.fogon-controls-wrapper {
+			margin-top: 0.35rem !important;
+			padding-top: 0 !important;
+		}
+
+		.fogon-controls-row {
+			margin-top: 0.25rem !important;
+			gap: 1.25rem !important;
+		}
+
+		.fogon-play-btn {
+			height: 3rem !important;
+			width: 3rem !important;
+		}
+
+		.fogon-play-btn i {
+			font-size: 1.75rem !important;
+		}
+
+		.fogon-prev-btn i,
+		.fogon-next-btn i {
+			font-size: 1.75rem !important;
+		}
+	}
+
+	/* Reglas equivalentes @media para navegadores y ventanas Picture-in-Picture */
+	@media (max-height: 360px), (max-width: 360px) {
+		.fogon-volume-btn,
+		.fogon-timer-btn,
+		.fogon-next-song {
+			display: none !important;
+		}
+
+		.fogon-close-btn {
+			top: 0.25rem !important;
+			right: 0.25rem !important;
+			padding: 0.25rem !important;
+		}
+
+		.fogon-close-btn i {
+			font-size: 1.5rem !important;
+		}
+	}
+
+	@media (max-height: 360px) {
+		.fogon-cover-section,
+		.fogon-cover-wrapper,
+		.fogon-seekbar-wrapper,
+		.fogon-lyrics-container,
+		.lyrics-mask-vertical {
+			display: none !important;
+		}
+
+		.fogon-container {
+			padding: 0.5rem 0.75rem !important;
+		}
+
+		.fogon-player-column {
+			height: 100% !important;
+			max-height: 100% !important;
+			width: 100% !important;
+			max-width: 100% !important;
+			justify-content: center !important;
+		}
+
+		.fogon-track-info {
+			margin: 0.25rem 0 !important;
+		}
+
+		.fogon-title {
+			font-size: 1.125rem !important;
+			line-height: 1.25 !important;
+			margin-bottom: 0 !important;
+		}
+
+		.fogon-artist {
+			font-size: 0.8125rem !important;
+			line-height: 1.2 !important;
+		}
+
+		.fogon-controls-wrapper {
+			margin-top: 0.35rem !important;
+			padding-top: 0 !important;
+		}
+
+		.fogon-controls-row {
+			margin-top: 0.25rem !important;
+			gap: 1.25rem !important;
+		}
+
+		.fogon-play-btn {
+			height: 3rem !important;
+			width: 3rem !important;
+		}
+
+		.fogon-play-btn i {
+			font-size: 1.75rem !important;
+		}
+
+		.fogon-prev-btn i,
+		.fogon-next-btn i {
+			font-size: 1.75rem !important;
+		}
+	}
+
 	/* Soporte adaptativo para dispositivos móviles en apaisado / pantallas de altura reducida */
-	@media (max-height: 550px) {
+	@media (min-height: 361px) and (max-height: 550px) {
 		.fogon-container {
 			padding: 0.5rem 1.25rem !important;
 		}
@@ -891,7 +1150,7 @@
 			gap: 1.5rem !important;
 		}
 
-		.fogon-player-column {
+		.fogon-main-layout.has-lyrics .fogon-player-column {
 			width: 44% !important;
 			max-width: 320px !important;
 			height: 100% !important;
@@ -899,10 +1158,10 @@
 		}
 
 		.fogon-cover-wrapper {
-			height: 38vh !important;
-			width: 38vh !important;
-			max-height: 38vh !important;
-			max-width: 38vh !important;
+			height: 34vh !important;
+			width: 34vh !important;
+			max-height: 34vh !important;
+			max-width: 34vh !important;
 			aspect-ratio: 1 / 1 !important;
 			flex-shrink: 0 !important;
 			margin-bottom: 0.35rem !important;
@@ -962,6 +1221,21 @@
 		.fogon-lyrics-scroll > div {
 			margin-top: 0.75rem !important;
 			font-size: 1.125rem !important;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.fogon-track-enter-active,
+		.fogon-track-leave-active,
+		.fogon-cover-enter-active,
+		.fogon-cover-leave-active,
+		.fogon-lyrics-enter-active,
+		.fogon-lyrics-leave-active,
+		.fogon-lyrics-mobile {
+			transition: none !important;
+			animation: none !important;
+			transform: none !important;
+			filter: none !important;
 		}
 	}
 </style>

@@ -649,4 +649,74 @@ Dialogue: 0,0:00:20.00,0:00:25.00,Default,,0,0,0,,{\\kf100}Ultimo {\\kf100}verso
 		expect(favCover.exists()).toBe(true);
 		expect(favCover.props('buttonPosition')).toBe('right-3 bottom-3 md:right-4 md:bottom-4');
 	});
+
+	it('identifies volume and timer controls with specific classes and isolates core controls for pip mode', () => {
+		const wrapper = mount(FogonMode);
+
+		const volBtn = wrapper.find('button[aria-label="Ajustar volumen"]');
+		expect(volBtn.exists()).toBe(true);
+		expect(volBtn.classes()).toContain('fogon-volume-btn');
+
+		const timerBtn = wrapper.find('button.fogon-timer-btn');
+		expect(timerBtn.exists()).toBe(true);
+
+		const prevBtn = wrapper.find('button[aria-label="Pista anterior"]');
+		expect(prevBtn.exists()).toBe(true);
+		expect(prevBtn.classes()).toContain('fogon-prev-btn');
+
+		const playBtn = wrapper.find('button.fogon-play-btn');
+		expect(playBtn.exists()).toBe(true);
+
+		const nextBtn = wrapper.find('button[aria-label="Pista siguiente"]');
+		expect(nextBtn.exists()).toBe(true);
+		expect(nextBtn.classes()).toContain('fogon-next-btn');
+
+		// Seekbar and cover wrapper sections must be class-tagged for compact/pip responsive hiding
+		const seekbar = wrapper.find('.fogon-seekbar-wrapper');
+		expect(seekbar.exists()).toBe(true);
+
+		const coverSection = wrapper.find('.fogon-cover-section');
+		expect(coverSection.exists()).toBe(true);
+	});
+
+	it('includes transition animations for song changes and lyrics loading', async () => {
+		const assContent = `[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:01.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Letra {\\kf100}animada
+`;
+		global.fetch = vi.fn().mockImplementation((url: string) => {
+			if (typeof url === 'string' && url.includes('/lrc')) {
+				return Promise.resolve({
+					ok: true,
+					text: () => Promise.resolve(assContent),
+				} as unknown as Response);
+			}
+			return Promise.resolve({
+				ok: true,
+				json: () => Promise.resolve({ status: 'ok' }),
+			} as unknown as Response);
+		});
+
+		const wrapper = mount(FogonMode);
+
+		// Transitions for track info and cover
+		const transitions = wrapper.findAllComponents({ name: 'transition' });
+		const transitionNames = transitions.map((t) => t.props('name'));
+		expect(transitionNames).toContain('fogon-track');
+		expect(transitionNames).toContain('fogon-cover');
+
+		// Trigger lyrics loading
+		currentTrackPath.value = '/music/animated_lyrics.mp3';
+		await wrapper.vm.$nextTick();
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		await wrapper.vm.$nextTick();
+
+		// Lyrics container should be present with animation transition
+		const updatedTransitions = wrapper.findAllComponents({ name: 'transition' });
+		const updatedNames = updatedTransitions.map((t) => t.props('name'));
+		expect(updatedNames).toContain('fogon-lyrics');
+
+		const lyricsContainer = wrapper.find('.fogon-lyrics-container');
+		expect(lyricsContainer.exists()).toBe(true);
+	});
 });
