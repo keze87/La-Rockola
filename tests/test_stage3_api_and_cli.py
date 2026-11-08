@@ -18,6 +18,7 @@ from app.api.system import router as system_router
 from app.api.websocket import ConnectionManager
 from app.cli.entrypoint import build_arg_parser, print_startup_banner
 from app.cli.wizard import _parse_selected_dir, run_interactive_wizard
+from app.core import config as config_mod
 from app.core.container import AppContainer, set_container
 from app.domain.playback.orchestrator import PlaybackOrchestrator
 from app.infrastructure.db.connection import init_db
@@ -59,7 +60,7 @@ def _setup_test_container(tmp_path: Path, dummy_audio_file: Path) -> tuple[AppCo
 	return container, orch
 
 
-def test_declarative_command_dispatch_and_endpoints(tmp_path: Path, dummy_audio_file: Path) -> None:
+def test_declarative_command_dispatch_and_endpoints(tmp_path: Path, dummy_audio_file: Path, monkeypatch) -> None:
 	"""Verifica que la tabla declarativa COMMAND_HANDLERS despache todos los comandos sin if/elif gigantes."""
 	assert "play" in COMMAND_HANDLERS
 	assert "pause" in COMMAND_HANDLERS
@@ -69,6 +70,11 @@ def test_declarative_command_dispatch_and_endpoints(tmp_path: Path, dummy_audio_
 	assert media_router is not None
 	assert system_router is not None
 	assert api_router is not None
+
+	user_config_path = config_mod.get_config_path()
+	user_config_before = user_config_path.read_bytes() if user_config_path.is_file() else None
+	user_config_existed = user_config_path.is_file()
+	monkeypatch.setattr(config_mod, "get_config_path", lambda: tmp_path / "test_config.json")
 
 	_container, orch = _setup_test_container(tmp_path, dummy_audio_file)
 	app = create_app()
@@ -136,6 +142,10 @@ def test_declarative_command_dispatch_and_endpoints(tmp_path: Path, dummy_audio_
 	res_show = client.post("/api/v1/mpv/show")
 	assert res_show.status_code == 200
 	assert orch.mpv_visible is True
+
+	assert user_config_path.is_file() is user_config_existed
+	if user_config_before is not None:
+		assert user_config_path.read_bytes() == user_config_before
 
 
 def test_library_media_system_and_websocket_routes(tmp_path: Path, dummy_audio_file: Path) -> None:
