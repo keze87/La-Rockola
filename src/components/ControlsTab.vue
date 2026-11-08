@@ -42,6 +42,7 @@
 		setVolume,
 		showToast,
 		sortLibrary,
+		switchTab,
 		toggleMpvVisibility,
 		volIcon,
 		volume,
@@ -61,6 +62,7 @@
 			sortLibrary(type);
 			haptic();
 		}
+		switchTab('library');
 	}
 
 	function getSortTooltip(type: 'time' | 'artist' | 'mood' | 'shuffle') {

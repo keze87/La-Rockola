@@ -4,6 +4,7 @@ import ControlsTab from '@/components/ControlsTab.vue';
 import QRCode from 'qrcode.vue';
 import {
 	activeSort,
+	activeTab,
 	currentTracks,
 	defaultSort,
 	djBaraEnabled,
@@ -34,6 +35,7 @@ describe('ControlsTab.vue', () => {
 		global.fetch = fetchMock;
 
 		currentTracks.value = [];
+		activeTab.value = 'controls';
 		djBaraEnabled.value = false;
 		djSafeModeEnabled.value = false;
 		hasEdgeTts.value = true;
@@ -241,6 +243,7 @@ describe('ControlsTab.vue', () => {
 
 		await byArtist?.trigger('click');
 		expect(currentTracks.value[0].artist).toBe('A');
+		expect(activeTab.value).toBe('library');
 
 		await byMood?.trigger('click');
 		expect(currentTracks.value[0].bpm).toBe(140);
@@ -409,6 +412,7 @@ describe('ControlsTab.vue', () => {
 
 		expect(activeSort.value).toBe('artist');
 		expect(defaultSort.value).toBe('time');
+		expect(activeTab.value).toBe('library');
 		expect(fetchMock).not.toHaveBeenCalledWith(
 			'/command',
 			expect.objectContaining({
@@ -429,6 +433,7 @@ describe('ControlsTab.vue', () => {
 		expect(artistBtn).toBeDefined();
 
 		await artistBtn!.trigger('click');
+		await flushPromises();
 
 		expect(fetchMock).toHaveBeenCalledWith(
 			'/command',
@@ -438,5 +443,6 @@ describe('ControlsTab.vue', () => {
 			})
 		);
 		expect(defaultSort.value).toBe('artist');
+		expect(activeTab.value).toBe('library');
 	});
 });
