@@ -497,11 +497,15 @@
 			</button>
 
 			<!-- Capa para cerrar el popup de volumen al tocar afuera -->
-			<div v-if="showFogonVolume" class="fixed inset-0 z-10" @click="showFogonVolume = false" />
+			<div
+				v-if="showFogonVolume"
+				class="fogon-volume-backdrop fixed inset-0 z-30"
+				@click="showFogonVolume = false"
+			/>
 
 			<!-- Contenedor principal expandido (estilo Apple Music / blyrics) -->
 			<div
-				class="fogon-main-layout relative z-20 flex h-full w-full max-w-7xl items-center justify-center transition-all duration-500"
+				class="fogon-main-layout relative flex h-full w-full max-w-7xl items-center justify-center transition-all duration-500"
 				:class="[
 					hasLyrics
 						? 'flex-col justify-center md:flex-row md:items-center md:gap-12 lg:gap-16'
@@ -700,9 +704,10 @@
 							</div>
 
 							<!-- Next song en pantallas anchas (abajo de los controles, similar al floating player) -->
-							<div
+							<button
+								type="button"
+								aria-label="Ver cola de reproducción"
 								class="fogon-next-song border-carpincho-border/60 from-carpincho-panel/90 hover:border-carpincho-warning/40 mt-4 hidden w-full cursor-pointer items-center justify-between rounded-xl border bg-gradient-to-br to-[#2a2420]/90 p-3 text-left shadow-lg backdrop-blur-sm transition select-none hover:scale-[1.01] active:scale-[0.99] md:flex"
-								title="Ver cola de reproducción"
 								@click="goToQueueFromFogon"
 							>
 								<div class="flex w-full items-center overflow-hidden">
@@ -748,7 +753,7 @@
 										chevron_right
 									</i>
 								</div>
-							</div>
+							</button>
 						</div>
 
 						<!-- MODO VERTICAL (Mobile / Portrait): Ocupa el 100% del ancho y se posiciona cercano a los controles -->

@@ -108,24 +108,30 @@ def clean_manager():
 	container.ws_manager = orig_mgr
 
 
-@pytest.fixture(autouse=True, scope="session")
-def ensure_test_dist():
-	"""Garantiza la presencia de un dist/index.html mínimo durante la suite de tests para que las rutas SPA sirvan HTML."""
+@pytest.fixture
+def spa_dist():
+	"""Garantiza un dist/index.html aislado sólo para los tests que verifican rutas SPA y limpia directorio y archivo al terminar."""
 	from app.core.config import get_dist_dirs
 
 	_, dist_dir, _ = get_dist_dirs()
 	index_file = dist_dir / "index.html"
-	created = False
+	dir_existed = dist_dir.exists()
+	file_created = False
 	if not index_file.exists():
 		dist_dir.mkdir(parents=True, exist_ok=True)
 		index_file.write_text("<!doctype html><html><body>La Rockola Test SPA</body></html>", encoding="utf-8")
-		created = True
+		file_created = True
 	try:
-		yield
+		yield dist_dir
 	finally:
-		if created and index_file.exists():
+		if file_created and index_file.exists():
 			try:
 				index_file.unlink()
+			except OSError:
+				pass
+		if not dir_existed and dist_dir.exists():
+			try:
+				dist_dir.rmdir()
 			except OSError:
 				pass
 

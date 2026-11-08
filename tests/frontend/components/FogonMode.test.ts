@@ -580,7 +580,7 @@ Dialogue: 0,0:00:20.00,0:00:25.00,Default,,0,0,0,,{\\kf100}Ultimo {\\kf100}verso
 		expect(progressFill.attributes('style')).toContain('width: 100%');
 	});
 
-	it('renders next song card for wide screens below controls and navigates to queue on click', async () => {
+	it('renders next song card for wide screens below controls as an accessible button and navigates to queue on click', async () => {
 		trackMap.value['/music/next_track.mp3'] = {
 			path: '/music/next_track.mp3',
 			display_title: 'Próxima Canción',
@@ -591,6 +591,8 @@ Dialogue: 0,0:00:20.00,0:00:25.00,Default,,0,0,0,,{\\kf100}Ultimo {\\kf100}verso
 		const wrapper = mount(FogonMode);
 		const nextSongCard = wrapper.find('.fogon-next-song');
 		expect(nextSongCard.exists()).toBe(true);
+		expect(nextSongCard.element.tagName).toBe('BUTTON');
+		expect(nextSongCard.attributes('type')).toBe('button');
 		expect(nextSongCard.classes()).toContain('hidden');
 		expect(nextSongCard.classes()).toContain('md:flex');
 		expect(nextSongCard.text()).toContain('Próximo Temazo');
@@ -602,7 +604,7 @@ Dialogue: 0,0:00:20.00,0:00:25.00,Default,,0,0,0,,{\\kf100}Ultimo {\\kf100}verso
 		expect(activeTab.value).toBe('queue');
 	});
 
-	it('positions volume slider as a floating overlay on z-axis without overlapping volume button', async () => {
+	it('positions volume slider as a floating overlay on z-axis and closes when clicking the z-30 backdrop outside', async () => {
 		showFogonVolume.value = true;
 		const wrapper = mount(FogonMode);
 
@@ -614,7 +616,20 @@ Dialogue: 0,0:00:20.00,0:00:25.00,Default,,0,0,0,,{\\kf100}Ultimo {\\kf100}verso
 		// Debe estar posicionado de forma que no solape el botón de volumen (ej: bottom-full)
 		expect(volumeBar.classes()).toContain('bottom-full');
 
-		// El botón de volumen debe seguir siendo clickeable para cerrarlo
+		// El contenedor principal no debe encerrar el stacking context en z-20 por debajo de la capa de cierre
+		const mainLayout = wrapper.find('.fogon-main-layout');
+		expect(mainLayout.classes()).not.toContain('z-20');
+
+		// La capa de cierre exterior debe tener z-30 para quedar por encima del layout y cerrar al hacer clic afuera
+		const backdrop = wrapper.find('.fogon-volume-backdrop');
+		expect(backdrop.exists()).toBe(true);
+		expect(backdrop.classes()).toContain('z-30');
+		await backdrop.trigger('click');
+		expect(showFogonVolume.value).toBe(false);
+
+		// Volvemos a abrir y verificamos que el botón de volumen también pueda cerrarlo
+		showFogonVolume.value = true;
+		await wrapper.vm.$nextTick();
 		const volBtn = wrapper.find('button[aria-label="Ajustar volumen"]');
 		expect(volBtn.exists()).toBe(true);
 		await volBtn.trigger('click');

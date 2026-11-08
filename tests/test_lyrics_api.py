@@ -165,7 +165,7 @@ def test_lyrics_save_endpoint_preserves_existing_lrc(client, music_dir):
 	assert existing_lrc.read_text(encoding="utf-8") == "[00:05.00]Letra original en disco"
 
 
-def test_spa_route_letras_serves_index_and_has_no_duplicated_api_prefixes(client):
+def test_spa_route_letras_serves_index_and_has_no_duplicated_api_prefixes(client, spa_dist):
 	# La ruta SPA directa a /letras debe servir index.html
 	spa_res = client.get("/letras")
 	assert spa_res.status_code == 200
