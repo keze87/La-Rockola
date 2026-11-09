@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 import random
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -20,7 +21,6 @@ from app.domain.radio.context import (
 	RadioContext,
 	build_radio_context,
 	filter_by_context,
-	phrase_fits_context,
 )
 from app.domain.radio.linguistics import (
 	apply_rioplatense_tts_phonetics,
@@ -57,6 +57,7 @@ from app.domain.radio.segments import (
 	SPECIAL_HOURS,
 	get_intros_for_first_block,
 	get_lead_ins_for_category,
+	get_neutral_outros,
 	get_outros_for_category,
 	get_pases_for_weather_condition,
 	get_reactions_for_category,
@@ -68,6 +69,7 @@ from app.domain.radio.templates import (
 )
 from app.domain.radio.voices import (
 	DEFAULT_COHOST_NAME,
+	DEFAULT_SPEAKER_NAME,
 	HOST_PROFILES,
 	VOICE_ELENA,
 	VOICE_NAMES,
@@ -373,19 +375,43 @@ def _filter_with_safe_fallback(
 
 	mode = getattr(ctx, "outro_mode", "continue") if ctx else "continue"
 	if category == "salida":
-		default_str = _SAFE_OUTRO_FALLBACKS.get(mode, _SAFE_OUTRO_FALLBACKS["continue"])
-	else:
-		default_str = _SAFE_NEUTRAL_FALLBACKS.get(category, "Transmite La Rockola del Carpincho.")
+		return [_SAFE_OUTRO_FALLBACKS.get(mode, _SAFE_OUTRO_FALLBACKS["continue"])]
+	return [_SAFE_NEUTRAL_FALLBACKS.get(category, "Transmite La Rockola del Carpincho.")]
 
-	if phrase_fits_context(default_str, ctx, category):
-		return [default_str]
-	if category == "salida":
-		return [
-			"Hacemos una pausa en la cabina."
-			if mode == "pause"
-			else ("Fin de la lista por ahora." if mode == "break" else "Transmite La Rockola.")
-		]
-	return ["Transmite La Rockola del Carpincho."]
+
+@dataclass(frozen=True, slots=True)
+class HostContext:
+	"""Contexto resuelto de voces, géneros y nombres para una locución de cabina."""
+
+	host_voice: str
+	cohost_voice: str
+	host_gender: str
+	cohost_gender: str
+	host_name: str
+	cohost_name: str
+
+
+def _resolve_host_context(
+	host_voice: str | None,
+	cohost_voice: str | None,
+	is_system_fortune: bool,
+	category: str,
+) -> HostContext:
+	if host_voice is None or cohost_voice is None or host_voice == cohost_voice:
+		host_voice, cohost_voice = select_radio_hosts(
+			host_voice=host_voice,
+			cohost_voice=cohost_voice,
+			is_system_fortune=is_system_fortune,
+			category=category,
+		)
+	return HostContext(
+		host_voice=host_voice,
+		cohost_voice=cohost_voice,
+		host_gender=resolve_voice_gender(host_voice),
+		cohost_gender=resolve_voice_gender(cohost_voice),
+		host_name=VOICE_NAMES.get(host_voice, DEFAULT_SPEAKER_NAME),
+		cohost_name=VOICE_NAMES.get(cohost_voice, DEFAULT_COHOST_NAME),
+	)
 
 
 def build_radio_dialogue_plan(
@@ -426,16 +452,10 @@ def build_radio_dialogue_plan(
 	seg_cat = resolve_segment_category(effective_fortuna)
 	seg_subcat = resolve_segment_subcategory(effective_fortuna, category=seg_cat)
 
-	if host_voice is None or cohost_voice is None or host_voice == cohost_voice:
-		host_voice, cohost_voice = select_radio_hosts(
-			host_voice=host_voice,
-			cohost_voice=cohost_voice,
-			is_system_fortune=is_system_fortune,
-			category=seg_cat,
-		)
-
-	host_gender = resolve_voice_gender(host_voice)
-	cohost_gender = resolve_voice_gender(cohost_voice)
+	hc = _resolve_host_context(host_voice, cohost_voice, is_system_fortune, seg_cat)
+	host_voice, cohost_voice = hc.host_voice, hc.cohost_voice
+	host_gender, cohost_gender = hc.host_gender, hc.cohost_gender
+	host_name, cohost_name = hc.host_name, hc.cohost_name
 
 	if hora_seg is None:
 		hora_seg, minuto_seg, _ = get_modular_time_segments(effective_dt)
@@ -454,22 +474,13 @@ def build_radio_dialogue_plan(
 
 	time_phrase = f"{hora_seg} {minuto_seg}".strip() if minuto_seg else hora_seg.strip()
 	fortune_text = format_fortune_for_speech(effective_fortuna)
-	cohost_name = VOICE_NAMES.get(cohost_voice, DEFAULT_COHOST_NAME)
 
 	if outro is None:
 		outro_pool = get_outros_for_category(seg_cat, effective_outro_mode, gender=host_gender, ctx=ctx)
-		neutral_outros = resolve_bank_for_gender(
-			RADIO_OUTROS_PAUSE
-			if effective_outro_mode == "pause"
-			else RADIO_OUTROS_BREAK
-			if effective_outro_mode == "break"
-			else RADIO_OUTROS,
-			host_gender,
-		)
+		neutral_outros = get_neutral_outros(effective_outro_mode, host_gender)
 		outro_candidates = _filter_with_safe_fallback(outro_pool, ctx, "salida", fallback_pool=neutral_outros)
 		outro = weighted_choice_by_recency(outro_candidates, category="salida", db_path=db_path)
 
-	host_name = VOICE_NAMES.get(host_voice, "Tomás")
 	rendered_intro = render_tracked_phrase(intro, ctx, host_name=host_name, host_voice=host_voice)
 	rendered_outro = render_tracked_phrase(outro, ctx, host_name=host_name, host_voice=host_voice)
 
@@ -518,7 +529,7 @@ def build_radio_dialogue_plan(
 		neutral_pases = resolve_bank_for_gender(PASES_A_CLIMA_NEUTROS, cohost_gender)
 		pase_pool = _filter_with_safe_fallback(raw_pases, ctx, "pase", fallback_pool=neutral_pases)
 		pase_template = weighted_choice_by_recency(pase_pool, category="pase", db_path=db_path)
-		pase_text = render_tracked_phrase(pase_template, ctx, addressee_voice=cohost_voice, cohost_name=cohost_name)
+		pase_text = render_tracked_phrase(pase_template, ctx, cohost_name=cohost_name)
 
 		cond_options = resolve_bank_for_gender(
 			REACCIONES_CLIMA.get(cond, REACCIONES_CLIMA["agradable"]),
@@ -531,7 +542,6 @@ def build_radio_dialogue_plan(
 		reaccion_clima = render_tracked_phrase(
 			weighted_choice_by_recency(pool_clima, category="reaccion_clima", db_path=db_path),
 			ctx,
-			addressee_voice=cohost_voice,
 		)
 		return [
 			(pase_text, host_voice, "pase", True),
@@ -553,7 +563,6 @@ def build_radio_dialogue_plan(
 		reaccion_fortuna = render_tracked_phrase(
 			weighted_choice_by_recency(pool_fortuna, category=f"reaccion_{seg_subcat}", db_path=db_path),
 			ctx,
-			addressee_voice=addressee_voice,
 		)
 		return [
 			(effective_lead_in, host_voice, "lead_in", True),
@@ -636,7 +645,7 @@ def generate_modular_radio_script(
 	raw_intros = get_intros_for_first_block("hora", gender=voice_gender)
 	neutral_intros = resolve_bank_for_gender(RADIO_INTROS, voice_gender)
 	intro_candidates = _filter_with_safe_fallback(raw_intros, ctx, "intro", fallback_pool=neutral_intros)
-	host_name = VOICE_NAMES.get(voice, "Tomás")
+	host_name = VOICE_NAMES.get(voice, DEFAULT_SPEAKER_NAME)
 	intro = render_phrase(random.choice(intro_candidates), ctx, host_name=host_name, host_voice=voice)
 	hora_seg, minuto_seg, _ = get_modular_time_segments(dt)
 	phrase, is_system_fortune = select_radio_phrase(force_system_fortune, ctx=ctx)
@@ -647,10 +656,7 @@ def generate_modular_radio_script(
 	filtered_lead_ins = _filter_with_safe_fallback(cat_lead_ins, ctx, "lead_in", fallback_pool=LEAD_INS_UNKNOWN)
 	lead_in = random.choice(filtered_lead_ins)
 	outro_pool = get_outros_for_category(seg_cat, outro_mode, gender=voice_gender, ctx=ctx)
-	neutral_outros = resolve_bank_for_gender(
-		RADIO_OUTROS_PAUSE if outro_mode == "pause" else RADIO_OUTROS_BREAK if outro_mode == "break" else RADIO_OUTROS,
-		voice_gender,
-	)
+	neutral_outros = get_neutral_outros(outro_mode, voice_gender)
 	filtered_outros = _filter_with_safe_fallback(outro_pool, ctx, "salida", fallback_pool=neutral_outros)
 	outro = render_phrase(random.choice(filtered_outros), ctx, host_name=host_name, host_voice=voice)
 

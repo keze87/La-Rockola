@@ -36,17 +36,23 @@ from app.infrastructure.db.connection import init_db
 
 
 def test_gender_variant_model() -> None:
-	"""Verifica la resolución directa de GenderVariant según el género solicitado."""
+	"""Verifica la resolución directa de GenderVariant según el género solicitado y que no sea tupla."""
+	from app.domain.radio.classification import resolve_segment_category, resolve_segment_subcategory
+
 	gv = GenderVariant(
 		m="Acá {host} el jefe de la mañana.",
 		f="Acá {host} la jefa de la mañana.",
 	)
+	assert not isinstance(gv, tuple), "GenderVariant debe ser dataclass, no NamedTuple/tuple"
 	assert gv.for_gender("m") == "Acá {host} el jefe de la mañana."
 	assert gv.for_gender("f") == "Acá {host} la jefa de la mañana."
 	assert gv.all_variants() == (
 		"Acá {host} el jefe de la mañana.",
 		"Acá {host} la jefa de la mañana.",
 	)
+	# No debe confundirse con una tupla (texto, categoría)
+	assert resolve_segment_category(gv) != gv.f
+	assert resolve_segment_subcategory(gv) != gv.f
 
 
 def test_resolve_phrase_and_bank_for_gender() -> None:
@@ -89,13 +95,26 @@ def test_expand_phrase_variants_supports_gender_variant() -> None:
 	assert any("la jefa" in v for v in variants)
 	assert all("{" not in v and "}" not in v for v in variants)
 
-	# Cuando una plantilla combina {host} y {cohost}, debe expandir los dos placeholders de forma independiente (16 combinaciones para 4 voces)
+	# Cuando una plantilla combina {host} y {cohost}, debe expandir solo pares distintos (4 x 3 = 12 combinaciones)
 	dual_tpl = "Acá {host}, con {cohost}, acompañándote en La Rockola."
 	dual_variants = expand_phrase_variants(dual_tpl)
-	assert len(dual_variants) == 16
+	assert len(dual_variants) == 12
+	assert "Acá Tomás, con Tomás, acompañándote en La Rockola." not in dual_variants
+	assert "Acá Elena, con Elena, acompañándote en La Rockola." not in dual_variants
 	assert "Acá Tomás, con Elena, acompañándote en La Rockola." in dual_variants
 	assert "Acá Elena, con Valentina, acompañándote en La Rockola." in dual_variants
 	assert "Acá Valentina, con Tomás, acompañándote en La Rockola." in dual_variants
+
+
+def test_render_phrase_strict_signature() -> None:
+	"""Verifica que render_phrase no trague kwargs desconocidos ni acepte parámetros obsoletos."""
+	import pytest
+
+	with pytest.raises(TypeError):
+		render_phrase("Hola {host}", unknown_typo="valor")  # type: ignore[call-arg]
+
+	with pytest.raises(TypeError):
+		render_phrase("Hola {host}", addressee_voice=VOICE_ELENA)  # type: ignore[call-arg]
 
 
 def test_legacy_gender_placeholders_removed() -> None:

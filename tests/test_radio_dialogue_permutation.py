@@ -434,7 +434,6 @@ def test_point6_radio_state_and_phrase_history_persist_in_sqlite_across_restarts
 		set_radio_state,
 	)
 	from app.domain.radio.segments import REACCIONES_CLIMA
-	from app.domain.radio.voices import VOICE_ELENA
 	from app.infrastructure.db.connection import init_db
 
 	db_file = tmp_path / "persist_radio.db"
@@ -446,7 +445,7 @@ def test_point6_radio_state_and_phrase_history_persist_in_sqlite_across_restarts
 	ctx = build_radio_context(datetime(2026, 11, 5, 16, 0))
 	tpl_item = next(r for r in REACCIONES_CLIMA["agradable"] if hasattr(r, "for_gender"))
 	tpl_with_placeholder = tpl_item.for_gender("f")
-	spoken = render_tracked_phrase(tpl_with_placeholder, ctx, addressee_voice=VOICE_ELENA)
+	spoken = render_tracked_phrase(tpl_with_placeholder, ctx)
 	set_radio_state("last_reaction", spoken, db_path=db_file)
 
 	record_phrase_played(spoken, category="reaccion", timestamp=123456.0, db_path=db_file)

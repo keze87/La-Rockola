@@ -1035,3 +1035,17 @@ def get_outros_for_mode(
 ) -> tuple[str, ...] | tuple[str | GenderVariant, ...]:
 	"""Devuelve el banco de cierres radiales acorde al modo ('continue', 'pause', 'break' o 'dj')."""
 	return get_outros_for_category("", outro_mode=outro_mode, gender=gender, ctx=ctx)
+
+
+def get_neutral_outros(outro_mode: str = "continue", gender: str = "m") -> list[str]:
+	"""Devuelve el banco base neutro de cierres resuelto por género para actuar como fallback seguro."""
+	bank = (
+		RADIO_OUTROS_PAUSE
+		if outro_mode == "pause"
+		else RADIO_OUTROS_BREAK
+		if outro_mode == "break"
+		else RADIO_OUTROS_DJ
+		if outro_mode == "dj"
+		else RADIO_OUTROS
+	)
+	return resolve_bank_for_gender(bank, gender)

@@ -4,10 +4,12 @@ Definición de locutores de cabina, nombres, géneros y perfiles de prosodia par
 
 from __future__ import annotations
 
-from typing import Any, NamedTuple
+from dataclasses import dataclass
+from typing import Any
 
 
-class GenderVariant(NamedTuple):
+@dataclass(frozen=True, slots=True)
+class GenderVariant:
 	"""Variante de frase según el género gramatical (masculino/femenino) del locutor o destinatario."""
 
 	m: str
@@ -80,7 +82,7 @@ HOST_PROFILES: dict[str, dict[str, Any]] = {
 		"role": "Locutora de musicalización y enlace comunitario",
 		"style": "Clara, entusiasta medida, atenta al ritmo de la tanda musical y a las historias cotidianas del pueblo.",
 		"register": "fresco_musical",
-		"preferred_categories": ("oyentes", "clima", "musica"),
+		"preferred_categories": ("oyentes", "fortuna"),
 		"pacing": "dinamico",
 	},
 }
@@ -118,4 +120,5 @@ DEFAULT_RADIO_ALBUM: str = "La Rockola del Carpincho"
 DEFAULT_RADIO_TITLE: str = "Transmisión de Cabina"
 DEFAULT_COHOST_NAME: str = "compadre"
 DEFAULT_HOST_NAME: str = "Transmisión de Cabina"
+DEFAULT_SPEAKER_NAME: str = "Tomás"
 DEFAULT_COHOST_DISPLAY_NAME: str = "Co-conductor"

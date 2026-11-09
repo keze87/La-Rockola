@@ -19,6 +19,7 @@ from app.domain.radio.context import (
 from app.domain.radio.phrase_banks.weather import WEATHER_DESC_PHRASES
 from app.domain.radio.voices import (
 	DEFAULT_COHOST_NAME,
+	DEFAULT_SPEAKER_NAME,
 	VOICE_NAMES,
 	GenderVariant,
 )
@@ -103,18 +104,16 @@ def _placeholder_values(
 		"momento": momento,
 		"saludo": saludo,
 		"cohost": cohost_name or DEFAULT_COHOST_NAME,
-		"host": host_name or "Tomás",
+		"host": host_name or DEFAULT_SPEAKER_NAME,
 	}
 
 
 def render_phrase(
 	template: str,
 	ctx: RadioContext | None = None,
-	addressee_voice: str | None = None,
 	cohost_name: str | None = None,
 	host_name: str | None = None,
 	host_voice: str | None = None,
-	**kwargs: object,
 ) -> str:
 	"""
 	Resuelve los placeholders de una plantilla radial: {momento}, {saludo} (según la franja horaria), {cohost} y {host}.
@@ -124,7 +123,9 @@ def render_phrase(
 		return template
 	momento = ctx.momento if ctx else "la jornada"
 	saludo = ctx.saludo if ctx else "Muy buenas"
-	effective_host = host_name or (VOICE_NAMES.get(host_voice, "Tomás") if host_voice else "Tomás")
+	effective_host = host_name or (
+		VOICE_NAMES.get(host_voice, DEFAULT_SPEAKER_NAME) if host_voice else DEFAULT_SPEAKER_NAME
+	)
 	values = _placeholder_values(momento, saludo, cohost_name, effective_host)
 	return _PLACEHOLDER_RE.sub(lambda m: values[m.group(1)], template)
 
@@ -142,6 +143,8 @@ def _expand_phrase_variants_cached(template: str) -> tuple[str, ...]:
 	out: list[str] = []
 	for h_name in hosts:
 		for c_name in cohosts:
+			if h_name is not None and c_name is not None and h_name == c_name:
+				continue
 			for momento in momentos:
 				for saludo in saludos:
 					values = _placeholder_values(momento, saludo, cohost_name=c_name, host_name=h_name)

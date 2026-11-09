@@ -770,4 +770,39 @@ Dialogue: 0,0:00:01.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Letra {\\kf100}animad
 		const trackInfo = wrapper.find('.fogon-track-info');
 		expect(trackInfo.exists()).toBe(true);
 	});
+
+	it('disables marquee scrolling when prefers-reduced-motion is enabled and extracts UpNextCard with 256px cover', async () => {
+		const originalMatchMedia = window.matchMedia;
+		window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+			matches: query.includes('prefers-reduced-motion'),
+			media: query,
+			onchange: null,
+			addEventListener: vi.fn(),
+			removeEventListener: vi.fn(),
+			addListener: vi.fn(),
+			removeListener: vi.fn(),
+			dispatchEvent: vi.fn(),
+		}));
+
+		try {
+			const { useMarquee } = await import('@/composables/useMarquee');
+			expect(typeof useMarquee).toBe('function');
+
+			const UpNextCardModule = await import('@/components/ui/UpNextCard.vue');
+			expect(UpNextCardModule.default).toBeDefined();
+
+			const wrapper = mount(FogonMode);
+			const marqueeContainers = wrapper.findAll('.fogon-marquee-container');
+			const titleEl = wrapper.find('.fogon-title');
+			Object.defineProperty(marqueeContainers[0].element, 'clientWidth', { configurable: true, value: 150 });
+			Object.defineProperty(titleEl.element, 'scrollWidth', { configurable: true, value: 400 });
+
+			window.dispatchEvent(new Event('resize'));
+			await wrapper.vm.$nextTick();
+
+			expect(titleEl.classes()).not.toContain('fogon-radio-scroll');
+		} finally {
+			window.matchMedia = originalMatchMedia;
+		}
+	});
 });

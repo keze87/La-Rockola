@@ -165,6 +165,8 @@ def validate_radio_banks(strict: bool = False) -> list[str]:
 			issues.append(f"CARPINCHO_PHRASES: RadioPhrase con texto vacío (categoría '{rp.category}')")
 		if rp.category not in VALID_CATEGORIES:
 			issues.append(f"CARPINCHO_PHRASES: categoría inválida o faltante '{rp.category}' en '{rp.text[:30]}...'")
+		if not rp.subcategory or not rp.subcategory.strip():
+			issues.append(f"CARPINCHO_PHRASES: subcategoría faltante en '{rp.text[:30]}...'")
 
 	if strict and issues:
 		raise ValueError(f"Fallo en validación de bancos de frases: {issues}")

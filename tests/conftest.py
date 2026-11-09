@@ -109,31 +109,17 @@ def clean_manager():
 
 
 @pytest.fixture
-def spa_dist():
-	"""Garantiza un dist/index.html aislado sólo para los tests que verifican rutas SPA y limpia directorio y archivo al terminar."""
-	from app.core.config import get_dist_dirs
-
-	_, dist_dir, _ = get_dist_dirs()
+def spa_dist(tmp_path, monkeypatch):
+	"""Garantiza un dist/index.html aislado en tmp_path parcheando get_dist_dirs para evitar carreras entre workers."""
+	dist_dir = tmp_path / "dist"
+	assets_dir = dist_dir / "assets"
+	dist_dir.mkdir(parents=True, exist_ok=True)
 	index_file = dist_dir / "index.html"
-	dir_existed = dist_dir.exists()
-	file_created = False
-	if not index_file.exists():
-		dist_dir.mkdir(parents=True, exist_ok=True)
-		index_file.write_text("<!doctype html><html><body>La Rockola Test SPA</body></html>", encoding="utf-8")
-		file_created = True
-	try:
-		yield dist_dir
-	finally:
-		if file_created and index_file.exists():
-			try:
-				index_file.unlink()
-			except OSError:
-				pass
-		if not dir_existed and dist_dir.exists():
-			try:
-				dist_dir.rmdir()
-			except OSError:
-				pass
+	index_file.write_text("<!doctype html><html><body>La Rockola Test SPA</body></html>", encoding="utf-8")
+
+	monkeypatch.setattr("app.core.config.get_dist_dirs", lambda: (tmp_path, dist_dir, assets_dir))
+	monkeypatch.setattr("app.main.get_dist_dirs", lambda: (tmp_path, dist_dir, assets_dir))
+	yield dist_dir
 
 
 @pytest.fixture

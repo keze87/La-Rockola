@@ -36,22 +36,24 @@ jobs:
 
             - name: Run pytest with coverage
               run: |
-                  pytest --md-report --md-report-color=never --md-report-flavor=github --md-report-show-duration --md-report-output=pytest_report.md
+                  pytest --md-report --md-report-color=never --md-report-flavor=github --md-report-zeros=empty --md-report-show-duration --md-report-output=pytest_report.md
 
             - name: Publish Test and Coverage Summary to GITHUB_STEP_SUMMARY
               if: always()
               run: |
-                  if [ -f "pytest_report.md" ]; then
-                      echo "### 🧪 Pytest Test Report" >> $GITHUB_STEP_SUMMARY
-                      echo "" >> $GITHUB_STEP_SUMMARY
-                      cat pytest_report.md >> $GITHUB_STEP_SUMMARY
-                      echo "" >> $GITHUB_STEP_SUMMARY
-                  fi
-                  if [ -f ".coverage" ]; then
-                      echo "### 📊 Backend Coverage Report" >> $GITHUB_STEP_SUMMARY
-                      echo "" >> $GITHUB_STEP_SUMMARY
-                      coverage report --format=markdown >> $GITHUB_STEP_SUMMARY
-                  fi
+                  {
+                      if [ -f "pytest_report.md" ]; then
+                          echo "### 🧪 Pytest Test Report"
+                          echo ""
+                          cat pytest_report.md
+                          echo ""
+                      fi
+                      if [ -f ".coverage" ]; then
+                          echo "### 📊 Backend Coverage Report"
+                          echo ""
+                          coverage report --format=markdown
+                      fi
+                  } | head -c 950000 >> $GITHUB_STEP_SUMMARY
 
     frontend:
         name: Frontend Lint & Tests

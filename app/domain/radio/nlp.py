@@ -5,6 +5,7 @@ filtros de listas negras y limpieza de fortunas en español para el Modo Radio.
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import math
@@ -16,6 +17,7 @@ import subprocess
 import sys
 import time
 from collections import OrderedDict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -71,53 +73,111 @@ _MAX_RENDERED_CACHE_SIZE = 2048
 _RADIO_MEMORY_STATE: dict[str, Any] = {}
 _PHRASE_HISTORY_MEMORY: dict[str, float] = {}
 _RENDERED_TO_TEMPLATE_KEY: OrderedDict[str, str] = OrderedDict()
-_STATIC_VARIANT_TO_TEMPLATE_MAP: dict[str, str] | None = None
 _LOADED_DB_PATHS: set[str] = set()
 _SPANISH_FORTUNE_DBS_CACHE: list[str] | None = None
 _BUNDLED_FORTUNES_CACHE: list[str] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _PhraseIndexEntry:
+	"""Entrada precalculada O(1) para normalización de plantillas, contrapartes de género y jerarquía de subcategorías."""
+
+	canonical_key: str
+	counterpart_keys: tuple[str, ...]
+	lead_in_categories: tuple[str, ...]
+	reaccion_categories: tuple[str, ...]
 
 
 def _clean_phrase_text(text: str) -> str:
 	return text.strip().strip("\"'«»").rstrip(".!?:;…").lower()
 
 
-def _get_static_variant_map() -> dict[str, str]:
-	"""Construye perezosamente el mapa de variantes habladas -> plantilla limpia para todos los bancos con placeholders."""
-	global _STATIC_VARIANT_TO_TEMPLATE_MAP
-	if _STATIC_VARIANT_TO_TEMPLATE_MAP is None:
-		mapping: dict[str, str] = {}
-		all_templates: list[str] = [
-			*RADIO_INTROS,
-			*RADIO_OUTROS,
-			*RADIO_OUTROS_ROMANCE,
-			*RADIO_OUTROS_PREVIA,
-			*RADIO_OUTROS_NIGHT,
-			*RADIO_OUTROS_PAUSE,
-			*RADIO_OUTROS_BREAK,
-			*RADIO_OUTROS_DJ,
-			*PASES_A_CLIMA,
-		]
-		for lst in LEAD_INS_BY_CATEGORY.values():
-			all_templates.extend(lst)
-		for lst in OUTROS_BY_CATEGORY.values():
-			all_templates.extend(lst)
-		for lst in REACCIONES_BY_CATEGORY.values():
-			all_templates.extend(lst)
-		for lst in REACCIONES_CLIMA.values():
-			all_templates.extend(lst)
-		for rp in CARPINCHO_PHRASES:
-			if "{" in rp.text:
-				all_templates.append(rp.text)
+@functools.lru_cache(maxsize=1)
+def _get_phrase_recency_index() -> dict[str, _PhraseIndexEntry]:
+	"""Construye una única vez el índice O(1) de texto limpio -> (plantilla canónica, contrapartes de género, categorías y subcategorías)."""
+	canonical_map: dict[str, str] = {}
+	counterparts_map: dict[str, dict[str, None]] = {}
+	lead_in_cats_map: dict[str, set[str]] = {}
+	reaccion_cats_map: dict[str, set[str]] = {}
 
-		for tpl in all_templates:
-			sub_tpls = tpl.all_variants() if isinstance(tpl, GenderVariant) else (tpl,)
-			for st in sub_tpls:
-				if "{" in st:
-					clean_tpl = _clean_phrase_text(st)
-					for variant in expand_phrase_variants(st):
-						mapping[_clean_phrase_text(variant)] = clean_tpl
-		_STATIC_VARIANT_TO_TEMPLATE_MAP = mapping
-	return _STATIC_VARIANT_TO_TEMPLATE_MAP
+	def _register(
+		item: str | GenderVariant,
+		lead_in_cat: str | None = None,
+		reaccion_cat: str | None = None,
+	) -> None:
+		variants_tuple = item.all_variants() if isinstance(item, GenderVariant) else (item,)
+		clean_templates = tuple(_clean_phrase_text(v) for v in variants_tuple)
+		for st, clean_tpl in zip(variants_tuple, clean_templates, strict=False):
+			all_clean_forms = [clean_tpl]
+			if "{" in st:
+				for exp in expand_phrase_variants(st):
+					c_exp = _clean_phrase_text(exp)
+					canonical_map[c_exp] = clean_tpl
+					all_clean_forms.append(c_exp)
+			canonical_map.setdefault(clean_tpl, clean_tpl)
+			for cf in all_clean_forms:
+				if isinstance(item, GenderVariant):
+					cp_dict = counterparts_map.setdefault(cf, {})
+					for ct in clean_templates:
+						cp_dict[ct] = None
+				if lead_in_cat:
+					l_set = lead_in_cats_map.setdefault(cf, {"lead_in"})
+					l_set.add(lead_in_cat)
+					subcat = lead_in_cat.removeprefix("lead_in_")
+					if parent := SUBCATEGORY_TO_PARENT_CATEGORY.get(subcat):
+						l_set.add(f"lead_in_{parent}")
+				if reaccion_cat:
+					r_set = reaccion_cats_map.setdefault(cf, {"reaccion"})
+					r_set.add(reaccion_cat)
+					subcat = reaccion_cat.removeprefix("reaccion_")
+					if parent := SUBCATEGORY_TO_PARENT_CATEGORY.get(subcat):
+						r_set.add(f"reaccion_{parent}")
+
+	for bank in (
+		RADIO_INTROS,
+		RADIO_OUTROS,
+		RADIO_OUTROS_ROMANCE,
+		RADIO_OUTROS_PREVIA,
+		RADIO_OUTROS_NIGHT,
+		RADIO_OUTROS_PAUSE,
+		RADIO_OUTROS_BREAK,
+		RADIO_OUTROS_DJ,
+		PASES_A_CLIMA,
+		*OUTROS_BY_CATEGORY.values(),
+	):
+		for item in bank:
+			_register(item)
+
+	for cat_name, cat_list in LEAD_INS_BY_CATEGORY.items():
+		for item in cat_list:
+			_register(item, lead_in_cat=f"lead_in_{cat_name}")
+	for subcat_name, subcat_list in LEAD_INS_BY_SUBCATEGORY.items():
+		for item in subcat_list:
+			_register(item, lead_in_cat=f"lead_in_{subcat_name}")
+
+	for cat_name, cat_list in REACCIONES_BY_CATEGORY.items():
+		for item in cat_list:
+			_register(item, reaccion_cat=f"reaccion_{cat_name}")
+	for subcat_name, subcat_list in REACCIONES_BY_SUBCATEGORY.items():
+		for item in subcat_list:
+			_register(item, reaccion_cat=f"reaccion_{subcat_name}")
+	for clim_list in REACCIONES_CLIMA.values():
+		for item in clim_list:
+			_register(item, reaccion_cat="reaccion_clima")
+
+	for rp in CARPINCHO_PHRASES:
+		if "{" in rp.text:
+			_register(rp.text)
+
+	index: dict[str, _PhraseIndexEntry] = {}
+	for cf, canon in canonical_map.items():
+		index[cf] = _PhraseIndexEntry(
+			canonical_key=canon,
+			counterpart_keys=tuple(counterparts_map.get(cf, ())),
+			lead_in_categories=tuple(sorted(lead_in_cats_map.get(cf, ()))),
+			reaccion_categories=tuple(sorted(reaccion_cats_map.get(cf, ()))),
+		)
+	return index
 
 
 def _ensure_radio_tables(conn: sqlite3.Connection) -> None:
@@ -209,25 +269,37 @@ def reset_radio_memory_state(clear_db: bool = True, db_path: Path | str | None =
 			logger.debug(f"No se pudo limpiar estado radial en SQLite: {e}")
 
 
-def _normalize_phrase_key(phrase: str | tuple[str, str] | RadioPhrase, category: str = "") -> str:
+def _extract_phrase_and_category(
+	phrase: str | tuple[str, str] | RadioPhrase | GenderVariant,
+	category: str = "",
+) -> tuple[str, str]:
+	if isinstance(phrase, RadioPhrase):
+		return phrase.text, (category or phrase.category)
+	if isinstance(phrase, GenderVariant):
+		return phrase.m, category
 	if isinstance(phrase, (tuple, list)):
-		phrase_text = phrase[0] if len(phrase) > 0 else ""
-		if not category and len(phrase) > 1:
-			category = str(phrase[1])
-	else:
-		phrase_text = str(phrase)
+		phrase_text = str(phrase[0]) if len(phrase) > 0 else ""
+		eff_cat = category or (str(phrase[1]) if len(phrase) > 1 and phrase[1] else "")
+		return phrase_text, eff_cat
+	return str(phrase), category
+
+
+def _normalize_phrase_key(
+	phrase: str | tuple[str, str] | RadioPhrase | GenderVariant,
+	category: str = "",
+) -> str:
+	phrase_text, category = _extract_phrase_and_category(phrase, category)
 	cleaned = _clean_phrase_text(phrase_text)
 	if cleaned in _RENDERED_TO_TEMPLATE_KEY:
 		cleaned = _RENDERED_TO_TEMPLATE_KEY[cleaned]
-	else:
-		cleaned = _get_static_variant_map().get(cleaned, cleaned)
+	elif entry := _get_phrase_recency_index().get(cleaned):
+		cleaned = entry.canonical_key
 	return f"{category}:{cleaned}" if category else cleaned
 
 
 def render_tracked_phrase(
 	template: str,
 	ctx: RadioContext | None = None,
-	addressee_voice: str | None = None,
 	cohost_name: str | None = None,
 	host_name: str | None = None,
 	host_voice: str | None = None,
@@ -236,7 +308,6 @@ def render_tracked_phrase(
 	rendered = render_phrase(
 		template,
 		ctx,
-		addressee_voice=addressee_voice,
 		cohost_name=cohost_name,
 		host_name=host_name,
 		host_voice=host_voice,
@@ -250,186 +321,79 @@ def render_tracked_phrase(
 	return rendered
 
 
-def _same_phrase(spoken: str, template: str | GenderVariant) -> bool:
-	if isinstance(template, GenderVariant):
-		return any(_same_phrase(spoken, v) for v in template.all_variants())
-	target = _clean_phrase_text(spoken)
-	if target == _clean_phrase_text(template):
-		return True
-	if "{" in template:
-		return any(_clean_phrase_text(v) == target for v in expand_phrase_variants(template))
-	return False
-
-
-_GV_COUNTERPARTS_CACHE: dict[str, list[str]] = {}
-
-
-def _get_gv_counterparts_map() -> dict[str, list[str]]:
-	global _GV_COUNTERPARTS_CACHE
-	if _GV_COUNTERPARTS_CACHE:
-		return _GV_COUNTERPARTS_CACHE
-	gv_items: list[GenderVariant] = []
-	for bank in [
-		RADIO_INTROS,
-		RADIO_OUTROS,
-		RADIO_OUTROS_ROMANCE,
-		RADIO_OUTROS_PREVIA,
-		RADIO_OUTROS_NIGHT,
-		RADIO_OUTROS_BREAK,
-		PASES_A_CLIMA,
-		*REACCIONES_BY_CATEGORY.values(),
-		*REACCIONES_BY_SUBCATEGORY.values(),
-		*REACCIONES_CLIMA.values(),
-	]:
-		for item in bank:
-			if isinstance(item, GenderVariant) and item not in gv_items:
-				gv_items.append(item)
-	mapping: dict[str, list[str]] = {}
-	for item in gv_items:
-		pair = [item.m, item.f]
-		for var in (item.m, item.f):
-			mapping[_clean_phrase_text(var)] = pair
-			if "{" in var:
-				for exp in expand_phrase_variants(var):
-					mapping[_clean_phrase_text(exp)] = pair
-	_GV_COUNTERPARTS_CACHE = mapping
-	return _GV_COUNTERPARTS_CACHE
-
-
-def _find_gender_variant_counterparts(phrase_text: str, category: str = "") -> list[str]:
-	"""Encuentra todas las variantes (m y f) del GenderVariant asociado a una frase o plantilla hablada."""
-	if category and category not in ("intro", "salida", "pase", "reaccion") and not category.startswith("reaccion_"):
-		return []
-	target = _clean_phrase_text(phrase_text)
-	gv_map = _get_gv_counterparts_map()
-	return gv_map.get(target, [])
-
-
-def _find_pase_template(spoken: str) -> str | GenderVariant | None:
-	for tpl in PASES_A_CLIMA:
-		if _same_phrase(spoken, tpl):
-			return tpl
-	return None
-
-
 def get_phrase_last_played(
-	phrase: str | tuple[str, str] | RadioPhrase,
+	phrase: str | tuple[str, str] | RadioPhrase | GenderVariant,
 	category: str = "",
 	db_path: Path | str | None = None,
 ) -> float | None:
-	"""Recupera la marca de tiempo en que una frase fue reproducida por última vez, compatible con categorías y subcategorías."""
+	"""Recupera la marca de tiempo en que una frase fue reproducida por última vez en O(1), compatible con categorías, subcategorías y variantes de género."""
 	_sync_from_db_if_needed(db_path)
-	if isinstance(phrase, (tuple, list)):
-		phrase_text = phrase[0] if len(phrase) > 0 else ""
-		if not category and len(phrase) > 1:
-			category = str(phrase[1])
-	else:
-		phrase_text = str(phrase)
+	phrase_text, category = _extract_phrase_and_category(phrase, category)
 	norm_key = _normalize_phrase_key(phrase_text, category)
 	val = _PHRASE_HISTORY_MEMORY.get(norm_key)
 	if val is not None:
 		return val
 
-	# Si es parte de un GenderVariant, comprobamos si la contraparte fue reproducida
-	counterparts = _find_gender_variant_counterparts(phrase_text, category)
-	for cp in counterparts:
-		cp_val = _PHRASE_HISTORY_MEMORY.get(_normalize_phrase_key(cp, category))
-		if cp_val is not None:
-			return cp_val
+	cleaned = _clean_phrase_text(phrase_text)
+	entry = _get_phrase_recency_index().get(cleaned)
+	candidate_texts = (phrase_text, *entry.counterpart_keys) if entry and entry.counterpart_keys else (phrase_text,)
 
+	candidate_cats: list[str] = [category] if category else [""]
 	if category.startswith("lead_in_"):
 		subcat = category.removeprefix("lead_in_")
-		parent_cat = SUBCATEGORY_TO_PARENT_CATEGORY.get(subcat)
-		if parent_cat:
-			val = _PHRASE_HISTORY_MEMORY.get(_normalize_phrase_key(phrase_text, f"lead_in_{parent_cat}"))
-			if val is not None:
-				return val
-		val = _PHRASE_HISTORY_MEMORY.get(_normalize_phrase_key(phrase_text, "lead_in"))
-		if val is not None:
-			return val
+		if parent_cat := SUBCATEGORY_TO_PARENT_CATEGORY.get(subcat):
+			candidate_cats.append(f"lead_in_{parent_cat}")
+		candidate_cats.append("lead_in")
 	elif category.startswith("reaccion_"):
 		subcat = category.removeprefix("reaccion_")
-		parent_cat = SUBCATEGORY_TO_PARENT_CATEGORY.get(subcat)
-		candidates_to_check = [phrase_text, *counterparts]
-		if parent_cat:
-			for cand in candidates_to_check:
-				val = _PHRASE_HISTORY_MEMORY.get(_normalize_phrase_key(cand, f"reaccion_{parent_cat}"))
-				if val is not None:
-					return val
-		for cand in candidates_to_check:
-			val = _PHRASE_HISTORY_MEMORY.get(_normalize_phrase_key(cand, "reaccion"))
-			if val is not None:
-				return val
-	elif category == "pase":
-		tpl = _find_pase_template(phrase_text)
-		if tpl is not None:
-			for tpl_str in tpl.all_variants() if isinstance(tpl, GenderVariant) else (tpl,):
-				val = _PHRASE_HISTORY_MEMORY.get(_normalize_phrase_key(tpl_str, "pase"))
-				if val is not None:
-					return val
+		if parent_cat := SUBCATEGORY_TO_PARENT_CATEGORY.get(subcat):
+			candidate_cats.append(f"reaccion_{parent_cat}")
+		candidate_cats.append("reaccion")
+
+	for cat_cand in candidate_cats:
+		for txt_cand in candidate_texts:
+			cp_val = _PHRASE_HISTORY_MEMORY.get(_normalize_phrase_key(txt_cand, cat_cand))
+			if cp_val is not None:
+				return cp_val
 	return None
 
 
 def record_phrase_played(
-	phrase: str | tuple[str, str] | RadioPhrase,
+	phrase: str | tuple[str, str] | RadioPhrase | GenderVariant,
 	category: str = "",
 	timestamp: float | None = None,
 	db_path: Path | str | None = None,
 ) -> None:
-	"""Registra en memoria y en SQLite la reproducción de una frase actualizando su marca de tiempo en categorías y subcategorías."""
+	"""Registra en memoria y en SQLite la reproducción de una frase en O(1) actualizando su marca de tiempo en categorías, subcategorías y variantes de género."""
 	_sync_from_db_if_needed(db_path)
-	if isinstance(phrase, (tuple, list)):
-		phrase_text = phrase[0] if len(phrase) > 0 else ""
-		if not category and len(phrase) > 1:
-			category = str(phrase[1])
-	else:
-		phrase_text = str(phrase)
+	phrase_text, category = _extract_phrase_and_category(phrase, category)
 	ts = timestamp if timestamp is not None else time.time()
-	keys_to_update: dict[str, float] = {}
-	norm_key = _normalize_phrase_key(phrase_text, category)
-	keys_to_update[norm_key] = ts
 
-	# Acoplamos las variantes de género para que ambas queden marcadas como reproducidas
-	counterparts = _find_gender_variant_counterparts(phrase_text, category)
-	for cp in counterparts:
-		keys_to_update[_normalize_phrase_key(cp, category)] = ts
+	cleaned = _clean_phrase_text(phrase_text)
+	entry = _get_phrase_recency_index().get(cleaned)
+	candidate_texts = (phrase_text, *(entry.counterpart_keys if entry else ()))
 
+	target_cats: set[str] = {category}
 	if category == "lead_in" or category.startswith("lead_in_"):
-		keys_to_update[_normalize_phrase_key(phrase_text, "lead_in")] = ts
-		for cat_name, cat_list in LEAD_INS_BY_CATEGORY.items():
-			match = next((item for item in cat_list if _same_phrase(phrase_text, item)), None)
-			if match is not None:
-				keys_to_update[_normalize_phrase_key(match, f"lead_in_{cat_name}")] = ts
-		for subcat_name, subcat_list in LEAD_INS_BY_SUBCATEGORY.items():
-			match = next((item for item in subcat_list if _same_phrase(phrase_text, item)), None)
-			if match is not None:
-				keys_to_update[_normalize_phrase_key(match, f"lead_in_{subcat_name}")] = ts
+		target_cats.add("lead_in")
+		if entry:
+			target_cats.update(entry.lead_in_categories)
+		if category.startswith("lead_in_"):
+			subcat = category.removeprefix("lead_in_")
+			if parent_cat := SUBCATEGORY_TO_PARENT_CATEGORY.get(subcat):
+				target_cats.add(f"lead_in_{parent_cat}")
 	elif category == "reaccion" or category.startswith("reaccion_"):
-		for cand in (phrase_text, *counterparts):
-			keys_to_update[_normalize_phrase_key(cand, "reaccion")] = ts
-		for cat_name, cat_list in REACCIONES_BY_CATEGORY.items():
-			match = next((item for item in cat_list if _same_phrase(phrase_text, item)), None)
-			if match is not None:
-				for m_str in match.all_variants() if isinstance(match, GenderVariant) else (match,):
-					keys_to_update[_normalize_phrase_key(m_str, "reaccion")] = ts
-					keys_to_update[_normalize_phrase_key(m_str, f"reaccion_{cat_name}")] = ts
-		for subcat_name, subcat_list in REACCIONES_BY_SUBCATEGORY.items():
-			match = next((item for item in subcat_list if _same_phrase(phrase_text, item)), None)
-			if match is not None:
-				for m_str in match.all_variants() if isinstance(match, GenderVariant) else (match,):
-					keys_to_update[_normalize_phrase_key(m_str, "reaccion")] = ts
-					keys_to_update[_normalize_phrase_key(m_str, f"reaccion_{subcat_name}")] = ts
-		for clim_list in REACCIONES_CLIMA.values():
-			match = next((item for item in clim_list if _same_phrase(phrase_text, item)), None)
-			if match is not None:
-				for m_str in match.all_variants() if isinstance(match, GenderVariant) else (match,):
-					keys_to_update[_normalize_phrase_key(m_str, "reaccion")] = ts
-					keys_to_update[_normalize_phrase_key(m_str, "reaccion_clima")] = ts
-	elif category == "pase":
-		tpl = _find_pase_template(phrase_text)
-		if tpl is not None:
-			for tpl_str in tpl.all_variants() if isinstance(tpl, GenderVariant) else (tpl,):
-				keys_to_update[_normalize_phrase_key(tpl_str, "pase")] = ts
+		target_cats.add("reaccion")
+		if entry:
+			target_cats.update(entry.reaccion_categories)
+		if category.startswith("reaccion_"):
+			subcat = category.removeprefix("reaccion_")
+			if parent_cat := SUBCATEGORY_TO_PARENT_CATEGORY.get(subcat):
+				target_cats.add(f"reaccion_{parent_cat}")
+
+	keys_to_update: dict[str, float] = {
+		_normalize_phrase_key(txt, cat): ts for cat in target_cats for txt in candidate_texts
+	}
 
 	_PHRASE_HISTORY_MEMORY.update(keys_to_update)
 	if db_path:
@@ -467,7 +431,7 @@ def weighted_choice_by_recency(
 
 	for phrase in candidates:
 		cat = getattr(phrase, "category", category) or category
-		last_played = get_phrase_last_played(phrase, category=cat, db_path=None)
+		last_played = get_phrase_last_played(phrase, category=cat, db_path=db_path)
 		if last_played is None or last_played <= 0:
 			weights.append(1.0)
 		else:
@@ -796,20 +760,29 @@ def load_bundled_fortunes(target: Path | str | None = None) -> list[str]:
 
 
 def get_bundled_fortune(db_path: Path | str | None = None) -> str | None:
-	"""Retorna una fortuna o cita célebre en español del banco propio bundled."""
+	"""Retorna una fortuna o cita célebre en español del banco propio bundled ponderando recencia sobre todo el banco."""
 	global _BUNDLED_FORTUNES_CACHE
 	if _BUNDLED_FORTUNES_CACHE is None:
 		_BUNDLED_FORTUNES_CACHE = load_bundled_fortunes()
 	if not _BUNDLED_FORTUNES_CACHE:
 		return None
 	candidates = _BUNDLED_FORTUNES_CACHE
-	if len(candidates) > 200:
-		candidates = random.sample(candidates, 100)
+	_sync_from_db_if_needed(db_path)
+	now = time.time()
+	for _ in range(len(candidates)):
+		cand = random.choice(candidates)
+		last_played = get_phrase_last_played(cand, category="fortuna_bundled", db_path=db_path)
+		if last_played is None or last_played <= 0:
+			return cand
+		delta_t = max(0.0, now - float(last_played))
+		w = max(0.02, 1.0 - math.exp(-delta_t / 1800.0))
+		if random.random() < w:
+			return cand
 	return weighted_choice_by_recency(candidates, category="fortuna_bundled", db_path=db_path)
 
 
-# Ponderación probabilística por categoría: 'fortuna' cuenta con un banco local nutrido y más de
-# 10.000 citas importadas de fortune, por lo que tiene mayor probabilidad que bancos reducidos.
+# Ponderación probabilística por categoría dentro de los bancos locales (CARPINCHO_PHRASES),
+# equilibrando la rotación según la amplitud de cada sección editorial.
 CATEGORY_WEIGHTS: dict[str, float] = {
 	"fortuna": 1.2,
 	"aviso": 1.2,

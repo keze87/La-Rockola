@@ -133,6 +133,7 @@ def run_mock_radio_simulation(
 	- `seed`: semilla aleatoria para repetibilidad determinista.
 	- `verbose`: muestra progreso detallado en consola.
 	"""
+	saved_rng_state = random.getstate() if seed is not None else None
 	if seed is not None:
 		random.seed(seed)
 
@@ -253,6 +254,8 @@ def run_mock_radio_simulation(
 
 	if temp_dir is not None:
 		temp_dir.cleanup()
+	if saved_rng_state is not None:
+		random.setstate(saved_rng_state)
 
 	return {
 		"total_runs": iterations,

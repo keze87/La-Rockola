@@ -157,8 +157,9 @@ _CAT_LOCUCION_EN_VIVO = ("intro", "clima", "salida", "pase")
 # Una frase que cumple una regla solo se puede decir cuando el contexto la satisface (todas las que apliquen).
 CONTEXT_RULES: list[_ContextRule] = [
 	# --- Franja horaria para locución y clima en vivo ---
-	# Saludos y reportes temporales inmediatos (intros, clima, salidas, pases)
-	_rule(r"\btard(?:e|ecit\w*)\b", franjas=("tarde",), only_categories=_CAT_LOCUCION_EN_VIVO),
+	# Saludos y reportes temporales inmediatos (intros, clima, salidas, pases y alertas criollas)
+	_rule(r"\btard(?:e|ecit\w*)\b", franjas=("tarde",), only_categories=(*_CAT_LOCUCION_EN_VIVO, "alerta_criolla")),
+	_rule(r"\bsiesta\b", franjas=("mediodia", "tarde"), only_categories=("alerta_criolla", "clima")),
 	_rule(r"\bmadrugada\b", franjas=("madrugada", "mañana"), only_categories=_CAT_LOCUCION_EN_VIVO),
 	_rule(
 		r"\bde la mañana\b",
@@ -169,9 +170,9 @@ CONTEXT_RULES: list[_ContextRule] = [
 	_rule(r"\bse nos viene la noche\b", franjas=("mediodia", "tarde")),
 	# Referencias nocturnas, de previa, fernet, perreo y levante (no deben salir a la mañana ni al mediodía)
 	_rule(
-		r"\b(?:esta noche|salgo de levante|perreo|pegadito|a la luz de la luna|cabina se pone caliente|pasos sensuales|previa|fernet)\b",
+		r"\b(?:noche\s+h[úu]meda|esta noche|salgo de levante|perreo|pegadito|a la luz de la luna|cabina se pone caliente|pasos sensuales|previa|fernet)\b",
 		franjas=("noche", "madrugada"),
-		only_categories=("intro", "salida"),
+		only_categories=("intro", "salida", "alerta_criolla"),
 	),
 	# El sol en sentido meteorológico literal (no metafórico como 'trapitos al sol' ni marcas comerciales)
 	_rule(

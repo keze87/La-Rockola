@@ -23,28 +23,89 @@ from app.domain.radio.phrase_banks.weather import (
 	WEATHER_CODE_TO_CATEGORY,
 	WEATHER_DESC_TO_CATEGORY,
 )
+from app.domain.radio.voices import GenderVariant
+
+_COMMUNITY_NOTICE_SET: frozenset[str] = frozenset(AVISOS_PARROQUIALES_Y_EXTRAVIOS)
+_TRANSIT_ALERT_SET: frozenset[str] = frozenset(TRANSITO_FLUVIAL_Y_CAMINOS)
+_CLIMATE_ALERT_SET: frozenset[str] = frozenset(ALERTAS_INCOMODIDAD_CRIOLLA)
+
+_RE_AVISO_COMUNITARIO = re.compile(
+	r"\b(?:"
+	r"se\s+busca|se\s+extravió|se\s+perdió|apareció|encontraron|se\s+rescató|"
+	r"se\s+escapó|se\s+escaparon|edicto|catastro|concejo\s+deliberante|"
+	r"resolución|destacamento|dirección\s+de\s+rentas|misa|sacristán|rifa|"
+	r"bingo|trueque|parroquial|recompensa|gratificará|centro\s+vecinal|"
+	r"taller\s+de\s+payadas|solidaridad"
+	r")\b",
+	re.IGNORECASE,
+)
+
+_RE_ALERTA_TRANSITO = re.compile(
+	r"\b(?:"
+	r"lancha|balsa|camino|terraplén|puente|canal|remolcador|embarcadero|"
+	r"ruta|paso\s+a\s+nivel|banco\s+de\s+arena|calzada|tránsito|navegantes|embalsado"
+	r")\b",
+	re.IGNORECASE,
+)
+
+_RE_OYENTES_PEDIDO = re.compile(
+	r"\b(?:"
+	r"pide|piden|pedimos|queremos|quería\s+pedir|que\s+suene|esperando\s+que\s+suene|"
+	r"esperando\s+escuchar|pongan|poné|ponete|pasame|pasate|si\s+pueden\s+poner|"
+	r"si\s+podés\s+pasar|tirate\s+un|largate\s+un|largate\s+una|mandate\s+un|"
+	r"mandate\s+una|solicitamos"
+	r")\b",
+	re.IGNORECASE,
+)
+
+_RE_FORTUNA_MUSICAL = re.compile(
+	r"\b(?:"
+	r"música|canción|tema|temazo|volumen|cumbia|chamamé|rock|cuarteto|"
+	r"folclore|tango|play|ritmo|estribillo|acordeón|rockola"
+	r")\b",
+	re.IGNORECASE,
+)
 
 
 class RadioPhrase(NamedTuple):
 	text: str
 	category: str  # "fortuna" | "aviso" | "alerta_criolla" | "oyentes" | "chismes" | "novela"
+	subcategory: str = ""
 
 
 CARPINCHO_PHRASES: tuple[RadioPhrase, ...] = (
-	*(RadioPhrase(t, "fortuna") for t in CARPINCHO_SABIDURIA),
-	*(RadioPhrase(t, "alerta_criolla") for t in ALERTAS_INCOMODIDAD_CRIOLLA),
-	*(RadioPhrase(t, "alerta_criolla") for t in TRANSITO_FLUVIAL_Y_CAMINOS),
-	*(RadioPhrase(t, "oyentes") for t in DEDICATORIAS_OYENTES),
-	*(RadioPhrase(t, "aviso") for t in CARPINCHO_ADS),
-	*(RadioPhrase(t, "chismes") for t in CHISMES_CARPINCHOS),
-	*(RadioPhrase(t, "novela") for t in NOVELA_VECINAL),
+	*(
+		RadioPhrase(
+			t,
+			"fortuna",
+			"fortuna_musical" if _RE_FORTUNA_MUSICAL.search(t) else "fortuna_reflexiva",
+		)
+		for t in CARPINCHO_SABIDURIA
+	),
+	*(RadioPhrase(t, "alerta_criolla", "alerta_clima") for t in ALERTAS_INCOMODIDAD_CRIOLLA),
+	*(RadioPhrase(t, "alerta_criolla", "alerta_transito") for t in TRANSITO_FLUVIAL_Y_CAMINOS),
+	*(
+		RadioPhrase(
+			t,
+			"oyentes",
+			"oyentes_pedido" if _RE_OYENTES_PEDIDO.search(t) else "oyentes_saludo",
+		)
+		for t in DEDICATORIAS_OYENTES
+	),
+	*(
+		RadioPhrase(
+			t,
+			"aviso",
+			"aviso_comunitario" if t in _COMMUNITY_NOTICE_SET else "aviso_comercial",
+		)
+		for t in CARPINCHO_ADS
+	),
+	*(RadioPhrase(t, "chismes", "chismes") for t in CHISMES_CARPINCHOS),
+	*(RadioPhrase(t, "novela", "novela") for t in NOVELA_VECINAL),
 )
 
 PHRASE_TO_CATEGORY: dict[str, str] = {p.text: p.category for p in CARPINCHO_PHRASES}
-
-_COMMUNITY_NOTICE_SET: frozenset[str] = frozenset(AVISOS_PARROQUIALES_Y_EXTRAVIOS)
-_TRANSIT_ALERT_SET: frozenset[str] = frozenset(TRANSITO_FLUVIAL_Y_CAMINOS)
-_CLIMATE_ALERT_SET: frozenset[str] = frozenset(ALERTAS_INCOMODIDAD_CRIOLLA)
+PHRASE_TO_SUBCATEGORY: dict[str, str] = {p.text: p.subcategory for p in CARPINCHO_PHRASES}
 
 
 def resolve_weather_desc_category(
@@ -114,7 +175,10 @@ def resolve_weather_desc_category(
 	return "default"
 
 
-def resolve_segment_category(text: str | tuple[str, str] | RadioPhrase, default: str = "unknown") -> str:
+def resolve_segment_category(
+	text: str | tuple[str, str] | RadioPhrase | GenderVariant,
+	default: str = "unknown",
+) -> str:
 	"""
 	Clasifica el contenido radial en su categoría semántica:
 	- 'oyentes': dedicatorias y pedidos de oyentes por WhatsApp/audio.
@@ -129,7 +193,13 @@ def resolve_segment_category(text: str | tuple[str, str] | RadioPhrase, default:
 	y mapeo O(1) vía PHRASE_TO_CATEGORY para frases de los bancos internos.
 	Si no coincide con mapeos explícitos ni reglas heurísticas, retorna `default`.
 	"""
-	if isinstance(text, (tuple, RadioPhrase)):
+	if isinstance(text, RadioPhrase):
+		if text.category:
+			return text.category
+		text = text.text
+	elif isinstance(text, GenderVariant):
+		text = text.m
+	elif isinstance(text, (tuple, list)):
 		if len(text) >= 2 and text[1]:
 			return str(text[1])
 		text = text[0] if len(text) >= 1 else ""
@@ -321,7 +391,7 @@ def resolve_segment_category(text: str | tuple[str, str] | RadioPhrase, default:
 
 
 def resolve_segment_subcategory(
-	text: str | tuple[str, str] | RadioPhrase,
+	text: str | tuple[str, str] | RadioPhrase | GenderVariant,
 	category: str | None = None,
 ) -> str:
 	"""
@@ -331,44 +401,25 @@ def resolve_segment_subcategory(
 	- 'oyentes_pedido' vs 'oyentes_saludo' (dentro de 'oyentes')
 	- 'fortuna_musical' vs 'fortuna_reflexiva' (dentro de 'fortuna')
 	"""
-	raw_text = text[0] if isinstance(text, (tuple, RadioPhrase)) and len(text) >= 1 else str(text or "")
+	if isinstance(text, RadioPhrase):
+		if text.subcategory and (category is None or category == text.category):
+			return text.subcategory
+		raw_text = text.text
+	elif isinstance(text, GenderVariant):
+		raw_text = text.m
+	elif isinstance(text, (tuple, list)):
+		raw_text = str(text[0]) if len(text) >= 1 else ""
+	else:
+		raw_text = str(text or "")
+
 	text_clean = raw_text.strip()
 	cat = category or resolve_segment_category(text, default="unknown")
-	low = text_clean.lower()
+
+	if text_clean in PHRASE_TO_SUBCATEGORY and PHRASE_TO_CATEGORY.get(text_clean) == cat:
+		return PHRASE_TO_SUBCATEGORY[text_clean]
 
 	if cat == "aviso":
-		if text_clean in _COMMUNITY_NOTICE_SET:
-			return "aviso_comunitario"
-		if any(
-			k in low
-			for k in (
-				"se busca",
-				"se extravió",
-				"se perdió",
-				"apareció",
-				"encontraron",
-				"se rescató",
-				"se escapó",
-				"se escaparon",
-				"edicto",
-				"catastro",
-				"concejo deliberante",
-				"resolución",
-				"destacamento",
-				"dirección de rentas",
-				"misa",
-				"sacristán",
-				"rifa",
-				"bingo",
-				"trueque",
-				"parroquial",
-				"recompensa",
-				"gratificará",
-				"centro vecinal",
-				"taller de payadas",
-				"solidaridad",
-			)
-		):
+		if text_clean in _COMMUNITY_NOTICE_SET or _RE_AVISO_COMUNITARIO.search(text_clean):
 			return "aviso_comunitario"
 		return "aviso_comercial"
 
@@ -377,81 +428,17 @@ def resolve_segment_subcategory(
 			return "alerta_transito"
 		if text_clean in _CLIMATE_ALERT_SET:
 			return "alerta_clima"
-		if any(
-			k in low
-			for k in (
-				"lancha",
-				"balsa",
-				"camino",
-				"terraplén",
-				"puente",
-				"canal",
-				"remolcador",
-				"embarcadero",
-				"ruta",
-				"paso a nivel",
-				"banco de arena",
-				"calzada",
-				"tránsito",
-				"navegantes",
-				"embalsado",
-			)
-		):
+		if _RE_ALERTA_TRANSITO.search(text_clean):
 			return "alerta_transito"
 		return "alerta_clima"
 
 	if cat == "oyentes":
-		if any(
-			k in low
-			for k in (
-				"pide",
-				"piden",
-				"pedimos",
-				"queremos",
-				"quería pedir",
-				"que suene",
-				"esperando que suene",
-				"esperando escuchar",
-				"pongan",
-				"poné",
-				"ponete",
-				"pasame",
-				"pasate",
-				"si pueden poner",
-				"si podés pasar",
-				"tirate un",
-				"largate un",
-				"largate una",
-				"mandate un",
-				"mandate una",
-				"solicitamos",
-			)
-		):
+		if _RE_OYENTES_PEDIDO.search(text_clean):
 			return "oyentes_pedido"
 		return "oyentes_saludo"
 
 	if cat == "fortuna":
-		if any(
-			k in low
-			for k in (
-				"música",
-				"canción",
-				"tema",
-				"temazo",
-				"volumen",
-				"cumbia",
-				"chamamé",
-				"rock",
-				"cuarteto",
-				"folclore",
-				"tango",
-				"play",
-				"ritmo",
-				"estribillo",
-				"acordeón",
-				"rockola",
-			)
-		):
+		if _RE_FORTUNA_MUSICAL.search(text_clean):
 			return "fortuna_musical"
 		return "fortuna_reflexiva"
 

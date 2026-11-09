@@ -6,8 +6,10 @@
 	import { usePlayer } from '../composables/usePlayer';
 	import { useSliderFactory } from '../composables/useSliderFactory';
 	import { useContextMenuBindings } from '../composables/useContextMenu';
+	import { useMarquee } from '../composables/useMarquee';
 	import DragSlider from './ui/DragSlider.vue';
 	import FavoritableCover from './ui/FavoritableCover.vue';
+	import UpNextCard from './ui/UpNextCard.vue';
 
 	const { pause, skip, prev, seekAbsolute, setMute } = usePlaybackControls();
 	const player = usePlayer();
@@ -28,7 +30,6 @@
 		localPlayerRef,
 		localTimePos,
 		pauseAfterPath,
-		queueState,
 		serverMuted,
 		showFogonVolume,
 		togglePauseAfterCurrent,
@@ -315,32 +316,6 @@
 		return { title: 'Silencio estampa', artist: 'Nadie', isComing: false };
 	});
 
-	const upNextTitle = computed(() => {
-		if (isSynthesizingRadio.value) return 'Transmisión de Cabina - Acomodando los micrófonos... 🎙️';
-
-		if (queueState.value.length > 0) {
-			const t = player.getTrackInfo(queueState.value[0]);
-			return `${t.display_title} - ${t.display_artist}`;
-		}
-
-		if (djBaraEnabled.value && djNextTrack.value) {
-			const t = djNextTrack.value;
-			return `${t.display_title || t.title} - ${t.display_artist || t.artist}`;
-		}
-
-		if (djBaraEnabled.value) return 'DJ Bara eligiendo...';
-
-		return currentTrackPath.value ? 'Termina este y nos re vimos' : "Agregá algo pa' escuchar";
-	});
-
-	const upNextPath = computed(() => {
-		if (queueState.value.length > 0) return queueState.value[0];
-		if (djBaraEnabled.value && djNextTrack.value) return djNextTrack.value?.path;
-		return null;
-	});
-
-	const { coverUrl: upNextCoverUrl, onCoverError: onUpNextCoverError } = useCover(upNextPath, { size: 512 });
-
 	const playPauseIcon = computed(() => (isPlaying.value ? 'pause' : 'play_arrow'));
 	const muteIcon = computed(() => (serverMuted.value || volume.value == 0 ? 'volume_off' : 'volume_down'));
 
@@ -433,57 +408,38 @@
 	const artistContainerRef = ref<HTMLElement | null>(null);
 	const artistTextRef = ref<HTMLElement | null>(null);
 
-	const isTitleOverflowing = ref(false);
-	const titleOffset = ref(0);
-	const isArtistOverflowing = ref(false);
-	const artistOffset = ref(0);
-
-	const titleMarqueeStyle = computed(() => {
-		if (!isTitleOverflowing.value) return {};
-		const duration = Math.max(6, 4 + titleOffset.value * 0.035);
-		return {
-			'--marquee-offset': `-${titleOffset.value + 12}px`,
-			'--marquee-duration': `${duration}s`,
-		};
+	const {
+		isOverflowing: isTitleOverflowing,
+		marqueeStyle: titleMarqueeStyle,
+		checkOverflow: checkTitleOverflow,
+		resetOverflow: resetTitleOverflow,
+	} = useMarquee(titleContainerRef, titleTextRef, {
+		minDuration: 6,
+		baseDuration: 4,
+		speedFactor: 0.035,
+		extraPadding: 12,
 	});
 
-	const artistMarqueeStyle = computed(() => {
-		if (!isArtistOverflowing.value) return {};
-		const duration = Math.max(5, 3.5 + artistOffset.value * 0.035);
-		return {
-			'--marquee-offset': `-${artistOffset.value + 12}px`,
-			'--marquee-duration': `${duration}s`,
-		};
+	const {
+		isOverflowing: isArtistOverflowing,
+		marqueeStyle: artistMarqueeStyle,
+		checkOverflow: checkArtistOverflow,
+		resetOverflow: resetArtistOverflow,
+	} = useMarquee(artistContainerRef, artistTextRef, {
+		minDuration: 5,
+		baseDuration: 3.5,
+		speedFactor: 0.035,
+		extraPadding: 12,
 	});
 
 	function checkOverflow() {
-		if (titleContainerRef.value && titleTextRef.value) {
-			const cWidth = titleContainerRef.value.clientWidth;
-			const sWidth = titleTextRef.value.scrollWidth;
-			if (sWidth > cWidth + 4 && cWidth > 0) {
-				isTitleOverflowing.value = true;
-				titleOffset.value = sWidth - cWidth;
-			} else {
-				isTitleOverflowing.value = false;
-				titleOffset.value = 0;
-			}
-		}
-		if (artistContainerRef.value && artistTextRef.value) {
-			const cWidth = artistContainerRef.value.clientWidth;
-			const sWidth = artistTextRef.value.scrollWidth;
-			if (sWidth > cWidth + 4 && cWidth > 0) {
-				isArtistOverflowing.value = true;
-				artistOffset.value = sWidth - cWidth;
-			} else {
-				isArtistOverflowing.value = false;
-				artistOffset.value = 0;
-			}
-		}
+		checkTitleOverflow();
+		checkArtistOverflow();
 	}
 
 	watch(currentTrackInfo, () => {
-		isTitleOverflowing.value = false;
-		isArtistOverflowing.value = false;
+		resetTitleOverflow();
+		resetArtistOverflow();
 		nextTick(() => {
 			checkOverflow();
 		});
@@ -569,7 +525,7 @@
 				class="fogon-close-btn text-carpincho-text/70 hover:text-carpincho-warning absolute top-4 right-4 z-40 p-2 transition hover:scale-110 active:scale-95 md:top-8 md:right-8"
 				@click="closeFogon"
 			>
-				<i class="material-icons !text-4xl">keyboard_arrow_down</i>
+				<i class="material-icons text-4xl">keyboard_arrow_down</i>
 			</button>
 
 			<!-- Capa para cerrar el popup de volumen al tocar afuera -->
@@ -626,14 +582,14 @@
 										:size-px="512"
 										:unload-when-hidden="false"
 										button-size="h-10 w-10 md:h-12 md:w-12"
-										button-icon-size="!text-xl md:!text-2xl"
+										button-icon-size="text-xl md:text-2xl"
 										button-position="right-3 bottom-3 md:right-4 md:bottom-4"
 										:show-favorite="!isSynthesizingRadio && !isPlayingRadioAnnouncement"
 									/>
 									<i
 										v-else
 										key="empty-cover"
-										class="material-icons text-carpincho-warning !text-[8rem]"
+										class="material-icons text-carpincho-warning text-[8rem]"
 									>
 										album
 									</i>
@@ -642,7 +598,7 @@
 						</div>
 
 						<!-- Bloque central: Información del tema con animación de transición y marquesina tipo radio -->
-						<transition name="fogon-track" mode="out-in">
+						<transition name="fogon-track" mode="out-in" @after-enter="checkOverflow">
 							<div
 								:key="currentTrackKey"
 								class="fogon-track-info flex w-full shrink-0 flex-col items-center text-center select-none"
@@ -772,7 +728,7 @@
 									class="fogon-volume-btn hover:text-carpincho-warning z-20 p-2 text-white transition active:scale-90"
 									@click="toggleVolumePopup"
 								>
-									<i class="material-icons !text-2xl sm:!text-3xl">{{ volIcon }}</i>
+									<i class="material-icons text-2xl sm:text-3xl">{{ volIcon }}</i>
 								</button>
 
 								<button
@@ -780,7 +736,7 @@
 									class="fogon-prev-btn hover:text-carpincho-warning z-20 p-1 text-white transition active:scale-90"
 									@click="skipPrev"
 								>
-									<i class="material-icons !text-3xl sm:!text-4xl">skip_previous</i>
+									<i class="material-icons text-3xl sm:text-4xl">skip_previous</i>
 								</button>
 
 								<button
@@ -788,7 +744,7 @@
 									class="fogon-play-btn bg-carpincho-primary hover:bg-carpincho-secondary z-20 flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-white shadow-[0_0_30px_rgba(166,124,82,0.4)] transition active:scale-90 sm:h-16 sm:w-16 md:h-20 md:w-20"
 									@click="togglePlay"
 								>
-									<i class="material-icons !text-3xl sm:!text-4xl md:!text-5xl">
+									<i class="material-icons text-3xl sm:text-4xl md:text-5xl">
 										{{ playPauseIcon }}
 									</i>
 								</button>
@@ -798,7 +754,7 @@
 									class="fogon-next-btn hover:text-carpincho-warning z-20 p-1 text-white transition active:scale-90"
 									@click="skipNext"
 								>
-									<i class="material-icons !text-3xl sm:!text-4xl">skip_next</i>
+									<i class="material-icons text-3xl sm:text-4xl">skip_next</i>
 								</button>
 
 								<!-- Botón para frenar después de este tema -->
@@ -808,61 +764,12 @@
 									:aria-label="timerTitle"
 									@click="handleTimerToggle"
 								>
-									<i class="material-icons !text-2xl sm:!text-3xl">timer</i>
+									<i class="material-icons text-2xl sm:text-3xl">timer</i>
 								</button>
 							</div>
 
 							<!-- Next song en pantallas anchas (abajo de los controles, similar al floating player) -->
-							<button
-								type="button"
-								aria-label="Ver cola de reproducción"
-								class="fogon-next-song border-carpincho-border/60 from-carpincho-panel/90 hover:border-carpincho-warning/40 mt-4 hidden w-full cursor-pointer items-center justify-between rounded-xl border bg-gradient-to-br to-[#2a2420]/90 p-3 text-left shadow-lg backdrop-blur-sm transition select-none hover:scale-[1.01] active:scale-[0.99] md:flex"
-								@click="goToQueueFromFogon"
-							>
-								<div class="flex w-full items-center overflow-hidden">
-									<div
-										class="bg-carpincho-bg border-carpincho-border/40 relative mr-3 flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg border"
-									>
-										<img
-											v-if="upNextCoverUrl"
-											:src="upNextCoverUrl"
-											class="absolute h-full w-full object-cover"
-											@error="onUpNextCoverError"
-										/>
-										<i
-											v-else-if="djBaraEnabled && queueState.length === 0"
-											class="material-icons text-carpincho-warning animate-pulse !text-[1.75rem]"
-										>
-											auto_awesome
-										</i>
-										<i v-else class="material-icons text-carpincho-warning !text-[1.75rem]">
-											album
-										</i>
-									</div>
-
-									<div class="flex grow flex-col justify-center overflow-hidden">
-										<div
-											class="text-carpincho-primary text-[0.65rem] font-bold tracking-wider uppercase"
-										>
-											{{
-												queueState.length > 0
-													? 'Próximo Temazo'
-													: djBaraEnabled
-														? djNextTrack
-															? '🦦 Arranca en unos segundos...'
-															: 'Eligiendo...'
-														: 'Fin de la fila'
-											}}
-										</div>
-										<div class="text-carpincho-text truncate text-sm font-bold">
-											{{ upNextTitle }}
-										</div>
-									</div>
-									<i class="material-icons text-carpincho-text/40 ml-2 shrink-0 text-lg">
-										chevron_right
-									</i>
-								</div>
-							</button>
+							<UpNextCard @select="goToQueueFromFogon" />
 						</div>
 
 						<!-- MODO VERTICAL (Mobile / Portrait): Ocupa el 100% del ancho y se posiciona cercano a los controles -->
@@ -1091,6 +998,13 @@
 		white-space: nowrap;
 		animation: fogon-radio-marquee var(--marquee-duration, 8s) ease-in-out infinite;
 		will-change: transform;
+	}
+
+	.fogon-marquee-container:hover .fogon-radio-scroll,
+	.fogon-marquee-container:focus-within .fogon-radio-scroll,
+	.fogon-radio-scroll:hover,
+	.fogon-radio-scroll:focus-visible {
+		animation-play-state: paused;
 	}
 
 	@keyframes fogon-radio-marquee {
@@ -1370,6 +1284,8 @@
 	}
 
 	@media (prefers-reduced-motion: reduce) {
+		.fogon-enter-active,
+		.fogon-leave-active,
 		.fogon-track-enter-active,
 		.fogon-track-leave-active,
 		.fogon-cover-enter-active,
