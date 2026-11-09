@@ -261,6 +261,14 @@ def test_03_subcategorizacion_semantica_fina(tmp_path: Path) -> None:
 		resolve_segment_subcategory("Nada impide que mandemos un abrazo grande a la barra.", category="oyentes")
 		== "oyentes_saludo"
 	)
+	assert (
+		resolve_segment_subcategory("El tema del agua potable en la isla preocupa a los vecinos.", category="fortuna")
+		== "fortuna_reflexiva"
+	)
+	assert (
+		resolve_segment_subcategory("Tomate un mate y disfrutá el temazo que viene.", category="fortuna")
+		== "fortuna_musical"
+	)
 
 
 def test_04_outro_mode_fallbacks_y_limpieza_de_horas(monkeypatch) -> None:
@@ -388,3 +396,20 @@ def test_07_reglas_franja_en_alertas_y_previa() -> None:
 	assert not phrase_fits_context(alerta_noche, ctx_morning, "alerta_criolla")
 	assert not phrase_fits_context(alerta_noche, ctx_afternoon, "alerta_criolla")
 	assert phrase_fits_context(alerta_noche, ctx_night, "alerta_criolla")
+
+
+def test_08_constantes_locutor_e_invalidacion_cache_indice() -> None:
+	"""8. Verifica nombres claros de constantes de locutor e invalidación del lru_cache del índice de recencia."""
+	from app.domain.radio.nlp import _get_phrase_recency_index, reset_radio_memory_state
+	from app.domain.radio.voices import DEFAULT_HOST_NAME, FALLBACK_HOST_NAME
+
+	assert FALLBACK_HOST_NAME == "Tomás"
+	assert DEFAULT_HOST_NAME == "Transmisión de Cabina"
+
+	# El índice se cachea al invocarse
+	_get_phrase_recency_index()
+	assert _get_phrase_recency_index.cache_info().currsize >= 1
+
+	# reset_radio_memory_state debe limpiar el lru_cache
+	reset_radio_memory_state(clear_db=False)
+	assert _get_phrase_recency_index.cache_info().currsize == 0

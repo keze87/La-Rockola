@@ -466,14 +466,12 @@
 		(active) => {
 			if (active) {
 				window.addEventListener('mousemove', handleMouseMove);
-				window.addEventListener('resize', checkOverflow);
 				resetCursorTimer();
 				nextTick(() => {
 					checkOverflow();
 				});
 			} else {
 				window.removeEventListener('mousemove', handleMouseMove);
-				window.removeEventListener('resize', checkOverflow);
 				if (cursorTimer) {
 					clearTimeout(cursorTimer);
 					cursorTimer = null;
@@ -486,7 +484,6 @@
 
 	onUnmounted(() => {
 		window.removeEventListener('mousemove', handleMouseMove);
-		window.removeEventListener('resize', checkOverflow);
 		if (cursorTimer) {
 			clearTimeout(cursorTimer);
 			cursorTimer = null;
@@ -1026,7 +1023,7 @@
 		container-type: size;
 	}
 
-	/* Modo PIP ultra-compacto (pantallas/contenedores <= 260px): SOLO se muestra la carátula */
+	/* Modo PIP ultra-compacto (pantallas/contenedores <= 260px): SOLO se muestra la carátula sin botón de fav */
 	@container (max-height: 260px) or (max-width: 260px) {
 		.fogon-track-info,
 		.fogon-bottom-section,
@@ -1038,58 +1035,42 @@
 		}
 
 		.fogon-container {
-			padding: 0.25rem !important;
-		}
-
-		.fogon-main-layout {
-			height: 100% !important;
-			width: 100% !important;
-			max-width: 100% !important;
-			justify-content: center !important;
-			align-items: center !important;
-		}
-
-		.fogon-player-column {
-			height: 100% !important;
-			width: 100% !important;
-			max-width: 100% !important;
 			padding: 0 !important;
-			justify-content: center !important;
-			align-items: center !important;
 		}
 
+		.fogon-main-layout,
+		.fogon-player-column,
 		.fogon-cover-section {
-			display: flex !important;
-			flex: 1 1 100% !important;
 			height: 100% !important;
 			width: 100% !important;
 			max-height: 100% !important;
 			max-width: 100% !important;
+			margin: 0 !important;
+			padding: 0 !important;
+			display: flex !important;
 			justify-content: center !important;
 			align-items: center !important;
-			padding: 0 !important;
-			margin: 0 !important;
 		}
 
 		.fogon-cover-wrapper {
-			display: flex !important;
 			height: 100% !important;
 			width: 100% !important;
 			max-height: 100% !important;
 			max-width: 100% !important;
 			aspect-ratio: auto !important;
 			margin: 0 !important;
-			border-radius: 0.75rem !important;
+			border-radius: 0 !important;
+			border: none !important;
 			overflow: hidden !important;
 		}
 
-		.fogon-cover-wrapper button {
+		:deep(.fogon-cover-wrapper button) {
 			display: none !important;
 		}
 
-		.fogon-cover-wrapper img,
-		.fogon-cover-wrapper > div,
-		.fogon-cover-wrapper > div > div {
+		:deep(.fogon-cover-wrapper),
+		:deep(.fogon-cover-wrapper > div),
+		:deep(.fogon-cover-wrapper img) {
 			height: 100% !important;
 			width: 100% !important;
 			max-height: 100% !important;
@@ -1124,58 +1105,42 @@
 		}
 
 		.fogon-container {
-			padding: 0.25rem !important;
-		}
-
-		.fogon-main-layout {
-			height: 100% !important;
-			width: 100% !important;
-			max-width: 100% !important;
-			justify-content: center !important;
-			align-items: center !important;
-		}
-
-		.fogon-player-column {
-			height: 100% !important;
-			width: 100% !important;
-			max-width: 100% !important;
 			padding: 0 !important;
-			justify-content: center !important;
-			align-items: center !important;
 		}
 
+		.fogon-main-layout,
+		.fogon-player-column,
 		.fogon-cover-section {
-			display: flex !important;
-			flex: 1 1 100% !important;
 			height: 100% !important;
 			width: 100% !important;
 			max-height: 100% !important;
 			max-width: 100% !important;
+			margin: 0 !important;
+			padding: 0 !important;
+			display: flex !important;
 			justify-content: center !important;
 			align-items: center !important;
-			padding: 0 !important;
-			margin: 0 !important;
 		}
 
 		.fogon-cover-wrapper {
-			display: flex !important;
 			height: 100% !important;
 			width: 100% !important;
 			max-height: 100% !important;
 			max-width: 100% !important;
 			aspect-ratio: auto !important;
 			margin: 0 !important;
-			border-radius: 0.75rem !important;
+			border-radius: 0 !important;
+			border: none !important;
 			overflow: hidden !important;
 		}
 
-		.fogon-cover-wrapper button {
+		:deep(.fogon-cover-wrapper button) {
 			display: none !important;
 		}
 
-		.fogon-cover-wrapper img,
-		.fogon-cover-wrapper > div,
-		.fogon-cover-wrapper > div > div {
+		:deep(.fogon-cover-wrapper),
+		:deep(.fogon-cover-wrapper > div),
+		:deep(.fogon-cover-wrapper img) {
 			height: 100% !important;
 			width: 100% !important;
 			max-height: 100% !important;

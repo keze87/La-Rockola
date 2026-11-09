@@ -60,9 +60,12 @@ _RE_OYENTES_PEDIDO = re.compile(
 
 _RE_FORTUNA_MUSICAL = re.compile(
 	r"\b(?:"
-	r"música|canción|tema|temazo|volumen|cumbia|chamamé|rock|cuarteto|"
+	r"música|canción|canciones|temazo|temazos|volumen|cumbia|chamamé|rock|cuarteto|"
 	r"folclore|tango|play|ritmo|estribillo|acordeón|rockola"
-	r")\b",
+	r")\b|"
+	r"\b(?:(?:este|otro|un|el|cada)\s+)?temas?\s+(?:musical\w*|de\s+fondo|que\s+suena|al\s+palo|bien\s+puest\w*)\b|"
+	r"\b(?:este|otro|un|meter|meté|metele|largá|poné|pongas|ponete|escuchá|cambiame|subile\s+a(?:l|\s+este))\s+temas?\b|"
+	r"\btemas?\s+(?:te\s+arregla|me\s+encanta)\b",
 	re.IGNORECASE,
 )
 

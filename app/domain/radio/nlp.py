@@ -258,6 +258,7 @@ def reset_radio_memory_state(clear_db: bool = True, db_path: Path | str | None =
 	_PHRASE_HISTORY_MEMORY.clear()
 	_RENDERED_TO_TEMPLATE_KEY.clear()
 	_LOADED_DB_PATHS.clear()
+	_get_phrase_recency_index.cache_clear()
 	if clear_db and db_path and Path(db_path).exists():
 		try:
 			with sqlite3.connect(str(db_path), timeout=5.0) as conn:

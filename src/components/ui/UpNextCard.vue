@@ -29,16 +29,15 @@
 	const upNextTitle = computed(() => {
 		if (isSynthesizingRadio.value) return 'Transmisión de Cabina - Acomodando los micrófonos... 🎙️';
 
-		if (upNextPath.value) {
-			const info = player.getTrackInfo(upNextPath.value);
-			const title =
-				info.path && info.display_title !== 'Audio Misterioso'
-					? info.display_title
-					: djNextTrack.value?.display_title || djNextTrack.value?.title || info.display_title;
-			const artist =
-				info.path && info.display_artist !== 'Vaya uno a saber'
-					? info.display_artist
-					: djNextTrack.value?.display_artist || djNextTrack.value?.artist || info.display_artist;
+		if (queueState.value.length > 0) {
+			const info = player.getTrackInfo(queueState.value[0]);
+			return `${info.display_title} - ${info.display_artist}`;
+		}
+
+		if (djBaraEnabled.value && djNextTrack.value) {
+			const t = djNextTrack.value;
+			const title = t.display_title || t.title;
+			const artist = t.display_artist || t.artist;
 			return `${title} - ${artist}`;
 		}
 

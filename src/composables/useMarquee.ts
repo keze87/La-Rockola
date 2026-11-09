@@ -88,7 +88,6 @@ export function useMarquee(
 
 	onMounted(() => {
 		bindObserver();
-		window.addEventListener('resize', checkOverflow);
 		checkOverflow();
 	});
 
@@ -97,7 +96,6 @@ export function useMarquee(
 			resizeObserver.disconnect();
 			resizeObserver = null;
 		}
-		window.removeEventListener('resize', checkOverflow);
 	});
 
 	return {

@@ -120,5 +120,6 @@ DEFAULT_RADIO_ALBUM: str = "La Rockola del Carpincho"
 DEFAULT_RADIO_TITLE: str = "Transmisión de Cabina"
 DEFAULT_COHOST_NAME: str = "compadre"
 DEFAULT_HOST_NAME: str = "Transmisión de Cabina"
-DEFAULT_SPEAKER_NAME: str = "Tomás"
+FALLBACK_HOST_NAME: str = "Tomás"
+DEFAULT_SPEAKER_NAME: str = FALLBACK_HOST_NAME
 DEFAULT_COHOST_DISPLAY_NAME: str = "Co-conductor"

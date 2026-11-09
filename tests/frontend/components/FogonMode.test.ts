@@ -805,4 +805,35 @@ Dialogue: 0,0:00:01.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Letra {\\kf100}animad
 			window.matchMedia = originalMatchMedia;
 		}
 	});
+
+	it('UpNextCard never falls back to djNextTrack when queueState has a track even if not in cache', async () => {
+		const UpNextCardModule = await import('@/components/ui/UpNextCard.vue');
+		const UpNextCard = UpNextCardModule.default;
+
+		queueState.value = ['/music/pista_no_cacheada.mp3'];
+		djBaraEnabled.value = true;
+		djNextTrack.value = {
+			path: '/music/dj_track.mp3',
+			title: 'Canción del DJ',
+			artist: 'DJ Carpincho',
+		};
+
+		const wrapper = mount(UpNextCard);
+		expect(wrapper.text()).toContain('Próximo Temazo');
+		expect(wrapper.text()).toContain('Audio Misterioso - Vaya uno a saber');
+		expect(wrapper.text()).not.toContain('Canción del DJ');
+	});
+
+	it('does not attach duplicate window resize listeners in FogonMode and useMarquee', async () => {
+		const addEventListenerSpy = vi.spyOn(window, 'addEventListener');
+
+		const wrapper = mount(FogonMode);
+		await wrapper.vm.$nextTick();
+
+		// FogonMode and useMarquee should rely on ResizeObserver, not window resize listeners
+		const resizeCalls = addEventListenerSpy.mock.calls.filter((c) => c[0] === 'resize');
+		expect(resizeCalls.length).toBe(0);
+
+		addEventListenerSpy.mockRestore();
+	});
 });

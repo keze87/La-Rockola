@@ -69,7 +69,7 @@ from app.domain.radio.templates import (
 )
 from app.domain.radio.voices import (
 	DEFAULT_COHOST_NAME,
-	DEFAULT_SPEAKER_NAME,
+	FALLBACK_HOST_NAME,
 	HOST_PROFILES,
 	VOICE_ELENA,
 	VOICE_NAMES,
@@ -409,7 +409,7 @@ def _resolve_host_context(
 		cohost_voice=cohost_voice,
 		host_gender=resolve_voice_gender(host_voice),
 		cohost_gender=resolve_voice_gender(cohost_voice),
-		host_name=VOICE_NAMES.get(host_voice, DEFAULT_SPEAKER_NAME),
+		host_name=VOICE_NAMES.get(host_voice, FALLBACK_HOST_NAME),
 		cohost_name=VOICE_NAMES.get(cohost_voice, DEFAULT_COHOST_NAME),
 	)
 
@@ -645,7 +645,7 @@ def generate_modular_radio_script(
 	raw_intros = get_intros_for_first_block("hora", gender=voice_gender)
 	neutral_intros = resolve_bank_for_gender(RADIO_INTROS, voice_gender)
 	intro_candidates = _filter_with_safe_fallback(raw_intros, ctx, "intro", fallback_pool=neutral_intros)
-	host_name = VOICE_NAMES.get(voice, DEFAULT_SPEAKER_NAME)
+	host_name = VOICE_NAMES.get(voice, FALLBACK_HOST_NAME)
 	intro = render_phrase(random.choice(intro_candidates), ctx, host_name=host_name, host_voice=voice)
 	hora_seg, minuto_seg, _ = get_modular_time_segments(dt)
 	phrase, is_system_fortune = select_radio_phrase(force_system_fortune, ctx=ctx)

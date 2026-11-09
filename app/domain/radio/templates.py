@@ -19,7 +19,7 @@ from app.domain.radio.context import (
 from app.domain.radio.phrase_banks.weather import WEATHER_DESC_PHRASES
 from app.domain.radio.voices import (
 	DEFAULT_COHOST_NAME,
-	DEFAULT_SPEAKER_NAME,
+	FALLBACK_HOST_NAME,
 	VOICE_NAMES,
 	GenderVariant,
 )
@@ -104,7 +104,7 @@ def _placeholder_values(
 		"momento": momento,
 		"saludo": saludo,
 		"cohost": cohost_name or DEFAULT_COHOST_NAME,
-		"host": host_name or DEFAULT_SPEAKER_NAME,
+		"host": host_name or FALLBACK_HOST_NAME,
 	}
 
 
@@ -124,7 +124,7 @@ def render_phrase(
 	momento = ctx.momento if ctx else "la jornada"
 	saludo = ctx.saludo if ctx else "Muy buenas"
 	effective_host = host_name or (
-		VOICE_NAMES.get(host_voice, DEFAULT_SPEAKER_NAME) if host_voice else DEFAULT_SPEAKER_NAME
+		VOICE_NAMES.get(host_voice, FALLBACK_HOST_NAME) if host_voice else FALLBACK_HOST_NAME
 	)
 	values = _placeholder_values(momento, saludo, cohost_name, effective_host)
 	return _PLACEHOLDER_RE.sub(lambda m: values[m.group(1)], template)
