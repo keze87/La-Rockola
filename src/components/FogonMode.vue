@@ -702,7 +702,7 @@
 
 					<!-- Bloque inferior: Barra de progreso, controles y letras móviles acercados hacia el centro -->
 					<div
-						class="flex w-full flex-col items-center text-center"
+						class="fogon-bottom-section flex w-full flex-col items-center text-center"
 						:class="[
 							hasLyrics
 								? 'min-h-0 flex-[4] justify-start md:h-auto md:flex-none md:shrink-0 md:justify-center'
@@ -1115,6 +1115,7 @@
 	/* Modo PIP ultra-compacto (pantallas/contenedores <= 260px): SOLO se muestra la carátula */
 	@container (max-height: 260px) or (max-width: 260px) {
 		.fogon-track-info,
+		.fogon-bottom-section,
 		.fogon-controls-wrapper,
 		.fogon-lyrics-container,
 		.lyrics-mask-vertical,
@@ -1140,12 +1141,16 @@
 			max-width: 100% !important;
 			padding: 0 !important;
 			justify-content: center !important;
+			align-items: center !important;
 		}
 
 		.fogon-cover-section {
 			display: flex !important;
+			flex: 1 1 100% !important;
 			height: 100% !important;
 			width: 100% !important;
+			max-height: 100% !important;
+			max-width: 100% !important;
 			justify-content: center !important;
 			align-items: center !important;
 			padding: 0 !important;
@@ -1158,9 +1163,24 @@
 			width: 100% !important;
 			max-height: 100% !important;
 			max-width: 100% !important;
-			aspect-ratio: 1 / 1 !important;
+			aspect-ratio: auto !important;
 			margin: 0 !important;
 			border-radius: 0.75rem !important;
+			overflow: hidden !important;
+		}
+
+		.fogon-cover-wrapper button {
+			display: none !important;
+		}
+
+		.fogon-cover-wrapper img,
+		.fogon-cover-wrapper > div,
+		.fogon-cover-wrapper > div > div {
+			height: 100% !important;
+			width: 100% !important;
+			max-height: 100% !important;
+			max-width: 100% !important;
+			object-fit: cover !important;
 		}
 
 		.fogon-close-btn {
@@ -1181,6 +1201,7 @@
 
 	@media (max-height: 260px), (max-width: 260px) {
 		.fogon-track-info,
+		.fogon-bottom-section,
 		.fogon-controls-wrapper,
 		.fogon-lyrics-container,
 		.lyrics-mask-vertical,
@@ -1206,12 +1227,16 @@
 			max-width: 100% !important;
 			padding: 0 !important;
 			justify-content: center !important;
+			align-items: center !important;
 		}
 
 		.fogon-cover-section {
 			display: flex !important;
+			flex: 1 1 100% !important;
 			height: 100% !important;
 			width: 100% !important;
+			max-height: 100% !important;
+			max-width: 100% !important;
 			justify-content: center !important;
 			align-items: center !important;
 			padding: 0 !important;
@@ -1224,9 +1249,24 @@
 			width: 100% !important;
 			max-height: 100% !important;
 			max-width: 100% !important;
-			aspect-ratio: 1 / 1 !important;
+			aspect-ratio: auto !important;
 			margin: 0 !important;
 			border-radius: 0.75rem !important;
+			overflow: hidden !important;
+		}
+
+		.fogon-cover-wrapper button {
+			display: none !important;
+		}
+
+		.fogon-cover-wrapper img,
+		.fogon-cover-wrapper > div,
+		.fogon-cover-wrapper > div > div {
+			height: 100% !important;
+			width: 100% !important;
+			max-height: 100% !important;
+			max-width: 100% !important;
+			object-fit: cover !important;
 		}
 
 		.fogon-close-btn {

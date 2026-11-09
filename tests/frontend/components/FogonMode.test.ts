@@ -752,14 +752,18 @@ Dialogue: 0,0:00:01.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Letra {\\kf100}animad
 		expect(titleEl.attributes('style')).toContain('--marquee-offset');
 	});
 
-	it('configures pip mode for screens <= 260px to show only the album cover', () => {
+	it('configures pip mode for screens <= 260px to show only the album cover without bottom gap', () => {
 		const wrapper = mount(FogonMode);
 
 		// Cover exists and is ready to be shown as single element in PIP
 		const coverWrapper = wrapper.find('.fogon-cover-wrapper');
 		expect(coverWrapper.exists()).toBe(true);
 
-		// Elements that must exist and be tagged for hiding in PIP mode
+		// Bottom section containing controls and lyrics must have class fogon-bottom-section to be hidden in PIP
+		const bottomSection = wrapper.find('.fogon-bottom-section');
+		expect(bottomSection.exists()).toBe(true);
+
+		// Controls and track info elements that must be hidden
 		const controlsWrapper = wrapper.find('.fogon-controls-wrapper');
 		expect(controlsWrapper.exists()).toBe(true);
 
