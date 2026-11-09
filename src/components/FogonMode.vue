@@ -427,6 +427,68 @@
 	let cursorTimer: ReturnType<typeof setTimeout> | null = null;
 	const INACTIVITY_DELAY_MS = 3000;
 
+	// Detección de desborde y marquesina estilo radio vieja para título y artista
+	const titleContainerRef = ref<HTMLElement | null>(null);
+	const titleTextRef = ref<HTMLElement | null>(null);
+	const artistContainerRef = ref<HTMLElement | null>(null);
+	const artistTextRef = ref<HTMLElement | null>(null);
+
+	const isTitleOverflowing = ref(false);
+	const titleOffset = ref(0);
+	const isArtistOverflowing = ref(false);
+	const artistOffset = ref(0);
+
+	const titleMarqueeStyle = computed(() => {
+		if (!isTitleOverflowing.value) return {};
+		const duration = Math.max(6, 4 + titleOffset.value * 0.035);
+		return {
+			'--marquee-offset': `-${titleOffset.value + 12}px`,
+			'--marquee-duration': `${duration}s`,
+		};
+	});
+
+	const artistMarqueeStyle = computed(() => {
+		if (!isArtistOverflowing.value) return {};
+		const duration = Math.max(5, 3.5 + artistOffset.value * 0.035);
+		return {
+			'--marquee-offset': `-${artistOffset.value + 12}px`,
+			'--marquee-duration': `${duration}s`,
+		};
+	});
+
+	function checkOverflow() {
+		if (titleContainerRef.value && titleTextRef.value) {
+			const cWidth = titleContainerRef.value.clientWidth;
+			const sWidth = titleTextRef.value.scrollWidth;
+			if (sWidth > cWidth + 4 && cWidth > 0) {
+				isTitleOverflowing.value = true;
+				titleOffset.value = sWidth - cWidth;
+			} else {
+				isTitleOverflowing.value = false;
+				titleOffset.value = 0;
+			}
+		}
+		if (artistContainerRef.value && artistTextRef.value) {
+			const cWidth = artistContainerRef.value.clientWidth;
+			const sWidth = artistTextRef.value.scrollWidth;
+			if (sWidth > cWidth + 4 && cWidth > 0) {
+				isArtistOverflowing.value = true;
+				artistOffset.value = sWidth - cWidth;
+			} else {
+				isArtistOverflowing.value = false;
+				artistOffset.value = 0;
+			}
+		}
+	}
+
+	watch(currentTrackInfo, () => {
+		isTitleOverflowing.value = false;
+		isArtistOverflowing.value = false;
+		nextTick(() => {
+			checkOverflow();
+		});
+	});
+
 	function resetCursorTimer() {
 		isCursorInactive.value = false;
 		if (cursorTimer) {
@@ -448,9 +510,14 @@
 		(active) => {
 			if (active) {
 				window.addEventListener('mousemove', handleMouseMove);
+				window.addEventListener('resize', checkOverflow);
 				resetCursorTimer();
+				nextTick(() => {
+					checkOverflow();
+				});
 			} else {
 				window.removeEventListener('mousemove', handleMouseMove);
+				window.removeEventListener('resize', checkOverflow);
 				if (cursorTimer) {
 					clearTimeout(cursorTimer);
 					cursorTimer = null;
@@ -463,6 +530,7 @@
 
 	onUnmounted(() => {
 		window.removeEventListener('mousemove', handleMouseMove);
+		window.removeEventListener('resize', checkOverflow);
 		if (cursorTimer) {
 			clearTimeout(cursorTimer);
 			cursorTimer = null;
@@ -573,40 +641,61 @@
 							</div>
 						</div>
 
-						<!-- Bloque central: Información del tema con animación de transición -->
+						<!-- Bloque central: Información del tema con animación de transición y marquesina tipo radio -->
 						<transition name="fogon-track" mode="out-in">
 							<div
 								:key="currentTrackKey"
 								class="fogon-track-info flex w-full shrink-0 flex-col items-center text-center select-none"
 								:class="[hasLyrics ? 'my-2 sm:my-3 md:my-0' : 'my-2 md:my-3']"
 							>
-								<!-- Info del tema -->
-								<h1
-									class="fogon-title mb-1 w-full truncate text-center font-black transition-all"
-									:class="
-										hasLyrics
-											? 'text-xl sm:text-2xl md:text-3xl xl:text-4xl'
-											: 'text-2xl sm:text-3xl md:text-4xl'
-									"
+								<!-- Info del tema con marquesina estilo radio si desborda el ancho -->
+								<div
+									ref="titleContainerRef"
+									class="fogon-marquee-container w-full max-w-full overflow-hidden"
+									:class="{ 'has-overflow': isTitleOverflowing }"
 								>
-									<span
-										v-if="currentTrackInfo.isComing"
-										class="text-carpincho-warning mb-1 block animate-pulse text-xs tracking-widest uppercase"
+									<h1
+										ref="titleTextRef"
+										class="fogon-title font-black transition-all"
+										:class="[
+											hasLyrics
+												? 'text-xl sm:text-2xl md:text-3xl xl:text-4xl'
+												: 'text-2xl sm:text-3xl md:text-4xl',
+											isTitleOverflowing
+												? 'fogon-radio-scroll'
+												: 'mb-1 w-full truncate text-center',
+										]"
+										:style="titleMarqueeStyle"
 									>
-										🦦 Se viene...
-									</span>
-									{{ currentTrackInfo.title }}
-								</h1>
-								<h2
-									class="fogon-artist text-carpincho-secondary w-full truncate text-center font-medium"
-									:class="
-										hasLyrics
-											? 'text-sm sm:text-base md:text-lg lg:text-xl'
-											: 'text-base sm:text-lg md:text-xl'
-									"
+										<span
+											v-if="currentTrackInfo.isComing"
+											class="text-carpincho-warning mb-1 block animate-pulse text-xs tracking-widest uppercase"
+										>
+											🦦 Se viene...
+										</span>
+										{{ currentTrackInfo.title }}
+									</h1>
+								</div>
+
+								<div
+									ref="artistContainerRef"
+									class="fogon-marquee-container w-full max-w-full overflow-hidden"
+									:class="{ 'has-overflow': isArtistOverflowing }"
 								>
-									{{ currentTrackInfo.artist }}
-								</h2>
+									<h2
+										ref="artistTextRef"
+										class="fogon-artist text-carpincho-secondary font-medium"
+										:class="[
+											hasLyrics
+												? 'text-sm sm:text-base md:text-lg lg:text-xl'
+												: 'text-base sm:text-lg md:text-xl',
+											isArtistOverflowing ? 'fogon-radio-scroll' : 'w-full truncate text-center',
+										]"
+										:style="artistMarqueeStyle"
+									>
+										{{ currentTrackInfo.artist }}
+									</h2>
+								</div>
 							</div>
 						</transition>
 					</div>
@@ -975,173 +1064,189 @@
 		-webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%);
 	}
 
+	/* Marquesina estilo radio vieja para títulos/artistas largos */
+	.fogon-marquee-container {
+		display: flex;
+		justify-content: center;
+		width: 100%;
+		max-width: 100%;
+		overflow: hidden;
+		position: relative;
+	}
+
+	.fogon-marquee-container.has-overflow {
+		justify-content: flex-start;
+		mask-image: linear-gradient(to right, transparent 0%, black 14px, black calc(100% - 14px), transparent 100%);
+		-webkit-mask-image: linear-gradient(
+			to right,
+			transparent 0%,
+			black 14px,
+			black calc(100% - 14px),
+			transparent 100%
+		);
+	}
+
+	.fogon-radio-scroll {
+		display: inline-block;
+		white-space: nowrap;
+		animation: fogon-radio-marquee var(--marquee-duration, 8s) ease-in-out infinite;
+		will-change: transform;
+	}
+
+	@keyframes fogon-radio-marquee {
+		0%,
+		18% {
+			transform: translateX(0);
+		}
+		50%,
+		68% {
+			transform: translateX(var(--marquee-offset, -40px));
+		}
+		100% {
+			transform: translateX(0);
+		}
+	}
+
 	/* Contenedor responsivo con soporte de Container Queries */
 	.fogon-container {
 		container-type: size;
 	}
 
-	/* En pantallas muy chicas (PIP, ventana flotante mini): solo controles play/pause, prev y next */
-	@container (max-height: 360px) or (max-width: 360px) {
-		.fogon-volume-btn,
-		.fogon-timer-btn,
+	/* Modo PIP ultra-compacto (pantallas/contenedores <= 260px): SOLO se muestra la carátula */
+	@container (max-height: 260px) or (max-width: 260px) {
+		.fogon-track-info,
+		.fogon-controls-wrapper,
+		.fogon-lyrics-container,
+		.lyrics-mask-vertical,
 		.fogon-next-song {
 			display: none !important;
+		}
+
+		.fogon-container {
+			padding: 0.25rem !important;
+		}
+
+		.fogon-main-layout {
+			height: 100% !important;
+			width: 100% !important;
+			max-width: 100% !important;
+			justify-content: center !important;
+			align-items: center !important;
+		}
+
+		.fogon-player-column {
+			height: 100% !important;
+			width: 100% !important;
+			max-width: 100% !important;
+			padding: 0 !important;
+			justify-content: center !important;
+		}
+
+		.fogon-cover-section {
+			display: flex !important;
+			height: 100% !important;
+			width: 100% !important;
+			justify-content: center !important;
+			align-items: center !important;
+			padding: 0 !important;
+			margin: 0 !important;
+		}
+
+		.fogon-cover-wrapper {
+			display: flex !important;
+			height: 100% !important;
+			width: 100% !important;
+			max-height: 100% !important;
+			max-width: 100% !important;
+			aspect-ratio: 1 / 1 !important;
+			margin: 0 !important;
+			border-radius: 0.75rem !important;
 		}
 
 		.fogon-close-btn {
 			top: 0.25rem !important;
 			right: 0.25rem !important;
 			padding: 0.25rem !important;
+			opacity: 0.3 !important;
+		}
+
+		.fogon-close-btn:hover {
+			opacity: 1 !important;
 		}
 
 		.fogon-close-btn i {
-			font-size: 1.5rem !important;
+			font-size: 1.25rem !important;
 		}
 	}
 
-	@container (max-height: 360px) {
-		.fogon-cover-section,
-		.fogon-cover-wrapper,
-		.fogon-seekbar-wrapper,
+	@media (max-height: 260px), (max-width: 260px) {
+		.fogon-track-info,
+		.fogon-controls-wrapper,
 		.fogon-lyrics-container,
-		.lyrics-mask-vertical {
+		.lyrics-mask-vertical,
+		.fogon-next-song {
 			display: none !important;
 		}
 
 		.fogon-container {
-			padding: 0.5rem 0.75rem !important;
+			padding: 0.25rem !important;
+		}
+
+		.fogon-main-layout {
+			height: 100% !important;
+			width: 100% !important;
+			max-width: 100% !important;
+			justify-content: center !important;
+			align-items: center !important;
 		}
 
 		.fogon-player-column {
 			height: 100% !important;
-			max-height: 100% !important;
 			width: 100% !important;
 			max-width: 100% !important;
+			padding: 0 !important;
 			justify-content: center !important;
 		}
 
-		.fogon-track-info {
-			margin: 0.25rem 0 !important;
+		.fogon-cover-section {
+			display: flex !important;
+			height: 100% !important;
+			width: 100% !important;
+			justify-content: center !important;
+			align-items: center !important;
+			padding: 0 !important;
+			margin: 0 !important;
 		}
 
-		.fogon-title {
-			font-size: 1.125rem !important;
-			line-height: 1.25 !important;
-			margin-bottom: 0 !important;
-		}
-
-		.fogon-artist {
-			font-size: 0.8125rem !important;
-			line-height: 1.2 !important;
-		}
-
-		.fogon-controls-wrapper {
-			margin-top: 0.35rem !important;
-			padding-top: 0 !important;
-		}
-
-		.fogon-controls-row {
-			margin-top: 0.25rem !important;
-			gap: 1.25rem !important;
-		}
-
-		.fogon-play-btn {
-			height: 3rem !important;
-			width: 3rem !important;
-		}
-
-		.fogon-play-btn i {
-			font-size: 1.75rem !important;
-		}
-
-		.fogon-prev-btn i,
-		.fogon-next-btn i {
-			font-size: 1.75rem !important;
-		}
-	}
-
-	/* Reglas equivalentes @media para navegadores y ventanas Picture-in-Picture */
-	@media (max-height: 360px), (max-width: 360px) {
-		.fogon-volume-btn,
-		.fogon-timer-btn,
-		.fogon-next-song {
-			display: none !important;
+		.fogon-cover-wrapper {
+			display: flex !important;
+			height: 100% !important;
+			width: 100% !important;
+			max-height: 100% !important;
+			max-width: 100% !important;
+			aspect-ratio: 1 / 1 !important;
+			margin: 0 !important;
+			border-radius: 0.75rem !important;
 		}
 
 		.fogon-close-btn {
 			top: 0.25rem !important;
 			right: 0.25rem !important;
 			padding: 0.25rem !important;
+			opacity: 0.3 !important;
+		}
+
+		.fogon-close-btn:hover {
+			opacity: 1 !important;
 		}
 
 		.fogon-close-btn i {
-			font-size: 1.5rem !important;
-		}
-	}
-
-	@media (max-height: 360px) {
-		.fogon-cover-section,
-		.fogon-cover-wrapper,
-		.fogon-seekbar-wrapper,
-		.fogon-lyrics-container,
-		.lyrics-mask-vertical {
-			display: none !important;
-		}
-
-		.fogon-container {
-			padding: 0.5rem 0.75rem !important;
-		}
-
-		.fogon-player-column {
-			height: 100% !important;
-			max-height: 100% !important;
-			width: 100% !important;
-			max-width: 100% !important;
-			justify-content: center !important;
-		}
-
-		.fogon-track-info {
-			margin: 0.25rem 0 !important;
-		}
-
-		.fogon-title {
-			font-size: 1.125rem !important;
-			line-height: 1.25 !important;
-			margin-bottom: 0 !important;
-		}
-
-		.fogon-artist {
-			font-size: 0.8125rem !important;
-			line-height: 1.2 !important;
-		}
-
-		.fogon-controls-wrapper {
-			margin-top: 0.35rem !important;
-			padding-top: 0 !important;
-		}
-
-		.fogon-controls-row {
-			margin-top: 0.25rem !important;
-			gap: 1.25rem !important;
-		}
-
-		.fogon-play-btn {
-			height: 3rem !important;
-			width: 3rem !important;
-		}
-
-		.fogon-play-btn i {
-			font-size: 1.75rem !important;
-		}
-
-		.fogon-prev-btn i,
-		.fogon-next-btn i {
-			font-size: 1.75rem !important;
+			font-size: 1.25rem !important;
 		}
 	}
 
 	/* Soporte adaptativo para dispositivos móviles en apaisado / pantallas de altura reducida */
-	@media (min-height: 361px) and (max-height: 550px) {
+	@media (min-height: 261px) and (max-height: 550px) {
 		.fogon-container {
 			padding: 0.5rem 1.25rem !important;
 		}
@@ -1231,7 +1336,8 @@
 		.fogon-cover-leave-active,
 		.fogon-lyrics-enter-active,
 		.fogon-lyrics-leave-active,
-		.fogon-lyrics-mobile {
+		.fogon-lyrics-mobile,
+		.fogon-radio-scroll {
 			transition: none !important;
 			animation: none !important;
 			transform: none !important;

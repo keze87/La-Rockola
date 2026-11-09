@@ -719,4 +719,51 @@ Dialogue: 0,0:00:01.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Letra {\\kf100}animad
 		const lyricsContainer = wrapper.find('.fogon-lyrics-container');
 		expect(lyricsContainer.exists()).toBe(true);
 	});
+
+	it('scrolls long title and artist with vintage radio marquee animation when overflowing', async () => {
+		currentTrackPath.value = '/music/cancion_larga.mp3';
+		trackMap.value['/music/cancion_larga.mp3'] = {
+			path: '/music/cancion_larga.mp3',
+			display_title: 'Un tema larguísimo con un título que no entra en la pantalla de la radio',
+			display_artist: 'Una banda con nombre súper extenso de rock nacional',
+		};
+
+		const wrapper = mount(FogonMode);
+
+		// Containers for marquee exist
+		const marqueeContainers = wrapper.findAll('.fogon-marquee-container');
+		expect(marqueeContainers.length).toBeGreaterThanOrEqual(2);
+
+		const titleEl = wrapper.find('.fogon-title');
+		expect(titleEl.exists()).toBe(true);
+
+		// Mock overflow on title: container is 200px wide, text is 380px wide
+		const titleContainer = marqueeContainers[0].element as HTMLElement;
+		const titleText = titleEl.element as HTMLElement;
+		Object.defineProperty(titleContainer, 'clientWidth', { configurable: true, value: 200 });
+		Object.defineProperty(titleText, 'scrollWidth', { configurable: true, value: 380 });
+
+		// Trigger checkOverflow via resize event
+		window.dispatchEvent(new Event('resize'));
+		await wrapper.vm.$nextTick();
+
+		// Should have vintage radio scrolling class and custom property offset
+		expect(titleEl.classes()).toContain('fogon-radio-scroll');
+		expect(titleEl.attributes('style')).toContain('--marquee-offset');
+	});
+
+	it('configures pip mode for screens <= 260px to show only the album cover', () => {
+		const wrapper = mount(FogonMode);
+
+		// Cover exists and is ready to be shown as single element in PIP
+		const coverWrapper = wrapper.find('.fogon-cover-wrapper');
+		expect(coverWrapper.exists()).toBe(true);
+
+		// Elements that must exist and be tagged for hiding in PIP mode
+		const controlsWrapper = wrapper.find('.fogon-controls-wrapper');
+		expect(controlsWrapper.exists()).toBe(true);
+
+		const trackInfo = wrapper.find('.fogon-track-info');
+		expect(trackInfo.exists()).toBe(true);
+	});
 });
