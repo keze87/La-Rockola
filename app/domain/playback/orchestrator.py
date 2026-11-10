@@ -255,6 +255,22 @@ class PlaybackOrchestrator:
 		self.dj_selector.safe_mode = bool(val)
 
 	@property
+	def dj_mode(self) -> str:
+		return self.dj_selector.mode
+
+	@dj_mode.setter
+	def dj_mode(self, val: str) -> None:
+		self.dj_selector.mode = str(val)
+
+	@property
+	def dj_library_order(self) -> list[str]:
+		return self.dj_selector.library_order
+
+	@dj_library_order.setter
+	def dj_library_order(self, val: list[str]) -> None:
+		self.dj_selector.library_order = list(val)
+
+	@property
 	def dj_next_track(self) -> dict[str, Any] | None:
 		return self.dj_selector.next_track
 
@@ -348,6 +364,7 @@ class PlaybackOrchestrator:
 		d: dict[str, Any] = {
 			"current_track": self.current_track,
 			"dj_carpincho_enabled": self.dj_carpincho_enabled,
+			"dj_mode": self.dj_mode,
 			"dj_safe_mode": self.dj_safe_mode,
 			"dj_next_track": clean_dj_next,
 			"duration": self.duration,
@@ -668,7 +685,13 @@ class PlaybackOrchestrator:
 		self.radio_service.start_pregeneration(track_duration=track_duration, outro_mode=outro_mode)
 
 	def _select_candidate_dj_track(self, unplayed: list[dict[str, Any]]) -> dict[str, Any] | None:
-		return self.dj_selector.select_candidate(unplayed, self.favorites, self.path_to_id)
+		return self.dj_selector.select_candidate(
+			unplayed=unplayed,
+			favorites=self.favorites,
+			path_to_id=self.path_to_id,
+			current_track=self.current_track,
+			tracks_cache=self.tracks_cache,
+		)
 
 	def _pick_dj_next(self) -> None:
 		self.dj_selector.refresh_preview(

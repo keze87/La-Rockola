@@ -20,9 +20,12 @@ export interface ScanStatus {
 	message: string;
 }
 
+export type DjMode = 'shuffle' | 'favorites' | 'library';
+
 export interface PlayerState {
 	current_track?: string;
 	dj_carpincho_enabled?: boolean;
+	dj_mode?: DjMode;
 	dj_next_track?: Track | null;
 	dj_safe_mode?: boolean;
 	duration?: number;
@@ -78,6 +81,8 @@ export interface CommandPayloads {
 	remove_history_item: { index: number };
 	toggle_dj_carpincho: { state: boolean };
 	toggle_dj_safe_mode: { state: boolean };
+	set_dj_mode: { mode: DjMode; paths?: string[] };
+	sync_dj_library: { paths: string[] };
 	toggle_radio_mode: { state?: boolean };
 	set_weather_location: { location: string };
 	fullscreen: undefined;

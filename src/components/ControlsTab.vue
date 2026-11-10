@@ -14,9 +14,9 @@
 	const {
 		fullscreen,
 		setMute,
+		setDjMode: setDjModeCmd,
 		stop,
 		toggleDjBara: toggleDjCmd,
-		toggleDjSafeMode: toggleSafeCmd,
 		toggleRadioMode: toggleRadioCmd,
 	} = usePlaybackControls();
 
@@ -24,7 +24,8 @@
 		activeSort,
 		defaultSort,
 		djBaraEnabled,
-		djSafeModeEnabled,
+		djMode,
+		filteredTracks,
 		handleScroll,
 		haptic,
 		hasEdgeTts,
@@ -140,8 +141,9 @@
 		haptic();
 	}
 
-	function toggleDjSafeMode() {
-		toggleSafeCmd(!djSafeModeEnabled.value);
+	function handleSetDjMode(mode: 'shuffle' | 'favorites' | 'library') {
+		const paths = mode === 'library' ? filteredTracks.value.map((t) => t.path) : undefined;
+		setDjModeCmd(mode, paths);
 		haptic();
 	}
 
@@ -320,25 +322,6 @@
 		/>
 
 		<ToggleRow
-			:model-value="djBaraEnabled"
-			icon="shuffle"
-			title="DJ Bara"
-			description="Tira un tema random nuevo si se vacía la fila"
-			active-class="bg-carpincho-success"
-			@update:model-value="toggleDjBara"
-		/>
-
-		<ToggleRow
-			v-show="djBaraEnabled"
-			:model-value="djSafeModeEnabled"
-			icon="favorite"
-			title="Carpincho seguro"
-			description="Prioriza favoritos, para que no decaiga"
-			active-class="bg-carpincho-success"
-			@update:model-value="toggleDjSafeMode"
-		/>
-
-		<ToggleRow
 			v-if="hasEdgeTts"
 			:model-value="radioModeEnabled"
 			icon="record_voice_over"
@@ -348,7 +331,67 @@
 			@update:model-value="toggleRadioMode"
 		/>
 
+		<ToggleRow
+			:model-value="djBaraEnabled"
+			icon="shuffle"
+			title="DJ Bara"
+			description="Continúa la música si se vacía la fila"
+			active-class="bg-carpincho-success"
+			@update:model-value="toggleDjBara"
+		/>
+
+		<!-- Selector de modo para DJ Bara -->
+		<div v-show="djBaraEnabled" class="mb-4 flex flex-col items-center gap-2 pb-4">
+			<div class="text-carpincho-secondary mb-4 text-center text-sm font-bold tracking-wider uppercase">
+				<i class="material-icons mr-1 align-middle">auto_fix_high</i>
+				Modo del DJ Bara
+			</div>
+			<div class="flex flex-wrap justify-center gap-2">
+				<PillButton
+					icon="shuffle"
+					:color-class="
+						djMode === 'shuffle'
+							? 'bg-carpincho-primary text-carpincho-panel font-bold'
+							: 'bg-neutral-800 hover:bg-neutral-700 text-white'
+					"
+					title="Elige temas al azar de la biblioteca"
+					@click="handleSetDjMode('shuffle')"
+				>
+					Aleatorio
+				</PillButton>
+				<PillButton
+					icon="favorite"
+					:color-class="
+						djMode === 'favorites'
+							? 'bg-carpincho-primary text-carpincho-panel font-bold'
+							: 'bg-neutral-800 hover:bg-neutral-700 text-white'
+					"
+					title="Elige temas al azar priorizando tus favoritos"
+					@click="handleSetDjMode('favorites')"
+				>
+					Favoritos
+				</PillButton>
+				<PillButton
+					icon="format_list_bulleted"
+					:color-class="
+						djMode === 'library'
+							? 'bg-carpincho-primary text-carpincho-panel font-bold'
+							: 'bg-neutral-800 hover:bg-neutral-700 text-white'
+					"
+					title="Reproduce el siguiente tema respetando el orden y filtro de la biblioteca"
+					@click="handleSetDjMode('library')"
+				>
+					Lista de librería
+				</PillButton>
+			</div>
+		</div>
+
 		<!-- Botones de acción -->
+		<div class="text-carpincho-secondary mb-4 text-center text-sm font-bold tracking-wider uppercase">
+			<i class="material-icons mr-1 align-middle">settings</i>
+			Lo controle
+		</div>
+
 		<div v-if="hasEdgeTts" class="mb-4 flex flex-wrap justify-center gap-3">
 			<PillButton icon="map" color-class="bg-neutral-800 hover:bg-neutral-700" @click="isWeatherModalOpen = true">
 				{{ displayWeatherLocation ? `Ubicación del Clima: ${displayWeatherLocation}` : 'Configurar ubicación' }}

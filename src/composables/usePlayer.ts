@@ -5,6 +5,7 @@ import {
 	currentTracks,
 	defaultSort,
 	djBaraEnabled,
+	djMode,
 	djNextTrack,
 	djSafeModeEnabled,
 	duration,
@@ -32,6 +33,7 @@ import {
 	radioModeEnabled,
 	scanStatus,
 	serverMuted,
+	showFavoritesOnly,
 	showFogonVolume,
 	timePos,
 	topPlayedState,
@@ -58,7 +60,7 @@ import { useToasts } from './player/useToasts';
 export function usePlayer() {
 	const { _sendLocalPlayerUpdate, returnToServerSpeakers, setVolume } = useLocalPlayback();
 	const { connectWebSocket } = useSocket();
-	const { getTrackInfo, loadLibrary, queueIndex, saveDefaultSort, sortLibrary } = useLibrary();
+	const { filteredTracks, getTrackInfo, loadLibrary, queueIndex, saveDefaultSort, sortLibrary } = useLibrary();
 	const { handleLibraryClick, toggleFavorite, togglePauseAfterCurrent, toggleQueue } = useQueue();
 	const { haptic } = useHaptics();
 	const { sendCmd } = useCommands();
@@ -75,10 +77,12 @@ export function usePlayer() {
 		currentTracks,
 		defaultSort,
 		djBaraEnabled,
+		djMode,
 		djNextTrack,
 		djSafeModeEnabled,
 		duration,
 		favorites,
+		filteredTracks,
 		getTrackInfo,
 		handleLibraryClick,
 		handleScroll,
@@ -114,6 +118,7 @@ export function usePlayer() {
 		sendCmd,
 		serverMuted,
 		setVolume,
+		showFavoritesOnly,
 		showFogonVolume,
 		showToast,
 		sortLibrary,

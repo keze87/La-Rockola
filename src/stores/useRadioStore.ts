@@ -1,9 +1,10 @@
 // Store de dominio para DJ Bara, Modo Radio, ubicación climática y capacidades del servidor.
 
 import { ref } from 'vue';
-import type { Track } from '../types';
+import type { DjMode, Track } from '../types';
 
 export const djBaraEnabled = ref<boolean>(false);
+export const djMode = ref<DjMode>('shuffle');
 export const djNextTrack = ref<Track | null>(null);
 export const djSafeModeEnabled = ref<boolean>(false);
 
@@ -18,6 +19,7 @@ export const hasFfmpeg = ref<boolean>(false);
 export function useRadioStore() {
 	return {
 		djBaraEnabled,
+		djMode,
 		djNextTrack,
 		djSafeModeEnabled,
 		radioModeEnabled,

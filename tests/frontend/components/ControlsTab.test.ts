@@ -8,6 +8,7 @@ import {
 	currentTracks,
 	defaultSort,
 	djBaraEnabled,
+	djMode,
 	djSafeModeEnabled,
 	hasEdgeTts,
 	hasFfmpeg,
@@ -130,6 +131,47 @@ describe('ControlsTab.vue', () => {
 			expect.objectContaining({
 				method: 'POST',
 				body: JSON.stringify({ cmd: 'toggle_dj_carpincho', state: true }),
+			})
+		);
+	});
+
+	it('renders and dispatches set_dj_mode when selecting DJ Bara modes', async () => {
+		djBaraEnabled.value = true;
+		djMode.value = 'shuffle';
+		currentTracks.value = [
+			{ path: '/music/a.mp3', display_title: 'Tema A', display_artist: 'Art A' } as any,
+			{ path: '/music/b.mp3', display_title: 'Tema B', display_artist: 'Art B' } as any,
+		];
+		const wrapper = mount(ControlsTab);
+
+		expect(wrapper.text()).toContain('Modo del DJ Bara');
+		expect(wrapper.text()).toContain('Aleatorio');
+		expect(wrapper.text()).toContain('Favoritos');
+		expect(wrapper.text()).toContain('Lista de librería');
+
+		// Click en 'Favoritos'
+		const favButton = wrapper.findAll('button').find((b) => b.text().includes('Favoritos'));
+		expect(favButton).toBeDefined();
+		await favButton!.trigger('click');
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({
+				method: 'POST',
+				body: JSON.stringify({ cmd: 'set_dj_mode', mode: 'favorites' }),
+			})
+		);
+
+		// Click en 'Lista de librería'
+		const libButton = wrapper.findAll('button').find((b) => b.text().includes('Lista de librería'));
+		expect(libButton).toBeDefined();
+		await libButton!.trigger('click');
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({
+				method: 'POST',
+				body: JSON.stringify({ cmd: 'set_dj_mode', mode: 'library', paths: ['/music/a.mp3', '/music/b.mp3'] }),
 			})
 		);
 	});

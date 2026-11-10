@@ -4,6 +4,7 @@ import {
 	currentTrackPath,
 	currentTracks,
 	djBaraEnabled,
+	djMode,
 	djNextTrack,
 	djSafeModeEnabled,
 	duration,
@@ -205,6 +206,7 @@ describe('useSocket.ts', () => {
 			type: 'state_update',
 			current_track: '/music/spinetta.mp3',
 			dj_carpincho_enabled: true,
+			dj_mode: 'library',
 			dj_next_track: { path: '/music/dj.mp3', title: 'DJ Tune' },
 			dj_safe_mode: true,
 			duration: 210,
@@ -232,6 +234,7 @@ describe('useSocket.ts', () => {
 
 		expect(currentTrackPath.value).toBe('/music/spinetta.mp3');
 		expect(djBaraEnabled.value).toBe(true);
+		expect(djMode.value).toBe('library');
 		expect(radioModeEnabled.value).toBe(true);
 		expect(isSynthesizingRadio.value).toBe(true);
 		expect(isPlayingRadioAnnouncement.value).toBe(true);

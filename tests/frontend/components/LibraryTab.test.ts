@@ -12,6 +12,7 @@ import {
 	librarySearchQuery,
 	queueState,
 	scanStatus,
+	showFavoritesOnly,
 	trackMap,
 } from '@/composables/player/state';
 
@@ -87,6 +88,7 @@ describe('LibraryTab.vue', () => {
 		historyState.value = [];
 		isPaused.value = false;
 		isScanning.value = false;
+		showFavoritesOnly.value = false;
 		scanStatus.value = {
 			is_scanning: false,
 			is_analyzing_mood: false,

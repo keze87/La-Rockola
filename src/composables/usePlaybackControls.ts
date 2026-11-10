@@ -1,6 +1,6 @@
 import { useApi } from './useApi';
 import { useToasts } from './player/useToasts';
-import type { CommandName, CommandPayloads } from '../types';
+import type { CommandName, CommandPayloads, DjMode } from '../types';
 
 export function usePlaybackControls() {
 	const api = useApi();
@@ -47,6 +47,8 @@ export function usePlaybackControls() {
 		stop: () => execute('stop'),
 		toggleDjBara: (state: boolean) => execute('toggle_dj_carpincho', { state }),
 		toggleDjSafeMode: (state: boolean) => execute('toggle_dj_safe_mode', { state }),
+		setDjMode: (mode: DjMode, paths?: string[]) => execute('set_dj_mode', { mode, paths }),
+		syncDjLibrary: (paths: string[]) => execute('sync_dj_library', { paths }),
 		toggleRadioMode: (state?: boolean) => execute('toggle_radio_mode', { state }),
 		setWeatherLocation: (location: string) =>
 			execute('set_weather_location', { location }, '¡Ubicación del clima actualizada, joyita!'),

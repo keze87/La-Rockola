@@ -1,9 +1,12 @@
+import { watch } from 'vue';
 import { useApi } from '../useApi';
 import { useToasts } from './useToasts';
 import {
 	activeSort,
 	currentTracks,
 	defaultSort,
+	djMode,
+	filteredTracks,
 	isScanning,
 	originalTracks,
 	queueState,
@@ -12,6 +15,24 @@ import {
 	urlParams,
 } from './state';
 import type { Track } from '../../types';
+
+// Sincronización singleton a nivel de módulo: se registra exactamente una vez en toda la app
+let syncTimeout: ReturnType<typeof setTimeout> | null = null;
+function syncLibraryWithDj() {
+	if (djMode.value !== 'library') return;
+	if (syncTimeout) clearTimeout(syncTimeout);
+	syncTimeout = setTimeout(() => {
+		const api = useApi();
+		const paths = filteredTracks.value.map((t) => t.path);
+		api.command('sync_dj_library', { paths }).catch((e) => {
+			console.error('Error sincronizando biblioteca con DJ Bara:', e);
+		});
+	}, 250);
+}
+
+watch([filteredTracks, djMode], () => {
+	syncLibraryWithDj();
+});
 
 export function useLibrary() {
 	const api = useApi();
@@ -135,5 +156,5 @@ export function useLibrary() {
 		});
 	}
 
-	return { getTrackInfo, loadLibrary, queueIndex, saveDefaultSort, sortLibrary };
+	return { filteredTracks, getTrackInfo, loadLibrary, queueIndex, saveDefaultSort, sortLibrary };
 }

@@ -1,6 +1,5 @@
 <script setup lang="ts">
-	import { ref, computed, watch } from 'vue';
-	import Fuse from 'fuse.js';
+	import { computed, watch } from 'vue';
 	import { useVirtualList } from '@vueuse/core';
 	import { usePlayer } from '../composables/usePlayer';
 	import LibraryRow from './ui/LibraryRow.vue';
@@ -8,8 +7,7 @@
 	// Traemos los datos del store global
 	const {
 		currentTrackPath,
-		currentTracks,
-		favorites,
+		filteredTracks,
 		handleLibraryClick,
 		handleScroll,
 		haptic,
@@ -19,35 +17,11 @@
 		librarySearchQuery: searchQuery,
 		queueIndex,
 		scanStatus,
+		showFavoritesOnly,
 	} = usePlayer();
-
-	// Estado local exclusivo de esta pestaña
-	const showFavoritesOnly = ref(false);
 
 	// Conjunto de temas que ya sonaron en la sesión para lookup O(1)
 	const historyPathsSet = computed(() => new Set(historyState.value));
-
-	// Inicializamos Fuse.js (se recalcula si la biblioteca cambia por completo)
-	const fuse = computed(() => {
-		return new Fuse(currentTracks.value, {
-			keys: ['title', 'artist', 'display_title', 'display_artist'],
-			threshold: 0.3, // 0.0 es coincidencia exacta, 1.0 coincide con cualquier cosa
-			ignoreLocation: true,
-		});
-	});
-
-	const filteredTracks = computed(() => {
-		let tracks = currentTracks.value;
-
-		if (showFavoritesOnly.value) {
-			tracks = tracks.filter((t) => favorites.value.includes(t.path));
-		}
-
-		if (!searchQuery.value) return tracks;
-
-		// Delegamos en Fuse.js para tolerar errores de tipeo y ordenar por relevancia
-		return fuse.value.search(searchQuery.value).map((result) => result.item);
-	});
 
 	// Configuración de la lista virtualizada
 	const {

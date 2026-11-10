@@ -30,10 +30,12 @@ export {
 	currentTracks,
 	defaultSort,
 	favorites,
+	filteredTracks,
 	isScanning,
 	librarySearchQuery,
 	originalTracks,
 	scanStatus,
+	showFavoritesOnly,
 	trackMap,
 	urlMetadata,
 	urlParams,
@@ -41,6 +43,7 @@ export {
 
 export {
 	djBaraEnabled,
+	djMode,
 	djNextTrack,
 	djSafeModeEnabled,
 	hasEdgeTts,

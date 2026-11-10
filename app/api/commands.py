@@ -164,6 +164,22 @@ async def _cmd_toggle_dj_safe_mode(state: PlaybackOrchestrator, req: CommandRequ
 		state._pick_dj_next()
 
 
+async def _cmd_set_dj_mode(state: PlaybackOrchestrator, req: CommandRequest, _mgr: Any) -> None:
+	if req.mode is not None:
+		state.dj_mode = req.mode
+	if req.paths is not None:
+		state.dj_library_order = req.paths
+	logger.info(f"Modo DJ Bara cambiado a: {state.dj_mode}")
+	state._pick_dj_next()
+
+
+async def _cmd_sync_dj_library(state: PlaybackOrchestrator, req: CommandRequest, _mgr: Any) -> None:
+	if req.paths is not None:
+		state.dj_library_order = req.paths
+		if state.dj_mode == "library":
+			state._pick_dj_next()
+
+
 async def _cmd_toggle_radio_mode(state: PlaybackOrchestrator, req: CommandRequest, _mgr: Any) -> None:
 	if req.state is not None:
 		state.radio_mode_enabled = req.state
@@ -345,6 +361,8 @@ COMMAND_HANDLERS: dict[str, CommandHandlerFn] = {
 	"toggle_favorite": _cmd_toggle_favorite,
 	"toggle_dj_carpincho": _cmd_toggle_dj_carpincho,
 	"toggle_dj_safe_mode": _cmd_toggle_dj_safe_mode,
+	"set_dj_mode": _cmd_set_dj_mode,
+	"sync_dj_library": _cmd_sync_dj_library,
 	"toggle_radio_mode": _cmd_toggle_radio_mode,
 	"set_weather_location": _cmd_set_weather_location,
 	"pause_after": _cmd_pause_after,

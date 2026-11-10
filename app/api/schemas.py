@@ -34,6 +34,8 @@ class CommandRequest(BaseModel):
 	location: str | None = Field(default=None, description="Ubicación meteorológica")
 	type: str | None = Field(default=None, description="Tipo de salto o entidad")
 	sort: str | None = Field(default=None, description="Modo de ordenamiento de la biblioteca")
+	mode: str | None = Field(default=None, description="Modo del DJ Bara ('shuffle', 'favorites', 'library')")
+	paths: list[str] | None = Field(default=None, description="Lista de rutas sincronizadas de la biblioteca")
 
 
 class TrackSchema(BaseModel):

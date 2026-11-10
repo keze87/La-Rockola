@@ -129,6 +129,22 @@ describe('usePlaybackControls.ts', () => {
 			expect.objectContaining({ body: JSON.stringify({ cmd: 'toggle_dj_safe_mode', state: false }) })
 		);
 
+		await controls.setDjMode('library', ['/m/1.mp3', '/m/2.mp3']);
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({
+				body: JSON.stringify({ cmd: 'set_dj_mode', mode: 'library', paths: ['/m/1.mp3', '/m/2.mp3'] }),
+			})
+		);
+
+		await controls.syncDjLibrary(['/m/a.mp3']);
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({
+				body: JSON.stringify({ cmd: 'sync_dj_library', paths: ['/m/a.mp3'] }),
+			})
+		);
+
 		await controls.toggleFavorite('/m/fav.mp3');
 		expect(fetchMock).toHaveBeenCalledWith(
 			'/command',
