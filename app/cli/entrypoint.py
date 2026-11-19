@@ -485,7 +485,7 @@ def main() -> None:
 	parser = build_arg_parser()
 	args = parser.parse_args()
 
-	if not getattr(sys, "frozen", False):
+	if not getattr(sys, "frozen", False) and os.environ.get("ROCKOLA_SKIP_FRONTEND_BUILD") != "1":
 		try:
 			build_frontend(force=bool(getattr(args, "rebuild_frontend", False)))
 		except Exception as e:

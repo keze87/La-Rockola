@@ -7,7 +7,7 @@ import vueParser from 'vue-eslint-parser';
 
 export default [
 	// 1. GLOBAL IGNORES
-	{ ignores: ['dist/**', 'node_modules/**'] },
+	{ ignores: ['dist/**', 'node_modules/**', 'test-results/**', 'playwright-report/**'] },
 
 	// 2. Existing configurations
 	js.configs.recommended,

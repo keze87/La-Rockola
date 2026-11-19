@@ -41,6 +41,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
 
 def get_carpincho_data_dir() -> Path:
 	"""Determina el directorio de datos (DB, config, etc.) respetando portabilidad y OS."""
+	env_data_dir = os.environ.get("ROCKOLA_DATA_DIR", "").strip()
+	if env_data_dir:
+		db_dir = Path(env_data_dir).expanduser().resolve()
+		db_dir.mkdir(parents=True, exist_ok=True)
+		return db_dir
+
 	if getattr(sys, "frozen", False):
 		# Modo portable empaquetado: chequeamos si estamos adentro de un AppImage en Linux
 		appimage_path = os.environ.get("APPIMAGE")

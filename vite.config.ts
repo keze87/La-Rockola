@@ -3,6 +3,8 @@ import { fileURLToPath, URL } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import vue from '@vitejs/plugin-vue';
 
+const apiPort = process.env.ROCKOLA_PORT || '8000';
+
 export default defineConfig({
 	base: './',
 	plugins: [vue(), tailwindcss()],
@@ -13,15 +15,15 @@ export default defineConfig({
 	},
 	server: {
 		proxy: {
-			'/api': 'http://localhost:8000',
-			'/command': 'http://localhost:8000',
-			'/cover': 'http://localhost:8000',
-			'/library': 'http://localhost:8000',
-			'/lrc': 'http://localhost:8000',
-			'/scan': 'http://localhost:8000',
-			'/stream': 'http://localhost:8000',
+			'/api': `http://127.0.0.1:${apiPort}`,
+			'/command': `http://127.0.0.1:${apiPort}`,
+			'/cover': `http://127.0.0.1:${apiPort}`,
+			'/library': `http://127.0.0.1:${apiPort}`,
+			'/lrc': `http://127.0.0.1:${apiPort}`,
+			'/scan': `http://127.0.0.1:${apiPort}`,
+			'/stream': `http://127.0.0.1:${apiPort}`,
 			'/ws': {
-				target: 'ws://localhost:8000',
+				target: `ws://127.0.0.1:${apiPort}`,
 				ws: true,
 			},
 		},

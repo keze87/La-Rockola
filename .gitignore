@@ -40,3 +40,5 @@ DB/
 *.db-journal
 *.db-wal
 elrc.py
+test-results/
+playwright-report/

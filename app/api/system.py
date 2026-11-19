@@ -6,14 +6,17 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from typing import Any
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 from app.core.container import get_container
 from app.domain.library.mood import is_mood_available
+from app.domain.playback.orchestrator import broadcast_state
 from app.infrastructure.binaries.ytdlp import YtDlpAdapter
+from app.infrastructure.db.connection import execute_write
 from app.infrastructure.weather.client import (
 	build_weather_phrase,
 	extract_location_from_weather_data,
@@ -68,3 +71,37 @@ async def get_system_capabilities() -> dict[str, Any]:
 		"has_ytdlp": ytdlp_srv.is_available,
 		"has_edge_tts": bool(state.has_edge_tts if state else False),
 	}
+
+
+@router.get("/health")
+async def health_check() -> dict[str, str]:
+	"""Endpoint liviano para verificar que el servidor HTTP esté vivo."""
+	return {"status": "ok"}
+
+
+@router.post("/test/reset")
+async def reset_test_state() -> dict[str, bool]:
+	"""Reinicia el estado mutable en tests E2E; solo disponible si ROCKOLA_ENABLE_TEST_ROUTES=1."""
+	if os.environ.get("ROCKOLA_ENABLE_TEST_ROUTES") != "1":
+		raise HTTPException(status_code=404, detail="Not found")
+
+	container = get_container()
+	db_path = container.db_path
+	for table in ("favorites", "play_history", "url_logs"):
+		execute_write(f"DELETE FROM {table}", db_path=db_path)
+
+	state = container.ensure_orchestrator()
+	if state:
+		if hasattr(state, "queue_manager"):
+			state.queue_manager.clear()
+		else:
+			state.queue = []
+		if hasattr(state, "favorites"):
+			state.favorites = []
+		if hasattr(state, "history"):
+			state.history = []
+		if hasattr(state, "local_player_id"):
+			state.local_player_id = None
+		await broadcast_state()
+
+	return {"reset": True}
