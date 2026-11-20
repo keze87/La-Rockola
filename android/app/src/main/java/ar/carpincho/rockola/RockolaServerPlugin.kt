@@ -97,6 +97,26 @@ class RockolaServerPlugin : Plugin() {
     }
 
     @PluginMethod
+    fun updateMediaNotification(call: PluginCall) {
+        val title = call.getString("title") ?: "La Rockola del Carpincho"
+        val artist = call.getString("artist") ?: "En espera"
+        val paused = call.getBoolean("paused") ?: true
+        val coverUrl = call.getString("coverUrl")
+
+        val intent = Intent(context, RockolaForegroundService::class.java).apply {
+            action = RockolaForegroundService.ACTION_UPDATE_MEDIA
+            putExtra(RockolaForegroundService.EXTRA_TITLE, title)
+            putExtra(RockolaForegroundService.EXTRA_ARTIST, artist)
+            putExtra(RockolaForegroundService.EXTRA_PAUSED, paused)
+            if (!coverUrl.isNullOrBlank()) {
+                putExtra(RockolaForegroundService.EXTRA_COVER_URL, coverUrl)
+            }
+        }
+        context.startService(intent)
+        call.resolve(JSObject().apply { put("updated", true) })
+    }
+
+    @PluginMethod
     fun hasStoragePermission(call: PluginCall) {
         call.resolve(JSObject().apply { put("granted", hasFullStorageAccess()) })
     }

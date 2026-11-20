@@ -4,6 +4,7 @@
 
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { ref } from 'vue';
+import { listenLocally } from '../stores/usePlaybackStore';
 import { setApiOrigin, useApi } from './useApi';
 
 export interface AndroidServerInfo {
@@ -23,6 +24,13 @@ export interface PickMusicFolderResult {
 	uri?: string | null;
 }
 
+export interface MediaNotificationPayload {
+	title: string;
+	artist: string;
+	paused: boolean;
+	coverUrl?: string | null;
+}
+
 export interface RockolaServerPlugin {
 	startServer(options?: { port?: number; musicDir?: string }): Promise<AndroidServerInfo>;
 	stopServer(): Promise<{ stopped: boolean }>;
@@ -30,6 +38,7 @@ export interface RockolaServerPlugin {
 	pickMusicFolder(): Promise<PickMusicFolderResult>;
 	hasStoragePermission(): Promise<{ granted: boolean }>;
 	requestStoragePermission(): Promise<{ granted: boolean }>;
+	updateMediaNotification(options: MediaNotificationPayload): Promise<{ updated: boolean }>;
 }
 
 const RockolaServer = registerPlugin<RockolaServerPlugin>('RockolaServer');
@@ -49,6 +58,9 @@ export function isNativeAndroidHost(): boolean {
 
 export async function initAndroidServer(opts?: { pollIntervalMs?: number; timeoutMs?: number }): Promise<boolean> {
 	if (!isNativeAndroidHost()) return false;
+
+	// En Android el teléfono es su propio parlante por defecto ("Escuchar acá")
+	listenLocally.value = true;
 
 	const pollIntervalMs = opts?.pollIntervalMs ?? 250;
 	const timeoutMs = opts?.timeoutMs ?? 15000;
@@ -104,4 +116,18 @@ export async function stopAndroidServer(): Promise<void> {
 	if (!isNativeAndroidHost()) return;
 	await RockolaServer.stopServer();
 	androidServerStatus.value.running = false;
+}
+
+export async function syncAndroidMediaNotification(payload: MediaNotificationPayload): Promise<void> {
+	if (!isNativeAndroidHost()) return;
+	try {
+		await RockolaServer.updateMediaNotification({
+			title: payload.title,
+			artist: payload.artist,
+			paused: payload.paused,
+			coverUrl: payload.coverUrl ?? null,
+		});
+	} catch {
+		// Ignoramos errores transitorios si el servicio todavía está levantando
+	}
 }

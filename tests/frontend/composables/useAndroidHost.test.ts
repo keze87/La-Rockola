@@ -8,6 +8,7 @@ const { pluginMock, state } = vi.hoisted(() => ({
 		pickMusicFolder: vi.fn(),
 		hasStoragePermission: vi.fn(),
 		requestStoragePermission: vi.fn(),
+		updateMediaNotification: vi.fn(),
 	},
 	state: {
 		isNative: false,
@@ -24,17 +25,20 @@ vi.mock('@capacitor/core', () => ({
 }));
 
 import { clearApiOrigin, getApiOrigin } from '@/composables/useApi';
+import { listenLocally } from '@/stores/usePlaybackStore';
 import {
 	androidServerStatus,
 	initAndroidServer,
 	isNativeAndroidHost,
 	pickAndApplyMusicFolder,
+	syncAndroidMediaNotification,
 } from '@/composables/useAndroidHost';
 
 describe('useAndroidHost.ts', () => {
 	beforeEach(() => {
 		state.isNative = false;
 		state.platform = 'web';
+		listenLocally.value = false;
 		clearApiOrigin();
 		vi.clearAllMocks();
 		androidServerStatus.value = {
@@ -86,6 +90,7 @@ describe('useAndroidHost.ts', () => {
 
 		const ready = await initAndroidServer({ pollIntervalMs: 5, timeoutMs: 2000 });
 		expect(ready).toBe(true);
+		expect(listenLocally.value).toBe(true);
 		expect(pluginMock.startServer).toHaveBeenCalledTimes(1);
 		expect(getApiOrigin()).toBe('http://127.0.0.1:1729');
 		expect(androidServerStatus.value.running).toBe(true);
@@ -119,5 +124,32 @@ describe('useAndroidHost.ts', () => {
 		);
 		expect(androidServerStatus.value.musicDir).toBe('/storage/ABCD-1234/Musica');
 		expect(androidServerStatus.value.needsFolder).toBe(false);
+	});
+
+	it('syncAndroidMediaNotification forwards metadata to native plugin only on Android', async () => {
+		await syncAndroidMediaNotification({
+			title: 'Barro Tal Vez',
+			artist: 'Spinetta',
+			paused: false,
+			coverUrl: 'http://127.0.0.1:1729/cover?path=a.mp3',
+		});
+		expect(pluginMock.updateMediaNotification).not.toHaveBeenCalled();
+
+		state.isNative = true;
+		state.platform = 'android';
+		pluginMock.updateMediaNotification.mockResolvedValue({ updated: true });
+
+		await syncAndroidMediaNotification({
+			title: 'Barro Tal Vez',
+			artist: 'Spinetta',
+			paused: false,
+			coverUrl: 'http://127.0.0.1:1729/cover?path=a.mp3',
+		});
+		expect(pluginMock.updateMediaNotification).toHaveBeenCalledWith({
+			title: 'Barro Tal Vez',
+			artist: 'Spinetta',
+			paused: false,
+			coverUrl: 'http://127.0.0.1:1729/cover?path=a.mp3',
+		});
 	});
 });

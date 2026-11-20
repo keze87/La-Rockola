@@ -2,6 +2,7 @@
 // estado de reproducción y teclas multimedia físicas con el sistema operativo.
 
 import { apiUrl } from '../composables/useApi';
+import { isNativeAndroidHost, syncAndroidMediaNotification } from '../composables/useAndroidHost';
 import type { Track } from '../types';
 
 export interface MediaSessionActionCallbacks {
@@ -18,19 +19,29 @@ export function syncMediaSessionMetadata(
 	paused: boolean,
 	getTrackInfo: (path: string) => Track
 ): void {
-	if (!('mediaSession' in navigator)) return;
-
-	if (trackPath) {
-		const info = getTrackInfo(trackPath);
-		const resolvedCover = !trackPath.startsWith('http')
+	const info = trackPath ? getTrackInfo(trackPath) : null;
+	const resolvedCover =
+		trackPath && !trackPath.startsWith('http')
 			? apiUrl(`/cover?path=${encodeURIComponent(trackPath)}&size=512`)
 			: null;
-		const artworkSrc = resolvedCover
-			? resolvedCover.startsWith('http')
-				? resolvedCover
-				: `${window.location.origin}${resolvedCover}`
-			: null;
+	const artworkSrc = resolvedCover
+		? resolvedCover.startsWith('http')
+			? resolvedCover
+			: `${window.location.origin}${resolvedCover}`
+		: null;
 
+	if (isNativeAndroidHost()) {
+		void syncAndroidMediaNotification({
+			title: info?.display_title || 'La Rockola del Carpincho',
+			artist: info?.display_artist || (trackPath ? 'Desconocido' : 'En espera'),
+			paused: trackPath ? paused : true,
+			coverUrl: artworkSrc,
+		});
+	}
+
+	if (!('mediaSession' in navigator)) return;
+
+	if (trackPath && info) {
 		navigator.mediaSession.metadata = new MediaMetadata({
 			title: info.display_title || 'Desconocido',
 			artist: info.display_artist || 'Desconocido',
