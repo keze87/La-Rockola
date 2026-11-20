@@ -8,6 +8,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.graphics.BitmapFactory
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
@@ -278,10 +279,13 @@ class RockolaForegroundService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val largeIcon = BitmapFactory.decodeResource(resources, R.mipmap.ic_launcher)
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("La Rockola del Carpincho")
             .setContentText(contentText)
             .setSmallIcon(android.R.drawable.ic_media_play)
+            .setLargeIcon(largeIcon)
             .setContentIntent(openPending)
             .setOngoing(true)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Detener", stopPending)

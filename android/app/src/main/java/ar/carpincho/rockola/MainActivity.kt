@@ -3,10 +3,13 @@ package ar.carpincho.rockola
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
 import com.getcapacitor.BridgeActivity
 
 /**
@@ -24,9 +27,24 @@ class MainActivity : BridgeActivity() {
         registerPlugin(RockolaServerPlugin::class.java)
         super.onCreate(savedInstanceState)
 
+        applyHeadbarSystemBars()
         bridge?.webView?.settings?.mediaPlaybackRequiresUserGesture = false
         requestNotificationPermissionIfNeeded()
         ensureServerAutoStarted()
+    }
+
+    private fun applyHeadbarSystemBars() {
+        val headbarColor = Color.parseColor("#1F1A17")
+        @Suppress("DEPRECATION")
+        window.apply {
+            addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+            statusBarColor = headbarColor
+            navigationBarColor = headbarColor
+        }
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = false
+            isAppearanceLightNavigationBars = false
+        }
     }
 
     override fun onResume() {
