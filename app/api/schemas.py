@@ -18,6 +18,13 @@ class ApiResponse[T](BaseModel):
 	data: T | None = Field(default=None, description="Datos devueltos por la operación")
 
 
+class MusicDirRequest(BaseModel):
+	"""Payload para actualizar la carpeta de música activa y reescanear la biblioteca."""
+
+	dir: str = Field(..., min_length=1, description="Ruta absoluta a la carpeta principal de música")
+	dir2: str | None = Field(default=None, description="Ruta opcional a carpeta secundaria de música")
+
+
 class CommandRequest(BaseModel):
 	"""Payload para comandos de control de reproducción y gestión de cola/historial."""
 

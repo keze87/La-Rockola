@@ -23,6 +23,25 @@ DEFAULT_WEATHER_LOCATION = "San Miguel de Tucumán"
 
 SortMode = Literal["time", "artist", "mood", "shuffle"]
 
+_ANDROID_MUSIC_CANDIDATES = (
+	"~/storage/music",
+	"/storage/emulated/0/Music",
+	"/sdcard/Music",
+)
+
+
+def get_default_music_dir() -> str:
+	"""Devuelve la carpeta de música por defecto según la plataforma (Desktop o Android)."""
+	from app.infrastructure.binaries.manager import is_android
+
+	if is_android():
+		for cand in _ANDROID_MUSIC_CANDIDATES:
+			resolved = Path(cand).expanduser()
+			if resolved.is_dir():
+				return str(resolved)
+	return "~/Music"
+
+
 DEFAULT_CONFIG: dict[str, Any] = {
 	"music_dir": "~/Music",
 	"music_dir2": None,
@@ -36,6 +55,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
 	"default_sort": "time",
 	"radio_mode_enabled": True,
 	"mpv_visible": True,
+	"no_mpv": False,
 }
 
 
@@ -88,7 +108,14 @@ def get_carpincho_data_dir() -> Path:
 
 
 def get_dist_dirs() -> tuple[Path, Path, Path]:
-	"""Determina las rutas de frontend, dist y assets según si está empaquetado o en desarrollo."""
+	"""Determina las rutas de frontend, dist y assets según si está empaquetado, Android o desarrollo."""
+	env_dist = os.environ.get("ROCKOLA_DIST_DIR", "").strip()
+	if env_dist:
+		dist_dir = Path(env_dist).expanduser().resolve()
+		frontend_dir = dist_dir.parent
+		assets_dir = dist_dir / "assets"
+		return frontend_dir, dist_dir, assets_dir
+
 	if getattr(sys, "frozen", False):
 		exe_dir = Path(sys.executable).parent
 		if (exe_dir / "dist").is_dir():
@@ -184,6 +211,7 @@ class Settings(BaseSettings):
 	default_sort: SortMode = Field(default="time", description="Modo de ordenamiento por defecto de la biblioteca")
 	radio_mode_enabled: bool = Field(default=True, description="Locutor de radio habilitado por defecto")
 	mpv_visible: bool = Field(default=True, description="Mostrar ventana de MPV por defecto")
+	no_mpv: bool = Field(default=False, description="Ejecutar el servidor sin MPV (modo solo cliente web/Android)")
 
 	@classmethod
 	def from_config_file(cls, path: Path | None = None) -> Settings:
@@ -216,6 +244,8 @@ class Settings(BaseSettings):
 		if getattr(args, "debug", False):
 			data["debug"] = True
 			data["log_level"] = "DEBUG"
+		if getattr(args, "no_mpv", None) is not None:
+			data["no_mpv"] = bool(args.no_mpv)
 
 		return Settings(**data)
 

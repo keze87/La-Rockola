@@ -33,6 +33,7 @@ export interface PlayerState {
 	has_edge_tts?: boolean;
 	has_ffmpeg?: boolean;
 	has_local_player?: boolean;
+	has_mpv?: boolean;
 	history?: string[];
 	is_playing_radio_announcement?: boolean;
 	is_scanning?: boolean;

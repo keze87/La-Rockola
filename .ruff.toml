@@ -1,7 +1,7 @@
 line-length = 120
 indent-width = 4
 target-version = "py312"
-exclude = ["elrc.py"]
+exclude = ["elrc.py", "android"]
 
 [lint]
 ignore = ["BLE001", "S110", "SIM117"]

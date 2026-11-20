@@ -188,6 +188,53 @@ async def serve_favicon(request: Request = None):  # type: ignore[assignment]
 	return FileResponse(favicon_path, media_type="image/png", headers=cache_headers)
 
 
+async def serve_manifest(request: Request = None):  # type: ignore[assignment]
+	from app.infrastructure.media.mixer import get_static_asset_path
+
+	manifest_path = get_static_asset_path("manifest.webmanifest")
+	if not manifest_path or not manifest_path.exists():
+		return Response(status_code=404)
+	return FileResponse(
+		manifest_path,
+		media_type="application/manifest+json",
+		headers={"Cache-Control": "public, max-age=3600"},
+	)
+
+
+async def serve_sw(request: Request = None):  # type: ignore[assignment]
+	from app.infrastructure.media.mixer import get_static_asset_path
+
+	sw_path = get_static_asset_path("sw.js")
+	if not sw_path or not sw_path.exists():
+		return Response(status_code=404)
+	return FileResponse(
+		sw_path,
+		media_type="application/javascript",
+		headers={
+			"Cache-Control": "no-cache, no-store, must-revalidate",
+			"Pragma": "no-cache",
+			"Expires": "0",
+		},
+	)
+
+
+async def serve_pwa_icon(icon_name: str):
+	from app.infrastructure.media.mixer import get_static_asset_path
+
+	icon_path = get_static_asset_path(icon_name)
+	if not icon_path or not icon_path.exists():
+		return Response(status_code=404)
+	return FileResponse(icon_path, media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
+
+
+async def serve_icon_192():
+	return await serve_pwa_icon("icon-192.png")
+
+
+async def serve_icon_512():
+	return await serve_pwa_icon("icon-512.png")
+
+
 def create_app() -> FastAPI:
 	"""Crea y configura la instancia de FastAPI con sus middlewares y enrutadores."""
 	_, _, assets_dir = get_dist_dirs()
@@ -235,6 +282,10 @@ def create_app() -> FastAPI:
 		app.add_api_route(spa_route, serve_index, methods=["GET"], include_in_schema=False)
 	app.add_api_route("/favicon.ico", serve_favicon, methods=["GET"], include_in_schema=False)
 	app.add_api_route("/favicon.png", serve_favicon, methods=["GET"], include_in_schema=False)
+	app.add_api_route("/manifest.webmanifest", serve_manifest, methods=["GET"], include_in_schema=False)
+	app.add_api_route("/sw.js", serve_sw, methods=["GET"], include_in_schema=False)
+	app.add_api_route("/icon-192.png", serve_icon_192, methods=["GET"], include_in_schema=False)
+	app.add_api_route("/icon-512.png", serve_icon_512, methods=["GET"], include_in_schema=False)
 	app.add_api_route("/radio.jpg", serve_radio_jpg, methods=["GET"], include_in_schema=False)
 	app.add_api_websocket_route("/ws", websocket_endpoint)
 

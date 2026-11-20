@@ -35,6 +35,7 @@ class AppContainer:
 				default_sort=self.settings.default_sort,
 				radio_mode_enabled=self.settings.radio_mode_enabled,
 				mpv_visible=self.settings.mpv_visible,
+				use_mpv=not self.settings.no_mpv,
 			)
 		return self.orchestrator
 

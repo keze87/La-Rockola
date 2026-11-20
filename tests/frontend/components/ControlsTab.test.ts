@@ -13,6 +13,7 @@ import {
 	hasEdgeTts,
 	hasFfmpeg,
 	hasLocalPlayer,
+	hasMpv,
 	isScanning,
 	listenLocally,
 	mpvVisible,
@@ -42,6 +43,7 @@ describe('ControlsTab.vue', () => {
 		hasEdgeTts.value = true;
 		hasFfmpeg.value = true;
 		hasLocalPlayer.value = false;
+		hasMpv.value = true;
 		listenLocally.value = false;
 		mpvVisible.value = true;
 		radioModeEnabled.value = false;
@@ -486,5 +488,25 @@ describe('ControlsTab.vue', () => {
 		);
 		expect(defaultSort.value).toBe('artist');
 		expect(activeTab.value).toBe('library');
+	});
+
+	it('hides MPV controls and shows local listen button when hasMpv is false', async () => {
+		hasMpv.value = false;
+		hasLocalPlayer.value = false;
+		listenLocally.value = false;
+		const wrapper = mount(ControlsTab);
+
+		expect(wrapper.text()).not.toContain('Mostrar MPV');
+		expect(wrapper.text()).not.toContain('Ocultar MPV');
+		expect(wrapper.text()).not.toContain('Todo pantalla, ñeri');
+		expect(wrapper.text()).not.toContain('Volver a parlantes del servidor');
+
+		const listenBtn = wrapper
+			.findAllComponents({ name: 'PillButton' })
+			.find((b) => b.text().includes('Escuchar en este dispositivo'));
+		expect(listenBtn).toBeDefined();
+
+		await listenBtn!.trigger('click');
+		expect(listenLocally.value).toBe(true);
 	});
 });

@@ -150,3 +150,7 @@ python server.py --port 8080 --dir "/home/usuario/Música"
 > - **macOS / Linux:** Ejecutá con `sudo` (ej: `sudo python server.py --port 80`) o configurá `authbind` para tu usuario.
 
 Cuando el servidor arranca, abre automáticamente el reproductor en tu navegador predeterminado apuntando a la IP local (ej: `http://192.168.X.Y:1729`). Para controlar la música desde el celular o con amigos, conectate a la misma red Wi-Fi y entrá a la IP que figura en la consola o escaneá el código QR en la pestaña **Controles**. Para ver todas las opciones disponibles, ejecutá `python server.py --help`.
+
+## 📱 Soporte para Android (Servidor + Cliente)
+
+La Rockola del Carpincho cuenta con integración nativa para Android (**Capacitor + Chaquopy + ForegroundService**) con acceso directo a carpetas de la tarjeta **MicroSD**, además de modo cliente **PWA instalable** y soporte `--no-mpv` para servidores sin salida local. Consultá la guía completa en [docs/ANDROID.md](docs/ANDROID.md).

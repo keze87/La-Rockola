@@ -1,6 +1,7 @@
 <script setup lang="ts">
 	import { computed, ref, watch } from 'vue';
 	import { apiUrl } from '../composables/useApi';
+	import { androidServerStatus, isNativeAndroidHost, pickAndApplyMusicFolder } from '../composables/useAndroidHost';
 	import { serverUrl, weatherLocation } from '../composables/player/state';
 	import { useDragSlider } from '../composables/useDragSlider';
 	import { useFullscreen } from '@vueuse/core';
@@ -31,6 +32,7 @@
 		hasEdgeTts,
 		hasFfmpeg,
 		hasLocalPlayer,
+		hasMpv,
 		isScanning,
 		listenLocally,
 		loadLibrary,
@@ -129,11 +131,26 @@
 			window.location.hostname === '127.0.0.1' ||
 			window.location.hostname === '::1';
 
-		if (isLocalhost && serverUrl.value) {
+		if ((isLocalhost || isNativeAndroidHost()) && serverUrl.value) {
 			return serverUrl.value;
 		}
 		return window.location.href;
 	});
+
+	const showAndroidFolderPicker = isNativeAndroidHost();
+
+	async function handlePickMusicFolder() {
+		try {
+			const selected = await pickAndApplyMusicFolder();
+			if (selected) {
+				showToast(`Carpeta de música actualizada: ${selected}`, 'success');
+				haptic();
+			}
+		} catch (err) {
+			console.error(err);
+			showToast('No se pudo acceder a la carpeta elegida', 'error');
+		}
+	}
 
 	// --- Interruptores ---
 	function toggleDjBara() {
@@ -398,20 +415,43 @@
 			</PillButton>
 		</div>
 
-		<div v-if="hasLocalPlayer && !listenLocally" class="mb-4 flex flex-wrap justify-center gap-3">
+		<div v-if="hasMpv && hasLocalPlayer && !listenLocally" class="mb-4 flex flex-wrap justify-center gap-3">
 			<PillButton icon="volume_up" color-class="bg-amber-700 hover:bg-amber-600" @click="returnToServerSpeakers">
 				Volver a parlantes del servidor
 			</PillButton>
 		</div>
 
+		<div v-if="!hasMpv && !listenLocally && !hasLocalPlayer" class="mb-4 flex flex-wrap justify-center gap-3">
+			<PillButton
+				icon="headphones"
+				color-class="bg-carpincho-success hover:brightness-110 text-white font-bold"
+				@click="
+					listenLocally = true;
+					haptic();
+				"
+			>
+				Escuchar en este dispositivo
+			</PillButton>
+		</div>
+
+		<div v-if="showAndroidFolderPicker" class="mb-4 flex flex-col items-center gap-2">
+			<PillButton icon="sd_card" color-class="bg-amber-700 hover:bg-amber-600" @click="handlePickMusicFolder">
+				Elegir carpeta de música (MicroSD)
+			</PillButton>
+			<p v-if="androidServerStatus.musicDir" class="text-carpincho-muted max-w-xs truncate text-xs">
+				Carpeta activa: {{ androidServerStatus.musicDir }}
+			</p>
+		</div>
+
 		<div class="mb-4 flex flex-wrap justify-center gap-3">
 			<PillButton icon="stop" color-class="bg-red-700 hover:bg-red-600" @click="stop">Cortala de una</PillButton>
 
-			<PillButton icon="fullscreen" color-class="bg-blue-700 hover:bg-blue-600" @click="fullscreen">
+			<PillButton v-if="hasMpv" icon="fullscreen" color-class="bg-blue-700 hover:bg-blue-600" @click="fullscreen">
 				Todo pantalla, ñeri
 			</PillButton>
 
 			<PillButton
+				v-if="hasMpv"
 				:icon="mpvVisible ? 'visibility_off' : 'visibility'"
 				color-class="bg-gray-700 hover:bg-gray-600"
 				@click="toggleMpvVisibility"

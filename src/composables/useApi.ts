@@ -1,5 +1,20 @@
 import type { ApiResponse, CommandName, CommandPayloads, Track } from '../types';
 
+let apiOrigin = '';
+
+export function setApiOrigin(origin: string | null): void {
+	const cleaned = (origin ?? '').trim().replace(/\/+$/, '');
+	apiOrigin = cleaned;
+}
+
+export function getApiOrigin(): string {
+	return apiOrigin;
+}
+
+export function clearApiOrigin(): void {
+	apiOrigin = '';
+}
+
 /**
  * Devuelve la subruta bajo la cual está montada la app, o un string vacío si está en la raíz.
  * Ejemplos:
@@ -24,8 +39,11 @@ export function getBasePath(pathname?: string): string {
  *   apiUrl('/command') -> "/command" (raíz) o "/rockola/command" (subruta)
  */
 export function apiUrl(endpoint: string): string {
-	const base = getBasePath();
 	const clean = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+	if (apiOrigin) {
+		return `${apiOrigin}${clean}`;
+	}
+	const base = getBasePath();
 	return `${base}${clean}`;
 }
 
@@ -33,8 +51,12 @@ export function apiUrl(endpoint: string): string {
  * Construye la URL del WebSocket usando el host actual, protocolo (ws/wss) y ruta base.
  */
 export function getWsUrl(endpoint = '/ws'): string {
-	const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 	const clean = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+	if (apiOrigin) {
+		const wsOrigin = apiOrigin.replace(/^https:\/\//i, 'wss://').replace(/^http:\/\//i, 'ws://');
+		return `${wsOrigin}${clean}`;
+	}
+	const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 	return `${protocol}//${window.location.host}${getBasePath()}${clean}`;
 }
 
@@ -68,6 +90,8 @@ export function useApi() {
 		getLibrary: () => get<Track[]>('/library'),
 		hideMpv: () => post('/mpv/hide'),
 		scanLibrary: () => get<Track[]>('/scan'),
+		setMusicDir: (dir: string, dir2?: string | null) =>
+			post('/system/music-dir', { dir, ...(dir2 ? { dir2 } : {}) }),
 		showMpv: () => post('/mpv/show'),
 	};
 }

@@ -22,8 +22,13 @@ export function syncMediaSessionMetadata(
 
 	if (trackPath) {
 		const info = getTrackInfo(trackPath);
-		const artworkSrc = !trackPath.startsWith('http')
-			? `${window.location.origin}${apiUrl(`/cover?path=${encodeURIComponent(trackPath)}&size=512`)}`
+		const resolvedCover = !trackPath.startsWith('http')
+			? apiUrl(`/cover?path=${encodeURIComponent(trackPath)}&size=512`)
+			: null;
+		const artworkSrc = resolvedCover
+			? resolvedCover.startsWith('http')
+				? resolvedCover
+				: `${window.location.origin}${resolvedCover}`
 			: null;
 
 		navigator.mediaSession.metadata = new MediaMetadata({

@@ -352,6 +352,16 @@ export function useLocalPlayback() {
 				playWhenBuffered(lp, 4, 3000);
 			}
 		});
+
+		useEventListener(document, 'visibilitychange', () => {
+			if (document.visibilityState !== 'visible') return;
+			const lp = localPlayerRef.value;
+			if (listenLocally.value && lp && lp.src) {
+				const currentPos = Number.isFinite(lp.currentTime) ? lp.currentTime : 0;
+				localTimePos.value = currentPos;
+				_sendLocalPlayerUpdate({ time_pos: currentPos, paused: lp.paused });
+			}
+		});
 	}
 
 	return { _sendLocalPlayerUpdate, setVolume, returnToServerSpeakers };

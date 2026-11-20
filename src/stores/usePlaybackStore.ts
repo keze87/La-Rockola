@@ -14,6 +14,7 @@ export const pendingSeekTime = ref<number | null>(null);
 export const isDraggingSeek = ref<boolean>(false);
 export const listenLocally = ref<boolean>(false);
 export const hasLocalPlayer = ref<boolean>(false);
+export const hasMpv = ref<boolean>(true);
 export const localPlayerRef = ref<HTMLAudioElement | null>(null);
 export const localTimePos = ref<number>(0);
 export const serverMuted = ref<boolean>(false);
@@ -41,6 +42,7 @@ export function usePlaybackStore() {
 		isDraggingSeek,
 		listenLocally,
 		hasLocalPlayer,
+		hasMpv,
 		localPlayerRef,
 		localTimePos,
 		serverMuted,

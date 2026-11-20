@@ -11,6 +11,7 @@ import {
 	favorites,
 	hasEdgeTts,
 	hasLocalPlayer,
+	hasMpv,
 	historyState,
 	isDraggingSeek,
 	isPaused,
@@ -222,6 +223,7 @@ describe('useSocket.ts', () => {
 			is_playing_radio_announcement: true,
 			has_edge_tts: true,
 			has_local_player: true,
+			has_mpv: false,
 			server_muted: true,
 			top_played: [{ path: '/music/spinetta.mp3', count: 10 }],
 			url_metadata: { 'https://youtube.com/watch?v=1': { display_title: 'Web Song' } },
@@ -240,6 +242,7 @@ describe('useSocket.ts', () => {
 		expect(isPlayingRadioAnnouncement.value).toBe(true);
 		expect(hasEdgeTts.value).toBe(true);
 		expect(hasLocalPlayer.value).toBe(true);
+		expect(hasMpv.value).toBe(false);
 		expect(djNextTrack.value?.title).toBe('DJ Tune');
 		expect(djSafeModeEnabled.value).toBe(true);
 		expect(duration.value).toBe(210);

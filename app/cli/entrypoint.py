@@ -17,6 +17,7 @@ from pathlib import Path
 from app.core.config import (
 	Settings,
 	get_config_path,
+	get_default_music_dir,
 	load_config,
 	save_config,
 	set_settings,
@@ -34,7 +35,7 @@ from app.infrastructure.binaries import ffmpeg as ffmpeg_installer
 from app.infrastructure.binaries import fpcalc as fpcalc_installer
 from app.infrastructure.binaries import mpv as mpv_installer
 from app.infrastructure.binaries import ytdlp as ytdlp_installer
-from app.infrastructure.binaries.manager import find_binary, get_clean_env
+from app.infrastructure.binaries.manager import find_binary, get_clean_env, is_android
 
 logger = logging.getLogger("RockolaCarpincho")
 _dependencies_checked = False
@@ -51,6 +52,18 @@ except (ImportError, OSError, ValueError, AttributeError):
 def open_browser_url(url: str, delay: float = 0.0) -> None:
 	"""Abre la URL en el navegador nativo según la plataforma con aislamiento de entorno."""
 	clean_env = get_clean_env()
+	if is_android():
+		for cmd in (
+			["termux-open-url", url],
+			["am", "start", "-a", "android.intent.action.VIEW", "-d", url],
+		):
+			if shutil.which(cmd[0]):
+				try:
+					subprocess.Popen(cmd, env=clean_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+					return
+				except Exception:
+					pass
+
 	if sys.platform == "win32":
 		try:
 			os.startfile(url)  # type: ignore[attr-defined]
@@ -164,7 +177,7 @@ def _check_python_packages(is_frozen: bool, force: bool = False) -> tuple[list[t
 		)
 		missing_opt.append(("ffmpeg", fix))
 
-	if sys.platform not in ("win32", "darwin") and importlib.util.find_spec("dbus_next") is None:
+	if sys.platform not in ("win32", "darwin") and not is_android() and importlib.util.find_spec("dbus_next") is None:
 		fix = (
 			"no incluido en este build de Linux (para teclas multimedia)"
 			if is_frozen
@@ -281,7 +294,7 @@ def _check_fpcalc(is_win: bool, is_mac: bool, is_frozen: bool) -> tuple[str, str
 	)
 
 
-def check_dependencies(force: bool = False) -> None:
+def check_dependencies(force: bool = False, no_mpv: bool = False) -> None:
 	"""Verifica dependencias mínimas requeridas por el sistema."""
 	global _dependencies_checked
 	if _dependencies_checked and not force:
@@ -294,14 +307,19 @@ def check_dependencies(force: bool = False) -> None:
 	is_win = sys.platform == "win32" or os.name == "nt"
 	is_mac = sys.platform == "darwin"
 	is_frozen = getattr(sys, "frozen", False)
+	running_android = is_android()
 
 	missing_req_py, missing_opt_py = _check_python_packages(is_frozen=is_frozen, force=force)
 	missing_req_sys = []
 	missing_opt_sys = []
 
-	mpv_res = _check_mpv(is_win=is_win, is_mac=is_mac, is_frozen=is_frozen)
-	if mpv_res:
-		missing_req_sys.append(mpv_res)
+	if not no_mpv:
+		if running_android and find_binary("mpv") is None:
+			missing_opt_sys.append(("mpv", "modo sin MPV activo en Android (reproducción vía navegador/PWA)"))
+		else:
+			mpv_res = _check_mpv(is_win=is_win, is_mac=is_mac, is_frozen=is_frozen)
+			if mpv_res:
+				missing_req_sys.append(mpv_res)
 
 	yt_res = _check_ytdlp(is_win=is_win, is_mac=is_mac, is_frozen=is_frozen)
 	if yt_res:
@@ -415,6 +433,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
 		default=False,
 		help="Fuerza la recompilación del frontend con Vite antes de iniciar el servidor",
 	)
+	parser.add_argument(
+		"--no-mpv",
+		dest="no_mpv",
+		action="store_true",
+		default=None,
+		help="Ejecuta el servidor sin MPV (modo solo cliente web / Android)",
+	)
 	return parser
 
 
@@ -491,10 +516,16 @@ def main() -> None:
 		except Exception as e:
 			logger.warning(f"No se pudo compilar el frontend automáticamente en el arranque: {e}")
 
-	check_dependencies()
 	config_path = get_config_path(args.config)
 	config_exists = config_path.is_file()
 	config = load_config(config_path)
+	if not config_exists and is_android() and not config.get("music_dir"):
+		config["music_dir"] = get_default_music_dir()
+
+	effective_no_mpv = bool(
+		getattr(args, "no_mpv", False) or config.get("no_mpv", False) or (is_android() and find_binary("mpv") is None)
+	)
+	check_dependencies(no_mpv=effective_no_mpv)
 
 	if args.debug:
 		final_log_level = "DEBUG"
@@ -513,9 +544,13 @@ def main() -> None:
 		config = run_interactive_wizard(config_path, config)
 	elif not config_exists:
 		initial_settings = Settings.from_config_file(config_path).merge_cli_args(args)
+		if is_android() and not args.dir:
+			initial_settings = initial_settings.model_copy(update={"music_dir": get_default_music_dir()})
 		save_config(config_path, initial_settings.model_dump())
 
 	settings = Settings.from_config_file(config_path).merge_cli_args(args)
+	if effective_no_mpv and not settings.no_mpv:
+		settings = settings.model_copy(update={"no_mpv": True})
 	set_settings(settings)
 
 	final_log_level = settings.log_level.upper()
@@ -531,6 +566,7 @@ def main() -> None:
 		default_sort=settings.default_sort,
 		radio_mode_enabled=settings.radio_mode_enabled,
 		mpv_visible=settings.mpv_visible,
+		use_mpv=not settings.no_mpv,
 	)
 	state.weather_location = settings.weather_location
 	state.server_host = settings.host

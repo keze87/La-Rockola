@@ -23,18 +23,30 @@ from pathlib import Path
 from app.core.config import get_carpincho_data_dir
 
 
+def is_android() -> bool:
+	"""Detecta si el proceso corre dentro de un entorno Android (APK Chaquopy o Termux)."""
+	if sys.platform == "android":
+		return True
+	return bool(
+		os.environ.get("ANDROID_ROOT") or os.environ.get("TERMUX_VERSION") or os.environ.get("ANDROID_ARGUMENT")
+	)
+
+
 def resolve_platform_and_arch(platform_name: str | None = None, arch: str | None = None) -> tuple[str, str]:
 	"""Normaliza el nombre del sistema operativo y la arquitectura del procesador."""
 	if not platform_name:
-		plat = sys.platform.lower()
-		if plat in ("win32", "cygwin") or os.name == "nt":
-			platform_name = "windows"
-		elif "darwin" in plat:
-			platform_name = "macos"
-		elif "linux" in plat:
-			platform_name = "linux"
+		if is_android():
+			platform_name = "android"
 		else:
-			platform_name = platform.system().lower()
+			plat = sys.platform.lower()
+			if plat in ("win32", "cygwin") or os.name == "nt":
+				platform_name = "windows"
+			elif "darwin" in plat:
+				platform_name = "macos"
+			elif "linux" in plat:
+				platform_name = "linux"
+			else:
+				platform_name = platform.system().lower()
 
 	if not arch:
 		mach = platform.machine().lower()
@@ -55,7 +67,7 @@ def ensure_display_env(env: dict[str, str]) -> None:
 	Sincroniza dinámicamente variables de display y sesión gráfica (Wayland / X11 / DBus)
 	cuando el servidor corre como servicio de usuario antes de abrir la sesión de escritorio.
 	"""
-	if sys.platform == "win32":
+	if sys.platform == "win32" or is_android():
 		return
 
 	if env.get("WAYLAND_DISPLAY") or env.get("DISPLAY"):

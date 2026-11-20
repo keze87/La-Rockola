@@ -5,6 +5,7 @@ Mezclador de audio con FFmpeg, incrustación de carátulas ID3 y generación de 
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess
 import sys
@@ -133,10 +134,11 @@ def build_srt_content(cues: list[tuple[float, float, str]]) -> str:
 def get_static_asset_path(filename: str) -> Path | None:
 	"""Localiza un activo estático en los directorios públicos, compilados o en el bundle PyInstaller."""
 	root = Path(__file__).resolve().parents[3]
-	candidates = [
-		root / "dist" / filename,
-		root / "public" / filename,
-	]
+	candidates: list[Path] = []
+	env_dist = os.environ.get("ROCKOLA_DIST_DIR", "").strip()
+	if env_dist:
+		candidates.append(Path(env_dist).expanduser().resolve() / filename)
+	candidates.extend([root / "dist" / filename, root / "public" / filename])
 	if hasattr(sys, "_MEIPASS"):
 		candidates.insert(0, Path(sys._MEIPASS) / "public" / filename)
 		candidates.insert(1, Path(sys._MEIPASS) / "dist" / filename)

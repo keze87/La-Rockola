@@ -6,6 +6,7 @@ export {
 	currentTrackPath,
 	duration,
 	hasLocalPlayer,
+	hasMpv,
 	historyState,
 	isDraggingSeek,
 	isPaused,

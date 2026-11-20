@@ -3,5 +3,6 @@ Paquete del controlador asíncrono de MPV.
 """
 
 from app.infrastructure.mpv.controller import AsyncMpvController
+from app.infrastructure.mpv.null_controller import NullMpvController
 
-__all__ = ["AsyncMpvController"]
+__all__ = ["AsyncMpvController", "NullMpvController"]

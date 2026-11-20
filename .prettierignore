@@ -1,0 +1,13 @@
+android/
+dist/
+coverage/
+node_modules/
+build/
+dist_bin/
+release/
+DB/
+test-results/
+playwright-report/
+.ruff_cache/
+.pytest_cache/
+__pycache__/

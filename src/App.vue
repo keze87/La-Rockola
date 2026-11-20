@@ -2,6 +2,12 @@
 	import { computed, onMounted, watch } from 'vue';
 	import { Toaster } from 'vue-sonner';
 	import { apiUrl } from './composables/useApi';
+	import {
+		androidServerStatus,
+		initAndroidServer,
+		isNativeAndroidHost,
+		pickAndApplyMusicFolder,
+	} from './composables/useAndroidHost';
 	import { useCover } from './composables/useCover';
 	import { buildSpaPath, extractSpaRoute, useAppRouter } from './composables/useAppRouter';
 	import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts';
@@ -31,6 +37,8 @@
 		duration,
 		getTrackInfo,
 		haptic,
+		hasLocalPlayer,
+		hasMpv,
 		pendingSeekTime,
 		isDraggingSeek,
 		isFogonMode,
@@ -201,10 +209,19 @@
 		}
 	});
 
+	const showAndroidFolderBanner = computed(() => isNativeAndroidHost() && androidServerStatus.value.needsFolder);
+
 	onMounted(() => {
 		initRouter();
-		loadLibrary(false);
-		connectWebSocket();
+		if (isNativeAndroidHost()) {
+			initAndroidServer().finally(() => {
+				loadLibrary(false);
+				connectWebSocket();
+			});
+		} else {
+			loadLibrary(false);
+			connectWebSocket();
+		}
 	});
 </script>
 
@@ -320,6 +337,29 @@
 				</div>
 			</div>
 		</nav>
+
+		<!-- AVISO RÁPIDO ANDROID / HEADLESS -->
+		<button
+			v-if="showAndroidFolderBanner"
+			type="button"
+			class="bg-carpincho-warning text-carpincho-panel flex w-full shrink-0 cursor-pointer items-center justify-center gap-2 px-4 py-2 text-xs font-bold shadow-sm"
+			@click="pickAndApplyMusicFolder"
+		>
+			<i class="material-icons text-base">sd_card</i>
+			<span>Elegir carpeta de música en tu MicroSD para arrancar la ronda</span>
+		</button>
+		<button
+			v-else-if="!hasMpv && !listenLocally && !hasLocalPlayer"
+			type="button"
+			class="bg-carpincho-success flex w-full shrink-0 cursor-pointer items-center justify-center gap-2 px-4 py-2 text-xs font-bold text-white shadow-sm"
+			@click="
+				listenLocally = true;
+				haptic();
+			"
+		>
+			<i class="material-icons text-base">headphones</i>
+			<span>El servidor corre sin MPV · Tocá acá para escuchar en este teléfono</span>
+		</button>
 
 		<!-- BARRA DE PROGRESO  -->
 		<div

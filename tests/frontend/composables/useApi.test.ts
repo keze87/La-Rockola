@@ -1,5 +1,13 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { useApi, getBasePath, apiUrl, getWsUrl } from '@/composables/useApi';
+import {
+	useApi,
+	getBasePath,
+	apiUrl,
+	getWsUrl,
+	setApiOrigin,
+	getApiOrigin,
+	clearApiOrigin,
+} from '@/composables/useApi';
 
 describe('useApi.ts', () => {
 	const originalLocation = window.location;
@@ -16,6 +24,7 @@ describe('useApi.ts', () => {
 	});
 
 	afterEach(() => {
+		clearApiOrigin();
 		window.location = originalLocation;
 	});
 
@@ -126,5 +135,35 @@ describe('useApi.ts', () => {
 
 		await expect(api.getLibrary()).rejects.toThrow('API Error: 404');
 		await expect(api.hideMpv()).rejects.toThrow('API Error: 404');
+	});
+
+	it('resolves absolute URLs and WebSocket URLs when apiOrigin is configured (Capacitor)', async () => {
+		setApiOrigin('http://127.0.0.1:1729/');
+		expect(getApiOrigin()).toBe('http://127.0.0.1:1729');
+		expect(apiUrl('/command')).toBe('http://127.0.0.1:1729/command');
+		expect(apiUrl('stream?path=a.mp3')).toBe('http://127.0.0.1:1729/stream?path=a.mp3');
+		expect(getWsUrl('/ws')).toBe('ws://127.0.0.1:1729/ws');
+
+		setApiOrigin('https://rockola.local');
+		expect(getWsUrl('/ws')).toBe('wss://rockola.local/ws');
+
+		const fetchMock = vi.fn().mockResolvedValue({
+			ok: true,
+			json: () => Promise.resolve({ status: 'ok', music_dir: '/storage/ABCD-1234/Musica' }),
+		});
+		global.fetch = fetchMock;
+		const api = useApi();
+		await api.setMusicDir('/storage/ABCD-1234/Musica');
+		expect(fetchMock).toHaveBeenCalledWith(
+			'https://rockola.local/system/music-dir',
+			expect.objectContaining({
+				method: 'POST',
+				body: JSON.stringify({ dir: '/storage/ABCD-1234/Musica' }),
+			})
+		);
+
+		clearApiOrigin();
+		expect(getApiOrigin()).toBe('');
+		expect(apiUrl('/command')).toBe('/command');
 	});
 });

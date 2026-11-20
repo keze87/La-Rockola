@@ -15,6 +15,7 @@ import {
 	hasEdgeTts,
 	hasFfmpeg,
 	hasLocalPlayer,
+	hasMpv,
 	historyState,
 	isDraggingSeek,
 	isPaused,
@@ -120,6 +121,7 @@ export function useSocket() {
 						}
 						if (state.has_local_player !== undefined)
 							hasLocalPlayer.value = Boolean(state.has_local_player);
+						if (state.has_mpv !== undefined) hasMpv.value = Boolean(state.has_mpv);
 						if (state.dj_carpincho_enabled !== undefined) djBaraEnabled.value = state.dj_carpincho_enabled;
 						if (state.dj_mode !== undefined) djMode.value = state.dj_mode;
 						if (state.dj_next_track !== undefined) djNextTrack.value = state.dj_next_track;

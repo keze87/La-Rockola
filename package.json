@@ -16,9 +16,12 @@
 		"test:e2e": "playwright test",
 		"test:coverage": "vitest run --coverage",
 		"test:watch": "vitest",
-		"watch": "vite build --watch"
+		"watch": "vite build --watch",
+		"android:sync": "npm run build && python3 scripts/build_android.py --sync-only",
+		"android:build": "python3 scripts/build_android.py"
 	},
 	"dependencies": {
+		"@capacitor/core": "^8.6.2",
 		"@floating-ui/vue": "^2.0.1",
 		"@headlessui/vue": "^1.7.23",
 		"@vueuse/core": "^15.0.0",
@@ -29,6 +32,8 @@
 		"vue-sonner": "^2.0.9"
 	},
 	"devDependencies": {
+		"@capacitor/android": "^8.6.2",
+		"@capacitor/cli": "^8.6.2",
 		"@eslint/js": "^10.0.1",
 		"@playwright/test": "^1.65.1",
 		"@tailwindcss/vite": "^4.3.3",

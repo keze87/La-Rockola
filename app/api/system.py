@@ -7,11 +7,15 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 
+from app.api.library import scan_library
+from app.api.schemas import MusicDirRequest
+from app.core import config as config_mod
 from app.core.container import get_container
 from app.domain.library.mood import is_mood_available
 from app.domain.playback.orchestrator import broadcast_state
@@ -70,6 +74,37 @@ async def get_system_capabilities() -> dict[str, Any]:
 		"has_ffmpeg": is_mood_available(),
 		"has_ytdlp": ytdlp_srv.is_available,
 		"has_edge_tts": bool(state.has_edge_tts if state else False),
+		"has_mpv": bool(getattr(state, "has_mpv", True) if state else False),
+	}
+
+
+@router.post("/system/music-dir")
+async def update_music_dir(req: MusicDirRequest) -> dict[str, Any]:
+	"""Actualiza dinámicamente la carpeta de música (ej. MicroSD en Android) y dispara un reescaneo."""
+	target_path = Path(req.dir).expanduser().resolve()
+	if not target_path.is_dir():
+		raise HTTPException(status_code=400, detail=f"La carpeta no existe o no es accesible: {req.dir}")
+
+	resolved_dir = str(target_path)
+	resolved_dir2: str | None = None
+	if req.dir2:
+		target_path2 = Path(req.dir2).expanduser().resolve()
+		if not target_path2.is_dir():
+			raise HTTPException(status_code=400, detail=f"La carpeta secundaria no existe: {req.dir2}")
+		resolved_dir2 = str(target_path2)
+
+	state = get_container().ensure_orchestrator()
+	if state:
+		state.initial_dir = resolved_dir
+		state.secondary_dir = resolved_dir2
+
+	config_mod.update_config({"music_dir": resolved_dir, "music_dir2": resolved_dir2})
+	asyncio.create_task(scan_library(dir=resolved_dir, dir2=resolved_dir2))
+
+	return {
+		"status": "ok",
+		"music_dir": resolved_dir,
+		"music_dir2": resolved_dir2,
 	}
 
 

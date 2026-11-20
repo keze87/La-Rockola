@@ -36,6 +36,7 @@ from app.infrastructure.db.repositories import (
 from app.infrastructure.media.tts_cache import HAS_EDGE_TTS
 from app.infrastructure.mpris.adapter import MPRISService
 from app.infrastructure.mpv.controller import AsyncMpvController
+from app.infrastructure.mpv.null_controller import NullMpvController
 
 logger = logging.getLogger("RockolaCarpincho")
 
@@ -70,12 +71,14 @@ class PlaybackOrchestrator:
 		default_sort: str = "time",
 		radio_mode_enabled: bool = True,
 		mpv_visible: bool = True,
+		use_mpv: bool = True,
 	) -> None:
 		self.db_path = Path(db_path) if db_path else get_default_db_path()
 		self.initial_dir = initial_dir
 		self.secondary_dir = secondary_dir
 		self.open_browser = open_browser
 		self.default_sort = default_sort
+		self.has_mpv: bool = bool(use_mpv)
 
 		# Componentes de dominio delegados
 		self.queue_manager = QueueManager()
@@ -142,20 +145,23 @@ class PlaybackOrchestrator:
 
 		self._play_next_lock = asyncio.Lock()
 
-		self._mpv: Any = AsyncMpvController(
-			{
-				"duration_update": self.handle_duration_update,
-				"mpv_restarted": self.handle_mpv_restarted,
-				"mute_update": self.handle_mute_update,
-				"pause_update": self.handle_pause_update,
-				"song_ended": self.handle_song_ended,
-				"time_update": self.handle_time_update,
-				"track_stopped": self.handle_track_stopped,
-				"volume_update": self.handle_volume_update,
-			},
-			state_ref=self,
-		)
-		self.mpv_visible: bool = bool(mpv_visible and getattr(self._mpv, "has_display", True))
+		if self.has_mpv:
+			self._mpv: Any = AsyncMpvController(
+				{
+					"duration_update": self.handle_duration_update,
+					"mpv_restarted": self.handle_mpv_restarted,
+					"mute_update": self.handle_mute_update,
+					"pause_update": self.handle_pause_update,
+					"song_ended": self.handle_song_ended,
+					"time_update": self.handle_time_update,
+					"track_stopped": self.handle_track_stopped,
+					"volume_update": self.handle_volume_update,
+				},
+				state_ref=self,
+			)
+		else:
+			self._mpv = NullMpvController(state_ref=self)
+		self.mpv_visible: bool = bool(mpv_visible and self.has_mpv and getattr(self._mpv, "has_display", True))
 
 	@property
 	def mpv(self) -> Any:
@@ -371,6 +377,7 @@ class PlaybackOrchestrator:
 			"favorites": active_favs,
 			"has_edge_tts": bool(self.radio_service.is_available if hasattr(self, "radio_service") else HAS_EDGE_TTS),
 			"has_ffmpeg": bool(is_mood_available()),
+			"has_mpv": bool(getattr(self, "has_mpv", True)),
 			"history": list(self.history),
 			"is_scanning": self.is_scanning,
 			"scan_status": {

@@ -1,0 +1,201 @@
+package ar.carpincho.rockola
+
+import android.Manifest
+import android.app.Activity
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.Settings
+import androidx.activity.result.ActivityResult
+import androidx.core.content.ContextCompat
+import com.getcapacitor.JSObject
+import com.getcapacitor.PermissionState
+import com.getcapacitor.Plugin
+import com.getcapacitor.PluginCall
+import com.getcapacitor.PluginMethod
+import com.getcapacitor.annotation.ActivityCallback
+import com.getcapacitor.annotation.CapacitorPlugin
+import com.getcapacitor.annotation.Permission
+import com.getcapacitor.annotation.PermissionCallback
+import org.json.JSONObject
+
+/**
+ * Plugin nativo de Capacitor para controlar el servidor embebido y
+ * seleccionar carpetas de la tarjeta MicroSD en Android 11+.
+ */
+@CapacitorPlugin(
+    name = "RockolaServer",
+    permissions = [
+        Permission(
+            alias = "storageLegacy",
+            strings = [Manifest.permission.READ_EXTERNAL_STORAGE]
+        ),
+        Permission(
+            alias = "audioMedia",
+            strings = [Manifest.permission.READ_MEDIA_AUDIO]
+        )
+    ]
+)
+class RockolaServerPlugin : Plugin() {
+
+    private fun hasFullStorageAccess(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Environment.isExternalStorageManager()
+        } else {
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.READ_EXTERNAL_STORAGE
+            ) == PackageManager.PERMISSION_GRANTED
+        }
+    }
+
+    private fun buildStatusObject(): JSObject {
+        val prefs = context.getSharedPreferences(RockolaForegroundService.PREFS_NAME, Context.MODE_PRIVATE)
+        val port = RockolaForegroundService.currentPort
+        val musicDir = RockolaForegroundService.currentMusicDir
+            ?: prefs.getString(RockolaForegroundService.KEY_MUSIC_DIR, null)
+        return JSObject().apply {
+            put("running", RockolaForegroundService.isRunning)
+            put("port", port)
+            put("localIp", RockolaForegroundService.currentLocalIp)
+            put("serverUrl", RockolaForegroundService.currentServerUrl)
+            put("musicDir", musicDir ?: "")
+        }
+    }
+
+    @PluginMethod
+    fun startServer(call: PluginCall) {
+        val port = call.getInt("port") ?: RockolaForegroundService.currentPort
+        val musicDir = call.getString("musicDir")
+
+        val intent = Intent(context, RockolaForegroundService::class.java).apply {
+            action = RockolaForegroundService.ACTION_START
+            putExtra(RockolaForegroundService.EXTRA_PORT, port)
+            if (!musicDir.isNullOrBlank()) {
+                putExtra(RockolaForegroundService.EXTRA_MUSIC_DIR, musicDir)
+            }
+        }
+        ContextCompat.startForegroundService(context, intent)
+        call.resolve(buildStatusObject())
+    }
+
+    @PluginMethod
+    fun stopServer(call: PluginCall) {
+        val intent = Intent(context, RockolaForegroundService::class.java).apply {
+            action = RockolaForegroundService.ACTION_STOP
+        }
+        context.startService(intent)
+        call.resolve(JSObject().apply { put("stopped", true) })
+    }
+
+    @PluginMethod
+    fun getStatus(call: PluginCall) {
+        call.resolve(buildStatusObject())
+    }
+
+    @PluginMethod
+    fun hasStoragePermission(call: PluginCall) {
+        call.resolve(JSObject().apply { put("granted", hasFullStorageAccess()) })
+    }
+
+    @PluginMethod
+    fun requestStoragePermission(call: PluginCall) {
+        if (hasFullStorageAccess()) {
+            call.resolve(JSObject().apply { put("granted", true) })
+            return
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                data = Uri.parse("package:${context.packageName}")
+            }
+            try {
+                startActivityForResult(call, intent, "onManageStorageResult")
+            } catch (_: Exception) {
+                val fallback = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                startActivityForResult(call, fallback, "onManageStorageResult")
+            }
+        } else {
+            requestPermissionForAlias("storageLegacy", call, "onLegacyStoragePermResult")
+        }
+    }
+
+    @ActivityCallback
+    private fun onManageStorageResult(call: PluginCall?, _result: ActivityResult) {
+        call?.resolve(JSObject().apply { put("granted", hasFullStorageAccess()) })
+    }
+
+    @PermissionCallback
+    private fun onLegacyStoragePermResult(call: PluginCall?) {
+        val granted = getPermissionState("storageLegacy") == PermissionState.GRANTED || hasFullStorageAccess()
+        call?.resolve(JSObject().apply { put("granted", granted) })
+    }
+
+    @PluginMethod
+    fun pickMusicFolder(call: PluginCall) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
+            val permIntent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                data = Uri.parse("package:${context.packageName}")
+            }
+            try {
+                startActivityForResult(call, permIntent, "onEnsurePermissionBeforePick")
+                return
+            } catch (_: Exception) {
+                // Continuamos con el selector SAF si el fabricante oculta esa pantalla
+            }
+        }
+        launchDocumentTreePicker(call)
+    }
+
+    @ActivityCallback
+    private fun onEnsurePermissionBeforePick(call: PluginCall?, _result: ActivityResult) {
+        if (call == null) return
+        launchDocumentTreePicker(call)
+    }
+
+    private fun launchDocumentTreePicker(call: PluginCall) {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        }
+        startActivityForResult(call, intent, "onFolderPicked")
+    }
+
+    @ActivityCallback
+    private fun onFolderPicked(call: PluginCall?, result: ActivityResult) {
+        if (call == null) return
+        val uri = result.data?.data
+        if (result.resultCode != Activity.RESULT_OK || uri == null) {
+            call.resolve(JSObject().apply {
+                put("path", JSONObject.NULL)
+                put("uri", JSONObject.NULL)
+            })
+            return
+        }
+
+        try {
+            val flags = result.data?.flags ?: 0
+            val takeFlags = flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            if (takeFlags != 0) {
+                context.contentResolver.takePersistableUriPermission(uri, takeFlags)
+            }
+        } catch (_: Exception) {
+        }
+
+        val resolvedPath = StoragePathResolver.resolveTreeUri(context, uri)
+        if (!resolvedPath.isNullOrBlank()) {
+            context.getSharedPreferences(RockolaForegroundService.PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putString(RockolaForegroundService.KEY_MUSIC_DIR, resolvedPath)
+                .apply()
+        }
+
+        call.resolve(JSObject().apply {
+            put("path", resolvedPath ?: "")
+            put("uri", uri.toString())
+        })
+    }
+}
