@@ -51,3 +51,4 @@ android/local.properties
 android/app/src/main/python/app/
 android/app/src/main/assets/public/
 android/app/src/main/assets/dist/
+android/app/wheels/

@@ -40,10 +40,12 @@ chaquopy {
     defaultConfig {
         version = "3.11"
         pip {
+            options "--find-links", "${projectDir}/wheels"
             install "fastapi"
+            install "httpx"
             install "uvicorn"
             install "mutagen"
-            install "pydantic"
+            install "pydantic==2.13.3"
             install "pydantic-settings"
             install "websockets"
             install "edge-tts"

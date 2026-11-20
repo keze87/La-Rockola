@@ -12,6 +12,7 @@ import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
@@ -137,6 +138,7 @@ class RockolaForegroundService : Service() {
                 currentServerUrl = serverUrl
                 updateNotification("Sonando en $serverUrl (red local)")
 
+                Log.i("RockolaService", "Arrancando Uvicorn embebido en $serverUrl...")
                 entry.callAttr(
                     "start_embedded_server",
                     dataDir.absolutePath,
@@ -146,6 +148,7 @@ class RockolaForegroundService : Service() {
                     "0.0.0.0"
                 )
             } catch (e: Exception) {
+                Log.e("RockolaService", "Error fatal en servidor Python embebido", e)
                 updateNotification("Error en servidor: ${e.message ?: "fallo desconocido"}")
             } finally {
                 isRunning = false
