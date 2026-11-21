@@ -196,17 +196,7 @@ class LibraryService:
 			extract_fingerprint = extract_mood
 
 		logger.info(f"Pegando una ojeada por estas carpetas: {target_dirs}")
-		extensions = (
-			"*.flac",
-			"*.m4a",
-			"*.mp3",
-			"*.ogg",
-			"*.wav",
-			"*.mp4",
-			"*.mkv",
-			"*.avi",
-			"*.webm",
-		)
+		audio_extensions = {".flac", ".m4a", ".mp3", ".ogg", ".wav", ".mp4", ".mkv", ".avi", ".webm"}
 		raw_files: list[Path] = []
 
 		if state:
@@ -222,8 +212,12 @@ class LibraryService:
 			if not music_dir.exists():
 				logger.warning(f"Che, este lugar está más pelado que la nada misma: {music_dir}")
 				continue
-			for ext in extensions:
-				raw_files.extend(list(music_dir.rglob(ext)))
+			for root_str, _dirs, files in os.walk(music_dir):
+				for fname in files:
+					if os.path.splitext(fname)[1].lower() in audio_extensions:
+						raw_files.append(Path(root_str) / fname)
+						if state and len(raw_files) % 50 == 0:
+							state.scan_total = len(raw_files)
 
 		logger.info(f"Encontré {len(raw_files)} archivos en total. Revisando cuáles son nuevos o cambiaron...")
 		if state:
@@ -315,6 +309,9 @@ class LibraryService:
 				cache_hits[file_str] = (current_mtime, td, th)
 			else:
 				miss_files.append((f, current_mtime, current_size))
+
+		if state:
+			state.scan_current = len(cache_hits)
 
 		miss_results: dict[str, tuple[float, dict[str, Any], str, tuple[Any, ...], str | None]] = {}
 		if miss_files:

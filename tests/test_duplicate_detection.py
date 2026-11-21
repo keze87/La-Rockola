@@ -138,3 +138,43 @@ def test_scan_directory_marks_duplicate_tracks_and_clears_when_removed(tmp_path:
 	by_path_after = {t["path"]: t for t in tracks_after}
 	assert by_path_after[str(dup1)]["is_duplicate"] is False
 	assert by_path_after[str(unique)]["is_duplicate"] is False
+
+
+def test_scan_directory_single_pass_extensions_and_progress(tmp_path: Path) -> None:
+	"""Verifica descubrimiento case-insensitive en una sola pasada y actualización de scan_current."""
+	db_path = tmp_path / "rockola.db"
+	apply_migrations(db_path)
+
+	music_dir = tmp_path / "music"
+	sub = music_dir / "sub"
+	sub.mkdir(parents=True)
+
+	f1 = music_dir / "tema1.MP3"
+	f2 = sub / "tema2.Flac"
+	ignored = sub / "cover.jpg"
+	f1.write_bytes(b"\xff\xfb\x90\x64" + b"\x01" * 4096)
+	f2.write_bytes(b"fLaC" + b"\x02" * 4096)
+	ignored.write_bytes(b"JPEG")
+
+	class _State:
+		def __init__(self) -> None:
+			self.scan_phase = "idle"
+			self.scan_current = 0
+			self.scan_total = 0
+			self.scan_message = ""
+			self.tracks_cache: list = []
+			self.track_cache_by_path: dict = {}
+			self.id_to_current_path: dict = {}
+			self.path_to_id: dict = {}
+
+	state = _State()
+	service = LibraryService(db_path=db_path)
+	with (
+		patch("app.domain.library.service.is_mood_available", return_value=False),
+		patch("app.domain.library.service.find_binary", return_value=None),
+	):
+		tracks = service.scan_directory([music_dir], extract_mood=False, extract_fingerprint=False, state=state)
+
+	assert len(tracks) == 2
+	assert state.scan_total == 2
+	assert state.scan_current == 2
