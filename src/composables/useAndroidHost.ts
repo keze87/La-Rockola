@@ -55,6 +55,8 @@ export interface RockolaServerPlugin {
 	setKeepScreenOn(options: { enabled: boolean }): Promise<{ enabled: boolean }>;
 	shareUrl(options: { url: string; title?: string; text?: string }): Promise<{ shared: boolean }>;
 	consumePendingShortcut(): Promise<{ action: string | null }>;
+	setFogonState(options: { active: boolean }): Promise<{ active: boolean }>;
+	enterPipMode(): Promise<{ entered: boolean }>;
 }
 
 const RockolaServer = registerPlugin<RockolaServerPlugin>('RockolaServer');
@@ -69,6 +71,7 @@ export const androidServerStatus = ref<AndroidServerStatus>({
 });
 
 export const isAndroidFullscreen = ref<boolean>(false);
+export const isAndroidPipMode = ref<boolean>(false);
 
 export function isNativeAndroidHost(): boolean {
 	return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
@@ -107,6 +110,25 @@ export async function consumeAndroidPendingShortcut(): Promise<string | null> {
 		return res?.action?.trim() || null;
 	} catch {
 		return null;
+	}
+}
+
+export async function setAndroidFogonState(active: boolean): Promise<void> {
+	if (!isNativeAndroidHost()) return;
+	try {
+		await RockolaServer.setFogonState({ active });
+	} catch {
+		// Ignoramos errores transitorios durante el montaje o cierre
+	}
+}
+
+export async function enterAndroidPipMode(): Promise<boolean> {
+	if (!isNativeAndroidHost()) return false;
+	try {
+		const res = await RockolaServer.enterPipMode();
+		return Boolean(res?.entered);
+	} catch {
+		return false;
 	}
 }
 

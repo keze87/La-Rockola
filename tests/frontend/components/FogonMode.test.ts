@@ -910,4 +910,63 @@ Dialogue: 0,0:00:01.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Letra {\\kf100}animad
 			keepScreenSpy.mockRestore();
 		}
 	});
+
+	it('syncs Android fogon state on open, close and unmount', async () => {
+		const androidHost = await import('@/composables/useAndroidHost');
+		const fogonStateSpy = vi.spyOn(androidHost as any, 'setAndroidFogonState').mockResolvedValue(undefined);
+
+		try {
+			isFogonMode.value = false;
+			const wrapper = mount(FogonMode);
+			await wrapper.vm.$nextTick();
+			expect(fogonStateSpy).toHaveBeenCalledWith(false);
+
+			fogonStateSpy.mockClear();
+			isFogonMode.value = true;
+			await wrapper.vm.$nextTick();
+			expect(fogonStateSpy).toHaveBeenCalledWith(true);
+
+			fogonStateSpy.mockClear();
+			isFogonMode.value = false;
+			await wrapper.vm.$nextTick();
+			expect(fogonStateSpy).toHaveBeenCalledWith(false);
+
+			isFogonMode.value = true;
+			await wrapper.vm.$nextTick();
+			fogonStateSpy.mockClear();
+			wrapper.unmount();
+			expect(fogonStateSpy).toHaveBeenCalledWith(false);
+		} finally {
+			fogonStateSpy.mockRestore();
+		}
+	});
+
+	it('renders native PiP button on Android, invokes enterAndroidPipMode, and applies is-android-pip class when isAndroidPipMode is true', async () => {
+		const androidHost = await import('@/composables/useAndroidHost');
+		const isNativeSpy = vi.spyOn(androidHost, 'isNativeAndroidHost').mockReturnValue(true);
+		const enterPipSpy = vi.spyOn(androidHost as any, 'enterAndroidPipMode').mockResolvedValue(true);
+
+		try {
+			isFogonMode.value = true;
+			const wrapper = mount(FogonMode);
+			await wrapper.vm.$nextTick();
+
+			const pipBtn = wrapper.find('button[aria-label="Abrir en ventana flotante"]');
+			expect(pipBtn.exists()).toBe(true);
+			await pipBtn.trigger('click');
+			expect(enterPipSpy).toHaveBeenCalledTimes(1);
+
+			(androidHost as any).isAndroidPipMode.value = true;
+			await wrapper.vm.$nextTick();
+			const container = wrapper.find('.fogon-container');
+			expect(container.classes()).toContain('is-android-pip');
+			expect(wrapper.find('button[aria-label="Abrir en ventana flotante"]').exists()).toBe(false);
+		} finally {
+			if ((androidHost as any).isAndroidPipMode) {
+				(androidHost as any).isAndroidPipMode.value = false;
+			}
+			isNativeSpy.mockRestore();
+			enterPipSpy.mockRestore();
+		}
+	});
 });

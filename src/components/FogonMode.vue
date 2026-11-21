@@ -4,7 +4,13 @@
 	import { useCover } from '../composables/useCover';
 	import { usePlaybackControls } from '../composables/usePlaybackControls';
 	import { usePlayer } from '../composables/usePlayer';
-	import { setAndroidKeepScreenOn } from '../composables/useAndroidHost';
+	import {
+		enterAndroidPipMode,
+		isAndroidPipMode,
+		isNativeAndroidHost,
+		setAndroidFogonState,
+		setAndroidKeepScreenOn,
+	} from '../composables/useAndroidHost';
 	import { useSliderFactory } from '../composables/useSliderFactory';
 	import { useContextMenuBindings } from '../composables/useContextMenu';
 	import { useMarquee } from '../composables/useMarquee';
@@ -524,10 +530,18 @@
 		resetCursorTimer();
 	}
 
+	const canEnterAndroidPip = computed(() => isNativeAndroidHost() && !isAndroidPipMode.value);
+
+	function openAndroidPip() {
+		haptic();
+		void enterAndroidPipMode();
+	}
+
 	watch(
 		isFogonMode,
 		(active) => {
 			void setAndroidKeepScreenOn(active);
+			void setAndroidFogonState(active);
 			if (active) {
 				window.addEventListener('mousemove', handleMouseMove);
 				resetCursorTimer();
@@ -549,6 +563,7 @@
 
 	onUnmounted(() => {
 		void setAndroidKeepScreenOn(false);
+		void setAndroidFogonState(false);
 		window.removeEventListener('mousemove', handleMouseMove);
 		if (cursorTimer) {
 			clearTimeout(cursorTimer);
@@ -570,7 +585,7 @@
 		<div
 			v-if="isFogonMode"
 			class="fogon-container bg-carpincho-panel text-carpincho-text fixed inset-0 z-[10000] flex items-center justify-center overflow-hidden overscroll-contain px-4 pt-[calc(1rem+var(--rockola-safe-top))] pb-[calc(1rem+var(--rockola-safe-bottom))] sm:p-6 sm:pt-[calc(1.5rem+var(--rockola-safe-top))] sm:pb-[calc(1.5rem+var(--rockola-safe-bottom))] md:p-10 md:pt-[calc(2.5rem+var(--rockola-safe-top))] md:pb-[calc(2.5rem+var(--rockola-safe-bottom))]"
-			:class="{ 'cursor-none [&_*]:cursor-none': isCursorInactive }"
+			:class="[{ 'cursor-none [&_*]:cursor-none': isCursorInactive }, { 'is-android-pip': isAndroidPipMode }]"
 		>
 			<!-- Fondo ambiental cálido y liviano cohesivo con la estética carpincha -->
 			<div
@@ -581,6 +596,17 @@
 			<div
 				class="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,_rgba(43,38,34,0.35)_0%,_rgba(31,26,23,0.92)_100%)]"
 			/>
+
+			<!-- Botón discreto para abrir Modo Fogón en ventana flotante PiP (solo Android nativo) -->
+			<button
+				v-if="canEnterAndroidPip"
+				aria-label="Abrir en ventana flotante"
+				title="Abrir en ventana flotante (PiP)"
+				class="fogon-pip-btn text-carpincho-text/70 hover:text-carpincho-warning absolute top-[calc(1rem+var(--rockola-safe-top))] left-4 z-40 p-2 transition hover:scale-110 active:scale-95 md:top-[calc(2rem+var(--rockola-safe-top))] md:left-8"
+				@click="openAndroidPip"
+			>
+				<i class="material-icons text-2xl sm:text-3xl">picture_in_picture_alt</i>
+			</button>
 
 			<!-- Botón flotante para cerrar el fogón (arriba a la derecha) -->
 			<button
@@ -1233,6 +1259,62 @@
 		.fogon-close-btn i {
 			font-size: 1.25rem !important;
 		}
+	}
+
+	/* Modo PiP nativo en Android (incluso en pantallas de alta densidad donde la ventana excede 260px) */
+	.fogon-container.is-android-pip {
+		padding: 0 !important;
+	}
+
+	.fogon-container.is-android-pip .fogon-track-info,
+	.fogon-container.is-android-pip .fogon-bottom-section,
+	.fogon-container.is-android-pip .fogon-controls-wrapper,
+	.fogon-container.is-android-pip .fogon-lyrics-container,
+	.fogon-container.is-android-pip .lyrics-mask-vertical,
+	.fogon-container.is-android-pip .fogon-next-song,
+	.fogon-container.is-android-pip .fogon-close-btn,
+	.fogon-container.is-android-pip .fogon-pip-btn {
+		display: none !important;
+	}
+
+	.fogon-container.is-android-pip .fogon-main-layout,
+	.fogon-container.is-android-pip .fogon-player-column,
+	.fogon-container.is-android-pip .fogon-cover-section {
+		height: 100% !important;
+		width: 100% !important;
+		max-height: 100% !important;
+		max-width: 100% !important;
+		margin: 0 !important;
+		padding: 0 !important;
+		display: flex !important;
+		justify-content: center !important;
+		align-items: center !important;
+	}
+
+	.fogon-container.is-android-pip .fogon-cover-wrapper {
+		height: 100% !important;
+		width: 100% !important;
+		max-height: 100% !important;
+		max-width: 100% !important;
+		aspect-ratio: auto !important;
+		margin: 0 !important;
+		border-radius: 0 !important;
+		border: none !important;
+		overflow: hidden !important;
+	}
+
+	.fogon-container.is-android-pip :deep(.fogon-cover-wrapper button) {
+		display: none !important;
+	}
+
+	.fogon-container.is-android-pip :deep(.fogon-cover-wrapper),
+	.fogon-container.is-android-pip :deep(.fogon-cover-wrapper > div),
+	.fogon-container.is-android-pip :deep(.fogon-cover-wrapper img) {
+		height: 100% !important;
+		width: 100% !important;
+		max-height: 100% !important;
+		max-width: 100% !important;
+		object-fit: cover !important;
 	}
 
 	/* Soporte adaptativo para dispositivos móviles en apaisado / pantallas de altura reducida */

@@ -501,4 +501,28 @@ Dialogue: 0,0:00:20.00,0:00:24.00,Default,,0,0,0,,{\\kf100}Verso {\\kf100}tres
 			shortcutSpy.mockRestore();
 		}
 	});
+
+	it('syncs isAndroidPipMode and html.android-pip class via window.__rockolaSetPipMode', async () => {
+		const androidHost = await import('@/composables/useAndroidHost');
+		const wrapper = mount(App);
+		await wrapper.vm.$nextTick();
+
+		expect(typeof (window as any).__rockolaSetPipMode).toBe('function');
+
+		(window as any).__rockolaSetPipMode(true);
+		await wrapper.vm.$nextTick();
+		expect((androidHost as any).isAndroidPipMode.value).toBe(true);
+		expect(document.documentElement.classList.contains('android-pip')).toBe(true);
+
+		(window as any).__rockolaSetPipMode(false);
+		await wrapper.vm.$nextTick();
+		expect((androidHost as any).isAndroidPipMode.value).toBe(false);
+		expect(document.documentElement.classList.contains('android-pip')).toBe(false);
+
+		(window as any).__rockolaSetPipMode(true);
+		wrapper.unmount();
+		expect((window as any).__rockolaSetPipMode).toBeUndefined();
+		expect((androidHost as any).isAndroidPipMode.value).toBe(false);
+		expect(document.documentElement.classList.contains('android-pip')).toBe(false);
+	});
 });

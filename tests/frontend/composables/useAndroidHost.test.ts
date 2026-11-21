@@ -14,6 +14,8 @@ const { pluginMock, systemBarsMock, state } = vi.hoisted(() => ({
 		setKeepScreenOn: vi.fn(),
 		shareUrl: vi.fn(),
 		consumePendingShortcut: vi.fn(),
+		setFogonState: vi.fn(),
+		enterPipMode: vi.fn(),
 	},
 	systemBarsMock: {
 		hide: vi.fn().mockResolvedValue(undefined),
@@ -300,5 +302,34 @@ describe('useAndroidHost.ts', () => {
 
 		await expect(consumeAndroidPendingShortcut()).resolves.toBe('ar.carpincho.rockola.ACTION_OPEN_FOGON');
 		expect(pluginMock.consumePendingShortcut).toHaveBeenCalledTimes(1);
+	});
+
+	it('setAndroidFogonState and enterAndroidPipMode invoke native plugin only on Android', async () => {
+		const mod = await import('@/composables/useAndroidHost');
+		const setAndroidFogonState = (mod as any).setAndroidFogonState as (active: boolean) => Promise<void>;
+		const enterAndroidPipMode = (mod as any).enterAndroidPipMode as () => Promise<boolean>;
+
+		expect(typeof setAndroidFogonState).toBe('function');
+		expect(typeof enterAndroidPipMode).toBe('function');
+
+		// En web no hacen nada
+		await setAndroidFogonState(true);
+		await expect(enterAndroidPipMode()).resolves.toBe(false);
+		expect(pluginMock.setFogonState).not.toHaveBeenCalled();
+		expect(pluginMock.enterPipMode).not.toHaveBeenCalled();
+
+		// En Android delegan al plugin
+		state.isNative = true;
+		state.platform = 'android';
+		pluginMock.setFogonState.mockResolvedValue({ active: true });
+		pluginMock.enterPipMode.mockResolvedValue({ entered: true });
+
+		await setAndroidFogonState(true);
+		await setAndroidFogonState(false);
+		expect(pluginMock.setFogonState).toHaveBeenNthCalledWith(1, { active: true });
+		expect(pluginMock.setFogonState).toHaveBeenNthCalledWith(2, { active: false });
+
+		await expect(enterAndroidPipMode()).resolves.toBe(true);
+		expect(pluginMock.enterPipMode).toHaveBeenCalledTimes(1);
 	});
 });

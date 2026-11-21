@@ -135,6 +135,10 @@ class RockolaServerPlugin : Plugin() {
             }
         }
         context.startService(intent)
+        val mainActivity = activity as? MainActivity
+        if (mainActivity?.isFogonActive == true) {
+            mainActivity.refreshPipParams()
+        }
         call.resolve(JSObject().apply { put("updated", true) })
     }
 
@@ -155,6 +159,10 @@ class RockolaServerPlugin : Plugin() {
             putExtra(RockolaForegroundService.EXTRA_PAUSED, paused)
         }
         context.startService(intent)
+        val mainActivity = activity as? MainActivity
+        if (mainActivity?.isFogonActive == true) {
+            mainActivity.refreshPipParams()
+        }
         call.resolve(JSObject().apply { put("updated", true) })
     }
 
@@ -237,6 +245,19 @@ class RockolaServerPlugin : Plugin() {
         call.resolve(JSObject().apply {
             put("action", action ?: JSONObject.NULL)
         })
+    }
+
+    @PluginMethod
+    fun setFogonState(call: PluginCall) {
+        val active = call.getBoolean("active") ?: false
+        (activity as? MainActivity)?.setFogonActive(active)
+        call.resolve(JSObject().apply { put("active", active) })
+    }
+
+    @PluginMethod
+    fun enterPipMode(call: PluginCall) {
+        val entered = (activity as? MainActivity)?.enterPipIfSupported() ?: false
+        call.resolve(JSObject().apply { put("entered", entered) })
     }
 
     @PluginMethod

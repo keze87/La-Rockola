@@ -1,12 +1,19 @@
 package ar.carpincho.rockola
 
 import android.Manifest
+import android.app.PendingIntent
+import android.app.PictureInPictureParams
+import android.app.RemoteAction
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.graphics.Color
+import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.Bundle
+import android.util.Rational
 import androidx.activity.OnBackPressedCallback
+import androidx.annotation.RequiresApi
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
@@ -24,6 +31,9 @@ class MainActivity : BridgeActivity() {
 
     companion object {
         private const val REQ_POST_NOTIFICATIONS = 1001
+        private const val REQ_PIP_PREV = 201
+        private const val REQ_PIP_PLAY_PAUSE = 202
+        private const val REQ_PIP_NEXT = 203
         const val ACTION_OPEN_FOGON = "ar.carpincho.rockola.ACTION_OPEN_FOGON"
         const val ACTION_OPEN_QUEUE = "ar.carpincho.rockola.ACTION_OPEN_QUEUE"
 
@@ -35,6 +45,106 @@ class MainActivity : BridgeActivity() {
             pendingShortcutAction = null
             return action
         }
+    }
+
+    @Volatile
+    var isFogonActive: Boolean = false
+        private set
+
+    fun setFogonActive(active: Boolean) {
+        isFogonActive = active
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            refreshPipParams()
+        }
+    }
+
+    fun refreshPipParams() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        if (!packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) return
+        runOnUiThread {
+            try {
+                setPictureInPictureParams(buildPipParams(autoEnter = isFogonActive))
+            } catch (_: Exception) {
+                // Algunos fabricantes bloquean setPictureInPictureParams en estados transitorios
+            }
+        }
+    }
+
+    fun enterPipIfSupported(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
+        if (!packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) return false
+        val params = buildPipParams(autoEnter = isFogonActive)
+        runOnUiThread {
+            try {
+                enterPictureInPictureMode(params)
+            } catch (_: Exception) {
+                // Ignoramos si la actividad no está en primer plano para entrar a PiP
+            }
+        }
+        return true
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun buildPipParams(autoEnter: Boolean): PictureInPictureParams {
+        val builder = PictureInPictureParams.Builder()
+            .setAspectRatio(Rational(1, 1))
+            .setActions(buildPipActions())
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            builder.setAutoEnterEnabled(autoEnter)
+            builder.setSeamlessResizeEnabled(true)
+        }
+        return builder.build()
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun buildPipActions(): List<RemoteAction> {
+        val isPlaying = RockolaForegroundService.isActivelyPlaying
+        val playPauseIconRes = if (isPlaying) {
+            android.R.drawable.ic_media_pause
+        } else {
+            android.R.drawable.ic_media_play
+        }
+        val playPauseLabel = if (isPlaying) "Pausar" else "Reproducir"
+
+        return listOf(
+            createPipAction(
+                iconRes = android.R.drawable.ic_media_previous,
+                title = "Anterior",
+                serviceAction = RockolaForegroundService.ACTION_MEDIA_PREV,
+                requestCode = REQ_PIP_PREV,
+            ),
+            createPipAction(
+                iconRes = playPauseIconRes,
+                title = playPauseLabel,
+                serviceAction = RockolaForegroundService.ACTION_MEDIA_PLAY_PAUSE,
+                requestCode = REQ_PIP_PLAY_PAUSE,
+            ),
+            createPipAction(
+                iconRes = android.R.drawable.ic_media_next,
+                title = "Siguiente",
+                serviceAction = RockolaForegroundService.ACTION_MEDIA_NEXT,
+                requestCode = REQ_PIP_NEXT,
+            ),
+        )
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun createPipAction(
+        iconRes: Int,
+        title: String,
+        serviceAction: String,
+        requestCode: Int,
+    ): RemoteAction {
+        val intent = Intent(this, RockolaForegroundService::class.java).apply {
+            action = serviceAction
+        }
+        val pendingIntent = PendingIntent.getService(
+            this,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        return RemoteAction(Icon.createWithResource(this, iconRes), title, title, pendingIntent)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -64,8 +174,32 @@ class MainActivity : BridgeActivity() {
 
     override fun onPause() {
         super.onPause()
-        if (RockolaForegroundService.isActivelyPlaying) {
+        val inPip = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode
+        if (RockolaForegroundService.isActivelyPlaying || inPip) {
             bridge?.webView?.resumeTimers()
+        }
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (Build.VERSION.SDK_INT in Build.VERSION_CODES.O until Build.VERSION_CODES.S &&
+            isFogonActive &&
+            !isInPictureInPictureMode
+        ) {
+            enterPipIfSupported()
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: Configuration,
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        bridge?.webView?.post {
+            bridge?.webView?.evaluateJavascript(
+                "window.__rockolaSetPipMode && window.__rockolaSetPipMode($isInPictureInPictureMode)",
+                null,
+            )
         }
     }
 

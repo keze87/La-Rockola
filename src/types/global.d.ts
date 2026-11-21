@@ -11,5 +11,6 @@ declare global {
 		__rockolaHandleBack?: () => boolean;
 		__rockolaOpenFogon?: () => void;
 		__rockolaOpenQueue?: () => void;
+		__rockolaSetPipMode?: (active: boolean) => void;
 	}
 }

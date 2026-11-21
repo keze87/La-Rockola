@@ -6,6 +6,7 @@
 		androidServerStatus,
 		consumeAndroidPendingShortcut,
 		initAndroidServer,
+		isAndroidPipMode,
 		isNativeAndroidHost,
 		pickAndApplyMusicFolder,
 	} from './composables/useAndroidHost';
@@ -322,11 +323,20 @@
 		}
 	}
 
+	function handleAndroidPipMode(active: boolean): void {
+		const enabled = Boolean(active);
+		isAndroidPipMode.value = enabled;
+		if (typeof document !== 'undefined') {
+			document.documentElement.classList.toggle('android-pip', enabled);
+		}
+	}
+
 	onMounted(() => {
 		initRouter();
 		window.__rockolaHandleBack = handleAndroidBack;
 		window.__rockolaOpenFogon = openFogonFromAndroid;
 		window.__rockolaOpenQueue = openQueueFromAndroid;
+		window.__rockolaSetPipMode = handleAndroidPipMode;
 		if (isNativeAndroidHost()) {
 			void consumeAndroidPendingShortcut().then(applyShortcutAction);
 			initAndroidServer().finally(() => {
@@ -340,6 +350,10 @@
 	});
 
 	onUnmounted(() => {
+		if (typeof document !== 'undefined') {
+			document.documentElement.classList.remove('android-pip');
+		}
+		isAndroidPipMode.value = false;
 		if (typeof window === 'undefined') return;
 		if (window.__rockolaHandleBack === handleAndroidBack) {
 			delete window.__rockolaHandleBack;
@@ -349,6 +363,9 @@
 		}
 		if (window.__rockolaOpenQueue === openQueueFromAndroid) {
 			delete window.__rockolaOpenQueue;
+		}
+		if (window.__rockolaSetPipMode === handleAndroidPipMode) {
+			delete window.__rockolaSetPipMode;
 		}
 	});
 </script>
