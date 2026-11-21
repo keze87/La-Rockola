@@ -9,7 +9,9 @@ import android.content.pm.ServiceInfo
 import android.media.AudioManager
 import android.net.wifi.WifiManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.PowerManager
 import android.util.Log
 import androidx.core.content.ContextCompat
@@ -85,6 +87,21 @@ class RockolaForegroundService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private var serverThread: Thread? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val demoteRunnable = Runnable {
+        if (!isActivelyPlaying) {
+            demoteToBackground()
+        }
+    }
+
+    private fun scheduleDemoteToBackground() {
+        mainHandler.removeCallbacks(demoteRunnable)
+        mainHandler.postDelayed(demoteRunnable, 30_000L)
+    }
+
+    private fun cancelScheduledDemote() {
+        mainHandler.removeCallbacks(demoteRunnable)
+    }
 
     private lateinit var commandClient: LocalCommandClient
     private lateinit var pythonHost: EmbeddedPythonHost
@@ -158,9 +175,10 @@ class RockolaForegroundService : Service() {
                 isActivelyPlaying = isRunning && !paused
                 notificationManager.updatePosition(durationMs, positionMs, paused)
                 if (isActivelyPlaying) {
+                    cancelScheduledDemote()
                     acquireLocks()
                 } else {
-                    demoteToBackground()
+                    scheduleDemoteToBackground()
                 }
                 return START_NOT_STICKY
             }
@@ -190,10 +208,11 @@ class RockolaForegroundService : Service() {
                     isPauseAfter = isPauseAfter,
                 )
                 if (isActivelyPlaying) {
+                    cancelScheduledDemote()
                     acquireLocks()
                     startForegroundWithNotification(artist)
                 } else {
-                    demoteToBackground()
+                    scheduleDemoteToBackground()
                 }
                 return START_NOT_STICKY
             }

@@ -200,7 +200,11 @@ class RockolaServerPlugin : Plugin() {
                 putExtra(RockolaForegroundService.EXTRA_TRACK_PATH, trackPath)
             }
         }
-        context.startService(intent)
+        if (!paused) {
+            ContextCompat.startForegroundService(context, intent)
+        } else {
+            context.startService(intent)
+        }
         val mainActivity = activity as? MainActivity
         if (mainActivity?.isFogonActive == true) {
             mainActivity.refreshPipParams()
@@ -224,7 +228,11 @@ class RockolaServerPlugin : Plugin() {
             putExtra(RockolaForegroundService.EXTRA_POSITION_MS, (positionSec * 1000.0).toLong().coerceAtLeast(0L))
             putExtra(RockolaForegroundService.EXTRA_PAUSED, paused)
         }
-        context.startService(intent)
+        if (!paused) {
+            ContextCompat.startForegroundService(context, intent)
+        } else {
+            context.startService(intent)
+        }
         val mainActivity = activity as? MainActivity
         if (mainActivity?.isFogonActive == true) {
             mainActivity.refreshPipParams()
