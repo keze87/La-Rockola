@@ -1,10 +1,11 @@
 import { _startLocalPlayer, _stopLocalPlayer, applyRemoteSeek } from './useLocalPlayback';
+import { applyLibrarySort } from './useLibrary';
 import { useToasts } from './useToasts';
 import { getWsUrl } from '../useApi';
 import { useWebSocket } from '@vueuse/core';
 import {
+	activeSort,
 	currentTrackPath,
-	currentTracks,
 	defaultSort,
 	djBaraEnabled,
 	djMode,
@@ -16,6 +17,7 @@ import {
 	hasFfmpeg,
 	hasLocalPlayer,
 	hasMpv,
+	hasUserSelectedSort,
 	historyState,
 	isDraggingSeek,
 	isPaused,
@@ -40,6 +42,7 @@ import {
 	topPlayedState,
 	trackMap,
 	urlMetadata,
+	urlParams,
 	volume,
 	weatherLocation,
 } from './state';
@@ -149,7 +152,17 @@ export function useSocket() {
 						if (state.url_metadata) urlMetadata.value = state.url_metadata;
 						if (state.volume !== undefined) volume.value = state.volume;
 						if (state.weather_location !== undefined) weatherLocation.value = state.weather_location;
-						if (state.default_sort !== undefined) defaultSort.value = state.default_sort;
+						if (state.default_sort !== undefined) {
+							defaultSort.value = state.default_sort;
+							if (
+								!hasUserSelectedSort.value &&
+								urlParams.vibra === undefined &&
+								activeSort.value !== state.default_sort &&
+								!state.library
+							) {
+								applyLibrarySort(state.default_sort, false);
+							}
+						}
 
 						if (state.time_pos !== undefined) {
 							timePos.value = state.time_pos;
@@ -173,10 +186,17 @@ export function useSocket() {
 
 						if (state.library) {
 							originalTracks.value = [...state.library];
-							currentTracks.value = [...state.library];
 							const map: Record<string, Track> = {};
 							state.library.forEach((t) => (map[t.path] = t));
 							trackMap.value = map;
+							if (urlParams.vibra !== undefined) {
+								applyLibrarySort('shuffle', true);
+							} else {
+								const targetSort = hasUserSelectedSort.value
+									? activeSort.value
+									: defaultSort.value || 'time';
+								applyLibrarySort(targetSort, true);
+							}
 						}
 					}
 				} catch (e) {

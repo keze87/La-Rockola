@@ -32,6 +32,7 @@ export {
 	defaultSort,
 	favorites,
 	filteredTracks,
+	hasUserSelectedSort,
 	isScanning,
 	librarySearchQuery,
 	originalTracks,

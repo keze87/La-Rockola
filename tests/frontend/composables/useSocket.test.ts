@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useSocket } from '@/composables/player/useSocket';
 import {
+	activeSort,
 	currentTrackPath,
 	currentTracks,
+	defaultSort,
 	djBaraEnabled,
 	djMode,
 	djNextTrack,
@@ -12,6 +14,7 @@ import {
 	hasEdgeTts,
 	hasLocalPlayer,
 	hasMpv,
+	hasUserSelectedSort,
 	historyState,
 	isDraggingSeek,
 	isPaused,
@@ -68,6 +71,9 @@ describe('useSocket.ts', () => {
 		currentTrackPath.value = null;
 		currentTracks.value = [];
 		originalTracks.value = [];
+		activeSort.value = 'time';
+		defaultSort.value = 'time';
+		hasUserSelectedSort.value = false;
 		djBaraEnabled.value = false;
 		djNextTrack.value = null;
 		djSafeModeEnabled.value = false;
@@ -323,5 +329,29 @@ describe('useSocket.ts', () => {
 		expect(scanStatus.value.current).toBe(25);
 		expect(scanStatus.value.total).toBe(100);
 		expect(scanStatus.value.phase).toBe('metadata');
+	});
+
+	it('applies default_sort when state_update delivers library tracks and no manual sort override is active', async () => {
+		const { activeSort, defaultSort } = await import('@/composables/player/state');
+		activeSort.value = 'time';
+		defaultSort.value = 'time';
+
+		const { connectWebSocket } = useSocket();
+		connectWebSocket();
+
+		capturedOptions.onMessage(null, {
+			data: JSON.stringify({
+				type: 'state_update',
+				default_sort: 'artist',
+				library: [
+					{ path: '/m/z.mp3', artist: 'Zambayonny', title: 'B', display_title: 'B', display_artist: 'Z' },
+					{ path: '/m/a.mp3', artist: 'Charly García', title: 'A', display_title: 'A', display_artist: 'C' },
+				],
+			}),
+		});
+
+		expect(defaultSort.value).toBe('artist');
+		expect(activeSort.value).toBe('artist');
+		expect(currentTracks.value.map((t) => t.path)).toEqual(['/m/a.mp3', '/m/z.mp3']);
 	});
 });

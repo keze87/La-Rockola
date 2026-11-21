@@ -7,6 +7,7 @@ import {
 	defaultSort,
 	djMode,
 	filteredTracks,
+	hasUserSelectedSort,
 	isScanning,
 	originalTracks,
 	queueState,
@@ -15,6 +16,57 @@ import {
 	urlParams,
 } from './state';
 import type { Track } from '../../types';
+
+export type SortType = 'time' | 'artist' | 'mood' | 'shuffle';
+
+export function applyLibrarySort(type: SortType, keepSeed: boolean = false): void {
+	activeSort.value = type;
+	const source = originalTracks.value.length > 0 ? originalTracks.value : currentTracks.value;
+
+	if (type === 'time') {
+		delete urlParams.vibra;
+		currentTracks.value = [...source];
+	} else if (type === 'artist') {
+		delete urlParams.vibra;
+		currentTracks.value = [...source].sort((a, b) => {
+			const cmp = (a.artist || '').localeCompare(b.artist || '');
+			return cmp === 0 ? (a.title || '').localeCompare(b.title || '') : cmp;
+		});
+	} else if (type === 'mood') {
+		delete urlParams.vibra;
+		currentTracks.value = [...source].sort((a, b) => {
+			const scoreB = b.mood_score !== undefined ? b.mood_score : (b.bpm ?? 0);
+			const scoreA = a.mood_score !== undefined ? a.mood_score : (a.bpm ?? 0);
+			return scoreB - scoreA;
+		});
+	} else if (type === 'shuffle') {
+		let seed: number;
+		const seedParam = urlParams.vibra;
+
+		if (keepSeed && seedParam !== undefined && !isNaN(parseInt(seedParam))) {
+			seed = parseInt(seedParam);
+		} else {
+			seed = Math.floor(Math.random() * 1000000);
+			urlParams.vibra = seed.toString();
+		}
+
+		// Generador pseudoaleatorio Mulberry32 para un orden aleatorio reproducible
+		let a = seed;
+		const randomFunc = () => {
+			let t = (a += 0x6d2b79f5);
+			t = Math.imul(t ^ (t >>> 15), t | 1);
+			t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+			return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+		};
+
+		const array = [...source];
+		for (let i = array.length - 1; i > 0; i--) {
+			const j = Math.floor(randomFunc() * (i + 1));
+			[array[i], array[j]] = [array[j], array[i]];
+		}
+		currentTracks.value = array;
+	}
+}
 
 // Sincronización singleton a nivel de módulo: se registra exactamente una vez en toda la app
 let syncTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -78,14 +130,15 @@ export function useLibrary() {
 				trackMap.value = map;
 
 				if (data.default_sort) {
-					defaultSort.value = data.default_sort as 'time' | 'artist' | 'mood' | 'shuffle';
+					defaultSort.value = data.default_sort as SortType;
 				}
 
 				if (urlParams.vibra !== undefined) {
-					sortLibrary('shuffle', true);
+					applyLibrarySort('shuffle', true);
+				} else if (hasUserSelectedSort.value) {
+					applyLibrarySort(activeSort.value, true);
 				} else {
-					const targetSort = activeSort.value || defaultSort.value || 'time';
-					sortLibrary(targetSort, false);
+					applyLibrarySort(defaultSort.value || 'time', false);
 				}
 			}
 		} catch (err) {
@@ -96,58 +149,15 @@ export function useLibrary() {
 		}
 	}
 
-	async function saveDefaultSort(sort: 'time' | 'artist' | 'mood' | 'shuffle') {
+	async function saveDefaultSort(sort: SortType) {
 		await api.command('set_default_sort', { sort });
 		defaultSort.value = sort;
+		activeSort.value = sort;
 	}
 
-	function sortLibrary(type: 'time' | 'artist' | 'mood' | 'shuffle', keepSeed: boolean = false) {
-		activeSort.value = type;
-		const source = originalTracks.value.length > 0 ? originalTracks.value : currentTracks.value;
-
-		if (type === 'time') {
-			delete urlParams.vibra;
-			currentTracks.value = [...source];
-		} else if (type === 'artist') {
-			delete urlParams.vibra;
-			currentTracks.value = [...source].sort((a, b) => {
-				const cmp = (a.artist || '').localeCompare(b.artist || '');
-				return cmp === 0 ? (a.title || '').localeCompare(b.title || '') : cmp;
-			});
-		} else if (type === 'mood') {
-			delete urlParams.vibra;
-			currentTracks.value = [...source].sort((a, b) => {
-				const scoreB = b.mood_score !== undefined ? b.mood_score : (b.bpm ?? 0);
-				const scoreA = a.mood_score !== undefined ? a.mood_score : (a.bpm ?? 0);
-				return scoreB - scoreA;
-			});
-		} else if (type === 'shuffle') {
-			let seed: number;
-			const seedParam = urlParams.vibra;
-
-			if (keepSeed && seedParam !== undefined && !isNaN(parseInt(seedParam))) {
-				seed = parseInt(seedParam);
-			} else {
-				seed = Math.floor(Math.random() * 1000000);
-				urlParams.vibra = seed.toString();
-			}
-
-			// Generador pseudoaleatorio Mulberry32 para un orden aleatorio reproducible
-			let a = seed;
-			const randomFunc = () => {
-				let t = (a += 0x6d2b79f5);
-				t = Math.imul(t ^ (t >>> 15), t | 1);
-				t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-				return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-			};
-
-			const array = [...source];
-			for (let i = array.length - 1; i > 0; i--) {
-				const j = Math.floor(randomFunc() * (i + 1));
-				[array[i], array[j]] = [array[j], array[i]];
-			}
-			currentTracks.value = array;
-		}
+	function sortLibrary(type: SortType, keepSeed: boolean = false) {
+		hasUserSelectedSort.value = true;
+		applyLibrarySort(type, keepSeed);
 	}
 
 	if (typeof window !== 'undefined') {
@@ -156,5 +166,13 @@ export function useLibrary() {
 		});
 	}
 
-	return { filteredTracks, getTrackInfo, loadLibrary, queueIndex, saveDefaultSort, sortLibrary };
+	return {
+		applyLibrarySort,
+		filteredTracks,
+		getTrackInfo,
+		loadLibrary,
+		queueIndex,
+		saveDefaultSort,
+		sortLibrary,
+	};
 }

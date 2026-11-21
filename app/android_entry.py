@@ -15,7 +15,6 @@ from app.core.config import (
 	Settings,
 	get_config_path,
 	get_default_music_dir,
-	load_config,
 	save_config,
 	set_settings,
 )
@@ -47,25 +46,20 @@ def configure_android_environment(
 	configure_logging(debug=False, level="INFO")
 
 	config_path = get_config_path()
-	existing_cfg = load_config(config_path)
-	chosen_music = music_dir or existing_cfg.get("music_dir") or get_default_music_dir()
+	file_settings = Settings.from_config_file(config_path)
+	chosen_music = music_dir or file_settings.music_dir or get_default_music_dir()
 	if chosen_music and chosen_music != "~/Music":
 		chosen_music = str(Path(chosen_music).expanduser().resolve())
 
-	settings = Settings(
-		music_dir=chosen_music,
-		music_dir2=existing_cfg.get("music_dir2"),
-		port=port,
-		host=host,
-		open_browser=False,
-		url=existing_cfg.get("url"),
-		weather_location=existing_cfg.get("weather_location", Settings().weather_location),
-		log_level=existing_cfg.get("log_level", "INFO"),
-		better_lyrics_token=existing_cfg.get("better_lyrics_token"),
-		default_sort=existing_cfg.get("default_sort", "time"),
-		radio_mode_enabled=existing_cfg.get("radio_mode_enabled", True),
-		mpv_visible=False,
-		no_mpv=True,
+	settings = file_settings.model_copy(
+		update={
+			"music_dir": chosen_music,
+			"port": port,
+			"host": host,
+			"open_browser": False,
+			"mpv_visible": False,
+			"no_mpv": True,
+		}
 	)
 	set_settings(settings)
 	save_config(config_path, settings.model_dump())
@@ -85,6 +79,9 @@ def configure_android_environment(
 		radio_mode_enabled=settings.radio_mode_enabled,
 		mpv_visible=False,
 		use_mpv=False,
+		dj_carpincho_enabled=settings.dj_carpincho_enabled,
+		dj_mode=settings.dj_mode,
+		volume=settings.volume,
 	)
 	orch.server_host = host
 	orch.server_port = port

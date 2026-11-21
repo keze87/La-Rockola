@@ -490,6 +490,23 @@ describe('ControlsTab.vue', () => {
 		expect(activeTab.value).toBe('library');
 	});
 
+	it('shows a visible indicator on the saved defaultSort button', () => {
+		activeSort.value = 'time';
+		defaultSort.value = 'shuffle';
+		const wrapper = mount(ControlsTab);
+
+		const shuffleBtn = wrapper
+			.findAllComponents({ name: 'PillButton' })
+			.find((b) => b.text().includes('Mezcladito'));
+		expect(shuffleBtn).toBeDefined();
+		expect(shuffleBtn!.find('[aria-label="Orden por defecto"]').exists()).toBe(true);
+
+		const timeBtn = wrapper
+			.findAllComponents({ name: 'PillButton' })
+			.find((b) => b.text().includes('Como llegaron'));
+		expect(timeBtn!.find('[aria-label="Orden por defecto"]').exists()).toBe(false);
+	});
+
 	it('hides MPV controls and shows local listen button when hasMpv is false', async () => {
 		hasMpv.value = false;
 		hasLocalPlayer.value = false;

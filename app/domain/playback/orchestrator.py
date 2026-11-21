@@ -72,6 +72,9 @@ class PlaybackOrchestrator:
 		radio_mode_enabled: bool = True,
 		mpv_visible: bool = True,
 		use_mpv: bool = True,
+		dj_carpincho_enabled: bool = False,
+		dj_mode: str = "shuffle",
+		volume: int = 100,
 	) -> None:
 		self.db_path = Path(db_path) if db_path else get_default_db_path()
 		self.initial_dir = initial_dir
@@ -83,6 +86,8 @@ class PlaybackOrchestrator:
 		# Componentes de dominio delegados
 		self.queue_manager = QueueManager()
 		self.dj_selector = DjBaraSelector()
+		self.dj_selector.enabled = bool(dj_carpincho_enabled)
+		self.dj_selector.mode = dj_mode
 
 		# Repositorios de persistencia
 		self.favorites_repo = FavoritesRepository(db_path=self.db_path)
@@ -125,7 +130,7 @@ class PlaybackOrchestrator:
 		self.last_seek_drift: float | None = None
 		self.last_track_change: float = 0.0
 		self.last_broadcast: dict[str, Any] = {}
-		self.volume: int = 100
+		self.volume: int = max(0, min(110, int(volume)))
 		self.server_muted: bool = False
 
 		# Modo Radio

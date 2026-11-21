@@ -24,31 +24,46 @@ def test_default_config_values():
 	assert DEFAULT_CONFIG["default_sort"] == "time"
 	assert DEFAULT_CONFIG["radio_mode_enabled"] is True
 	assert DEFAULT_CONFIG["mpv_visible"] is True
+	assert DEFAULT_CONFIG["dj_carpincho_enabled"] is False
+	assert DEFAULT_CONFIG["dj_mode"] == "shuffle"
+	assert DEFAULT_CONFIG["volume"] == 100
 
 	settings = Settings()
 	assert settings.default_sort == "time"
 	assert settings.radio_mode_enabled is True
 	assert settings.mpv_visible is True
+	assert settings.dj_carpincho_enabled is False
+	assert settings.dj_mode == "shuffle"
+	assert settings.volume == 100
 
 
 def test_orchestrator_initializes_with_config_defaults(tmp_path: Path):
-	"""El orquestador toma default_sort, radio_mode_enabled y mpv_visible de los argumentos/config."""
+	"""El orquestador toma default_sort, radio_mode_enabled, mpv_visible, dj y volume de la config."""
 	db_file = tmp_path / "test_rockola.db"
 	orchestrator = PlaybackOrchestrator(
 		db_path=db_file,
 		default_sort="artist",
 		radio_mode_enabled=False,
 		mpv_visible=False,
+		dj_carpincho_enabled=True,
+		dj_mode="favorites",
+		volume=65,
 	)
 
 	assert orchestrator.default_sort == "artist"
 	assert orchestrator.radio_mode_enabled is False
 	assert orchestrator.mpv_visible is False
+	assert orchestrator.dj_carpincho_enabled is True
+	assert orchestrator.dj_mode == "favorites"
+	assert orchestrator.volume == 65
 
 	state_dict = orchestrator.get_full_state_dict()
 	assert state_dict["default_sort"] == "artist"
 	assert state_dict["radio_mode_enabled"] is False
 	assert state_dict["mpv_visible"] is False
+	assert state_dict["dj_carpincho_enabled"] is True
+	assert state_dict["dj_mode"] == "favorites"
+	assert state_dict["volume"] == 65
 
 
 @pytest.mark.asyncio
@@ -178,3 +193,53 @@ async def test_cmd_set_default_sort_ignores_invalid_value(tmp_path: Path):
 
 	assert orchestrator.default_sort == "time"
 	assert json.loads(config_file.read_text(encoding="utf-8"))["default_sort"] == "time"
+
+
+@pytest.mark.asyncio
+async def test_dj_volume_and_weather_commands_persist_to_config(tmp_path: Path):
+	"""Los comandos de DJ Bara, modo DJ, volumen y ubicación del clima deben guardarse en rockola_config.json."""
+	config_file = tmp_path / "rockola_config.json"
+	config_file.write_text("{}", encoding="utf-8")
+
+	db_file = tmp_path / "cmd_persist.db"
+	from app.infrastructure.db.connection import init_db
+
+	init_db(db_file)
+	orchestrator = PlaybackOrchestrator(db_path=db_file, open_browser=False, use_mpv=False)
+
+	with patch("app.core.config.get_config_path", return_value=config_file):
+		await COMMAND_HANDLERS["toggle_dj_carpincho"](
+			orchestrator, CommandRequest(cmd="toggle_dj_carpincho", state=True), None
+		)
+		assert orchestrator.dj_carpincho_enabled is True
+
+		await COMMAND_HANDLERS["toggle_dj_carpincho"](
+			orchestrator, CommandRequest(cmd="toggle_dj_carpincho", state=False), None
+		)
+		assert orchestrator.dj_carpincho_enabled is False
+
+		await COMMAND_HANDLERS["toggle_dj_carpincho"](orchestrator, CommandRequest(cmd="toggle_dj_carpincho"), None)
+		assert orchestrator.dj_carpincho_enabled is True
+
+		await COMMAND_HANDLERS["set_dj_mode"](orchestrator, CommandRequest(cmd="set_dj_mode", mode="library"), None)
+		await COMMAND_HANDLERS["set_volume"](orchestrator, CommandRequest(cmd="set_volume", vollevel=72), None)
+		await COMMAND_HANDLERS["vol_down"](orchestrator, CommandRequest(cmd="vol_down"), None)
+		await COMMAND_HANDLERS["set_weather_location"](
+			orchestrator, CommandRequest(cmd="set_weather_location", location="Tafí del Valle"), None
+		)
+
+	saved = json.loads(config_file.read_text(encoding="utf-8"))
+	assert saved["dj_carpincho_enabled"] is True
+	assert saved["dj_mode"] == "library"
+	assert saved["volume"] == 67
+	assert saved["weather_location"] == "Tafí del Valle"
+
+
+def test_settings_from_config_sanitizes_invalid_dj_mode_and_volume(tmp_path: Path):
+	"""Settings.from_config_file sanea dj_mode y volume corruptos sin fallar en el arranque."""
+	config_file = tmp_path / "rockola_config.json"
+	config_file.write_text(json.dumps({"dj_mode": "invalido", "volume": 999}), encoding="utf-8")
+
+	settings = Settings.from_config_file(config_file)
+	assert settings.dj_mode == "shuffle"
+	assert settings.volume == 110

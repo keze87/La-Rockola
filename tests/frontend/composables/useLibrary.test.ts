@@ -4,6 +4,7 @@ import {
 	activeSort,
 	currentTracks,
 	defaultSort,
+	hasUserSelectedSort,
 	originalTracks,
 	trackMap,
 	urlParams,
@@ -23,6 +24,7 @@ describe('useLibrary', () => {
 		trackMap.value = {};
 		activeSort.value = 'time';
 		defaultSort.value = 'time';
+		hasUserSelectedSort.value = false;
 		delete urlParams.vibra;
 	});
 
@@ -114,5 +116,43 @@ describe('useLibrary', () => {
 				body: JSON.stringify({ cmd: 'set_default_sort', sort: 'mood' }),
 			})
 		);
+	});
+
+	it('applies backend default_sort (artist/shuffle) on loadLibrary when user has not overridden sort manually', async () => {
+		activeSort.value = 'time';
+		defaultSort.value = 'time';
+		global.fetch = vi.fn().mockResolvedValue({
+			ok: true,
+			json: () => Promise.resolve({ status: 'ok', data: [...sampleTracks], default_sort: 'artist' }),
+		} as unknown as Response);
+
+		const { loadLibrary } = useLibrary();
+		await loadLibrary(false);
+
+		expect(defaultSort.value).toBe('artist');
+		expect(activeSort.value).toBe('artist');
+		expect(currentTracks.value.map((t) => t.title)).toEqual([
+			'Demoliendo hoteles',
+			'Nos siguen pegando abajo',
+			'11 y 6',
+		]);
+	});
+
+	it('preserves manual user sort on subsequent scan even when backend default_sort differs', async () => {
+		const { loadLibrary, sortLibrary } = useLibrary();
+		sortLibrary('artist');
+
+		global.fetch = vi.fn().mockResolvedValue({
+			ok: true,
+			json: () => Promise.resolve({ status: 'ok', data: [...sampleTracks], default_sort: 'time' }),
+		} as unknown as Response);
+
+		await loadLibrary(true);
+		expect(activeSort.value).toBe('artist');
+		expect(currentTracks.value.map((t) => t.title)).toEqual([
+			'Demoliendo hoteles',
+			'Nos siguen pegando abajo',
+			'11 y 6',
+		]);
 	});
 });

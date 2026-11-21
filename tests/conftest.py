@@ -79,11 +79,12 @@ def mock_mpv():
 
 
 @pytest.fixture
-def clean_state(temp_db: Path, mock_mpv):
+def clean_state(temp_db: Path, mock_mpv, monkeypatch: pytest.MonkeyPatch):
 	"""Provee una instancia limpia y aislada de PlaybackOrchestrator."""
 	from app.core.container import get_container
 	from app.domain.playback.orchestrator import PlaybackOrchestrator
 
+	monkeypatch.setenv("ROCKOLA_DATA_DIR", str(temp_db.parent))
 	container = get_container()
 	orig_orch = container.orchestrator
 	orch = PlaybackOrchestrator(db_path=temp_db, open_browser=False)

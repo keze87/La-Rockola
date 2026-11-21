@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 from app.api.websocket import ConnectionManager
 from app.cli import entrypoint
 from app.core import config as config_mod
+from app.core import container as container_mod
 from app.core.container import AppContainer, set_container
 from app.domain.playback.orchestrator import PlaybackOrchestrator
 from app.infrastructure.binaries import manager as bin_manager
@@ -244,6 +245,18 @@ def test_android_entry_configuration_and_lifecycle(tmp_path: Path, monkeypatch: 
 	music_dir = tmp_path / "android_music"
 	(dist_dir / "assets").mkdir(parents=True)
 	music_dir.mkdir()
+	data_dir.mkdir(parents=True)
+	(data_dir / "rockola_config.json").write_text(
+		json.dumps(
+			{
+				"default_sort": "shuffle",
+				"dj_carpincho_enabled": True,
+				"dj_mode": "favorites",
+				"volume": 65,
+			}
+		),
+		encoding="utf-8",
+	)
 
 	info = android_entry.configure_android_environment(
 		data_dir=str(data_dir),
@@ -256,6 +269,11 @@ def test_android_entry_configuration_and_lifecycle(tmp_path: Path, monkeypatch: 
 	assert info["music_dir"] == str(music_dir.resolve())
 	assert config_mod.get_settings().no_mpv is True
 	assert config_mod.get_settings().open_browser is False
+	orch = container_mod.get_container().ensure_orchestrator()
+	assert orch.default_sort == "shuffle"
+	assert orch.dj_carpincho_enabled is True
+	assert orch.dj_mode == "favorites"
+	assert orch.volume == 65
 
 	created_servers: list[SimpleNamespace] = []
 

@@ -23,6 +23,7 @@ export const urlMetadata = ref<Record<string, Track>>({});
 export const urlParams = useUrlSearchParams<{ vibra?: string }>('history');
 export const activeSort = ref<'time' | 'artist' | 'mood' | 'shuffle'>('time');
 export const defaultSort = ref<'time' | 'artist' | 'mood' | 'shuffle'>('time');
+export const hasUserSelectedSort = ref<boolean>(false);
 export const showFavoritesOnly = ref<boolean>(false);
 
 export const fuse = computed(() => {
@@ -53,6 +54,7 @@ export function useLibraryStore() {
 		defaultSort,
 		favorites,
 		filteredTracks,
+		hasUserSelectedSort,
 		isScanning,
 		scanStatus,
 		showFavoritesOnly,

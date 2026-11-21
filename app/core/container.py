@@ -36,6 +36,9 @@ class AppContainer:
 				radio_mode_enabled=self.settings.radio_mode_enabled,
 				mpv_visible=self.settings.mpv_visible,
 				use_mpv=not self.settings.no_mpv,
+				dj_carpincho_enabled=self.settings.dj_carpincho_enabled,
+				dj_mode=self.settings.dj_mode,
+				volume=self.settings.volume,
 			)
 		return self.orchestrator
 

@@ -12,7 +12,7 @@ import os
 import sys
 import threading
 from pathlib import Path
-from typing import Any, Literal, get_args
+from typing import Any, Literal, TypeAlias, get_args
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -21,7 +21,8 @@ logger = logging.getLogger("RockolaCarpincho")
 
 DEFAULT_WEATHER_LOCATION = "San Miguel de Tucumán"
 
-SortMode = Literal["time", "artist", "mood", "shuffle"]
+SortMode: TypeAlias = Literal["time", "artist", "mood", "shuffle"]
+DjModeConfig: TypeAlias = Literal["shuffle", "favorites", "library"]
 
 _ANDROID_MUSIC_CANDIDATES = (
 	"~/storage/music",
@@ -54,6 +55,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
 	"better_lyrics_token": None,
 	"default_sort": "time",
 	"radio_mode_enabled": True,
+	"dj_carpincho_enabled": False,
+	"dj_mode": "shuffle",
+	"volume": 100,
 	"mpv_visible": True,
 	"no_mpv": False,
 }
@@ -210,6 +214,9 @@ class Settings(BaseSettings):
 	better_lyrics_token: str | None = Field(default=None, description="Token JWT para la API de BetterLyrics")
 	default_sort: SortMode = Field(default="time", description="Modo de ordenamiento por defecto de la biblioteca")
 	radio_mode_enabled: bool = Field(default=True, description="Locutor de radio habilitado por defecto")
+	dj_carpincho_enabled: bool = Field(default=False, description="DJ Bara activado al iniciar")
+	dj_mode: DjModeConfig = Field(default="shuffle", description="Modo de selección automática de DJ Bara")
+	volume: int = Field(default=100, ge=0, le=110, description="Volumen de reproducción (0-110)")
 	mpv_visible: bool = Field(default=True, description="Mostrar ventana de MPV por defecto")
 	no_mpv: bool = Field(default=False, description="Ejecutar el servidor sin MPV (modo solo cliente web/Android)")
 
@@ -220,6 +227,17 @@ class Settings(BaseSettings):
 		if loaded.get("default_sort") not in get_args(SortMode):
 			logger.warning(f"default_sort inválido ({loaded.get('default_sort')!r}) en la config, uso 'time'")
 			loaded["default_sort"] = DEFAULT_CONFIG["default_sort"]
+		if loaded.get("dj_mode") not in get_args(DjModeConfig):
+			logger.warning(f"dj_mode inválido ({loaded.get('dj_mode')!r}) en la config, uso 'shuffle'")
+			loaded["dj_mode"] = DEFAULT_CONFIG["dj_mode"]
+		raw_vol = loaded.get("volume", DEFAULT_CONFIG["volume"])
+		if isinstance(raw_vol, bool) or not isinstance(raw_vol, (int, float)):
+			try:
+				raw_vol = int(raw_vol)
+			except (TypeError, ValueError):
+				logger.warning(f"volume inválido ({raw_vol!r}) en la config, uso 100")
+				raw_vol = DEFAULT_CONFIG["volume"]
+		loaded["volume"] = max(0, min(110, int(raw_vol)))
 		return cls(**loaded)
 
 	def merge_cli_args(self, args: argparse.Namespace) -> Settings:

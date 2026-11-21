@@ -59,15 +59,18 @@ async def _cmd_clear_queue(state: PlaybackOrchestrator, _req: CommandRequest, _m
 
 async def _cmd_vol_up(state: PlaybackOrchestrator, _req: CommandRequest, _mgr: Any) -> None:
 	await state.set_volume(state.volume + 5)
+	config_mod.update_config({"volume": state.volume})
 
 
 async def _cmd_vol_down(state: PlaybackOrchestrator, _req: CommandRequest, _mgr: Any) -> None:
 	await state.set_volume(state.volume - 5)
+	config_mod.update_config({"volume": state.volume})
 
 
 async def _cmd_set_volume(state: PlaybackOrchestrator, req: CommandRequest, _mgr: Any) -> None:
 	if req.vollevel is not None:
 		await state.set_volume(req.vollevel)
+		config_mod.update_config({"volume": state.volume})
 
 
 async def _cmd_set_mute(state: PlaybackOrchestrator, req: CommandRequest, mgr: Any) -> None:
@@ -149,8 +152,12 @@ async def _cmd_toggle_favorite(state: PlaybackOrchestrator, req: CommandRequest,
 				logger.error(f"Error guardando favorito: {e}")
 
 
-async def _cmd_toggle_dj_carpincho(state: PlaybackOrchestrator, _req: CommandRequest, _mgr: Any) -> None:
-	state.dj_carpincho_enabled = not state.dj_carpincho_enabled
+async def _cmd_toggle_dj_carpincho(state: PlaybackOrchestrator, req: CommandRequest, _mgr: Any) -> None:
+	if req.state is not None:
+		state.dj_carpincho_enabled = bool(req.state)
+	else:
+		state.dj_carpincho_enabled = not state.dj_carpincho_enabled
+	config_mod.update_config({"dj_carpincho_enabled": state.dj_carpincho_enabled})
 	logger.info(f"DJ Bara cambiado a: {state.dj_carpincho_enabled}")
 	if state.dj_carpincho_enabled and not state.current_track:
 		await state.play_next(skipped_by_user=True)
@@ -161,12 +168,14 @@ async def _cmd_toggle_dj_carpincho(state: PlaybackOrchestrator, _req: CommandReq
 async def _cmd_toggle_dj_safe_mode(state: PlaybackOrchestrator, req: CommandRequest, _mgr: Any) -> None:
 	if req.state is not None:
 		state.dj_safe_mode = req.state
+		config_mod.update_config({"dj_mode": state.dj_mode})
 		state._pick_dj_next()
 
 
 async def _cmd_set_dj_mode(state: PlaybackOrchestrator, req: CommandRequest, _mgr: Any) -> None:
 	if req.mode is not None:
 		state.dj_mode = req.mode
+		config_mod.update_config({"dj_mode": state.dj_mode})
 	if req.paths is not None:
 		state.dj_library_order = req.paths
 	logger.info(f"Modo DJ Bara cambiado a: {state.dj_mode}")
@@ -204,10 +213,7 @@ async def _cmd_set_weather_location(state: PlaybackOrchestrator, req: CommandReq
 	if req.location and isinstance(req.location, str):
 		new_loc = req.location.strip()
 		state.weather_location = new_loc
-		cfg_path = config_mod.get_config_path()
-		cfg = config_mod.load_config(cfg_path)
-		cfg["weather_location"] = new_loc
-		config_mod.save_config(cfg_path, cfg)
+		config_mod.update_config({"weather_location": new_loc})
 		reset_weather_cache()
 		logger.info(f"Ubicación del clima actualizada a: {state.weather_location}")
 

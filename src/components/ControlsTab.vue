@@ -77,6 +77,19 @@
 		return defaultSort.value === type ? 'Guardado como orden por defecto' : 'Ordenar sólo por esta sesión';
 	}
 
+	const sortOptions = computed(() => [
+		{ id: 'time' as const, icon: 'access_time', label: 'Como llegaron', visible: true, disabled: false },
+		{ id: 'artist' as const, icon: 'person', label: 'Por el que canta', visible: true, disabled: false },
+		{
+			id: 'mood' as const,
+			icon: 'bolt',
+			label: scanStatus.value?.is_analyzing_mood ? 'Sintonizando vibra...' : 'Más Manija',
+			visible: hasFfmpeg.value,
+			disabled: Boolean(scanStatus.value?.is_analyzing_mood),
+		},
+		{ id: 'shuffle' as const, icon: 'shuffle', label: 'Mezcladito (A lo loco)', visible: true, disabled: false },
+	]);
+
 	const isWeatherModalOpen = ref(false);
 
 	let lastVolSent = 0;
@@ -266,62 +279,39 @@
 		</div>
 
 		<!-- Opciones de ordenamiento -->
-		<div class="text-carpincho-secondary mb-4 text-center text-sm font-bold tracking-wider uppercase">
+		<div class="text-carpincho-secondary mb-1 text-center text-sm font-bold tracking-wider uppercase">
 			<i class="material-icons mr-1 align-middle">sort</i>
 			Acomodando la gilada
 		</div>
+		<p class="text-carpincho-muted mb-4 text-center text-xs">
+			Tocá de nuevo el orden activo para fijarlo por defecto
+		</p>
 
 		<div class="mb-8 flex flex-wrap justify-center gap-3">
-			<PillButton
-				icon="access_time"
-				:title="getSortTooltip('time')"
-				:color-class="
-					activeSort === 'time'
-						? 'bg-amber-700 hover:bg-amber-600 ring-2 ring-carpincho-warning'
-						: 'bg-gray-800 hover:bg-gray-700'
-				"
-				@click="handleSortClick('time')"
-			>
-				Como llegaron
-			</PillButton>
-			<PillButton
-				icon="person"
-				:title="getSortTooltip('artist')"
-				:color-class="
-					activeSort === 'artist'
-						? 'bg-amber-700 hover:bg-amber-600 ring-2 ring-carpincho-warning'
-						: 'bg-gray-800 hover:bg-gray-700'
-				"
-				@click="handleSortClick('artist')"
-			>
-				Por el que canta
-			</PillButton>
-			<PillButton
-				v-if="hasFfmpeg"
-				icon="bolt"
-				:title="getSortTooltip('mood')"
-				:disabled="Boolean(scanStatus?.is_analyzing_mood)"
-				:color-class="
-					activeSort === 'mood'
-						? 'bg-amber-700 hover:bg-amber-600 ring-2 ring-carpincho-warning'
-						: 'bg-gray-800 hover:bg-gray-700'
-				"
-				@click="handleSortClick('mood')"
-			>
-				{{ scanStatus?.is_analyzing_mood ? 'Sintonizando vibra...' : 'Más Manija' }}
-			</PillButton>
-			<PillButton
-				icon="shuffle"
-				:title="getSortTooltip('shuffle')"
-				:color-class="
-					activeSort === 'shuffle'
-						? 'bg-amber-700 hover:bg-amber-600 ring-2 ring-carpincho-warning'
-						: 'bg-gray-800 hover:bg-gray-700'
-				"
-				@click="handleSortClick('shuffle')"
-			>
-				Mezcladito (A lo loco)
-			</PillButton>
+			<template v-for="opt in sortOptions" :key="opt.id">
+				<PillButton
+					v-if="opt.visible"
+					:icon="opt.icon"
+					:title="getSortTooltip(opt.id)"
+					:disabled="opt.disabled"
+					:color-class="
+						activeSort === opt.id
+							? 'bg-amber-700 hover:bg-amber-600 ring-2 ring-carpincho-warning'
+							: 'bg-gray-800 hover:bg-gray-700'
+					"
+					@click="handleSortClick(opt.id)"
+				>
+					{{ opt.label }}
+					<i
+						v-if="defaultSort === opt.id"
+						class="material-icons text-carpincho-warning ml-1 align-middle text-sm"
+						aria-label="Orden por defecto"
+						title="Guardado como orden por defecto"
+					>
+						push_pin
+					</i>
+				</PillButton>
+			</template>
 		</div>
 
 		<!-- Interruptores de opciones -->
