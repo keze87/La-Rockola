@@ -133,6 +133,11 @@ def stage_android_assets(root_dir: Path) -> Path:
 	py_dest.parent.mkdir(parents=True, exist_ok=True)
 	shutil.copytree(app_src, py_dest, ignore=IGNORE_PATTERNS)
 
+	fortunes_src = root_dir / "scripts" / "fortune-es"
+	if fortunes_src.is_dir():
+		fortunes_dest = py_dest / "domain" / "radio" / "fortune-es"
+		shutil.copytree(fortunes_src, fortunes_dest, ignore=IGNORE_PATTERNS, dirs_exist_ok=True)
+
 	# Capacitor ya copia dist/ a assets/public/; removemos assets/dist legado si quedó de antes
 	stale_dist = android_dir / "app" / "src" / "main" / "assets" / "dist"
 	if stale_dist.exists():

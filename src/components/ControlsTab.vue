@@ -435,6 +435,20 @@
 			@update:model-value="toggleRadioMode"
 		/>
 
+		<div v-if="showRemoteServerSelector" class="mx-auto mb-6 max-w-md">
+			<ToggleRow
+				:model-value="Boolean(activeRemoteServerUrl) || isRemoteServerModalOpen"
+				title="Conectar a otro servidor"
+				:description="
+					activeRemoteServerUrl
+						? `Conectado a ${activeRemoteServerUrl}`
+						: 'Usando este teléfono (servidor local)'
+				"
+				icon="dns"
+				@update:model-value="handleToggleRemoteServerSwitch"
+			/>
+		</div>
+
 		<ToggleRow
 			:model-value="djBaraEnabled"
 			icon="shuffle"
@@ -531,20 +545,6 @@
 			<p v-if="androidServerStatus.musicDir" class="text-carpincho-muted max-w-xs truncate text-xs">
 				Carpeta activa: {{ androidServerStatus.musicDir }}
 			</p>
-		</div>
-
-		<div v-if="showRemoteServerSelector" class="mx-auto mb-6 max-w-md">
-			<ToggleRow
-				:model-value="Boolean(activeRemoteServerUrl) || isRemoteServerModalOpen"
-				title="Conectar a otro servidor"
-				:description="
-					activeRemoteServerUrl
-						? `Conectado a ${activeRemoteServerUrl}`
-						: 'Usando este teléfono (servidor local)'
-				"
-				icon="dns"
-				@update:model-value="handleToggleRemoteServerSwitch"
-			/>
 		</div>
 
 		<div

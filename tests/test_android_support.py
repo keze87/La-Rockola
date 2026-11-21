@@ -330,6 +330,8 @@ def test_build_android_stage_assets(tmp_path: Path) -> None:
 	(tmp_path / "app" / "__pycache__").mkdir(parents=True)
 	(tmp_path / "app" / "__pycache__" / "x.pyc").write_bytes(b"pyc")
 	(tmp_path / "app" / "android_entry.py").write_text("# entry\n", encoding="utf-8")
+	(tmp_path / "scripts" / "fortune-es").mkdir(parents=True)
+	(tmp_path / "scripts" / "fortune-es" / "rockola.fortunes").write_text("Tomate un mate\n%\n", encoding="utf-8")
 	(tmp_path / "dist").mkdir()
 	(tmp_path / "dist" / "index.html").write_text("<html></html>", encoding="utf-8")
 	stale_dist = tmp_path / "android" / "app" / "src" / "main" / "assets" / "dist"
@@ -338,6 +340,7 @@ def test_build_android_stage_assets(tmp_path: Path) -> None:
 
 	py_dest = stage_android_assets(tmp_path)
 	assert (py_dest / "android_entry.py").is_file()
+	assert (py_dest / "domain" / "radio" / "fortune-es" / "rockola.fortunes").is_file()
 	assert not (py_dest / "__pycache__").exists()
 	assert not stale_dist.exists()
 
