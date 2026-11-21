@@ -96,7 +96,14 @@ export function playWhenBuffered(
 }
 
 export function prefetchNextTrack(path: string | null | undefined): void {
-	if (!path || path.startsWith('http')) return;
+	if (
+		!path ||
+		path.startsWith('http') ||
+		path.includes('radio_announcement') ||
+		path.includes('radio_pregenerated')
+	) {
+		return;
+	}
 	const url = apiUrl('/stream?path=' + encodeURIComponent(path));
 	// Precarga los primeros 4MB del próximo tema para que arranque al toque
 	fetch(url, { headers: { Range: 'bytes=0-4194303' } }).catch(() => {});

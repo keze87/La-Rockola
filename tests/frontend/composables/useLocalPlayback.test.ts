@@ -6,6 +6,7 @@ import {
 	_stopLocalPlayer,
 	applyRemoteSeek,
 } from '@/composables/player/useLocalPlayback';
+import { prefetchNextTrack } from '@/audio/localAudioEngine';
 import {
 	volume,
 	serverMuted,
@@ -240,5 +241,21 @@ describe('useLocalPlayback', () => {
 
 		// El seek bar debe empezar en el principio (0) y no quedar clavado en el final (210)
 		expect(localTimePos.value).toBe(0);
+	});
+
+	it('appends a cache-busting timestamp when loading radio announcement streams and skips prefetching them', () => {
+		const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+		global.fetch = fetchMock;
+		useLocalPlayback();
+
+		_startLocalPlayer('/music/normal_song.flac');
+		expect(mockAudioEl.src).not.toContain('&t=');
+
+		_startLocalPlayer('/data/user/0/ar.carpincho.rockola/cache/radio_announcement.mp3');
+		expect(mockAudioEl.src).toMatch(/\/stream\?path=.*&t=\d+/);
+
+		fetchMock.mockClear();
+		prefetchNextTrack('/data/user/0/ar.carpincho.rockola/cache/radio_announcement.mp3');
+		expect(fetchMock).not.toHaveBeenCalled();
 	});
 });

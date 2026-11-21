@@ -210,11 +210,14 @@ async def stream_audio(path: str = Query(..., description="Ruta de la canción a
 	if not os.path.exists(path):
 		return Response(status_code=404)
 
+	cache_control = (
+		"no-store, no-cache, must-revalidate" if is_radio else "public, max-age=86400, stale-while-revalidate=172800"
+	)
 	return FileResponse(
 		path,
 		headers={
 			"Accept-Ranges": "bytes",
-			"Cache-Control": "public, max-age=86400, stale-while-revalidate=172800",
+			"Cache-Control": cache_control,
 		},
 	)
 

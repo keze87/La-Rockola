@@ -173,23 +173,7 @@ def resolve_subtitle_path(
 
 def get_carpincho_cover_path() -> Path | None:
 	"""Localiza la portada de la radio (radio.jpg prioritario sobre favicon.png)."""
-	root = Path(__file__).resolve().parents[3]
-	candidates = [
-		root / "public" / "radio.jpg",
-		root / "dist" / "radio.jpg",
-		root / "public" / "favicon.png",
-		root / "dist" / "favicon.png",
-	]
-	if hasattr(sys, "_MEIPASS"):
-		candidates.insert(0, Path(sys._MEIPASS) / "public" / "radio.jpg")
-		candidates.insert(1, Path(sys._MEIPASS) / "dist" / "radio.jpg")
-		candidates.insert(2, Path(sys._MEIPASS) / "public" / "favicon.png")
-		candidates.insert(3, Path(sys._MEIPASS) / "dist" / "favicon.png")
-
-	for c in candidates:
-		if c.is_file():
-			return c
-	return None
+	return get_static_asset_path("radio.jpg") or get_static_asset_path("favicon.png")
 
 
 def embed_cover_art_in_mp3(

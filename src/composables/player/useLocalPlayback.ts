@@ -68,7 +68,8 @@ export function _startLocalPlayer(path: string) {
 		mediaControls.ended.value = false;
 	}
 	lp.preload = 'auto';
-	lp.src = apiUrl('/stream?path=' + encodeURIComponent(path));
+	const isRadioStream = path.includes('radio_announcement') || path.includes('radio_pregenerated');
+	lp.src = apiUrl('/stream?path=' + encodeURIComponent(path) + (isRadioStream ? `&t=${Date.now()}` : ''));
 	lp.currentTime = 0;
 	lp.volume = Number.isFinite(volume.value) ? Math.max(0, Math.min(1, volume.value / 100)) : 1;
 	lp.muted = Boolean(serverMuted.value);

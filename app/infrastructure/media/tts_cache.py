@@ -33,6 +33,7 @@ _DUMMY_MP3_DATA: bytes = (
 )
 
 ALLOW_TEST_DUMMY_AUDIO: bool = False
+_TIME_SENSITIVE_CATEGORIES = frozenset({"hora", "minuto", "clima"})
 
 try:
 	import edge_tts
@@ -395,7 +396,7 @@ async def synthesize_segment(
 
 	if allow_cache:
 		cached_blob = get_cached_audio(category, voice, text, db_path=db_path)
-		if not cached_blob:
+		if not cached_blob and category not in _TIME_SENSITIVE_CATEGORIES:
 			cached_blob = get_cached_audio_by_category(category, voice, db_path=db_path)
 		if cached_blob:
 			logger.info(f"⚡ [TTS Cache Fallback HIT] '{category}' ({voice}): '{text}'")

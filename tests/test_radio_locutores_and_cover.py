@@ -143,3 +143,89 @@ class TestRadioLocutoresAndCover:
 		assert res_empty.status_code == 200
 		assert "no-cache" in res_empty.headers.get("cache-control", "")
 		assert res_empty.headers.get("content-type", "").startswith("application/json")
+
+	def test_08_cover_path_honors_rockola_dist_dir_for_android(self, tmp_path: Path, monkeypatch) -> None:
+		"""Verifica que get_carpincho_cover_path resuelva radio.jpg desde ROCKOLA_DIST_DIR (Android/Chaquopy)."""
+		custom_dist = tmp_path / "android_dist"
+		custom_dist.mkdir()
+		radio_img = custom_dist / "radio.jpg"
+		radio_img.write_bytes(b"\xff\xd8\xff\xe0dummy")
+		monkeypatch.setenv("ROCKOLA_DIST_DIR", str(custom_dist))
+
+		cover_p = get_carpincho_cover_path()
+		assert cover_p == radio_img.resolve()
+
+	def test_09_stream_disables_http_cache_for_radio_announcements(self, tmp_path: Path) -> None:
+		"""Verifica que /stream devuelva no-store/no-cache para locuciones radiales y conserve caché para canciones."""
+		from starlette.testclient import TestClient
+
+		from app.main import app
+
+		db_path = tmp_path / "stream_cache.db"
+		init_db(db_path)
+		orch = PlaybackOrchestrator(db_path=db_path)
+		radio_file = tmp_path / "radio_announcement.mp3"
+		radio_file.write_bytes(b"ID3\x03\x00\x00\x00\x00\x00\x00")
+		song_file = tmp_path / "tema.mp3"
+		song_file.write_bytes(b"ID3\x03\x00\x00\x00\x00\x00\x00")
+		orch.radio_announcement_path = str(radio_file)
+		orch.tracks_cache = [{"path": str(song_file)}]
+		orch.path_to_id = {str(song_file): 1}
+		set_container(AppContainer(db_path=db_path, orchestrator=orch))
+
+		client = TestClient(app)
+		radio_res = client.get(f"/stream?path={radio_file}")
+		assert radio_res.status_code == 200
+		radio_cc = radio_res.headers.get("cache-control", "")
+		assert "no-store" in radio_cc
+		assert "no-cache" in radio_cc
+
+		song_res = client.get(f"/stream?path={song_file}")
+		assert song_res.status_code == 200
+		assert "max-age=86400" in song_res.headers.get("cache-control", "")
+
+	async def test_10_tts_cache_does_not_reuse_stale_category_for_time_or_weather(self, tmp_path: Path) -> None:
+		"""No debe reciclar audios de caché por categoría para hora, minuto o clima cuando falla Edge-TTS."""
+		from unittest.mock import patch
+
+		import pytest
+
+		from app.infrastructure.media import tts_cache
+
+		db_path = tmp_path / "tts_stale.db"
+		tts_cache.init_tts_cache_db(db_path)
+		# Guardamos entradas previas para otra hora/minuto/temperatura
+		tts_cache.save_cached_audio("hora", "es-AR-TomasNeural", "Son las nueve", b"ID3hour_old", db_path=db_path)
+		tts_cache.save_cached_audio("minuto", "es-AR-TomasNeural", "y cinco", b"ID3min_old", db_path=db_path)
+		tts_cache.save_cached_audio(
+			"clima", "es-AR-TomasNeural", "Hacen quince grados", b"ID3temp_old", db_path=db_path
+		)
+		# Una categoría estática sí debe seguir pudiendo usar salvavidas
+		tts_cache.save_cached_audio("fortuna", "es-AR-TomasNeural", "Vieja fortuna", b"ID3fortuna", db_path=db_path)
+
+		with (
+			patch.object(tts_cache, "HAS_EDGE_TTS", False),
+			patch.object(tts_cache, "edge_tts", None),
+		):
+			for cat, fresh_text in [
+				("hora", "Son las diez"),
+				("minuto", "menos veinte"),
+				("clima", "Hacen veintidós grados"),
+			]:
+				with pytest.raises(RuntimeError):
+					await tts_cache.synthesize_segment(
+						text=fresh_text,
+						voice="es-AR-TomasNeural",
+						category=cat,
+						allow_cache=True,
+						db_path=db_path,
+					)
+
+			fortuna_bytes = await tts_cache.synthesize_segment(
+				text="Nueva fortuna no cacheada",
+				voice="es-AR-TomasNeural",
+				category="fortuna",
+				allow_cache=True,
+				db_path=db_path,
+			)
+			assert fortuna_bytes == b"ID3fortuna"
