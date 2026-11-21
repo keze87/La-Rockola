@@ -209,4 +209,40 @@ describe('LibraryTab.vue', () => {
 		expect(spinettaRow?.props('hasPlayed')).toBe(true);
 		expect(charlyRow?.props('hasPlayed')).toBe(false);
 	});
+
+	it('triggers loadLibrary(true) on pull-to-refresh when scrolled at top, and ignores when scrolled down or scanning', async () => {
+		const fetchMock = vi.fn().mockResolvedValue({
+			ok: true,
+			json: () => Promise.resolve({ status: 'ok', data: mockTracks }),
+		} as unknown as Response);
+		global.fetch = fetchMock;
+
+		const wrapper = mount(LibraryTab);
+		const section = wrapper.find('section.tab-content');
+		expect(section.exists()).toBe(true);
+
+		// Con scrollTop > 0 no debe disparar pull-to-refresh
+		Object.defineProperty(section.element, 'scrollTop', { configurable: true, writable: true, value: 120 });
+		await section.trigger('touchstart', { touches: [{ clientX: 150, clientY: 100 }] });
+		await section.trigger('touchmove', { touches: [{ clientX: 150, clientY: 240 }] });
+		await section.trigger('touchend');
+		expect(fetchMock).not.toHaveBeenCalledWith('/scan');
+
+		// En la cima pero con escaneo en curso tampoco dispara
+		Object.defineProperty(section.element, 'scrollTop', { configurable: true, writable: true, value: 0 });
+		isScanning.value = true;
+		await section.trigger('touchstart', { touches: [{ clientX: 150, clientY: 100 }] });
+		await section.trigger('touchmove', { touches: [{ clientX: 150, clientY: 240 }] });
+		await section.trigger('touchend');
+		expect(fetchMock).not.toHaveBeenCalledWith('/scan');
+
+		// En la cima y sin escaneo activo, pull >= umbral dispara /scan
+		isScanning.value = false;
+		await section.trigger('touchstart', { touches: [{ clientX: 150, clientY: 100 }] });
+		await section.trigger('touchmove', { touches: [{ clientX: 152, clientY: 240 }] });
+		expect(wrapper.find('.library-pull-indicator').exists()).toBe(true);
+		await section.trigger('touchend');
+
+		expect(fetchMock).toHaveBeenCalledWith('/scan');
+	});
 });

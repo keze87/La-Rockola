@@ -10,6 +10,7 @@ const { pluginMock, systemBarsMock, state } = vi.hoisted(() => ({
 		requestStoragePermission: vi.fn(),
 		updateMediaNotification: vi.fn(),
 		updateMediaPosition: vi.fn(),
+		hapticFeedback: vi.fn(),
 	},
 	systemBarsMock: {
 		hide: vi.fn().mockResolvedValue(undefined),
@@ -225,5 +226,27 @@ describe('useAndroidHost.ts', () => {
 		await expect(toggleAndroidFullscreen()).resolves.toBe(false);
 		expect(systemBarsMock.show).toHaveBeenCalledTimes(1);
 		expect(isAndroidFullscreen.value).toBe(false);
+	});
+
+	it('triggerAndroidHaptic calls native RockolaServer.hapticFeedback only on Android', async () => {
+		const mod = await import('@/composables/useAndroidHost');
+		const triggerAndroidHaptic = (mod as any).triggerAndroidHaptic as (heavy?: boolean) => Promise<void> | void;
+
+		expect(typeof triggerAndroidHaptic).toBe('function');
+
+		// En web no hace nada
+		await triggerAndroidHaptic(false);
+		expect(pluginMock.hapticFeedback).not.toHaveBeenCalled();
+
+		// En Android nativo invoca feedback nativo liviano o pesado
+		state.isNative = true;
+		state.platform = 'android';
+		pluginMock.hapticFeedback.mockResolvedValue({ performed: true });
+
+		await triggerAndroidHaptic(false);
+		await triggerAndroidHaptic(true);
+
+		expect(pluginMock.hapticFeedback).toHaveBeenNthCalledWith(1, { heavy: false });
+		expect(pluginMock.hapticFeedback).toHaveBeenNthCalledWith(2, { heavy: true });
 	});
 });

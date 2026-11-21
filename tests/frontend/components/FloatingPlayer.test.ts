@@ -1,11 +1,21 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import FloatingPlayer from '@/components/FloatingPlayer.vue';
-import { currentTrackPath, isPaused, queueState, trackMap, djBaraEnabled } from '@/composables/player/state';
+import {
+	activeTab,
+	currentTrackPath,
+	isFogonMode,
+	isPaused,
+	queueState,
+	trackMap,
+	djBaraEnabled,
+} from '@/composables/player/state';
 
 describe('FloatingPlayer.vue', () => {
 	beforeEach(() => {
+		activeTab.value = 'library';
 		currentTrackPath.value = null;
+		isFogonMode.value = false;
 		isPaused.value = false;
 		queueState.value = [];
 		trackMap.value = {};
@@ -72,5 +82,60 @@ describe('FloatingPlayer.vue', () => {
 				body: JSON.stringify({ cmd: 'skip' }),
 			})
 		);
+	});
+
+	it('supports horizontal swipe left/right to skip/prev and swipe up to open FogonMode', async () => {
+		const fetchMock = vi.fn().mockResolvedValue({
+			ok: true,
+			json: () => Promise.resolve({ status: 'ok' }),
+		} as unknown as Response);
+		global.fetch = fetchMock;
+
+		const wrapper = mount(FloatingPlayer);
+		const playerEl = wrapper.find('.floating-player');
+		expect(playerEl.exists()).toBe(true);
+
+		// Swipe izquierda -> skip
+		await playerEl.trigger('touchstart', { touches: [{ clientX: 220, clientY: 100 }] });
+		await playerEl.trigger('touchmove', { touches: [{ clientX: 130, clientY: 104 }] });
+		await playerEl.trigger('touchend');
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({
+				method: 'POST',
+				body: JSON.stringify({ cmd: 'skip' }),
+			})
+		);
+
+		fetchMock.mockClear();
+
+		// Swipe derecha -> prev
+		await playerEl.trigger('touchstart', { touches: [{ clientX: 100, clientY: 100 }] });
+		await playerEl.trigger('touchmove', { touches: [{ clientX: 190, clientY: 103 }] });
+		await playerEl.trigger('touchend');
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({
+				method: 'POST',
+				body: JSON.stringify({ cmd: 'prev' }),
+			})
+		);
+
+		fetchMock.mockClear();
+
+		// Swipe arriba -> abre Modo Fogón sin ir a la cola
+		await playerEl.trigger('touchstart', { touches: [{ clientX: 150, clientY: 200 }] });
+		await playerEl.trigger('touchmove', { touches: [{ clientX: 152, clientY: 120 }] });
+		await playerEl.trigger('touchend');
+		expect(isFogonMode.value).toBe(true);
+		expect(activeTab.value).toBe('library');
+
+		// Movimiento corto no dispara nada
+		isFogonMode.value = false;
+		await playerEl.trigger('touchstart', { touches: [{ clientX: 150, clientY: 150 }] });
+		await playerEl.trigger('touchmove', { touches: [{ clientX: 130, clientY: 145 }] });
+		await playerEl.trigger('touchend');
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(isFogonMode.value).toBe(false);
 	});
 });

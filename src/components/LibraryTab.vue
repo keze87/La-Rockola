@@ -1,5 +1,5 @@
 <script setup lang="ts">
-	import { computed, watch } from 'vue';
+	import { computed, ref, watch } from 'vue';
 	import { useVirtualList } from '@vueuse/core';
 	import { usePlayer } from '../composables/usePlayer';
 	import LibraryRow from './ui/LibraryRow.vue';
@@ -15,10 +15,86 @@
 		isPaused,
 		isScanning,
 		librarySearchQuery: searchQuery,
+		loadLibrary,
 		queueIndex,
 		scanStatus,
 		showFavoritesOnly,
 	} = usePlayer();
+
+	// Pull-to-refresh cuando el listado está bien arriba
+	const PULL_THRESHOLD = 64;
+	const MAX_PULL_PX = 108;
+	const pullDistance = ref(0);
+	const isPulling = ref(false);
+	let pullStartX = 0;
+	let pullStartY = 0;
+	let pullAxis: 'vertical' | 'horizontal' | null = null;
+
+	function resetPull() {
+		isPulling.value = false;
+		pullDistance.value = 0;
+		pullAxis = null;
+	}
+
+	function onPullTouchStart(e: TouchEvent) {
+		const section = e.currentTarget as HTMLElement | null;
+		const target = e.target as HTMLElement | null;
+		if (!section || section.scrollTop > 0) return;
+		if (isScanning.value || scanStatus.value?.is_analyzing_mood) return;
+		if (target?.closest('input, textarea')) return;
+
+		const touch = e.touches[0];
+		if (!touch) return;
+		pullStartX = touch.clientX;
+		pullStartY = touch.clientY;
+		pullAxis = null;
+		isPulling.value = true;
+		pullDistance.value = 0;
+	}
+
+	function onPullTouchMove(e: TouchEvent) {
+		if (!isPulling.value) return;
+		const section = e.currentTarget as HTMLElement | null;
+		if (section && section.scrollTop > 0) {
+			resetPull();
+			return;
+		}
+		const touch = e.touches[0];
+		if (!touch) return;
+
+		const dx = touch.clientX - pullStartX;
+		const dy = touch.clientY - pullStartY;
+
+		if (!pullAxis && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+			if (Math.abs(dx) > Math.abs(dy)) {
+				// Es un swipe horizontal de pestañas: soltamos el pull para no interferir
+				resetPull();
+				return;
+			}
+			pullAxis = dy > 0 ? 'vertical' : null;
+			if (!pullAxis) {
+				resetPull();
+				return;
+			}
+		}
+
+		if (pullAxis === 'vertical') {
+			pullDistance.value = Math.max(0, Math.min(MAX_PULL_PX, Math.round(dy * 0.6)));
+			if (pullDistance.value > 0 && e.cancelable) {
+				e.preventDefault();
+			}
+		}
+	}
+
+	function onPullTouchEnd() {
+		if (!isPulling.value) return;
+		const ready = pullDistance.value >= PULL_THRESHOLD;
+		resetPull();
+		if (ready && !isScanning.value && !scanStatus.value?.is_analyzing_mood) {
+			haptic();
+			void loadLibrary(true);
+		}
+	}
 
 	// Conjunto de temas que ya sonaron en la sesión para lookup O(1)
 	const historyPathsSet = computed(() => new Set(historyState.value));
@@ -63,7 +139,28 @@
 		v-bind="containerProps"
 		class="tab-content bg-carpincho-bg relative h-full overflow-y-auto"
 		@scroll.passive="onTabScroll"
+		@touchstart.passive="onPullTouchStart"
+		@touchmove="onPullTouchMove"
+		@touchend="onPullTouchEnd"
+		@touchcancel="resetPull"
 	>
+		<!-- Indicador pull-to-refresh -->
+		<div
+			v-if="pullDistance > 0"
+			class="library-pull-indicator bg-carpincho-panel/90 text-carpincho-warning flex items-center justify-center gap-2 overflow-hidden text-xs font-bold transition-[height] duration-150"
+			:style="{ height: pullDistance + 'px' }"
+		>
+			<i
+				class="material-icons text-base transition-transform duration-150"
+				:class="{ 'animate-spin': pullDistance >= PULL_THRESHOLD }"
+			>
+				refresh
+			</i>
+			<span>
+				{{ pullDistance >= PULL_THRESHOLD ? 'Soltá para re-escanear 🧉' : 'Deslizá para actualizar...' }}
+			</span>
+		</div>
+
 		<!-- Encabezado fijo con buscador y filtros -->
 		<div class="bg-carpincho-bg sticky top-0 z-20 flex items-center gap-2 px-4 py-3 shadow-md">
 			<button

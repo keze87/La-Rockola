@@ -51,6 +51,7 @@ export interface RockolaServerPlugin {
 	requestStoragePermission(): Promise<{ granted: boolean }>;
 	updateMediaNotification(options: MediaNotificationPayload): Promise<{ updated: boolean }>;
 	updateMediaPosition(options: MediaPositionPayload): Promise<{ updated: boolean }>;
+	hapticFeedback(options?: { heavy?: boolean }): Promise<{ performed: boolean }>;
 }
 
 const RockolaServer = registerPlugin<RockolaServerPlugin>('RockolaServer');
@@ -68,6 +69,13 @@ export const isAndroidFullscreen = ref<boolean>(false);
 
 export function isNativeAndroidHost(): boolean {
 	return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
+}
+
+export function triggerAndroidHaptic(heavy = false): void {
+	if (!isNativeAndroidHost()) return;
+	void RockolaServer.hapticFeedback({ heavy }).catch(() => {
+		// Fallamos silenciosamente si el puente nativo todavía no está listo
+	});
 }
 
 export async function toggleAndroidFullscreen(): Promise<boolean> {

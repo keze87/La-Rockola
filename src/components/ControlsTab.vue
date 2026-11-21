@@ -274,7 +274,7 @@
 				{{ volIcon }}
 			</i>
 			<div
-				class="group flex h-8 w-full cursor-pointer touch-none items-center"
+				class="no-tab-swipe group flex h-8 w-full cursor-pointer touch-none items-center"
 				:class="{ 'opacity-50': serverMuted }"
 				@pointerdown="startVol"
 				@pointermove="moveVol"

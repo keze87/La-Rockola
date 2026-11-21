@@ -55,8 +55,15 @@
 	left: 0;
 	right: 0;
 	bottom: 0;
+	flex-grow: 1;
+	min-height: 0;
 	overflow-y: auto;
+	overscroll-behavior-y: contain;
 	padding-bottom: calc(100px + var(--rockola-safe-bottom)) !important;
+	--scrollbar-thumb: var(--color-carpincho-border);
+	--scrollbar-track: var(--color-carpincho-panel);
+	scrollbar-width: thin;
+	scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
 
 /* Utilidades para la transición fade entre pestañas */
@@ -138,6 +145,11 @@
 	bottom: calc(100px + var(--rockola-safe-bottom)) !important;
 }
 
+html,
+body {
+	overscroll-behavior-y: contain;
+}
+
 body {
 	height: 100dvh;
 	margin: 0;
@@ -145,6 +157,16 @@ body {
 	flex-direction: column;
 	overflow: hidden;
 	background-color: var(--color-carpincho-bg);
+	-webkit-tap-highlight-color: transparent;
+	-webkit-touch-callout: none;
+	user-select: none;
+}
+
+input,
+textarea,
+[contenteditable='true'] {
+	user-select: text;
+	-webkit-touch-callout: default;
 }
 
 #app {
@@ -155,25 +177,40 @@ body {
 	position: relative;
 }
 
-.tab-content {
-	overflow-y: auto;
-	flex-grow: 1;
-	min-height: 0;
-	padding-bottom: calc(100px + var(--rockola-safe-bottom)) !important;
+/* Fallback legacy para motores WebKit/Blink sin scrollbar-color estándar */
+@supports not (scrollbar-color: auto) {
+	.tab-content {
+		scrollbar-width: auto;
+	}
+
+	.tab-content::-webkit-scrollbar,
+	::-webkit-scrollbar {
+		width: 6px;
+		height: 6px;
+	}
+
+	.tab-content::-webkit-scrollbar-track,
+	::-webkit-scrollbar-track {
+		background: var(--scrollbar-track, var(--color-carpincho-panel));
+	}
+
+	.tab-content::-webkit-scrollbar-thumb,
+	::-webkit-scrollbar-thumb {
+		background: var(--scrollbar-thumb, var(--color-carpincho-border));
+		border-radius: 4px;
+	}
 }
 
-/* Ocultar scrollbars en escritorio */
-::-webkit-scrollbar {
-	width: 6px;
-}
+/* En pantallas táctiles ocultamos las barras de scroll de escritorio */
+@media (pointer: coarse) {
+	.tab-content {
+		scrollbar-width: none;
+	}
 
-::-webkit-scrollbar-track {
-	background: var(--color-carpincho-panel);
-}
-
-::-webkit-scrollbar-thumb {
-	background: var(--color-carpincho-border);
-	border-radius: 4px;
+	.tab-content::-webkit-scrollbar,
+	::-webkit-scrollbar {
+		display: none;
+	}
 }
 
 /* Letras (Lyrics) Animation */

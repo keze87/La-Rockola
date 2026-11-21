@@ -233,6 +233,75 @@
 		return false;
 	}
 
+	// Swipe horizontal entre pestañas sin interferir con filas de cola ni sliders
+	const TAB_SWIPE_MIN_PX = 72;
+	let tabTouchStartX = 0;
+	let tabTouchStartY = 0;
+	let tabTouchLastX = 0;
+	let tabSwipeAxis: 'horizontal' | 'vertical' | null = null;
+	let tabSwipeTracking = false;
+
+	function resetTabSwipe() {
+		tabSwipeTracking = false;
+		tabSwipeAxis = null;
+	}
+
+	function onTabContentTouchStart(e: TouchEvent) {
+		if (e.touches.length !== 1) {
+			resetTabSwipe();
+			return;
+		}
+		const target = e.target as HTMLElement | null;
+		if (
+			target?.closest(
+				'[data-queue-index], [data-history-path], input, textarea, [role="slider"], .drag-slider, .no-tab-swipe'
+			)
+		) {
+			resetTabSwipe();
+			return;
+		}
+		const touch = e.touches[0];
+		tabTouchStartX = touch.clientX;
+		tabTouchStartY = touch.clientY;
+		tabTouchLastX = touch.clientX;
+		tabSwipeAxis = null;
+		tabSwipeTracking = true;
+	}
+
+	function onTabContentTouchMove(e: TouchEvent) {
+		if (!tabSwipeTracking || e.touches.length !== 1) return;
+		const touch = e.touches[0];
+		tabTouchLastX = touch.clientX;
+		const dx = touch.clientX - tabTouchStartX;
+		const dy = touch.clientY - tabTouchStartY;
+
+		if (!tabSwipeAxis && (Math.abs(dx) > 12 || Math.abs(dy) > 12)) {
+			tabSwipeAxis = Math.abs(dx) > Math.abs(dy) * 1.5 ? 'horizontal' : 'vertical';
+			if (tabSwipeAxis === 'vertical') {
+				resetTabSwipe();
+			}
+		}
+	}
+
+	function onTabContentTouchEnd() {
+		if (!tabSwipeTracking || tabSwipeAxis !== 'horizontal') {
+			resetTabSwipe();
+			return;
+		}
+		const dx = tabTouchLastX - tabTouchStartX;
+		resetTabSwipe();
+
+		if (Math.abs(dx) < TAB_SWIPE_MIN_PX) return;
+		const currentIdx = tabs.findIndex((t) => t.id === activeTab.value);
+		if (currentIdx === -1) return;
+
+		const nextIdx = dx < 0 ? currentIdx + 1 : currentIdx - 1;
+		if (nextIdx >= 0 && nextIdx < tabs.length) {
+			switchTab(tabs[nextIdx].id);
+			haptic();
+		}
+	}
+
 	onMounted(() => {
 		initRouter();
 		window.__rockolaHandleBack = handleAndroidBack;
@@ -451,7 +520,13 @@
 
 		<!-- CONTENIDO DE PESTAÑAS -->
 		<!-- Ojo: Usamos v-show para mantener los componentes vivos en el DOM y no perder la posición de scroll ni el estado local al cambiar de pestaña -->
-		<div class="relative min-h-0 w-full flex-1 overflow-hidden">
+		<div
+			class="tab-swipe-container relative min-h-0 w-full flex-1 overflow-hidden"
+			@touchstart.passive="onTabContentTouchStart"
+			@touchmove.passive="onTabContentTouchMove"
+			@touchend="onTabContentTouchEnd"
+			@touchcancel="resetTabSwipe"
+		>
 			<Transition name="tab-fade">
 				<LibraryTab v-show="activeTab === 'library'" />
 			</Transition>

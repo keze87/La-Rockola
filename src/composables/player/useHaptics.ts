@@ -1,9 +1,14 @@
 import { useVibrate } from '@vueuse/core';
+import { isNativeAndroidHost, triggerAndroidHaptic } from '../useAndroidHost';
 
 const { vibrate } = useVibrate();
 
 export function useHaptics() {
 	function haptic(heavy: boolean = false) {
+		if (isNativeAndroidHost()) {
+			triggerAndroidHaptic(heavy);
+			return;
+		}
 		if ('vibrate' in navigator && typeof navigator.vibrate === 'function') {
 			vibrate(heavy ? [10, 30, 20] : 10);
 			return;

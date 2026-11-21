@@ -114,4 +114,37 @@ describe('useHaptics.ts', () => {
 		const { haptic } = useHaptics();
 		expect(() => haptic(false)).not.toThrow();
 	});
+
+	it('uses native Android haptic feedback without falling back to AudioContext or navigator.vibrate on Android', async () => {
+		const androidHost = await import('@/composables/useAndroidHost');
+		const isNativeSpy = vi.spyOn(androidHost, 'isNativeAndroidHost').mockReturnValue(true);
+		const nativeHapticSpy = vi.spyOn(androidHost as any, 'triggerAndroidHaptic').mockImplementation(() => {});
+
+		vi.stubGlobal('navigator', {
+			...navigator,
+			vibrate: undefined,
+		});
+
+		const audioCtorSpy = vi.fn();
+		window.AudioContext = class {
+			constructor() {
+				audioCtorSpy();
+				return {} as any;
+			}
+		} as any;
+
+		try {
+			const { haptic } = useHaptics();
+			haptic(false);
+			haptic(true);
+
+			expect(nativeHapticSpy).toHaveBeenNthCalledWith(1, false);
+			expect(nativeHapticSpy).toHaveBeenNthCalledWith(2, true);
+			expect(mockVibrate).not.toHaveBeenCalled();
+			expect(audioCtorSpy).not.toHaveBeenCalled();
+		} finally {
+			isNativeSpy.mockRestore();
+			nativeHapticSpy.mockRestore();
+		}
+	});
 });

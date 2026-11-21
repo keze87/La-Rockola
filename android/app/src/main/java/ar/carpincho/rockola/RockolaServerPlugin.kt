@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.Settings
+import android.view.HapticFeedbackConstants
 import androidx.activity.result.ActivityResult
 import androidx.core.content.ContextCompat
 import com.getcapacitor.JSObject
@@ -159,6 +160,29 @@ class RockolaServerPlugin : Plugin() {
     @PluginMethod
     fun hasStoragePermission(call: PluginCall) {
         call.resolve(JSObject().apply { put("granted", hasFullStorageAccess()) })
+    }
+
+    @PluginMethod
+    fun hapticFeedback(call: PluginCall) {
+        val heavy = call.getBoolean("heavy") ?: false
+        val webView = bridge?.webView
+        if (webView == null) {
+            call.resolve(JSObject().apply { put("performed", false) })
+            return
+        }
+        val constant = if (heavy) {
+            HapticFeedbackConstants.LONG_PRESS
+        } else {
+            HapticFeedbackConstants.CLOCK_TICK
+        }
+        webView.post {
+            @Suppress("DEPRECATION")
+            val performed = webView.performHapticFeedback(
+                constant,
+                HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING,
+            )
+            call.resolve(JSObject().apply { put("performed", performed) })
+        }
     }
 
     @PluginMethod

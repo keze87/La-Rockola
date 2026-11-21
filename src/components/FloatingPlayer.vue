@@ -1,10 +1,10 @@
 <script setup lang="ts">
-	import { computed } from 'vue';
+	import { computed, ref } from 'vue';
 	import { useCover } from '../composables/useCover';
 	import { usePlaybackControls } from '../composables/usePlaybackControls';
 	import { usePlayer } from '../composables/usePlayer';
 
-	const { skip, pause } = usePlaybackControls();
+	const { skip, prev, pause } = usePlaybackControls();
 
 	const {
 		currentTrackPath,
@@ -12,6 +12,7 @@
 		djNextTrack,
 		getTrackInfo,
 		haptic,
+		isFogonMode,
 		isPlaying,
 		isSynthesizingRadio,
 		pauseAfterPath,
@@ -48,7 +49,100 @@
 
 	const { coverUrl, onCoverError } = useCover(upNextPath, { size: 512 });
 
+	// Gestos táctiles del reproductor flotante: izquierda -> siguiente, derecha -> anterior, arriba -> Modo Fogón
+	const SWIPE_X_THRESHOLD = 56;
+	const SWIPE_UP_THRESHOLD = 48;
+	const AXIS_LOCK_PX = 10;
+
+	const swipeOffsetX = ref(0);
+	const swipeOffsetY = ref(0);
+	const isSwiping = ref(false);
+	let touchStartX = 0;
+	let touchStartY = 0;
+	let swipeAxis: 'horizontal' | 'vertical' | 'ignored' | null = null;
+	let suppressNextClick = false;
+
+	const swipeStyle = computed(() => {
+		if (swipeOffsetX.value === 0 && swipeOffsetY.value === 0) return undefined;
+		return {
+			transform: `translate3d(${Math.round(swipeOffsetX.value)}px, ${Math.round(swipeOffsetY.value)}px, 0)`,
+			transition: isSwiping.value ? 'none' : undefined,
+		};
+	});
+
+	function resetSwipe() {
+		swipeOffsetX.value = 0;
+		swipeOffsetY.value = 0;
+		isSwiping.value = false;
+		swipeAxis = null;
+	}
+
+	function onTouchStart(e: TouchEvent) {
+		const touch = e.touches[0];
+		if (!touch) return;
+		touchStartX = touch.clientX;
+		touchStartY = touch.clientY;
+		isSwiping.value = true;
+		swipeAxis = null;
+		swipeOffsetX.value = 0;
+		swipeOffsetY.value = 0;
+	}
+
+	function onTouchMove(e: TouchEvent) {
+		if (!isSwiping.value) return;
+		const touch = e.touches[0];
+		if (!touch) return;
+		const dx = touch.clientX - touchStartX;
+		const dy = touch.clientY - touchStartY;
+
+		if (!swipeAxis && (Math.abs(dx) > AXIS_LOCK_PX || Math.abs(dy) > AXIS_LOCK_PX)) {
+			if (Math.abs(dx) >= Math.abs(dy)) {
+				swipeAxis = 'horizontal';
+			} else if (dy < 0) {
+				swipeAxis = 'vertical';
+			} else {
+				swipeAxis = 'ignored';
+			}
+		}
+
+		if (swipeAxis === 'horizontal') {
+			swipeOffsetX.value = Math.max(-110, Math.min(110, dx));
+			swipeOffsetY.value = 0;
+			if (e.cancelable) e.preventDefault();
+		} else if (swipeAxis === 'vertical') {
+			swipeOffsetY.value = Math.min(0, Math.max(-80, dy));
+			swipeOffsetX.value = 0;
+			if (e.cancelable) e.preventDefault();
+		}
+	}
+
+	function onTouchEnd() {
+		if (!isSwiping.value) return;
+		const axis = swipeAxis;
+		const dx = swipeOffsetX.value;
+		const dy = swipeOffsetY.value;
+		resetSwipe();
+
+		if (axis === 'horizontal' && dx <= -SWIPE_X_THRESHOLD) {
+			suppressNextClick = true;
+			skip();
+			haptic();
+		} else if (axis === 'horizontal' && dx >= SWIPE_X_THRESHOLD) {
+			suppressNextClick = true;
+			prev();
+			haptic();
+		} else if (axis === 'vertical' && dy <= -SWIPE_UP_THRESHOLD) {
+			suppressNextClick = true;
+			isFogonMode.value = true;
+			haptic();
+		}
+	}
+
 	function goToQueue() {
+		if (suppressNextClick) {
+			suppressNextClick = false;
+			return;
+		}
 		switchTab('queue');
 		haptic();
 	}
@@ -56,7 +150,12 @@
 
 <template>
 	<section
-		class="floating-player from-carpincho-panel border-carpincho-border flex items-center justify-between rounded-xl border bg-gradient-to-br to-[#2a2420] p-3 shadow-[0_4px_15px_rgba(0,0,0,0.5)]"
+		class="floating-player from-carpincho-panel border-carpincho-border flex items-center justify-between rounded-xl border bg-gradient-to-br to-[#2a2420] p-3 shadow-[0_4px_15px_rgba(0,0,0,0.5)] transition-transform duration-200"
+		:style="swipeStyle"
+		@touchstart.passive="onTouchStart"
+		@touchmove="onTouchMove"
+		@touchend="onTouchEnd"
+		@touchcancel="resetSwipe"
 	>
 		<div class="flex grow cursor-pointer items-center overflow-hidden" @click="goToQueue">
 			<div
