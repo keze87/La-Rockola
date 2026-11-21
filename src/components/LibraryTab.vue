@@ -162,7 +162,7 @@
 		</div>
 
 		<!-- Encabezado fijo con buscador y filtros -->
-		<div class="bg-carpincho-bg sticky top-0 z-20 flex items-center gap-2 px-4 py-3 shadow-md">
+		<div class="bg-carpincho-bg sticky top-0 z-30 flex items-center gap-2 px-4 py-3 shadow-md">
 			<button
 				class="hover:text-carpincho-warning flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-800 text-white shadow transition active:scale-90"
 				title="Ir al tema actual"

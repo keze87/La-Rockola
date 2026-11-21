@@ -36,7 +36,7 @@ jobs:
 
             - name: Run pytest with coverage
               run: |
-                  pytest --md-report --md-report-color=never --md-report-flavor=github --md-report-zeros=empty --md-report-show-duration --md-report-output=pytest_report.md
+                  pytest --md-report --md-report-color=never --md-report-flavor=github --md-report-zeros=empty --md-report-output=pytest_report.md
 
             - name: Publish Test and Coverage Summary to GITHUB_STEP_SUMMARY
               if: always()

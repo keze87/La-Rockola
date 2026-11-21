@@ -33,7 +33,7 @@
 </script>
 
 <template>
-	<div class="relative shrink-0" :class="size">
+	<div class="relative isolate shrink-0" :class="size">
 		<CoverImage
 			:path="path && !path.startsWith('http') ? path : undefined"
 			:size="size"
