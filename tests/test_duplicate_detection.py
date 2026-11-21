@@ -55,6 +55,30 @@ def test_audio_hash_ignores_mp3_metadata_changes(tmp_path: Path) -> None:
 	assert generate_audio_hash(f1) != generate_audio_hash(f3)
 
 
+def test_audio_hash_hashes_first_and_last_mb(tmp_path: Path) -> None:
+	"""Verifica que generate_audio_hash hashee el primer y último MB del stream de audio."""
+	from app.domain.library.hasher import generate_audio_hash
+
+	mb = 1024 * 1024
+	first_mb = b"A" * mb
+	mid_a = b"M" * mb
+	mid_b = b"N" * mb
+	last_mb = b"Z" * mb
+
+	f1 = tmp_path / "a.mp3"
+	f2 = tmp_path / "b.mp3"
+	f3 = tmp_path / "c.mp3"
+
+	_write_synthetic_mp3(f1, first_mb + mid_a + last_mb, id3v2_payload=b"TIT2\x00\x00\x00\x02\x00\x00A")
+	_write_synthetic_mp3(f2, first_mb + mid_b + last_mb, id3v2_payload=b"APIC" + (b"\x01" * 5000))
+	_write_synthetic_mp3(f3, first_mb + mid_a + (b"X" * mb), id3v2_payload=b"TIT2\x00\x00\x00\x02\x00\x00A")
+
+	# Mismo primer y último MB -> mismo hash
+	assert generate_audio_hash(f1) == generate_audio_hash(f2)
+	# Distinto último MB -> distinto hash
+	assert generate_audio_hash(f1) != generate_audio_hash(f3)
+
+
 def test_audio_hash_ignores_mp4_metadata_atoms(tmp_path: Path) -> None:
 	"""Dos M4A con idéntico átomo mdat y distinto átomo moov/udta deben tener el mismo audio_hash."""
 	from app.domain.library.hasher import generate_audio_hash

@@ -62,20 +62,18 @@ def _mp4_audio_bounds(f: BinaryIO, file_size: int) -> tuple[int, int]:
 
 
 def _hash_byte_range(f: BinaryIO, start: int, end: int, chunk_size: int) -> str:
-	"""Hashea muestras del rango [start, end) y su longitud sin depender del tamaño total del archivo."""
+	"""Hashea el primer y último MB del rango de audio [start, end) y su longitud."""
 	span = end - start
 	hasher = hashlib.md5()
-	if span < chunk_size * 3:
-		mid_start = start + (span // 4)
-		mid_len = max(1, span // 2)
-		f.seek(mid_start)
-		hasher.update(f.read(mid_len))
+	if span <= chunk_size * 2:
+		f.seek(start)
+		hasher.update(f.read(span))
 		hasher.update(str(span).encode("utf-8"))
 		return hasher.hexdigest()
 
-	f.seek(start + int(span * 0.15))
+	f.seek(start)
 	hasher.update(f.read(chunk_size))
-	f.seek(start + int(span * 0.85))
+	f.seek(end - chunk_size)
 	hasher.update(f.read(chunk_size))
 	hasher.update(str(span).encode("utf-8"))
 	return hasher.hexdigest()
