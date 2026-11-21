@@ -279,7 +279,7 @@ class MainActivity : BridgeActivity() {
             val intent = Intent(this, RockolaForegroundService::class.java).apply {
                 action = RockolaForegroundService.ACTION_START
             }
-            ContextCompat.startForegroundService(this, intent)
+            startService(intent)
         }
     }
 }

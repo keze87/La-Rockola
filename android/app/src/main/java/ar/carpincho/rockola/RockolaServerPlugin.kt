@@ -146,7 +146,7 @@ class RockolaServerPlugin : Plugin() {
                 putExtra(RockolaForegroundService.EXTRA_MUSIC_DIR, musicDir)
             }
         }
-        ContextCompat.startForegroundService(context, intent)
+        context.startService(intent)
         call.resolve(buildStatusObject())
     }
 
@@ -175,7 +175,7 @@ class RockolaServerPlugin : Plugin() {
             return
         }
         val title = call.getString("title") ?: "La Rockola del Carpincho"
-        val artist = call.getString("artist") ?: "En espera"
+        val artist = call.getString("artist") ?: "La Rockola del Carpincho"
         val paused = call.getBoolean("paused") ?: true
         val coverUrl = call.getString("coverUrl")
         val trackPath = call.getString("trackPath")

@@ -170,6 +170,71 @@ export async function toggleAndroidFullscreen(): Promise<boolean> {
 	return next;
 }
 
+const STORAGE_KEY_REMOTE_SERVER = 'rockola_remote_server_url';
+
+function readSavedRemoteServer(): string | null {
+	try {
+		if (typeof localStorage === 'undefined') return null;
+		const saved = localStorage.getItem(STORAGE_KEY_REMOTE_SERVER);
+		return saved ? saved.trim() || null : null;
+	} catch {
+		return null;
+	}
+}
+
+export const activeRemoteServerUrl = ref<string | null>(readSavedRemoteServer());
+
+export function normalizeServerOrigin(raw: string | null | undefined): string | null {
+	const cleaned = (raw ?? '').trim().replace(/\/+$/, '');
+	if (!cleaned) return null;
+	const withProtocol = /^https?:\/\//i.test(cleaned) ? cleaned : `http://${cleaned}`;
+	try {
+		const parsed = new URL(withProtocol);
+		if (!parsed.port && !/:\d+$/.test(parsed.host) && parsed.protocol === 'http:') {
+			parsed.port = '1729';
+		}
+		return parsed.origin;
+	} catch {
+		return null;
+	}
+}
+
+export async function connectToRemoteServer(rawUrl: string): Promise<string> {
+	const normalized = normalizeServerOrigin(rawUrl);
+	if (!normalized) {
+		throw new Error('Dirección de servidor inválida (ej: 192.168.0.55 o http://192.168.0.55:1729)');
+	}
+
+	const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+	const timer = controller ? setTimeout(() => controller.abort(), 4000) : null;
+	try {
+		const res = await fetch(`${normalized}/health`, controller ? { signal: controller.signal } : undefined);
+		if (!res.ok) {
+			throw new Error(`El servidor respondió con estado ${res.status}`);
+		}
+	} finally {
+		if (timer) clearTimeout(timer);
+	}
+
+	try {
+		localStorage.setItem(STORAGE_KEY_REMOTE_SERVER, normalized);
+	} catch {
+		// Sin acceso a localStorage en modo restringido
+	}
+	activeRemoteServerUrl.value = normalized;
+	setApiOrigin(normalized);
+	return normalized;
+}
+
+export function resetToLocalServer(): void {
+	try {
+		localStorage.removeItem(STORAGE_KEY_REMOTE_SERVER);
+	} catch {
+		// Ignorado
+	}
+	activeRemoteServerUrl.value = null;
+}
+
 export async function initAndroidServer(opts?: { pollIntervalMs?: number; timeoutMs?: number }): Promise<boolean> {
 	if (!isNativeAndroidHost()) return false;
 
@@ -180,6 +245,21 @@ export async function initAndroidServer(opts?: { pollIntervalMs?: number; timeou
 			volume.value = mediaVol.level;
 		}
 	});
+
+	const savedRemote = activeRemoteServerUrl.value ?? readSavedRemoteServer();
+	if (savedRemote) {
+		activeRemoteServerUrl.value = savedRemote;
+		setApiOrigin(savedRemote);
+		androidServerStatus.value = {
+			running: true,
+			port: 1729,
+			localIp: 'remoto',
+			serverUrl: savedRemote,
+			musicDir: null,
+			needsFolder: false,
+		};
+		return true;
+	}
 
 	const pollIntervalMs = opts?.pollIntervalMs ?? 250;
 	const timeoutMs = opts?.timeoutMs ?? 15000;

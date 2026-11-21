@@ -106,12 +106,19 @@ class MediaNotificationManager(
     }
 
     @Synchronized
-    fun updateServerEndpoint(serverUrl: String, statusText: String) {
+    fun updateServerEndpoint(serverUrl: String, @Suppress("UNUSED_PARAMETER") statusText: String) {
         currentServerUrl = serverUrl
-        currentTitle = "La Rockola del Carpincho"
-        currentArtist = statusText
-        syncMediaSessionState()
-        notify(statusText)
+    }
+
+    @Synchronized
+    fun cancelNotification() {
+        val manager = service.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.cancel(notificationId)
+    }
+
+    @Synchronized
+    fun setSessionActive(active: Boolean) {
+        mediaSession?.isActive = active
     }
 
     @Synchronized
@@ -143,8 +150,14 @@ class MediaNotificationManager(
                 onRequestArtwork(coverUrl)
             }
         }
+        val isActivePlayback = !paused && !trackPath.isNullOrBlank()
+        mediaSession?.isActive = isActivePlayback || !trackPath.isNullOrBlank()
         syncMediaSessionState()
-        notify(currentArtist)
+        if (isActivePlayback) {
+            notify(currentArtist)
+        } else {
+            cancelNotification()
+        }
     }
 
     @Synchronized

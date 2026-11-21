@@ -109,4 +109,25 @@ describe('CoverImage.vue', () => {
 			(globalThis as any).IntersectionObserver = origGlobalIO;
 		}
 	});
+
+	it('renders loading skeleton until image finishes loading and resets when path changes', async () => {
+		const wrapper = mount(CoverImage, {
+			props: {
+				path: '/music/first.flac',
+			},
+		});
+
+		expect(wrapper.find('.cover-skeleton').exists()).toBe(true);
+		const img = wrapper.find('img');
+		expect(img.exists()).toBe(true);
+		expect(img.classes()).toContain('opacity-0');
+
+		await img.trigger('load');
+		expect(wrapper.find('.cover-skeleton').exists()).toBe(false);
+		expect(wrapper.find('img').classes()).toContain('opacity-100');
+
+		await wrapper.setProps({ path: '/music/second.flac' });
+		expect(wrapper.find('.cover-skeleton').exists()).toBe(true);
+		expect(wrapper.find('img').classes()).toContain('opacity-0');
+	});
 });

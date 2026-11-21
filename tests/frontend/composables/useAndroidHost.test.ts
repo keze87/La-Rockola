@@ -367,4 +367,40 @@ describe('useAndroidHost.ts', () => {
 		await setAndroidMediaVolume(110);
 		expect(pluginMock.setMediaVolume).toHaveBeenLastCalledWith({ level: 100 });
 	});
+
+	it('normalizes remote server URLs and connects to a remote PC server on Android', async () => {
+		const mod = await import('@/composables/useAndroidHost');
+		const normalizeServerOrigin = (mod as any).normalizeServerOrigin as (raw: string) => string | null;
+		const connectToRemoteServer = (mod as any).connectToRemoteServer as (raw: string) => Promise<string>;
+		const resetToLocalServer = (mod as any).resetToLocalServer as () => void;
+		const activeRemoteServerUrl = (mod as any).activeRemoteServerUrl;
+
+		expect(normalizeServerOrigin('')).toBeNull();
+		expect(normalizeServerOrigin('   ')).toBeNull();
+		expect(normalizeServerOrigin('192.168.0.55')).toBe('http://192.168.0.55:1729');
+		expect(normalizeServerOrigin('192.168.0.55:8080/')).toBe('http://192.168.0.55:8080');
+		expect(normalizeServerOrigin('https://rockola.local/')).toBe('https://rockola.local');
+
+		state.isNative = true;
+		state.platform = 'android';
+		global.fetch = vi.fn().mockResolvedValue({
+			ok: true,
+			json: () => Promise.resolve({ status: 'ok' }),
+		});
+
+		const url = await connectToRemoteServer('192.168.0.55');
+		expect(url).toBe('http://192.168.0.55:1729');
+		expect(getApiOrigin()).toBe('http://192.168.0.55:1729');
+		expect(activeRemoteServerUrl.value).toBe('http://192.168.0.55:1729');
+		expect(localStorage.getItem('rockola_remote_server_url')).toBe('http://192.168.0.55:1729');
+
+		// Al reiniciar con servidor remoto guardado, no arranca el servidor embebido local
+		const ready = await initAndroidServer({ pollIntervalMs: 5, timeoutMs: 200 });
+		expect(ready).toBe(true);
+		expect(pluginMock.startServer).not.toHaveBeenCalled();
+
+		resetToLocalServer();
+		expect(activeRemoteServerUrl.value).toBeNull();
+		expect(localStorage.getItem('rockola_remote_server_url')).toBeNull();
+	});
 });

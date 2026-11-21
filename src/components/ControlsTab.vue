@@ -2,10 +2,13 @@
 	import { computed, ref, watch } from 'vue';
 	import { apiUrl } from '../composables/useApi';
 	import {
+		activeRemoteServerUrl,
 		androidServerStatus,
+		connectToRemoteServer,
 		isAndroidFullscreen,
 		isNativeAndroidHost,
 		pickAndApplyMusicFolder,
+		resetToLocalServer,
 		shareAndroidUrl,
 		toggleAndroidFullscreen,
 	} from '../composables/useAndroidHost';
@@ -157,7 +160,33 @@
 		return window.location.href;
 	});
 
-	const showAndroidFolderPicker = isNativeAndroidHost();
+	const showAndroidFolderPicker = isNativeAndroidHost() && !activeRemoteServerUrl.value;
+	const showRemoteServerSelector = isNativeAndroidHost();
+	const remoteServerInput = ref(activeRemoteServerUrl.value ?? '');
+	const isConnectingRemote = ref(false);
+
+	async function handleConnectRemoteServer() {
+		if (isConnectingRemote.value) return;
+		isConnectingRemote.value = true;
+		try {
+			const url = await connectToRemoteServer(remoteServerInput.value);
+			showToast(`Conectado al servidor ${url}`, 'success');
+			haptic();
+			window.location.reload();
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : 'No se pudo conectar al servidor';
+			showToast(msg, 'error');
+		} finally {
+			isConnectingRemote.value = false;
+		}
+	}
+
+	function handleUseLocalServer() {
+		resetToLocalServer();
+		remoteServerInput.value = '';
+		haptic();
+		window.location.reload();
+	}
 
 	async function handlePickMusicFolder() {
 		try {
@@ -479,6 +508,51 @@
 			<p v-if="androidServerStatus.musicDir" class="text-carpincho-muted max-w-xs truncate text-xs">
 				Carpeta activa: {{ androidServerStatus.musicDir }}
 			</p>
+		</div>
+
+		<div
+			v-if="showRemoteServerSelector"
+			class="border-carpincho-border bg-carpincho-panel/60 mx-auto mb-6 max-w-md rounded-xl border p-4"
+		>
+			<div
+				class="text-carpincho-secondary mb-2 flex items-center justify-center gap-1.5 text-xs font-bold uppercase"
+			>
+				<i class="material-icons !text-base">dns</i>
+				<span>Servidor conectado</span>
+			</div>
+			<p class="text-carpincho-muted mb-3 text-center text-xs">
+				{{
+					activeRemoteServerUrl
+						? `Remoto: ${activeRemoteServerUrl}`
+						: `Este teléfono (${androidServerStatus.serverUrl})`
+				}}
+			</p>
+			<div class="flex flex-col gap-2 sm:flex-row">
+				<input
+					v-model="remoteServerInput"
+					type="text"
+					placeholder="IP de tu PC (ej: 192.168.0.55)"
+					class="border-carpincho-border bg-carpincho-bg text-carpincho-text placeholder:text-carpincho-muted/60 focus:border-carpincho-warning min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm outline-none"
+					@keyup.enter="handleConnectRemoteServer"
+				/>
+				<PillButton
+					icon="link"
+					color-class="bg-amber-700 hover:bg-amber-600"
+					:disabled="isConnectingRemote || !remoteServerInput.trim()"
+					@click="handleConnectRemoteServer"
+				>
+					{{ isConnectingRemote ? 'Conectando...' : 'Conectar' }}
+				</PillButton>
+			</div>
+			<div v-if="activeRemoteServerUrl" class="mt-2 flex justify-center">
+				<PillButton
+					icon="smartphone"
+					color-class="bg-neutral-700 hover:bg-neutral-600"
+					@click="handleUseLocalServer"
+				>
+					Volver a este teléfono
+				</PillButton>
+			</div>
 		</div>
 
 		<div class="mb-4 flex flex-wrap justify-center gap-3">

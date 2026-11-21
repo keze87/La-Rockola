@@ -133,23 +133,23 @@ class RockolaForegroundService : Service() {
             }
             ACTION_MEDIA_PREV -> {
                 commandClient.sendCommand("prev")
-                return START_STICKY
+                return START_NOT_STICKY
             }
             ACTION_MEDIA_PLAY_PAUSE -> {
                 commandClient.sendCommand("pause")
-                return START_STICKY
+                return START_NOT_STICKY
             }
             ACTION_MEDIA_NEXT -> {
                 commandClient.sendCommand("skip")
-                return START_STICKY
+                return START_NOT_STICKY
             }
             ACTION_MEDIA_FAVORITE -> {
                 notificationManager.toggleFavorite()
-                return START_STICKY
+                return START_NOT_STICKY
             }
             ACTION_MEDIA_PAUSE_AFTER -> {
                 notificationManager.togglePauseAfter()
-                return START_STICKY
+                return START_NOT_STICKY
             }
             ACTION_UPDATE_POSITION -> {
                 val durationMs = intent.getLongExtra(EXTRA_DURATION_MS, 0L).coerceAtLeast(0L)
@@ -157,13 +157,18 @@ class RockolaForegroundService : Service() {
                 val paused = intent.getBooleanExtra(EXTRA_PAUSED, notificationManager.isPaused)
                 isActivelyPlaying = isRunning && !paused
                 notificationManager.updatePosition(durationMs, positionMs, paused)
-                return START_STICKY
+                if (isActivelyPlaying) {
+                    acquireLocks()
+                } else {
+                    demoteToBackground()
+                }
+                return START_NOT_STICKY
             }
             ACTION_UPDATE_MEDIA -> {
                 val title = intent.getStringExtra(EXTRA_TITLE)?.takeIf { it.isNotBlank() }
                     ?: "La Rockola del Carpincho"
                 val artist = intent.getStringExtra(EXTRA_ARTIST)?.takeIf { it.isNotBlank() }
-                    ?: "En espera"
+                    ?: "La Rockola del Carpincho"
                 val paused = intent.getBooleanExtra(EXTRA_PAUSED, true)
                 val coverUrl = intent.getStringExtra(EXTRA_COVER_URL)?.takeIf { it.isNotBlank() }
                 val trackPath = intent.getStringExtra(EXTRA_TRACK_PATH)?.takeIf { it.isNotBlank() }
@@ -172,7 +177,7 @@ class RockolaForegroundService : Service() {
                 val isFavorite = intent.getBooleanExtra(EXTRA_IS_FAVORITE, false)
                 val isPauseAfter = intent.getBooleanExtra(EXTRA_IS_PAUSE_AFTER, false)
 
-                isActivelyPlaying = isRunning && !paused
+                isActivelyPlaying = isRunning && !paused && !trackPath.isNullOrBlank()
                 notificationManager.updateMedia(
                     title = title,
                     artist = artist,
@@ -184,7 +189,13 @@ class RockolaForegroundService : Service() {
                     isFavorite = isFavorite,
                     isPauseAfter = isPauseAfter,
                 )
-                return START_STICKY
+                if (isActivelyPlaying) {
+                    acquireLocks()
+                    startForegroundWithNotification(artist)
+                } else {
+                    demoteToBackground()
+                }
+                return START_NOT_STICKY
             }
         }
 
@@ -207,15 +218,18 @@ class RockolaForegroundService : Service() {
         currentPort = port
         currentMusicDir = musicDir
 
-        startForegroundWithNotification("Iniciando servidor en el puerto $port...")
-        acquireLocks()
+        if (!isActivelyPlaying) {
+            // Al iniciar sin reproducción activa, no dejamos notificación "En espera" ni WakeLocks
+            // para que Android pueda liberar el proceso cuando no se usa.
+            demoteToBackground()
+        }
 
         if (!isRunning) {
             isRunning = true
             startEmbeddedPythonServer(port, musicDir)
         }
 
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     private fun startEmbeddedPythonServer(port: Int, musicDir: String?) {
@@ -279,10 +293,7 @@ class RockolaForegroundService : Service() {
         wifiLock = null
     }
 
-    private fun stopServerAndService() {
-        pythonHost.stop()
-        isRunning = false
-        isActivelyPlaying = false
+    private fun demoteToBackground() {
         releaseLocks()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -290,6 +301,21 @@ class RockolaForegroundService : Service() {
             @Suppress("DEPRECATION")
             stopForeground(true)
         }
+        notificationManager.cancelNotification()
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        if (!isActivelyPlaying) {
+            stopServerAndService()
+        }
+        super.onTaskRemoved(rootIntent)
+    }
+
+    private fun stopServerAndService() {
+        pythonHost.stop()
+        isRunning = false
+        isActivelyPlaying = false
+        demoteToBackground()
         stopSelf()
     }
 
