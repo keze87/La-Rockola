@@ -20,7 +20,7 @@ from typing import Any
 from mutagen import File as MutagenFile
 
 from app.core.container import get_container
-from app.domain.library.hasher import compare_fps, parse_fp
+from app.domain.library.hasher import compare_fps, generate_audio_hash, parse_fp
 from app.domain.library.models import Track
 from app.domain.library.mood import calculate_mood_scores, extract_audio_features_ffmpeg, is_mood_available
 from app.infrastructure.binaries.manager import find_binary, get_clean_env
@@ -89,6 +89,31 @@ class LibraryService:
 	def __init__(self, db_path: Path | str | None = None, track_repo: TrackRepository | None = None) -> None:
 		self.db_path = db_path
 		self.track_repo = track_repo or TrackRepository(db_path)
+
+	def _mark_duplicate_tracks(self, tracks: list[dict[str, Any]]) -> None:
+		"""Detecta pistas con audio idéntico (aunque cambie la metadata) y marca la advertencia."""
+		if not tracks:
+			return
+		groups: dict[str, list[dict[str, Any]]] = {}
+		for trk in tracks:
+			audio_hash = trk.get("audio_hash")
+			if not audio_hash:
+				audio_hash = generate_audio_hash(trk["path"])
+				trk["audio_hash"] = audio_hash
+			groups.setdefault(audio_hash, []).append(trk)
+
+		dup_groups = 0
+		for group in groups.values():
+			count = len(group)
+			is_dup = count > 1
+			if is_dup:
+				dup_groups += 1
+			for trk in group:
+				trk["is_duplicate"] = is_dup
+				trk["duplicate_count"] = count
+
+		if dup_groups:
+			logger.warning(f"⚠️ Detectados {dup_groups} grupos de archivos musicales duplicados en la biblioteca.")
 
 	def recalculate_mood(self, tracks: list[dict[str, Any]]) -> list[dict[str, Any]]:
 		"""Recalcula el mood_score normalizado de las pistas."""
@@ -365,6 +390,7 @@ class LibraryService:
 			seen_track_ids=seen_track_ids,
 		)
 
+		self._mark_duplicate_tracks(tracks)
 		calculate_mood_scores(tracks)
 		if state:
 			state.tracks_cache = tracks

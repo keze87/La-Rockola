@@ -365,7 +365,7 @@ class PlaybackOrchestrator:
 	def get_full_state_dict(self, include_library: bool = False) -> dict[str, Any]:
 		"""Genera un diccionario con el estado completo actual."""
 		active_favs = [self.id_to_current_path.get(fav_id, fav_id) for fav_id in self.favorites]
-		keys_to_exclude = {"fingerprint", "bpm", "energy", "spectral_centroid"}
+		keys_to_exclude = {"fingerprint", "audio_hash", "bpm", "energy", "spectral_centroid"}
 		clean_dj_next = (
 			{k: v for k, v in self.dj_next_track.items() if k not in keys_to_exclude}
 			if isinstance(self.dj_next_track, dict)

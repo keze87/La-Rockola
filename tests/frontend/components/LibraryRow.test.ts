@@ -192,4 +192,35 @@ describe('LibraryRow.vue', () => {
 		});
 		expect(wrapper.find('.played-indicator').exists()).toBe(false);
 	});
+
+	it('displays duplicate warning badge when track.is_duplicate is true', () => {
+		const dupTrack = {
+			...mockTrack,
+			is_duplicate: true,
+			duplicate_count: 3,
+		};
+		const wrapper = mount(LibraryRow, {
+			props: {
+				track: dupTrack,
+				isCurrent: false,
+				isPaused: false,
+				queuePosition: -1,
+			},
+		});
+
+		const badge = wrapper.find('.duplicate-warning');
+		expect(badge.exists()).toBe(true);
+		expect(badge.text()).toContain('Duplicado');
+		expect(badge.attributes('title')).toContain('3');
+
+		const normalWrapper = mount(LibraryRow, {
+			props: {
+				track: mockTrack,
+				isCurrent: false,
+				isPaused: false,
+				queuePosition: -1,
+			},
+		});
+		expect(normalWrapper.find('.duplicate-warning').exists()).toBe(false);
+	});
 });

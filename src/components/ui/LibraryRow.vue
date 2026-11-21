@@ -89,8 +89,16 @@
 			</span>
 		</div>
 
-		<div class="truncate p-4 font-medium">
-			{{ displayTitle }}
+		<div class="flex min-w-0 items-center gap-2 p-4 font-medium">
+			<span class="truncate">{{ displayTitle }}</span>
+			<span
+				v-if="track.is_duplicate"
+				class="duplicate-warning bg-carpincho-warning/15 text-carpincho-warning inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-semibold"
+				:title="`Archivo duplicado (${track.duplicate_count || 2} copias detectadas en la biblioteca)`"
+			>
+				<i class="material-icons !text-xs">warning_amber</i>
+				<span>Duplicado</span>
+			</span>
 		</div>
 
 		<div class="text-carpincho-muted truncate p-4">

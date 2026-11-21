@@ -6,6 +6,8 @@ export interface Track {
 	display_title: string;
 	duration_str?: string;
 	duration?: number;
+	duplicate_count?: number;
+	is_duplicate?: boolean;
 	mood_score?: number;
 	path: string;
 	title?: string;

@@ -28,7 +28,7 @@ async def get_library() -> dict[str, Any]:
 	while getattr(state, "is_scanning", False):
 		await asyncio.sleep(0.5)
 
-	keys_to_exclude = {"fingerprint", "bpm", "energy", "spectral_centroid"}
+	keys_to_exclude = {"fingerprint", "audio_hash", "bpm", "energy", "spectral_centroid"}
 	clean_library = [
 		{k: v for k, v in track.items() if k not in keys_to_exclude} for track in getattr(state, "tracks_cache", [])
 	]

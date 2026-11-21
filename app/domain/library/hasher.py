@@ -6,9 +6,113 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import struct
 from pathlib import Path
+from typing import BinaryIO
 
 logger = logging.getLogger("RockolaCarpincho")
+
+
+def _mp3_audio_bounds(f: BinaryIO, file_size: int) -> tuple[int, int]:
+	"""Calcula el rango de bytes correspondiente al stream MPEG excluyendo tags ID3v2 e ID3v1."""
+	start = 0
+	end = file_size
+	if file_size >= 10:
+		f.seek(0)
+		header = f.read(10)
+		if len(header) == 10 and header[:3] == b"ID3":
+			flags = header[5]
+			tag_size = (
+				((header[6] & 0x7F) << 21) | ((header[7] & 0x7F) << 14) | ((header[8] & 0x7F) << 7) | (header[9] & 0x7F)
+			)
+			start = 10 + tag_size + (10 if (flags & 0x10) else 0)
+
+	if file_size - start >= 128:
+		f.seek(file_size - 128)
+		if f.read(3) == b"TAG":
+			end = file_size - 128
+
+	return (start, end) if end > start else (0, file_size)
+
+
+def _mp4_audio_bounds(f: BinaryIO, file_size: int) -> tuple[int, int]:
+	"""Ubica el átomo mdat dentro de contenedores MP4/M4A para ignorar átomos de metadata."""
+	offset = 0
+	while offset + 8 <= file_size:
+		f.seek(offset)
+		box = f.read(8)
+		if len(box) < 8:
+			break
+		size, tag = struct.unpack(">I4s", box)
+		header_size = 8
+		if size == 1 and offset + 16 <= file_size:
+			size = struct.unpack(">Q", f.read(8))[0]
+			header_size = 16
+		elif size == 0:
+			size = file_size - offset
+		if size < header_size:
+			break
+		if tag == b"mdat":
+			end = min(file_size, offset + size)
+			start = offset + header_size
+			if end > start:
+				return start, end
+		offset += size
+	return 0, file_size
+
+
+def _hash_byte_range(f: BinaryIO, start: int, end: int, chunk_size: int) -> str:
+	"""Hashea muestras del rango [start, end) y su longitud sin depender del tamaño total del archivo."""
+	span = end - start
+	hasher = hashlib.md5()
+	if span < chunk_size * 3:
+		mid_start = start + (span // 4)
+		mid_len = max(1, span // 2)
+		f.seek(mid_start)
+		hasher.update(f.read(mid_len))
+		hasher.update(str(span).encode("utf-8"))
+		return hasher.hexdigest()
+
+	f.seek(start + int(span * 0.15))
+	hasher.update(f.read(chunk_size))
+	f.seek(start + int(span * 0.85))
+	hasher.update(f.read(chunk_size))
+	hasher.update(str(span).encode("utf-8"))
+	return hasher.hexdigest()
+
+
+def generate_audio_hash(filepath: str | Path, chunk_size: int = 1024 * 1024) -> str:
+	"""
+	Genera un hash basado únicamente en el stream de audio, inmune a cambios de metadata.
+	Soporta MD5 nativo de FLAC, salto de ID3 en MP3 y átomo mdat en MP4/M4A.
+	"""
+	p = Path(filepath)
+	suffix = p.suffix.lower()
+
+	if suffix == ".flac":
+		try:
+			from mutagen.flac import FLAC
+
+			audio = FLAC(p)
+			md5_sig = getattr(audio.info, "md5_signature", 0)
+			if md5_sig:
+				return f"flac:{md5_sig:032x}"
+		except Exception:
+			pass
+
+	try:
+		file_size = p.stat().st_size
+		with open(p, "rb") as f:
+			if suffix == ".mp3":
+				start, end = _mp3_audio_bounds(f, file_size)
+			elif suffix in (".m4a", ".mp4"):
+				start, end = _mp4_audio_bounds(f, file_size)
+			else:
+				start, end = 0, file_size
+			return _hash_byte_range(f, start, end, chunk_size)
+	except Exception as e:
+		logger.debug(f"Pifió el audio hash para {filepath}: {e}")
+		return hashlib.md5(str(p).encode("utf-8")).hexdigest()
 
 
 def generate_smart_hash(filepath: str | Path, chunk_size: int = 1024 * 1024) -> str:
