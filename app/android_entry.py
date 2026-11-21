@@ -112,6 +112,7 @@ def start_embedded_server(
 	music_dir: str | None = None,
 	port: int = 1729,
 	host: str = "0.0.0.0",
+	already_configured: bool = False,
 ) -> None:
 	"""Arranca Uvicorn de forma bloqueante dentro de un hilo secundario del ForegroundService."""
 	global _active_server
@@ -119,13 +120,14 @@ def start_embedded_server(
 
 	from app.main import create_app
 
-	configure_android_environment(
-		data_dir=data_dir,
-		dist_dir=dist_dir,
-		music_dir=music_dir,
-		port=port,
-		host=host,
-	)
+	if not already_configured:
+		configure_android_environment(
+			data_dir=data_dir,
+			dist_dir=dist_dir,
+			music_dir=music_dir,
+			port=port,
+			host=host,
+		)
 	fastapi_app = create_app()
 	uv_config = uvicorn.Config(
 		fastapi_app,

@@ -1,38 +1,25 @@
 package ar.carpincho.rockola
 
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.net.wifi.WifiManager
 import android.os.Build
-import android.os.Bundle
 import android.os.IBinder
 import android.os.PowerManager
-import android.support.v4.media.MediaMetadataCompat
-import android.support.v4.media.session.MediaSessionCompat
-import android.support.v4.media.session.PlaybackStateCompat
 import android.util.Log
-import androidx.core.app.NotificationCompat
-import androidx.media.app.NotificationCompat.MediaStyle
-import com.chaquo.python.Python
-import com.chaquo.python.android.AndroidPlatform
-import org.json.JSONObject
-import java.io.File
-import java.io.FileOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
+import androidx.core.content.ContextCompat
 
 /**
- * Servicio en primer plano que mantiene vivo el servidor FastAPI/Uvicorn
- * ejecutado sobre Chaquopy, junto con WakeLock, WifiLock y controles MediaStyle
- * con barra de progreso, favorito y pausa al terminar en la barra de notificaciones.
+ * Servicio en primer plano orquestador que mantiene vivo el servidor FastAPI/Uvicorn
+ * sobre Chaquopy, junto con WakeLock, WifiLock, AudioFocus, protección al desconectar
+ * auriculares y el administrador de notificaciones multimedia.
  */
 class RockolaForegroundService : Service() {
 
@@ -75,6 +62,10 @@ class RockolaForegroundService : Service() {
             private set
 
         @Volatile
+        var isActivelyPlaying: Boolean = false
+            private set
+
+        @Volatile
         var currentPort: Int = DEFAULT_PORT
             private set
 
@@ -94,162 +85,78 @@ class RockolaForegroundService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private var serverThread: Thread? = null
-    private var mediaSession: MediaSessionCompat? = null
 
-    private var currentTitle: String = "La Rockola del Carpincho"
-    private var currentArtist: String = "En espera"
-    private var currentPaused: Boolean = true
-    private var currentCoverUrl: String? = null
-    private var currentArtwork: Bitmap? = null
-    private var currentTrackPath: String? = null
-    private var currentDurationMs: Long = 0L
-    private var currentPositionMs: Long = 0L
-    private var currentIsFavorite: Boolean = false
-    private var currentIsPauseAfter: Boolean = false
+    private lateinit var commandClient: LocalCommandClient
+    private lateinit var pythonHost: EmbeddedPythonHost
+    private lateinit var notificationManager: MediaNotificationManager
+    private lateinit var audioManager: AudioManager
+    private var focusRequest: AudioFocusRequest? = null
+    private var hasAudioFocus: Boolean = false
+    private var pausedByTransientFocusLoss: Boolean = false
+
+    private val noisyReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY && !notificationManager.isPaused) {
+                commandClient.sendCommand("pause")
+            }
+        }
+    }
+
+    private val audioFocusListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
+        when (focusChange) {
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                hasAudioFocus = false
+                if (!notificationManager.isPaused) {
+                    pausedByTransientFocusLoss = true
+                    commandClient.sendCommand("pause")
+                }
+            }
+            AudioManager.AUDIOFOCUS_LOSS -> {
+                hasAudioFocus = false
+                pausedByTransientFocusLoss = false
+                if (!notificationManager.isPaused) {
+                    commandClient.sendCommand("pause")
+                }
+            }
+            AudioManager.AUDIOFOCUS_GAIN -> {
+                hasAudioFocus = true
+                if (pausedByTransientFocusLoss) {
+                    pausedByTransientFocusLoss = false
+                    if (notificationManager.isPaused) {
+                        commandClient.sendCommand("pause")
+                    }
+                }
+            }
+        }
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
-        createNotificationChannel()
-        initMediaSession()
-    }
-
-    private fun initMediaSession() {
-        mediaSession = MediaSessionCompat(this, "RockolaMediaSession").apply {
-            setCallback(object : MediaSessionCompat.Callback() {
-                override fun onPlay() {
-                    if (currentPaused) sendPlaybackCommand("pause")
+        audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        commandClient = LocalCommandClient { currentPort }
+        pythonHost = EmbeddedPythonHost(this)
+        notificationManager = MediaNotificationManager(
+            service = this,
+            channelId = CHANNEL_ID,
+            notificationId = NOTIFICATION_ID,
+            onCommand = { cmd, extra -> commandClient.sendCommand(cmd, extra) },
+            onRequestArtwork = { coverUrl ->
+                commandClient.fetchArtwork(coverUrl) { bmp ->
+                    notificationManager.applyArtworkIfCurrent(coverUrl, bmp)
                 }
+            },
+            onPlayRequested = { requestAudioFocus() },
+        )
+        notificationManager.initialize()
 
-                override fun onPause() {
-                    if (!currentPaused) sendPlaybackCommand("pause")
-                }
-
-                override fun onSkipToNext() {
-                    sendPlaybackCommand("skip")
-                }
-
-                override fun onSkipToPrevious() {
-                    sendPlaybackCommand("prev")
-                }
-
-                override fun onSeekTo(pos: Long) {
-                    val clamped = pos.coerceAtLeast(0L)
-                    currentPositionMs = clamped
-                    syncMediaSessionState()
-                    sendPlaybackCommand("seek_absolute", mapOf("amount" to (clamped / 1000.0)))
-                }
-
-                override fun onCustomAction(action: String?, extras: Bundle?) {
-                    when (action) {
-                        CUSTOM_ACTION_FAVORITE -> toggleFavoriteFromNotification()
-                        CUSTOM_ACTION_PAUSE_AFTER -> togglePauseAfterFromNotification()
-                    }
-                }
-            })
-            isActive = true
-        }
-        syncMediaSessionState()
-    }
-
-    private fun toggleFavoriteFromNotification() {
-        val path = currentTrackPath ?: return
-        currentIsFavorite = !currentIsFavorite
-        syncMediaSessionState()
-        updateNotification(currentArtist)
-        sendPlaybackCommand("toggle_favorite", mapOf("path" to path))
-    }
-
-    private fun togglePauseAfterFromNotification() {
-        val path = currentTrackPath ?: return
-        currentIsPauseAfter = !currentIsPauseAfter
-        syncMediaSessionState()
-        updateNotification(currentArtist)
-        sendPlaybackCommand("pause_after", mapOf("path" to path))
-    }
-
-    private fun syncMediaSessionState() {
-        val session = mediaSession ?: return
-        val stateCode = if (currentPaused) PlaybackStateCompat.STATE_PAUSED else PlaybackStateCompat.STATE_PLAYING
-        val speed = if (currentPaused) 0.0f else 1.0f
-        val actions = PlaybackStateCompat.ACTION_PLAY or
-            PlaybackStateCompat.ACTION_PAUSE or
-            PlaybackStateCompat.ACTION_PLAY_PAUSE or
-            PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
-            PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
-            PlaybackStateCompat.ACTION_SEEK_TO
-
-        val stateBuilder = PlaybackStateCompat.Builder()
-            .setActions(actions)
-            .setState(stateCode, currentPositionMs, speed)
-
-        if (!currentTrackPath.isNullOrBlank()) {
-            val favIcon = if (currentIsFavorite) {
-                R.drawable.ic_notif_favorite_filled
-            } else {
-                R.drawable.ic_notif_favorite_border
-            }
-            val favLabel = if (currentIsFavorite) "Quitar de favoritos" else "Agregar a favoritos"
-            stateBuilder.addCustomAction(
-                PlaybackStateCompat.CustomAction.Builder(CUSTOM_ACTION_FAVORITE, favLabel, favIcon).build()
-            )
-
-            val pauseAfterIcon = if (currentIsPauseAfter) {
-                R.drawable.ic_notif_pause_after_on
-            } else {
-                R.drawable.ic_notif_pause_after_off
-            }
-            val pauseAfterLabel = if (currentIsPauseAfter) "Cancelar pausa al terminar" else "Pausar al terminar"
-            stateBuilder.addCustomAction(
-                PlaybackStateCompat.CustomAction.Builder(CUSTOM_ACTION_PAUSE_AFTER, pauseAfterLabel, pauseAfterIcon)
-                    .build()
-            )
-        }
-
-        session.setPlaybackState(stateBuilder.build())
-
-        val metaBuilder = MediaMetadataCompat.Builder()
-            .putString(MediaMetadataCompat.METADATA_KEY_TITLE, currentTitle)
-            .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, currentArtist)
-            .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, "La Rockola del Carpincho")
-
-        if (currentDurationMs > 0L) {
-            metaBuilder.putLong(MediaMetadataCompat.METADATA_KEY_DURATION, currentDurationMs)
-        }
-        currentArtwork?.let { metaBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, it) }
-        session.setMetadata(metaBuilder.build())
-    }
-
-    private fun sendPlaybackCommand(cmd: String, extraFields: Map<String, Any> = emptyMap()) {
-        Thread({
-            try {
-                val payload = JSONObject().apply {
-                    put("cmd", cmd)
-                    for ((k, v) in extraFields) {
-                        put(k, v)
-                    }
-                }
-                val url = URL("http://127.0.0.1:$currentPort/command")
-                val conn = (url.openConnection() as HttpURLConnection).apply {
-                    requestMethod = "POST"
-                    setRequestProperty("Content-Type", "application/json")
-                    doOutput = true
-                    connectTimeout = 2000
-                    readTimeout = 2000
-                }
-                conn.outputStream.use { out ->
-                    out.write(payload.toString().toByteArray(Charsets.UTF_8))
-                }
-                conn.responseCode
-                conn.disconnect()
-            } catch (e: Exception) {
-                Log.w("RockolaService", "No se pudo despachar comando '$cmd' desde notificación: ${e.message}")
-            }
-        }, "RockolaMediaCmd-$cmd").apply {
-            isDaemon = true
-            start()
-        }
+        ContextCompat.registerReceiver(
+            this,
+            noisyReceiver,
+            IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -259,33 +166,35 @@ class RockolaForegroundService : Service() {
                 return START_NOT_STICKY
             }
             ACTION_MEDIA_PREV -> {
-                sendPlaybackCommand("prev")
+                commandClient.sendCommand("prev")
                 return START_STICKY
             }
             ACTION_MEDIA_PLAY_PAUSE -> {
-                sendPlaybackCommand("pause")
+                if (notificationManager.isPaused) {
+                    requestAudioFocus()
+                }
+                commandClient.sendCommand("pause")
                 return START_STICKY
             }
             ACTION_MEDIA_NEXT -> {
-                sendPlaybackCommand("skip")
+                commandClient.sendCommand("skip")
                 return START_STICKY
             }
             ACTION_MEDIA_FAVORITE -> {
-                toggleFavoriteFromNotification()
+                notificationManager.toggleFavorite()
                 return START_STICKY
             }
             ACTION_MEDIA_PAUSE_AFTER -> {
-                togglePauseAfterFromNotification()
+                notificationManager.togglePauseAfter()
                 return START_STICKY
             }
             ACTION_UPDATE_POSITION -> {
-                val durationMs = intent.getLongExtra(EXTRA_DURATION_MS, currentDurationMs).coerceAtLeast(0L)
-                val positionMs = intent.getLongExtra(EXTRA_POSITION_MS, currentPositionMs).coerceAtLeast(0L)
-                val paused = intent.getBooleanExtra(EXTRA_PAUSED, currentPaused)
-                currentDurationMs = durationMs
-                currentPositionMs = positionMs
-                currentPaused = paused
-                syncMediaSessionState()
+                val durationMs = intent.getLongExtra(EXTRA_DURATION_MS, 0L).coerceAtLeast(0L)
+                val positionMs = intent.getLongExtra(EXTRA_POSITION_MS, 0L).coerceAtLeast(0L)
+                val paused = intent.getBooleanExtra(EXTRA_PAUSED, notificationManager.isPaused)
+                isActivelyPlaying = isRunning && !paused
+                if (!paused) requestAudioFocus()
+                notificationManager.updatePosition(durationMs, positionMs, paused)
                 return START_STICKY
             }
             ACTION_UPDATE_MEDIA -> {
@@ -301,25 +210,22 @@ class RockolaForegroundService : Service() {
                 val isFavorite = intent.getBooleanExtra(EXTRA_IS_FAVORITE, false)
                 val isPauseAfter = intent.getBooleanExtra(EXTRA_IS_PAUSE_AFTER, false)
 
-                val coverChanged = coverUrl != currentCoverUrl
-                currentTitle = title
-                currentArtist = artist
-                currentPaused = paused
-                currentCoverUrl = coverUrl
-                currentTrackPath = trackPath
-                currentDurationMs = durationMs
-                currentPositionMs = positionMs
-                currentIsFavorite = isFavorite
-                currentIsPauseAfter = isPauseAfter
-
-                if (coverChanged) {
-                    currentArtwork = null
-                    if (coverUrl != null) {
-                        fetchArtworkAsync(coverUrl)
-                    }
+                isActivelyPlaying = isRunning && !paused
+                if (!paused) {
+                    pausedByTransientFocusLoss = false
+                    requestAudioFocus()
                 }
-                syncMediaSessionState()
-                updateNotification(currentArtist)
+                notificationManager.updateMedia(
+                    title = title,
+                    artist = artist,
+                    paused = paused,
+                    coverUrl = coverUrl,
+                    trackPath = trackPath,
+                    durationMs = durationMs,
+                    positionMs = positionMs,
+                    isFavorite = isFavorite,
+                    isPauseAfter = isPauseAfter,
+                )
                 return START_STICKY
             }
         }
@@ -354,76 +260,23 @@ class RockolaForegroundService : Service() {
         return START_STICKY
     }
 
-    private fun fetchArtworkAsync(coverUrl: String) {
-        Thread({
-            try {
-                val conn = (URL(coverUrl).openConnection() as HttpURLConnection).apply {
-                    connectTimeout = 2500
-                    readTimeout = 2500
-                }
-                val bmp = conn.inputStream.use { BitmapFactory.decodeStream(it) }
-                conn.disconnect()
-                if (bmp != null && coverUrl == currentCoverUrl) {
-                    currentArtwork = bmp
-                    syncMediaSessionState()
-                    updateNotification(currentArtist)
-                }
-            } catch (_: Exception) {
-            }
-        }, "RockolaArtworkFetch").apply {
-            isDaemon = true
-            start()
-        }
-    }
-
     private fun startEmbeddedPythonServer(port: Int, musicDir: String?) {
         serverThread = Thread({
             try {
-                if (!Python.isStarted()) {
-                    Python.start(AndroidPlatform(applicationContext))
+                pythonHost.startBlocking(port = port, musicDir = musicDir) { endpoint ->
+                    currentLocalIp = endpoint.localIp
+                    currentServerUrl = endpoint.serverUrl
+                    notificationManager.updateServerEndpoint(
+                        serverUrl = endpoint.serverUrl,
+                        statusText = "Sonando en ${endpoint.serverUrl}",
+                    )
                 }
-
-                val dataDir = File(filesDir, "rockola_data").apply { mkdirs() }
-                val distDir = File(filesDir, "dist")
-                extractAssetFolder("dist", distDir)
-
-                val py = Python.getInstance()
-                val entry = py.getModule("app.android_entry")
-
-                val infoObj = entry.callAttr(
-                    "configure_android_environment",
-                    dataDir.absolutePath,
-                    distDir.absolutePath,
-                    musicDir ?: "",
-                    port,
-                    "0.0.0.0"
-                )
-                val infoMap = infoObj.asMap()
-                val localIp = infoMap[py.builtins.callAttr("str", "local_ip")]?.toString() ?: "127.0.0.1"
-                val serverUrl = infoMap[py.builtins.callAttr("str", "server_url")]?.toString()
-                    ?: "http://$localIp:$port"
-
-                currentLocalIp = localIp
-                currentServerUrl = serverUrl
-                currentTitle = "La Rockola del Carpincho"
-                currentArtist = "Sonando en $serverUrl"
-                syncMediaSessionState()
-                updateNotification(currentArtist)
-
-                Log.i("RockolaService", "Arrancando Uvicorn embebido en $serverUrl...")
-                entry.callAttr(
-                    "start_embedded_server",
-                    dataDir.absolutePath,
-                    distDir.absolutePath,
-                    musicDir ?: "",
-                    port,
-                    "0.0.0.0"
-                )
             } catch (e: Exception) {
                 Log.e("RockolaService", "Error fatal en servidor Python embebido", e)
-                updateNotification("Error en servidor: ${e.message ?: "fallo desconocido"}")
+                notificationManager.notify("Error en servidor: ${e.message ?: "fallo desconocido"}")
             } finally {
                 isRunning = false
+                isActivelyPlaying = false
                 releaseLocks()
             }
         }, "RockolaUvicornThread").apply {
@@ -432,20 +285,38 @@ class RockolaForegroundService : Service() {
         }
     }
 
-    private fun extractAssetFolder(assetPath: String, targetDir: File) {
-        val entries = assets.list(assetPath) ?: return
-        if (entries.isEmpty()) {
-            targetDir.parentFile?.mkdirs()
-            assets.open(assetPath).use { input ->
-                FileOutputStream(targetDir).use { output ->
-                    input.copyTo(output)
-                }
-            }
-            return
+    private fun requestAudioFocus() {
+        if (hasAudioFocus) return
+        val result = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val req = focusRequest ?: AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                        .build(),
+                )
+                .setOnAudioFocusChangeListener(audioFocusListener)
+                .build()
+                .also { focusRequest = it }
+            audioManager.requestAudioFocus(req)
+        } else {
+            @Suppress("DEPRECATION")
+            audioManager.requestAudioFocus(
+                audioFocusListener,
+                AudioManager.STREAM_MUSIC,
+                AudioManager.AUDIOFOCUS_GAIN,
+            )
         }
-        targetDir.mkdirs()
-        for (entry in entries) {
-            extractAssetFolder("$assetPath/$entry", File(targetDir, entry))
+        hasAudioFocus = (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
+    }
+
+    private fun abandonAudioFocus() {
+        hasAudioFocus = false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            focusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
+        } else {
+            @Suppress("DEPRECATION")
+            audioManager.abandonAudioFocus(audioFocusListener)
         }
     }
 
@@ -486,13 +357,10 @@ class RockolaForegroundService : Service() {
     }
 
     private fun stopServerAndService() {
-        try {
-            if (Python.isStarted()) {
-                Python.getInstance().getModule("app.android_entry").callAttr("stop_embedded_server")
-            }
-        } catch (_: Exception) {
-        }
+        pythonHost.stop()
         isRunning = false
+        isActivelyPlaying = false
+        abandonAudioFocus()
         releaseLocks()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -504,109 +372,26 @@ class RockolaForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        pythonHost.stop()
         try {
-            if (Python.isStarted()) {
-                Python.getInstance().getModule("app.android_entry").callAttr("stop_embedded_server")
-            }
+            unregisterReceiver(noisyReceiver)
         } catch (_: Exception) {
         }
-        mediaSession?.isActive = false
-        mediaSession?.release()
-        mediaSession = null
+        notificationManager.release()
+        commandClient.shutdown()
+        abandonAudioFocus()
         isRunning = false
+        isActivelyPlaying = false
         releaseLocks()
         super.onDestroy()
     }
 
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Servidor de La Rockola",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Mantiene el servidor musical, la reproducción y los controles activos"
-            }
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
-        }
-    }
-
-    private fun serviceActionPendingIntent(action: String, requestCode: Int): PendingIntent {
-        val intent = Intent(this, RockolaForegroundService::class.java).apply {
-            this.action = action
-        }
-        return PendingIntent.getService(
-            this,
-            requestCode,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-    }
-
-    private fun buildNotification(contentText: String): Notification {
-        val openIntent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        val openPending = PendingIntent.getActivity(
-            this,
-            0,
-            openIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val favPending = serviceActionPendingIntent(ACTION_MEDIA_FAVORITE, 5)
-        val prevPending = serviceActionPendingIntent(ACTION_MEDIA_PREV, 2)
-        val playPausePending = serviceActionPendingIntent(ACTION_MEDIA_PLAY_PAUSE, 3)
-        val nextPending = serviceActionPendingIntent(ACTION_MEDIA_NEXT, 4)
-        val pauseAfterPending = serviceActionPendingIntent(ACTION_MEDIA_PAUSE_AFTER, 6)
-
-        val favIcon = if (currentIsFavorite) R.drawable.ic_notif_favorite_filled else R.drawable.ic_notif_favorite_border
-        val favLabel = if (currentIsFavorite) "Quitar de favoritos" else "Agregar a favoritos"
-        val playPauseIcon = if (currentPaused) android.R.drawable.ic_media_play else android.R.drawable.ic_media_pause
-        val playPauseLabel = if (currentPaused) "Reproducir" else "Pausar"
-        val pauseAfterIcon = if (currentIsPauseAfter) {
-            R.drawable.ic_notif_pause_after_on
-        } else {
-            R.drawable.ic_notif_pause_after_off
-        }
-        val pauseAfterLabel = if (currentIsPauseAfter) "Cancelar pausa al terminar" else "Pausar al terminar"
-
-        val largeIcon = currentArtwork ?: BitmapFactory.decodeResource(resources, R.mipmap.ic_launcher)
-
-        val mediaStyle = MediaStyle()
-            .setShowActionsInCompactView(1, 2, 3)
-        mediaSession?.sessionToken?.let { mediaStyle.setMediaSession(it) }
-
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle(currentTitle)
-            .setContentText(contentText)
-            .setSubText(currentServerUrl)
-            .setSmallIcon(android.R.drawable.ic_media_play)
-            .setLargeIcon(largeIcon)
-            .setContentIntent(openPending)
-            .setOngoing(true)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .addAction(favIcon, favLabel, favPending)
-            .addAction(android.R.drawable.ic_media_previous, "Anterior", prevPending)
-            .addAction(playPauseIcon, playPauseLabel, playPausePending)
-            .addAction(android.R.drawable.ic_media_next, "Siguiente", nextPending)
-            .addAction(pauseAfterIcon, pauseAfterLabel, pauseAfterPending)
-            .setStyle(mediaStyle)
-            .build()
-    }
-
     private fun startForegroundWithNotification(text: String) {
-        val notification = buildNotification(text)
+        val notification = notificationManager.buildNotification(text)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
-    }
-
-    private fun updateNotification(text: String) {
-        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.notify(NOTIFICATION_ID, buildNotification(text))
     }
 }

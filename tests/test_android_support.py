@@ -291,9 +291,22 @@ def test_android_entry_configuration_and_lifecycle(tmp_path: Path, monkeypatch: 
 	assert created_servers[0].install_signal_handlers() is None
 	assert android_entry.get_server_info()["running"] is False
 
+	# Verifica que already_configured=True evita la doble inicialización de entorno/DB
+	with monkeypatch.context() as m:
+		cfg_mock = MagicMock(side_effect=AssertionError("no debe reconfigurar"))
+		m.setattr(android_entry, "configure_android_environment", cfg_mock)
+		android_entry.start_embedded_server(
+			data_dir=str(data_dir),
+			dist_dir=str(dist_dir),
+			music_dir=str(music_dir),
+			port=1829,
+			already_configured=True,
+		)
+		assert cfg_mock.call_count == 0
+
 
 def test_build_android_stage_assets(tmp_path: Path) -> None:
-	"""stage_android_assets copia app/ y dist/ excluyendo cachés hacia android/."""
+	"""stage_android_assets copia app/ excluyendo cachés y elimina assets/dist redundante."""
 	from scripts.build_android import stage_android_assets
 
 	(tmp_path / "app" / "__pycache__").mkdir(parents=True)
@@ -301,9 +314,38 @@ def test_build_android_stage_assets(tmp_path: Path) -> None:
 	(tmp_path / "app" / "android_entry.py").write_text("# entry\n", encoding="utf-8")
 	(tmp_path / "dist").mkdir()
 	(tmp_path / "dist" / "index.html").write_text("<html></html>", encoding="utf-8")
-	(tmp_path / "android").mkdir()
+	stale_dist = tmp_path / "android" / "app" / "src" / "main" / "assets" / "dist"
+	stale_dist.mkdir(parents=True)
+	(stale_dist / "stale.txt").write_text("obsoleto", encoding="utf-8")
 
-	py_dest, dist_dest = stage_android_assets(tmp_path)
+	py_dest = stage_android_assets(tmp_path)
 	assert (py_dest / "android_entry.py").is_file()
 	assert not (py_dest / "__pycache__").exists()
-	assert (dist_dest / "index.html").is_file()
+	assert not stale_dist.exists()
+
+
+def test_retag_wheel_for_android(tmp_path: Path) -> None:
+	"""retag_wheel_for_android reescribe nombre, WHEEL y RECORD a etiqueta android_24_*."""
+	import zipfile
+
+	from scripts.build_android import retag_wheel_for_android
+
+	src_whl = tmp_path / "pydantic_core-2.46.3-cp311-cp311-linux_aarch64.whl"
+	wheel_meta = "Wheel-Version: 1.0\nGenerator: maturin\nRoot-Is-Purelib: false\nTag: cp311-cp311-linux_aarch64\n"
+	record_meta = "pydantic_core-2.46.3.dist-info/WHEEL,sha256=old,1\npydantic_core-2.46.3.dist-info/RECORD,,\n"
+	with zipfile.ZipFile(src_whl, "w") as zf:
+		zf.writestr("pydantic_core/__init__.py", "# ok\n")
+		zf.writestr("pydantic_core-2.46.3.dist-info/WHEEL", wheel_meta)
+		zf.writestr("pydantic_core-2.46.3.dist-info/RECORD", record_meta)
+
+	out_dir = tmp_path / "wheels"
+	out_whl = retag_wheel_for_android(src_whl, out_dir)
+	assert out_whl.name == "pydantic_core-2.46.3-cp311-cp311-android_24_arm64_v8a.whl"
+	assert out_whl.is_file()
+	with zipfile.ZipFile(out_whl, "r") as zf:
+		rewritten = zf.read("pydantic_core-2.46.3.dist-info/WHEEL").decode("utf-8")
+		assert "Tag: cp311-cp311-android_24_arm64_v8a" in rewritten
+		assert "linux_aarch64" not in rewritten
+		rec = zf.read("pydantic_core-2.46.3.dist-info/RECORD").decode("utf-8")
+		assert "pydantic_core-2.46.3.dist-info/WHEEL,sha256=" in rec
+		assert "sha256=old" not in rec

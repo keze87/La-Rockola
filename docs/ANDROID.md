@@ -26,7 +26,7 @@ La versión de Android reutiliza el 100% del backend en Python y del frontend en
 - **Python 3.11** disponible en el `PATH` del equipo de compilación para que Chaquopy resuelva las ruedas nativas (`pip` / `buildPython`).
 
 > [!NOTE]
-> El backend usa Pydantic v2 (`pydantic-core`), que incluye código nativo en Rust. Si al compilar en alguna arquitectura (por ejemplo `armeabi-v7a`) Chaquopy no encuentra una rueda precompilada para tu versión de Python/ABI, podés limitar `abiFilters` en `android/app/build.gradle` a `"arm64-v8a"` (equipos modernos de 64 bits) o configurar `cargo-ndk`.
+> El backend usa Pydantic v2 (`pydantic-core`), que incluye código nativo en Rust. El script `scripts/build_android.py` descarga y reetiqueta automáticamente las ruedas `android_24_*` faltantes en `android/app/wheels/`, y `android/app/build.gradle` define sabores (`arm64`, `armv7`, `x86_64`) para generar APKs livianos separados por arquitectura.
 
 ### Pasos de compilación
 
@@ -36,13 +36,14 @@ La versión de Android reutiliza el 100% del backend en Python y del frontend en
     npm run android:sync
     ```
 
-    _(Esto ejecuta `npm run build`, copia `app/` a `android/app/src/main/python/app/`, copia `dist/` a `android/app/src/main/assets/dist/` y corre `npx cap sync android`)._
+    _(Esto ejecuta `npm run build`, copia únicamente `app/` a `android/app/src/main/python/app/`, limpia cualquier `assets/dist/` obsoleto y corre `npx cap sync android` para dejar el frontend en `android/app/src/main/assets/public/`)._
 
-2. **Generar el APK (Debug o Release):**
+2. **Generar los APKs por arquitectura (`arm64`, `armv7`, `x86_64`):**
     - Por consola (con `ANDROID_HOME` configurado):
         ```bash
         npm run android:build
         ```
+        Los binarios se generan en `android/app/build/outputs/apk/<sabor>/debug/` (por ejemplo `arm64/debug/app-arm64-debug.apk`).
     - O abriendo la carpeta `android/` directamente desde **Android Studio** y ejecutando **Build > Build Bundle(s) / APK(s) > Build APK(s)**.
 
 ---

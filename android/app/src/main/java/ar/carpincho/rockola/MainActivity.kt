@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
+import androidx.activity.OnBackPressedCallback
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
@@ -14,8 +15,8 @@ import com.getcapacitor.BridgeActivity
 /**
  * Actividad principal de Capacitor. Registra el plugin RockolaServer,
  * configura barras edge-to-edge transparentes con íconos claros,
- * arranca automáticamente el servidor embebido y mantiene activos
- * los timers del WebView para audio en segundo plano.
+ * arranca automáticamente el servidor embebido, delega navegación atrás a Vue
+ * y mantiene activos los timers del WebView solo mientras suena música.
  */
 class MainActivity : BridgeActivity() {
 
@@ -28,6 +29,7 @@ class MainActivity : BridgeActivity() {
         super.onCreate(savedInstanceState)
 
         applyHeadbarSystemBars()
+        registerBackNavigationHandler()
         bridge?.webView?.settings?.mediaPlaybackRequiresUserGesture = false
         requestNotificationPermissionIfNeeded()
         ensureServerAutoStarted()
@@ -41,9 +43,26 @@ class MainActivity : BridgeActivity() {
 
     override fun onPause() {
         super.onPause()
-        if (RockolaForegroundService.isRunning) {
+        if (RockolaForegroundService.isActivelyPlaying) {
             bridge?.webView?.resumeTimers()
         }
+    }
+
+    private fun registerBackNavigationHandler() {
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                val webView = bridge?.webView
+                if (webView == null) {
+                    moveTaskToBack(true)
+                    return
+                }
+                webView.evaluateJavascript("Boolean(window.__rockolaHandleBack && window.__rockolaHandleBack())") { res ->
+                    if (res != "true") {
+                        moveTaskToBack(true)
+                    }
+                }
+            }
+        })
     }
 
     private fun applyHeadbarSystemBars() {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-	import { computed, onMounted, watch } from 'vue';
+	import { computed, onMounted, onUnmounted, watch } from 'vue';
 	import { Toaster } from 'vue-sonner';
 	import { apiUrl } from './composables/useApi';
 	import {
@@ -15,6 +15,7 @@
 	import { usePlaybackControls } from './composables/usePlaybackControls';
 	import { usePlayer } from './composables/usePlayer';
 	import { useSliderFactory } from './composables/useSliderFactory';
+	import { useContextMenu } from './composables/useContextMenu';
 	import { isLyricsEditorOpen } from './stores/useUiStore';
 
 	// Componentes aislados de la interfaz
@@ -210,9 +211,31 @@
 	});
 
 	const showAndroidFolderBanner = computed(() => isNativeAndroidHost() && androidServerStatus.value.needsFolder);
+	const { ctxMenu, closeCtxMenu } = useContextMenu();
+
+	function handleAndroidBack(): boolean {
+		if (ctxMenu.visible) {
+			closeCtxMenu();
+			return true;
+		}
+		if (isLyricsEditorOpen.value) {
+			isLyricsEditorOpen.value = false;
+			return true;
+		}
+		if (isFogonMode.value) {
+			isFogonMode.value = false;
+			return true;
+		}
+		if (activeTab.value !== 'library') {
+			switchTab('library');
+			return true;
+		}
+		return false;
+	}
 
 	onMounted(() => {
 		initRouter();
+		window.__rockolaHandleBack = handleAndroidBack;
 		if (isNativeAndroidHost()) {
 			initAndroidServer().finally(() => {
 				loadLibrary(false);
@@ -221,6 +244,12 @@
 		} else {
 			loadLibrary(false);
 			connectWebSocket();
+		}
+	});
+
+	onUnmounted(() => {
+		if (typeof window !== 'undefined' && window.__rockolaHandleBack === handleAndroidBack) {
+			delete window.__rockolaHandleBack;
 		}
 	});
 </script>

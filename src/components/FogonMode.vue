@@ -361,6 +361,68 @@
 		haptic();
 	}
 
+	// Gesto de deslizar hacia abajo sobre la tapa para cerrar el Modo Fogón
+	const COVER_SWIPE_CLOSE_THRESHOLD = 72;
+	const coverSwipeY = ref(0);
+	const isCoverSwiping = ref(false);
+	let coverTouchStartX = 0;
+	let coverTouchStartY = 0;
+	let coverSwipeAxis: 'vertical' | 'horizontal' | null = null;
+
+	const coverSwipeStyle = computed(() => {
+		if (coverSwipeY.value <= 0) return undefined;
+		const opacity = Math.max(0.45, 1 - coverSwipeY.value / 280);
+		return {
+			transform: `translateY(${Math.round(coverSwipeY.value)}px)`,
+			opacity: opacity.toFixed(2),
+			transition: isCoverSwiping.value ? 'none' : undefined,
+		};
+	});
+
+	function resetCoverSwipe() {
+		coverSwipeY.value = 0;
+		isCoverSwiping.value = false;
+		coverSwipeAxis = null;
+	}
+
+	function onCoverTouchStart(e: TouchEvent) {
+		const touch = e.touches[0];
+		if (!touch) return;
+		coverTouchStartX = touch.clientX;
+		coverTouchStartY = touch.clientY;
+		isCoverSwiping.value = true;
+		coverSwipeAxis = null;
+		coverSwipeY.value = 0;
+	}
+
+	function onCoverTouchMove(e: TouchEvent) {
+		if (!isCoverSwiping.value) return;
+		const touch = e.touches[0];
+		if (!touch) return;
+		const dx = touch.clientX - coverTouchStartX;
+		const dy = touch.clientY - coverTouchStartY;
+
+		if (!coverSwipeAxis && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
+			coverSwipeAxis = Math.abs(dy) > Math.abs(dx) && dy > 0 ? 'vertical' : 'horizontal';
+		}
+
+		if (coverSwipeAxis === 'vertical') {
+			coverSwipeY.value = Math.max(0, Math.min(240, dy));
+			if (e.cancelable) e.preventDefault();
+		} else {
+			coverSwipeY.value = 0;
+		}
+	}
+
+	function onCoverTouchEnd() {
+		if (!isCoverSwiping.value) return;
+		const shouldClose = coverSwipeAxis === 'vertical' && coverSwipeY.value >= COVER_SWIPE_CLOSE_THRESHOLD;
+		resetCoverSwipe();
+		if (shouldClose) {
+			closeFogon();
+		}
+	}
+
 	function goToQueueFromFogon() {
 		closeFogon();
 		player.switchTab('queue');
@@ -477,6 +539,7 @@
 					cursorTimer = null;
 				}
 				isCursorInactive.value = false;
+				resetCoverSwipe();
 			}
 		},
 		{ immediate: true }
@@ -562,12 +625,17 @@
 						>
 							<!-- Tapa del disco con marco carpincho, 90% del ancho en móviles (estrictamente cuadrada) y tamaño balanceado en escritorio -->
 							<div
-								class="fogon-cover-wrapper bg-carpincho-bg border-carpincho-border/60 flex shrink-0 items-center justify-center overflow-hidden rounded-2xl border shadow-2xl transition-all duration-500 md:rounded-3xl"
+								class="fogon-cover-wrapper bg-carpincho-bg border-carpincho-border/60 flex shrink-0 touch-pan-x items-center justify-center overflow-hidden rounded-2xl border shadow-2xl transition-all duration-500 md:rounded-3xl"
 								:class="[
 									hasLyrics
 										? 'aspect-square h-[90vw] max-h-[380px] w-[90vw] max-w-[380px] md:mb-5 md:h-auto md:max-h-none md:w-full md:max-w-none'
 										: 'mb-4 aspect-square h-56 max-h-[38vh] w-56 max-w-[38vh] sm:h-64 sm:w-64 md:mb-6 md:h-80 md:w-80 lg:h-88 lg:w-88',
 								]"
+								:style="coverSwipeStyle"
+								@touchstart.passive="onCoverTouchStart"
+								@touchmove="onCoverTouchMove"
+								@touchend="onCoverTouchEnd"
+								@touchcancel="resetCoverSwipe"
 							>
 								<transition name="fogon-cover" mode="out-in">
 									<FavoritableCover

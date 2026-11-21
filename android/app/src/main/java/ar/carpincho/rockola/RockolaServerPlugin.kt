@@ -84,6 +84,10 @@ class RockolaServerPlugin : Plugin() {
 
     @PluginMethod
     fun stopServer(call: PluginCall) {
+        if (!RockolaForegroundService.isRunning) {
+            call.resolve(JSObject().apply { put("stopped", true) })
+            return
+        }
         val intent = Intent(context, RockolaForegroundService::class.java).apply {
             action = RockolaForegroundService.ACTION_STOP
         }
@@ -98,6 +102,10 @@ class RockolaServerPlugin : Plugin() {
 
     @PluginMethod
     fun updateMediaNotification(call: PluginCall) {
+        if (!RockolaForegroundService.isRunning) {
+            call.resolve(JSObject().apply { put("updated", false) })
+            return
+        }
         val title = call.getString("title") ?: "La Rockola del Carpincho"
         val artist = call.getString("artist") ?: "En espera"
         val paused = call.getBoolean("paused") ?: true
@@ -130,6 +138,10 @@ class RockolaServerPlugin : Plugin() {
 
     @PluginMethod
     fun updateMediaPosition(call: PluginCall) {
+        if (!RockolaForegroundService.isRunning) {
+            call.resolve(JSObject().apply { put("updated", false) })
+            return
+        }
         val durationSec = call.getDouble("duration") ?: 0.0
         val positionSec = call.getDouble("position") ?: 0.0
         val paused = call.getBoolean("paused") ?: true

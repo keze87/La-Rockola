@@ -379,4 +379,44 @@ Dialogue: 0,0:00:20.00,0:00:24.00,Default,,0,0,0,,{\\kf100}Verso {\\kf100}tres
 		expect(tabsBar.classes()).toContain('max-h-0');
 		expect(tabsBar.classes()).toContain('opacity-0');
 	});
+
+	it('handles Android back navigation via window.__rockolaHandleBack priority order', async () => {
+		const { useContextMenu } = await import('@/composables/useContextMenu');
+		const { isLyricsEditorOpen } = await import('@/stores/useUiStore');
+		const { ctxMenu } = useContextMenu();
+
+		const wrapper = mount(App);
+		await wrapper.vm.$nextTick();
+
+		expect(typeof window.__rockolaHandleBack).toBe('function');
+
+		// 1. Menú contextual abierto tiene máxima prioridad
+		ctxMenu.visible = true;
+		isLyricsEditorOpen.value = true;
+		isFogonMode.value = true;
+		activeTab.value = 'queue';
+		expect(window.__rockolaHandleBack?.()).toBe(true);
+		expect(ctxMenu.visible).toBe(false);
+		expect(isLyricsEditorOpen.value).toBe(true);
+
+		// 2. Editor de letras
+		expect(window.__rockolaHandleBack?.()).toBe(true);
+		expect(isLyricsEditorOpen.value).toBe(false);
+		expect(isFogonMode.value).toBe(true);
+
+		// 3. Modo Fogón
+		expect(window.__rockolaHandleBack?.()).toBe(true);
+		expect(isFogonMode.value).toBe(false);
+		expect(activeTab.value).toBe('queue');
+
+		// 4. Pestaña distinta de biblioteca vuelve a biblioteca
+		expect(window.__rockolaHandleBack?.()).toBe(true);
+		expect(activeTab.value).toBe('library');
+
+		// 5. En la raíz devuelve false para que Android mande la app a segundo plano
+		expect(window.__rockolaHandleBack?.()).toBe(false);
+
+		wrapper.unmount();
+		expect(window.__rockolaHandleBack).toBeUndefined();
+	});
 });

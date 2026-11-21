@@ -836,4 +836,48 @@ Dialogue: 0,0:00:01.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Letra {\\kf100}animad
 
 		addEventListenerSpy.mockRestore();
 	});
+
+	it('closes fogon mode when swiping downward on the cover art', async () => {
+		isFogonMode.value = true;
+		const wrapper = mount(FogonMode);
+		const coverWrapper = wrapper.find('.fogon-cover-wrapper');
+		expect(coverWrapper.exists()).toBe(true);
+
+		await coverWrapper.trigger('touchstart', {
+			touches: [{ clientX: 160, clientY: 100 }],
+		});
+		await coverWrapper.trigger('touchmove', {
+			touches: [{ clientX: 164, clientY: 220 }],
+		});
+
+		expect(coverWrapper.attributes('style')).toContain('translateY(120px)');
+
+		await coverWrapper.trigger('touchend');
+		expect(isFogonMode.value).toBe(false);
+	});
+
+	it('does not close fogon mode on short, upward, or horizontal cover swipe', async () => {
+		isFogonMode.value = true;
+		const wrapper = mount(FogonMode);
+		const coverWrapper = wrapper.find('.fogon-cover-wrapper');
+
+		// Deslizamiento corto hacia abajo (< umbral)
+		await coverWrapper.trigger('touchstart', { touches: [{ clientX: 160, clientY: 100 }] });
+		await coverWrapper.trigger('touchmove', { touches: [{ clientX: 160, clientY: 135 }] });
+		await coverWrapper.trigger('touchend');
+		expect(isFogonMode.value).toBe(true);
+		expect(coverWrapper.attributes('style') || '').not.toContain('translateY(35px)');
+
+		// Deslizamiento hacia arriba
+		await coverWrapper.trigger('touchstart', { touches: [{ clientX: 160, clientY: 220 }] });
+		await coverWrapper.trigger('touchmove', { touches: [{ clientX: 160, clientY: 100 }] });
+		await coverWrapper.trigger('touchend');
+		expect(isFogonMode.value).toBe(true);
+
+		// Deslizamiento mayormente horizontal
+		await coverWrapper.trigger('touchstart', { touches: [{ clientX: 100, clientY: 100 }] });
+		await coverWrapper.trigger('touchmove', { touches: [{ clientX: 240, clientY: 140 }] });
+		await coverWrapper.trigger('touchend');
+		expect(isFogonMode.value).toBe(true);
+	});
 });
