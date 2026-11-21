@@ -141,6 +141,13 @@ def _migration_rev_7(conn: sqlite3.Connection) -> None:
 	""")
 
 
+def _migration_rev_8(conn: sqlite3.Connection) -> None:
+	"""Rev 8: Columna audio_hash en tracks para detección instantánea de duplicados sin relectura."""
+	if not _column_exists(conn, "tracks", "audio_hash"):
+		c = conn.cursor()
+		c.execute("ALTER TABLE tracks ADD COLUMN audio_hash TEXT")
+
+
 MIGRATIONS: list[tuple[int, Callable[[sqlite3.Connection], None], str]] = [
 	(1, _migration_rev_1, "Tablas iniciales de rockola"),
 	(2, _migration_rev_2, "Columnas mtime y file_size"),
@@ -149,6 +156,7 @@ MIGRATIONS: list[tuple[int, Callable[[sqlite3.Connection], None], str]] = [
 	(5, _migration_rev_5, "Purga de locuciones radiales en historial"),
 	(6, _migration_rev_6, "Estado persistente e historial de frases del locutor radial"),
 	(7, _migration_rev_7, "Caché persistente de miniaturas de carátulas 128px"),
+	(8, _migration_rev_8, "Columna audio_hash para caché de duplicados"),
 ]
 
 

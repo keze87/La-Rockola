@@ -13,6 +13,7 @@ import os
 import re
 import subprocess
 import tempfile
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -90,17 +91,51 @@ class LibraryService:
 		self.db_path = db_path
 		self.track_repo = track_repo or TrackRepository(db_path)
 
-	def _mark_duplicate_tracks(self, tracks: list[dict[str, Any]]) -> None:
+	def _mark_duplicate_tracks(
+		self,
+		tracks: list[dict[str, Any]],
+		state: Any = None,
+		max_workers: int | None = None,
+	) -> None:
 		"""Detecta pistas con audio idéntico (aunque cambie la metadata) y marca la advertencia."""
 		if not tracks:
 			return
+
+		missing = [trk for trk in tracks if not trk.get("audio_hash")]
+		if missing:
+			t0 = time.perf_counter()
+			worker_count = max_workers if max_workers is not None else max(1, os.cpu_count() or 4)
+			if state:
+				state.scan_message = f"Detectando duplicados (0/{len(missing)})..."
+
+			backfill: list[tuple[str, str]] = []
+			with concurrent.futures.ThreadPoolExecutor(max_workers=worker_count) as executor:
+				future_to_trk = {executor.submit(generate_audio_hash, trk["path"]): trk for trk in missing}
+				for idx, future in enumerate(concurrent.futures.as_completed(future_to_trk), 1):
+					trk = future_to_trk[future]
+					try:
+						ah = future.result()
+					except Exception:
+						ah = ""
+					trk["audio_hash"] = ah
+					if ah and trk.get("track_hash"):
+						backfill.append((ah, trk["track_hash"]))
+					if state and (idx % 25 == 0 or idx == len(missing)):
+						state.scan_message = f"Detectando duplicados ({idx}/{len(missing)})..."
+
+			if backfill:
+				try:
+					self.track_repo.update_audio_hash_batch(backfill)
+				except Exception as e:
+					logger.debug(f"No pude guardar backfill de audio_hash: {e}")
+			logger.info(f"⏱️ [scan] Hash de audio para {len(missing)} temas en {time.perf_counter() - t0:.2f}s")
+
 		groups: dict[str, list[dict[str, Any]]] = {}
 		for trk in tracks:
-			audio_hash = trk.get("audio_hash")
-			if not audio_hash:
-				audio_hash = generate_audio_hash(trk["path"])
-				trk["audio_hash"] = audio_hash
-			groups.setdefault(audio_hash, []).append(trk)
+			ah = trk.get("audio_hash") or ""
+			if not ah:
+				continue
+			groups.setdefault(ah, []).append(trk)
 
 		dup_groups = 0
 		for group in groups.values():
@@ -247,6 +282,7 @@ class LibraryService:
 					"energy": row["energy"] if row["energy"] is not None else 0.0,
 					"spectral_centroid": row["spectral_centroid"] if row["spectral_centroid"] is not None else 0.0,
 					"fingerprint": row["fingerprint"],
+					"audio_hash": row.get("audio_hash") if isinstance(row, dict) else row["audio_hash"],
 				}
 		except Exception as e:
 			logger.warning(f"No pude cargar la caché de la DB: {e}")
@@ -305,16 +341,23 @@ class LibraryService:
 					"energy": cached["energy"],
 					"spectral_centroid": cached["spectral_centroid"],
 					"fingerprint": cached.get("fingerprint"),
+					"audio_hash": cached.get("audio_hash"),
 				}
 				cache_hits[file_str] = (current_mtime, td, th)
 			else:
 				miss_files.append((f, current_mtime, current_size))
 
+		logger.info(
+			f"⏱️ [scan] Caché evaluada: {len(cache_hits)} hits, {len(miss_files)} nuevos/modificados (total={len(raw_files)})."
+		)
 		if state:
 			state.scan_current = len(cache_hits)
+			if miss_files:
+				state.scan_message = f"Leyendo metadatos ({len(cache_hits)}/{len(raw_files)})..."
 
 		miss_results: dict[str, tuple[float, dict[str, Any], str, tuple[Any, ...], str | None]] = {}
 		if miss_files:
+			t_meta = time.perf_counter()
 
 			def _process_single_file(
 				item: tuple[Path, float, int],
@@ -322,6 +365,8 @@ class LibraryService:
 				target_f, mtime, size = item
 				track_obj = Track(target_f, extract_mood=extract_mood, extract_fingerprint=bool(extract_fingerprint))
 				track_dict = track_obj.to_dict()
+				audio_hash = generate_audio_hash(target_f)
+				track_dict["audio_hash"] = audio_hash
 				track_hash = track_obj.track_hash
 				db_tuple = (
 					track_hash,
@@ -336,6 +381,7 @@ class LibraryService:
 					track_dict.get("energy", 0.0),
 					track_dict.get("spectral_centroid", 0.0),
 					track_obj.fingerprint,
+					audio_hash,
 				)
 				return (str(target_f), mtime, track_dict, track_hash, db_tuple, track_obj.fingerprint)
 
@@ -348,12 +394,15 @@ class LibraryService:
 						f_str, mtime, t_dict, t_hash, db_tup, fp = res
 						miss_results[f_str] = (mtime, t_dict, t_hash, db_tup, fp)
 					if state:
-						state.scan_current = len(cache_hits) + processed_count
+						current_total = len(cache_hits) + processed_count
+						state.scan_current = current_total
+						state.scan_message = f"Leyendo metadatos ({current_total}/{len(raw_files)})..."
 					if processed_count % 50 == 0:
 						logger.info(
 							f"Ya procesé la data de {processed_count}/{len(miss_files)} joyitas nuevas/modificadas..."
 						)
 						gc.collect()
+			logger.info(f"⏱️ [scan] Metadatos nuevos ({len(miss_files)}) en {time.perf_counter() - t_meta:.2f}s.")
 
 		tracks: list[dict[str, Any]] = []
 		for f in raw_files:
@@ -377,6 +426,8 @@ class LibraryService:
 				path_to_id[file_str] = track_hash
 
 		missing_db_tracks = [t for t in db_cache.values() if t["track_hash"] not in seen_track_ids]
+		if state and missing_db_tracks and new_tracks_for_reconciliation:
+			state.scan_message = "Reconciliando huellas acústicas..."
 		self.reconcile_chromaprint(
 			new_tracks_for_reconciliation=new_tracks_for_reconciliation,
 			missing_db_tracks=missing_db_tracks,
@@ -387,16 +438,23 @@ class LibraryService:
 			seen_track_ids=seen_track_ids,
 		)
 
-		self._mark_duplicate_tracks(tracks)
+		self._mark_duplicate_tracks(tracks, state=state, max_workers=max_workers)
+		if state:
+			state.scan_message = "Calculando puntajes de vibra..."
 		calculate_mood_scores(tracks)
 		if state:
 			state.tracks_cache = tracks
 			state.track_cache_by_path = new_cache
 
 		if tracks_to_insert:
+			if state:
+				state.scan_message = f"Guardando {len(tracks_to_insert)} temas en base de datos..."
+			t_db = time.perf_counter()
 			try:
 				self.track_repo.save_many(tracks_to_insert)
-				logger.info(f"Guardados {len(tracks_to_insert)} metadatos frescos en la base de datos.")
+				logger.info(
+					f"⏱️ [scan] Guardados {len(tracks_to_insert)} metadatos en SQLite en {time.perf_counter() - t_db:.2f}s."
+				)
 			except Exception as e:
 				logger.error(f"Error guardando tracks en la DB: {e}")
 

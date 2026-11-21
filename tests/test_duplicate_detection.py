@@ -178,3 +178,37 @@ def test_scan_directory_single_pass_extensions_and_progress(tmp_path: Path) -> N
 	assert len(tracks) == 2
 	assert state.scan_total == 2
 	assert state.scan_current == 2
+
+
+def test_scan_directory_persists_audio_hash_and_skips_rehash_on_cache_hit(tmp_path: Path) -> None:
+	"""El segundo escaneo debe reutilizar audio_hash desde SQLite sin volver a leer el audio."""
+	db_path = tmp_path / "rockola.db"
+	apply_migrations(db_path)
+
+	music_dir = tmp_path / "music"
+	music_dir.mkdir()
+	f1 = music_dir / "tema1.mp3"
+	_write_synthetic_mp3(f1, b"\xff\xfb\x90\x64" + (b"\x55" * 8192))
+
+	service = LibraryService(db_path=db_path)
+	with (
+		patch("app.domain.library.service.is_mood_available", return_value=False),
+		patch("app.domain.library.service.find_binary", return_value=None),
+	):
+		first = service.scan_directory([music_dir], extract_mood=False, extract_fingerprint=False)
+
+	assert len(first) == 1
+	assert first[0].get("audio_hash")
+
+	with (
+		patch("app.domain.library.service.is_mood_available", return_value=False),
+		patch("app.domain.library.service.find_binary", return_value=None),
+		patch(
+			"app.domain.library.service.generate_audio_hash", side_effect=AssertionError("No debe rehashear")
+		) as h_mock,
+	):
+		second = service.scan_directory([music_dir], extract_mood=False, extract_fingerprint=False)
+
+	assert len(second) == 1
+	assert second[0]["audio_hash"] == first[0]["audio_hash"]
+	assert h_mock.call_count == 0

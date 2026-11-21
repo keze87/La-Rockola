@@ -446,9 +446,11 @@
 					<transition name="lyric" mode="out-in">
 						<span v-if="isScanning" class="block w-full truncate text-left">
 							{{
-								scanStatus?.total
-									? `[Avisando] Chusmeando temas (${scanStatus.current}/${scanStatus.total}), aguantá fiera... 🧉`
-									: '[Avisando] Chusmeando temas, aguantá fiera... 🧉'
+								scanStatus?.message
+									? `[Avisando] ${scanStatus.message}`
+									: scanStatus?.total
+										? `[Avisando] Chusmeando temas (${scanStatus.current}/${scanStatus.total}), aguantá fiera... 🧉`
+										: '[Avisando] Chusmeando temas, aguantá fiera... 🧉'
 							}}
 						</span>
 						<div

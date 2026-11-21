@@ -82,7 +82,7 @@ class TrackRepository:
 		"""Obtiene los campos necesarios para verificar la caché de escaneo."""
 		sql = (
 			"SELECT path, mtime, file_size, track_id, title, album, artist, duration_str, "
-			"bpm, energy, spectral_centroid, fingerprint FROM tracks"
+			"bpm, energy, spectral_centroid, fingerprint, audio_hash FROM tracks"
 		)
 		return execute_query(sql, (), self.db_path)
 
@@ -90,14 +90,30 @@ class TrackRepository:
 		"""Inserta o actualiza un lote de pistas en una sola transacción."""
 		sql = """
 			INSERT OR REPLACE INTO tracks
-			(track_id, path, title, album, artist, duration_str, mtime, file_size, bpm, energy, spectral_centroid, fingerprint)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			(track_id, path, title, album, artist, duration_str, mtime, file_size, bpm, energy, spectral_centroid, fingerprint, audio_hash)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		"""
 		with get_db_connection(self.db_path) as conn:
 			cursor = conn.cursor()
 			cursor.execute("BEGIN IMMEDIATE;")
 			try:
 				cursor.executemany(sql, tracks)
+				conn.execute("COMMIT;")
+				return cursor.rowcount
+			except Exception:
+				conn.execute("ROLLBACK;")
+				raise
+
+	def update_audio_hash_batch(self, batch: list[tuple[str, str]]) -> int:
+		"""Actualiza audio_hash para pistas existentes (tuples (audio_hash, track_id))."""
+		if not batch:
+			return 0
+		sql = "UPDATE tracks SET audio_hash = ? WHERE track_id = ?"
+		with get_db_connection(self.db_path) as conn:
+			cursor = conn.cursor()
+			cursor.execute("BEGIN IMMEDIATE;")
+			try:
+				cursor.executemany(sql, batch)
 				conn.execute("COMMIT;")
 				return cursor.rowcount
 			except Exception:

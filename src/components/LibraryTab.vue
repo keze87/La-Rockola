@@ -217,9 +217,11 @@
 				<span class="truncate">
 					{{
 						isScanning
-							? scanStatus?.total
-								? `Chusmeando temas: ${scanStatus.current} de ${scanStatus.total} listos 🧉`
-								: 'Chusmeando la biblioteca, aguantá fiera... 🧉'
+							? scanStatus?.message
+								? scanStatus.message
+								: scanStatus?.total
+									? `Chusmeando temas: ${scanStatus.current} de ${scanStatus.total} listos 🧉`
+									: 'Chusmeando la biblioteca, aguantá fiera... 🧉'
 							: scanStatus?.total
 								? `Sintonizando vibra: ${scanStatus.current} de ${scanStatus.total} temas analizados 🎶`
 								: 'Sintonizando vibra de los temas en segundo plano... 🎶'
