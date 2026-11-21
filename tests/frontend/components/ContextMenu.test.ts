@@ -367,4 +367,30 @@ describe('ContextMenu.vue', () => {
 		expect(isFogonMode.value).toBe(false);
 		expect(librarySearchQuery.value).toBe('Pescado Rabioso');
 	});
+
+	it('ignores trailing contextmenu and ghost click on backdrop right after touch open, closing only on new pointerdown + click', async () => {
+		const { openCtxMenu } = useContextMenu();
+		openCtxMenu(
+			{
+				touches: [{ clientX: 60, clientY: 120 }],
+			} as unknown as TouchEvent,
+			sampleTrack,
+			'library',
+			0
+		);
+
+		const wrapper = mount(ContextMenu);
+		const backdrop = wrapper.find('.fixed.inset-0');
+		expect(backdrop.exists()).toBe(true);
+
+		// Simula contextmenu nativo y click fantasma inmediatamente después de abrir por touch
+		await backdrop.trigger('contextmenu');
+		await backdrop.trigger('click');
+		expect(ctxMenu.visible).toBe(true);
+
+		// Un toque/click genuino nuevo sí inicia en pointerdown/touchstart y cierra el menú
+		await backdrop.trigger('pointerdown');
+		await backdrop.trigger('click');
+		expect(ctxMenu.visible).toBe(false);
+	});
 });

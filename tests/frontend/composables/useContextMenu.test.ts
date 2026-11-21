@@ -162,4 +162,59 @@ describe('useContextMenu.ts', () => {
 		expect(focusSpy).toHaveBeenCalled();
 		menuRef.value = null;
 	});
+
+	it('suppresses backdrop dismissal from trailing touch contextmenu/click until a new pointer gesture', () => {
+		const { ctxMenu, openCtxMenu, onCtxTouchStart, onCtxTouchEnd, onBackdropPointerDown, dismissFromBackdrop } =
+			useContextMenu();
+
+		// 1. El dedo inicia touchstart y antes de 500ms Chromium dispara contextmenu nativo
+		onCtxTouchStart(
+			{
+				touches: [{ screenX: 120, screenY: 200 }],
+				currentTarget: document.createElement('div'),
+			} as unknown as TouchEvent,
+			sampleTrack,
+			'library',
+			0
+		);
+
+		openCtxMenu(
+			{
+				clientX: 120,
+				clientY: 200,
+				pointerType: 'touch',
+			} as unknown as MouseEvent,
+			sampleTrack,
+			'library',
+			0
+		);
+		expect(ctxMenu.visible).toBe(true);
+
+		// 2. Al soltar el dedo debe cancelar el timer y prevenir el click fantasma
+		const preventDefault = vi.fn();
+		onCtxTouchEnd({ preventDefault } as unknown as TouchEvent);
+		expect(preventDefault).toHaveBeenCalled();
+
+		// Si por timing el timer hubiera seguido vivo, no debería reabrir/romper nada tras 500ms
+		vi.advanceTimersByTime(500);
+
+		// 3. Un click o contextmenu residual sobre el backdrop NO debe cerrar el menú
+		dismissFromBackdrop();
+		expect(ctxMenu.visible).toBe(true);
+
+		// 4. Solo un nuevo toque/clic genuino posterior en el backdrop cierra el menú
+		onBackdropPointerDown();
+		dismissFromBackdrop();
+		expect(ctxMenu.visible).toBe(false);
+	});
+
+	it('allows immediate backdrop dismissal when opened via desktop mouse right-click', () => {
+		const { ctxMenu, openCtxMenu, dismissFromBackdrop } = useContextMenu();
+
+		openCtxMenu({ clientX: 80, clientY: 90 } as unknown as MouseEvent, sampleTrack, 'library', 1);
+		expect(ctxMenu.visible).toBe(true);
+
+		dismissFromBackdrop();
+		expect(ctxMenu.visible).toBe(false);
+	});
 });

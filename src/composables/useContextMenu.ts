@@ -30,6 +30,22 @@ let ctxLongPressTimer: ReturnType<typeof setTimeout> | null = null;
 let touchStartX = 0;
 let touchStartY = 0;
 let ctxLongPressFired = false;
+let touchActive = false;
+let lastTouchTimestamp = 0;
+let suppressBackdropUntilNewPointer = false;
+
+type TouchCapableMouseEvent = MouseEvent & {
+	pointerType?: string;
+	sourceCapabilities?: { firesTouchEvents?: boolean };
+};
+
+function isTouchEventOrigin(event: MouseEvent | TouchEvent): boolean {
+	if (touchActive || 'touches' in event) return true;
+	const mouseLike = event as TouchCapableMouseEvent;
+	if (mouseLike.pointerType === 'touch') return true;
+	if (mouseLike.sourceCapabilities?.firesTouchEvents === true) return true;
+	return lastTouchTimestamp > 0 && Date.now() - lastTouchTimestamp < 1000;
+}
 
 export const menuRef = ref<HTMLElement | null>(null);
 
@@ -40,10 +56,25 @@ export function useContextMenu() {
 		source = 'library',
 		index: number | null = null
 	) {
+		if (ctxLongPressTimer) {
+			clearTimeout(ctxLongPressTimer);
+			ctxLongPressTimer = null;
+		}
+
 		// Solo válido para manejadores invocados de forma sincrónica (un evento `contextmenu` real);
 		// para pulsación larga táctil esto se captura antes en onCtxTouchStart,
 		// ya que `currentTarget` queda en null cuando se dispara el setTimeout.
 		if (event.currentTarget) triggerEl = event.currentTarget as HTMLElement;
+
+		const openedFromTouch = isTouchEventOrigin(event);
+		if (openedFromTouch) {
+			// Si Android WebView disparó `contextmenu` nativo antes del timer, igual marcamos
+			// long-press consumido e ignoramos eventos residuales hasta un nuevo toque real.
+			ctxLongPressFired = true;
+			suppressBackdropUntilNewPointer = true;
+		} else {
+			suppressBackdropUntilNewPointer = false;
+		}
 
 		ctxMenu.track = track;
 		ctxMenu.source = source;
@@ -92,6 +123,14 @@ export function useContextMenu() {
 
 	function closeCtxMenu() {
 		ctxMenu.visible = false;
+		suppressBackdropUntilNewPointer = false;
+		touchActive = false;
+		lastTouchTimestamp = 0;
+		ctxLongPressFired = false;
+		if (ctxLongPressTimer) {
+			clearTimeout(ctxLongPressTimer);
+			ctxLongPressTimer = null;
+		}
 
 		// Devolvemos el foco al elemento que abrió el menú, si todavía existe
 		if (triggerEl && document.contains(triggerEl) && typeof triggerEl.focus === 'function') {
@@ -100,7 +139,21 @@ export function useContextMenu() {
 		triggerEl = null;
 	}
 
+	function onBackdropPointerDown() {
+		suppressBackdropUntilNewPointer = false;
+	}
+
+	function dismissFromBackdrop() {
+		if (suppressBackdropUntilNewPointer) return;
+		closeCtxMenu();
+	}
+
 	function onCtxTouchStart(e: TouchEvent, track: Track, source = 'library', index: number | null = null) {
+		if (ctxLongPressTimer) {
+			clearTimeout(ctxLongPressTimer);
+			ctxLongPressTimer = null;
+		}
+
 		// Capturamos de forma sincrónica ahora: el navegador limpia `e.currentTarget`
 		// apenas termina el evento touchstart, por lo que ya no estaría cuando corra el setTimeout.
 		const el = e.currentTarget as HTMLElement;
@@ -108,6 +161,8 @@ export function useContextMenu() {
 		touchStartX = e.touches[0].screenX;
 		touchStartY = e.touches[0].screenY;
 		ctxLongPressFired = false;
+		touchActive = true;
+		lastTouchTimestamp = Date.now();
 
 		ctxLongPressTimer = setTimeout(() => {
 			ctxLongPressFired = true;
@@ -133,6 +188,8 @@ export function useContextMenu() {
 	}
 
 	function onCtxTouchEnd(e: TouchEvent) {
+		touchActive = false;
+		lastTouchTimestamp = Date.now();
 		if (ctxLongPressTimer) {
 			clearTimeout(ctxLongPressTimer);
 			ctxLongPressTimer = null;
@@ -142,9 +199,19 @@ export function useContextMenu() {
 		if (ctxLongPressFired && e && typeof e.preventDefault === 'function') {
 			e.preventDefault();
 		}
+		ctxLongPressFired = false;
 	}
 
-	return { closeCtxMenu, ctxMenu, onCtxTouchEnd, onCtxTouchMove, onCtxTouchStart, openCtxMenu };
+	return {
+		closeCtxMenu,
+		ctxMenu,
+		dismissFromBackdrop,
+		onBackdropPointerDown,
+		onCtxTouchEnd,
+		onCtxTouchMove,
+		onCtxTouchStart,
+		openCtxMenu,
+	};
 }
 
 /**

@@ -84,6 +84,10 @@ export function useQueueDragDrop(options: UseQueueDragDropOptions) {
 	});
 
 	function queueTouchStart(e: TouchEvent, path: string, i: number) {
+		if (queueLongPressTimer) {
+			clearTimeout(queueLongPressTimer);
+			queueLongPressTimer = null;
+		}
 		touchStartX = e.changedTouches[0].screenX;
 		queueLongPressFired = false;
 
@@ -107,9 +111,14 @@ export function useQueueDragDrop(options: UseQueueDragDropOptions) {
 	function queueTouchEnd(e: TouchEvent, index: number) {
 		if (queueLongPressTimer) {
 			clearTimeout(queueLongPressTimer);
+			queueLongPressTimer = null;
 		}
 
-		if (queueLongPressFired) return;
+		if (queueLongPressFired) {
+			if (typeof e.preventDefault === 'function') e.preventDefault();
+			queueLongPressFired = false;
+			return;
+		}
 
 		const diff = touchStartX - e.changedTouches[0].screenX;
 

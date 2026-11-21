@@ -17,7 +17,7 @@
 		moveQueueItem,
 		removeQueueItem,
 	} = usePlaybackControls();
-	const { ctxMenu, closeCtxMenu } = useContextMenu();
+	const { ctxMenu, closeCtxMenu, dismissFromBackdrop, onBackdropPointerDown } = useContextMenu();
 	const {
 		currentTrackPath,
 		favorites,
@@ -288,8 +288,10 @@
 	<div
 		v-if="ctxMenu.visible"
 		class="fixed inset-0 z-[11000]"
-		@click.self="closeCtxMenu"
-		@contextmenu.prevent="closeCtxMenu"
+		@pointerdown.self="onBackdropPointerDown"
+		@touchstart.self.passive="onBackdropPointerDown"
+		@click.self="dismissFromBackdrop"
+		@contextmenu.prevent="dismissFromBackdrop"
 	>
 		<div
 			ref="menuRef"
