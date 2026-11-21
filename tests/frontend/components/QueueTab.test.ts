@@ -561,4 +561,25 @@ describe('QueueTab.vue', () => {
 		// Visual feedback: translateX(40px)
 		expect(row.attributes('style')).toContain('transform: translateX(40px)');
 	});
+
+	it('hides URL adder input on local Android host unless connected to remote server', async () => {
+		const androidHost = await import('@/composables/useAndroidHost');
+		const isNativeSpy = vi.spyOn(androidHost, 'isNativeAndroidHost').mockReturnValue(true);
+		const prevRemoteUrl = androidHost.activeRemoteServerUrl.value;
+
+		try {
+			androidHost.activeRemoteServerUrl.value = null;
+			const wrapper = mount(QueueTab);
+
+			expect(wrapper.find('input[placeholder*="YouTube"]').exists()).toBe(false);
+
+			androidHost.activeRemoteServerUrl.value = 'http://192.168.1.50:1729';
+			await wrapper.vm.$nextTick();
+
+			expect(wrapper.find('input[placeholder*="YouTube"]').exists()).toBe(true);
+		} finally {
+			androidHost.activeRemoteServerUrl.value = prevRemoteUrl;
+			isNativeSpy.mockRestore();
+		}
+	});
 });
