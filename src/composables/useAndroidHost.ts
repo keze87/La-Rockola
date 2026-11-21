@@ -235,6 +235,84 @@ export function resetToLocalServer(): void {
 	activeRemoteServerUrl.value = null;
 }
 
+let recoveryInFlight: Promise<boolean> | null = null;
+let lastRecoveryAttemptAt = 0;
+
+async function probeLocalHealth(port: number, timeoutMs = 2000): Promise<boolean> {
+	const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+	const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+	try {
+		const res = await fetch(
+			`http://127.0.0.1:${port}/health`,
+			controller ? { signal: controller.signal } : undefined
+		);
+		return res.ok;
+	} catch {
+		return false;
+	} finally {
+		if (timer) clearTimeout(timer);
+	}
+}
+
+/**
+ * Verifica si el servidor local embebido en Android murió y lo reinicia solo tras confirmar
+ * (servicio detenido por el SO o dos chequeos /health consecutivos fallidos).
+ * Nunca se ejecuta en web ni cuando está conectado a un servidor remoto.
+ */
+export async function ensureLocalAndroidServerAlive(opts?: {
+	retryDelayMs?: number;
+	cooldownMs?: number;
+}): Promise<boolean> {
+	if (!isNativeAndroidHost() || activeRemoteServerUrl.value) return false;
+	if (recoveryInFlight) return recoveryInFlight;
+
+	const cooldownMs = opts?.cooldownMs ?? 10000;
+	const now = Date.now();
+	if (cooldownMs > 0 && now - lastRecoveryAttemptAt < cooldownMs) {
+		return false;
+	}
+
+	recoveryInFlight = (async () => {
+		try {
+			const status = await RockolaServer.getStatus();
+			const port = status.port || 1729;
+
+			if (!status.running) {
+				lastRecoveryAttemptAt = Date.now();
+				await initAndroidServer();
+				return true;
+			}
+
+			if (await probeLocalHealth(port)) {
+				return false;
+			}
+
+			// Una sola falla puede ser transitoria: reintentamos antes de concluir que murió
+			const retryDelayMs = opts?.retryDelayMs ?? 1200;
+			await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+
+			if (await probeLocalHealth(port)) {
+				return false;
+			}
+
+			lastRecoveryAttemptAt = Date.now();
+			try {
+				await RockolaServer.stopServer();
+			} catch {
+				// Ignoramos error si el proceso Python ya estaba caído
+			}
+			await initAndroidServer();
+			return true;
+		} catch {
+			return false;
+		} finally {
+			recoveryInFlight = null;
+		}
+	})();
+
+	return recoveryInFlight;
+}
+
 export async function initAndroidServer(opts?: { pollIntervalMs?: number; timeoutMs?: number }): Promise<boolean> {
 	if (!isNativeAndroidHost()) return false;
 

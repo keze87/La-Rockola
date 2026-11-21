@@ -5,6 +5,7 @@
 	import {
 		androidServerStatus,
 		consumeAndroidPendingShortcut,
+		ensureLocalAndroidServerAlive,
 		initAndroidServer,
 		isAndroidPipMode,
 		isNativeAndroidHost,
@@ -351,14 +352,24 @@
 				loadLibrary(false);
 				connectWebSocket();
 			});
+			if (typeof document !== 'undefined') {
+				document.addEventListener('visibilitychange', handleAndroidVisibilityChange);
+			}
 		} else {
 			loadLibrary(false);
 			connectWebSocket();
 		}
 	});
 
+	function handleAndroidVisibilityChange() {
+		if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+			void ensureLocalAndroidServerAlive();
+		}
+	}
+
 	onUnmounted(() => {
 		if (typeof document !== 'undefined') {
+			document.removeEventListener('visibilitychange', handleAndroidVisibilityChange);
 			document.documentElement.classList.remove('android-pip');
 		}
 		isAndroidPipMode.value = false;

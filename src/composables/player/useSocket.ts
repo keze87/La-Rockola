@@ -1,7 +1,7 @@
 import { _startLocalPlayer, _stopLocalPlayer, applyRemoteSeek } from './useLocalPlayback';
 import { applyLibrarySort } from './useLibrary';
 import { useToasts } from './useToasts';
-import { isNativeAndroidHost } from '../useAndroidHost';
+import { activeRemoteServerUrl, ensureLocalAndroidServerAlive, isNativeAndroidHost } from '../useAndroidHost';
 import { getWsUrl } from '../useApi';
 import { useWebSocket } from '@vueuse/core';
 import {
@@ -51,6 +51,7 @@ import type { PlayerState, Track } from '../../types';
 
 export function useSocket() {
 	const { showToast } = useToasts();
+	let consecutiveDisconnects = 0;
 
 	function connectWebSocket() {
 		// Evitamos abrir múltiples conexiones si ya está instanciado
@@ -66,13 +67,18 @@ export function useSocket() {
 			},
 
 			onConnected() {
+				consecutiveDisconnects = 0;
 				if (listenLocally.value) {
 					send(JSON.stringify({ type: 'local_player_claim' }));
 				}
 			},
 
 			onDisconnected() {
+				consecutiveDisconnects += 1;
 				showToast('Se cortó la señal. Reconectando...', 'warning');
+				if (isNativeAndroidHost() && !activeRemoteServerUrl.value && consecutiveDisconnects >= 2) {
+					void ensureLocalAndroidServerAlive();
+				}
 			},
 
 			onMessage(ws, event) {

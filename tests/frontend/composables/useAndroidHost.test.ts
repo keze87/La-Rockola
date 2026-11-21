@@ -403,4 +403,85 @@ describe('useAndroidHost.ts', () => {
 		expect(activeRemoteServerUrl.value).toBeNull();
 		expect(localStorage.getItem('rockola_remote_server_url')).toBeNull();
 	});
+
+	it('ensureLocalAndroidServerAlive ignores remote mode, ignores transient failures, and restarts only when confirmed dead', async () => {
+		const mod = await import('@/composables/useAndroidHost');
+		const ensureLocalAndroidServerAlive = (mod as any).ensureLocalAndroidServerAlive as (opts?: {
+			retryDelayMs?: number;
+			cooldownMs?: number;
+		}) => Promise<boolean>;
+		const activeRemoteServerUrl = (mod as any).activeRemoteServerUrl;
+
+		// 1. No corre en web ni en modo servidor remoto
+		state.isNative = false;
+		await expect(ensureLocalAndroidServerAlive()).resolves.toBe(false);
+
+		state.isNative = true;
+		state.platform = 'android';
+		activeRemoteServerUrl.value = 'http://192.168.0.55:1729';
+		await expect(ensureLocalAndroidServerAlive()).resolves.toBe(false);
+		activeRemoteServerUrl.value = null;
+
+		// 2. Si el servicio corre y /health responde en el primer o segundo intento, NO reinicia
+		pluginMock.getStatus.mockResolvedValue({
+			running: true,
+			port: 1729,
+			localIp: '127.0.0.1',
+			serverUrl: 'http://127.0.0.1:1729',
+			musicDir: null,
+		});
+		let healthCalls = 0;
+		global.fetch = vi.fn().mockImplementation(() => {
+			healthCalls += 1;
+			if (healthCalls === 1) {
+				return Promise.reject(new Error('transient timeout'));
+			}
+			return Promise.resolve({ ok: true, json: () => Promise.resolve({ status: 'ok' }) });
+		});
+
+		await expect(ensureLocalAndroidServerAlive({ retryDelayMs: 5, cooldownMs: 0 })).resolves.toBe(false);
+		expect(pluginMock.startServer).not.toHaveBeenCalled();
+
+		// 3. Si getStatus().running es false (Android mató el servicio), reinicia de una
+		pluginMock.getStatus.mockResolvedValue({
+			running: false,
+			port: 1729,
+			localIp: '127.0.0.1',
+			serverUrl: 'http://127.0.0.1:1729',
+			musicDir: null,
+		});
+		pluginMock.startServer.mockResolvedValue({
+			running: true,
+			port: 1729,
+			localIp: '127.0.0.1',
+			serverUrl: 'http://127.0.0.1:1729',
+			musicDir: null,
+		});
+		global.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ status: 'ok' }) });
+
+		await expect(ensureLocalAndroidServerAlive({ retryDelayMs: 5, cooldownMs: 0 })).resolves.toBe(true);
+		expect(pluginMock.startServer).toHaveBeenCalledTimes(1);
+
+		// 4. Si getStatus().running es true pero fallan 2 /health consecutivos, detiene y reinicia
+		pluginMock.startServer.mockClear();
+		pluginMock.getStatus.mockResolvedValue({
+			running: true,
+			port: 1729,
+			localIp: '127.0.0.1',
+			serverUrl: 'http://127.0.0.1:1729',
+			musicDir: null,
+		});
+		let phase4Calls = 0;
+		global.fetch = vi.fn().mockImplementation(() => {
+			phase4Calls += 1;
+			if (phase4Calls <= 2) {
+				return Promise.reject(new Error('dead'));
+			}
+			return Promise.resolve({ ok: true, json: () => Promise.resolve({ status: 'ok' }) });
+		});
+
+		await expect(ensureLocalAndroidServerAlive({ retryDelayMs: 5, cooldownMs: 0 })).resolves.toBe(true);
+		expect(pluginMock.stopServer).toHaveBeenCalledTimes(1);
+		expect(pluginMock.startServer).toHaveBeenCalledTimes(1);
+	});
 });
