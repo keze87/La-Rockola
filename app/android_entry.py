@@ -66,6 +66,7 @@ def configure_android_environment(
 
 	from app.domain.playback.orchestrator import PlaybackOrchestrator
 	from app.infrastructure.db.migrations import apply_migrations
+	from app.infrastructure.mpv.android_controller import AndroidPlayerController, resolve_native_android_player
 
 	db_path = Path(resolved_data) / "rockola.db"
 	apply_migrations(db_path)
@@ -83,6 +84,18 @@ def configure_android_environment(
 		dj_mode=settings.dj_mode,
 		volume=settings.volume,
 	)
+	native_player = resolve_native_android_player()
+	if native_player is not None:
+		orch.mpv = AndroidPlayerController(
+			callbacks={
+				"duration_update": orch.handle_duration_update,
+				"pause_update": orch.handle_pause_update,
+				"song_ended": orch.handle_song_ended,
+				"time_update": orch.handle_time_update,
+			},
+			state_ref=orch,
+			native_player=native_player,
+		)
 	orch.server_host = host
 	orch.server_port = port
 	orch.local_ip = urls["local_ip"]
