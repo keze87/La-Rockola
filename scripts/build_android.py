@@ -158,11 +158,23 @@ def has_android_sdk(android_dir: Path) -> bool:
 	return default_sdk.is_dir()
 
 
+def ensure_jdk_env() -> None:
+	"""Asegura que JAVA_HOME apunte a un JDK con javac (Java 21/17) si el predeterminado carece de compilador."""
+	if "JAVA_HOME" in os.environ and Path(os.environ["JAVA_HOME"], "bin", "javac").is_file():
+		return
+	for candidate in [Path("/usr/lib/jvm/java-21-openjdk"), Path("/usr/lib/jvm/java-17-openjdk")]:
+		if (candidate / "bin" / "javac").is_file():
+			os.environ["JAVA_HOME"] = str(candidate)
+			os.environ["PATH"] = f"{candidate / 'bin'}{os.pathsep}{os.environ.get('PATH', '')}"
+			return
+
+
 def build_android(
 	root_dir: Path | None = None,
 	skip_frontend: bool = False,
 	sync_only: bool = False,
 	release: bool = False,
+	flavor: str | None = None,
 ) -> int:
 	"""Orquesta compilación de frontend, staging de assets, cap sync y Gradle."""
 	base_dir = (root_dir or Path(__file__).resolve().parents[1]).resolve()
@@ -196,8 +208,10 @@ def build_android(
 		)
 		return 0
 
+	ensure_jdk_env()
 	gradlew = android_dir / ("gradlew.bat" if os.name == "nt" else "gradlew")
-	task = "assembleRelease" if release else "assembleDebug"
+	variant = "Release" if release else "Debug"
+	task = f"assemble{flavor.capitalize()}{variant}" if flavor else f"assemble{variant}"
 	print(f"🤖 Compilando APK con Gradle ({task})...")
 	subprocess.run([str(gradlew), task], cwd=str(android_dir), check=True)
 	print("✅ ¡APK compilado con éxito! Revisá android/app/build/outputs/apk/")
@@ -209,6 +223,12 @@ def main() -> int:
 	parser.add_argument("--skip-frontend", action="store_true", help="Omite 'npm run build' y usa dist/ actual.")
 	parser.add_argument("--sync-only", action="store_true", help="Solo sincroniza Python/dist/Capacitor sin Gradle.")
 	parser.add_argument("--release", action="store_true", help="Compila assembleRelease en vez de assembleDebug.")
+	parser.add_argument(
+		"--flavor",
+		choices=["arm64", "armv7", "x86_64"],
+		default=None,
+		help="Flavour de arquitectura específica (ej. arm64).",
+	)
 	args = parser.parse_args()
 
 	try:
@@ -216,6 +236,7 @@ def main() -> int:
 			skip_frontend=args.skip_frontend,
 			sync_only=args.sync_only,
 			release=args.release,
+			flavor=args.flavor,
 		)
 	except Exception as exc:
 		print(f"❌ Error preparando build Android: {exc}", file=sys.stderr)
