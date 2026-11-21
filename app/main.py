@@ -33,6 +33,7 @@ from app.api.websocket import ConnectionManager
 from app.core.config import get_carpincho_data_dir, get_dist_dirs
 from app.core.container import get_container
 from app.domain.playback.orchestrator import broadcast_state
+from app.domain.radio.preload import run_tts_preload
 from app.infrastructure.binaries import ytdlp as ytdlp_installer
 from app.infrastructure.binaries.manager import find_binary
 from app.infrastructure.db.connection import backup_db, get_default_db_path
@@ -105,7 +106,18 @@ async def lifespan(app: FastAPI):
 			)
 		)
 
+	preload_task: asyncio.Task[dict[str, int]] | None = None
+	if "PYTEST_CURRENT_TEST" not in os.environ:
+		preload_task = asyncio.create_task(run_tts_preload(concurrency=1, delay=0.5, quiet=True))
+
 	yield
+
+	if preload_task and not preload_task.done():
+		preload_task.cancel()
+		try:
+			await preload_task
+		except asyncio.CancelledError:
+			pass
 
 	logger.info("Cerrando La Rockola del Carpincho. ¡Nos vemos en los fogones!")
 	if state:

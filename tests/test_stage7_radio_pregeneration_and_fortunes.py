@@ -140,7 +140,7 @@ def test_prune_tts_cache_db_large_capacity(tmp_path: Path) -> None:
 
 
 def test_collect_phrases_expands_placeholders_and_numbers() -> None:
-	"""Verifica que collect_phrases expanda todos los placeholders y prevea números y clima para uso offline."""
+	"""Verifica que collect_phrases expanda todos los placeholders y excluya segmentos muertos (clima/minuto)."""
 	from scripts.preload_tts_cache import collect_phrases
 
 	items = collect_phrases()
@@ -150,14 +150,12 @@ def test_collect_phrases_expands_placeholders_and_numbers() -> None:
 	for cat, text in items:
 		assert "{" not in text and "}" not in text, f"Frase con placeholder sin resolver en [{cat}]: '{text}'"
 
-	# Debe incluir minutos modulares (al menos 1 a 59)
-	minutos = [txt for cat, txt in items if cat == "minuto"]
-	assert len(minutos) >= 59
-	assert any("un minuto." in m or "1 minuto." in m for m in minutos)
-	assert any("59 minutos." in m for m in minutos)
+	categories = {cat for cat, _ in items}
+	assert "minuto" not in categories
+	assert "clima" not in categories
 
-	# Debe incluir números de temperatura y clima
-	clima_items = [txt for cat, txt in items if cat == "clima"]
-	assert len(clima_items) >= 40
-	assert any("bajo cero" in c for c in clima_items)
-	assert any("grados" in c for c in clima_items)
+	# Debe incluir locuciones horarias completas (especiales + hora y minuto cada 5 min)
+	horas = [txt for cat, txt in items if cat == "hora"]
+	assert len(horas) >= 140
+	assert any("y cinco." in h for h in horas)
+	assert any("mediodía" in h.lower() or "medianoche" in h.lower() for h in horas)

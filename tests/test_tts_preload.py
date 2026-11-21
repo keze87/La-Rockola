@@ -1,0 +1,134 @@
+"""Tests para la auditoría de frases y precarga en segundo plano de edge-tts."""
+
+from __future__ import annotations
+
+import asyncio
+import sqlite3
+from pathlib import Path
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
+from app.domain.radio.segments import WEATHER_LEAD_INS
+from app.infrastructure.media.tts_cache import get_cache_key, init_tts_cache_db
+
+
+def test_collect_preload_phrases_excludes_unused_segments() -> None:
+	"""Verifica que collect_preload_phrases no genere frases muertas (clima, minuto, horas sueltas ni weather lead-ins)."""
+	from app.domain.radio.preload import collect_preload_phrases
+
+	items = collect_preload_phrases()
+	assert len(items) > 1000
+
+	categories = {cat for cat, _ in items}
+	assert "clima" not in categories
+	assert "minuto" not in categories
+
+	texts_by_cat: dict[str, set[str]] = {}
+	for cat, txt in items:
+		assert "{" not in txt and "}" not in txt, f"Placeholder sin resolver en [{cat}]: {txt}"
+		texts_by_cat.setdefault(cat, set()).add(txt)
+
+	# No debe incluir horas modulares sueltas sin minutos ni WEATHER_LEAD_INS
+	assert "Las tres" not in texts_by_cat.get("hora", set())
+	for wl in WEATHER_LEAD_INS:
+		assert wl not in texts_by_cat.get("lead_in", set())
+
+	# Sí debe incluir combinaciones reales de hora y categorías activas
+	assert "Las tres y cinco." in texts_by_cat.get("hora", set())
+	for expected_cat in ("intro", "lead_in", "salida", "hora", "pase", "reaccion", "fortuna", "chismes", "novela"):
+		assert expected_cat in categories
+
+
+@pytest.mark.asyncio
+async def test_run_tts_preload_skips_cached_and_synthesizes_missing(tmp_path: Path) -> None:
+	"""Verifica que run_tts_preload saltee claves ya cacheadas y solo sintetice las faltantes."""
+	from app.domain.radio.preload import run_tts_preload
+
+	db_path = tmp_path / "tts_cache.db"
+	init_tts_cache_db(db_path)
+
+	voice = "es-AR-TomasNeural"
+	cached_item = ("intro", "Hola gente.")
+	missing_item = ("intro", "Chau gente.")
+
+	cached_key = get_cache_key(cached_item[0], voice, cached_item[1])
+	with sqlite3.connect(db_path) as conn:
+		conn.execute(
+			"""
+			INSERT INTO tts_cache (cache_key, category, voice, text, audio_blob, duration, created_at, last_used, use_count)
+			VALUES (?, ?, ?, ?, ?, ?, 1000.0, 1000.0, 1)
+			""",
+			(cached_key, cached_item[0], voice, cached_item[1], b"MP3DATA", 1.0),
+		)
+		conn.commit()
+
+	synth_mock = AsyncMock(return_value=b"NEW_MP3")
+
+	with (
+		patch("app.domain.radio.preload.HAS_EDGE_TTS", True),
+		patch("app.domain.radio.preload.is_internet_available", return_value=True),
+		patch("app.domain.radio.preload.collect_preload_phrases", return_value=[cached_item, missing_item]),
+		patch("app.domain.radio.preload.synthesize_segment", synth_mock),
+	):
+		stats = await run_tts_preload(
+			voices=[voice],
+			concurrency=1,
+			delay=0.0,
+			max_retries=1,
+			db_path=db_path,
+		)
+
+	assert stats["skipped"] == 1
+	assert stats["synthesized"] == 1
+	assert stats["failed"] == 0
+	synth_mock.assert_awaited_once()
+	assert synth_mock.await_args.kwargs["text"] == "Chau gente."
+
+
+@pytest.mark.asyncio
+async def test_run_tts_preload_skips_when_offline(tmp_path: Path) -> None:
+	"""Verifica que run_tts_preload aborte sin errores ni llamadas si no hay internet."""
+	from app.domain.radio.preload import run_tts_preload
+
+	db_path = tmp_path / "tts_cache.db"
+	synth_mock = AsyncMock()
+
+	with (
+		patch("app.domain.radio.preload.HAS_EDGE_TTS", True),
+		patch("app.domain.radio.preload.is_internet_available", return_value=False),
+		patch("app.domain.radio.preload.synthesize_segment", synth_mock),
+	):
+		stats = await run_tts_preload(
+			voices=["es-AR-TomasNeural"],
+			delay=0.0,
+			db_path=db_path,
+		)
+
+	assert stats["synthesized"] == 0
+	assert stats["offline"] == 1
+	synth_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_run_tts_preload_handles_cancellation(tmp_path: Path) -> None:
+	"""Verifica que la tarea de precarga propague CancelledError limpiamente al apagarse el servidor."""
+	from app.domain.radio.preload import run_tts_preload
+
+	db_path = tmp_path / "tts_cache.db"
+
+	async def slow_synth(**_kwargs: object) -> bytes:
+		await asyncio.sleep(5.0)
+		return b"MP3"
+
+	with (
+		patch("app.domain.radio.preload.HAS_EDGE_TTS", True),
+		patch("app.domain.radio.preload.is_internet_available", return_value=True),
+		patch("app.domain.radio.preload.collect_preload_phrases", return_value=[("intro", "Lento.")]),
+		patch("app.domain.radio.preload.synthesize_segment", side_effect=slow_synth),
+	):
+		task = asyncio.create_task(run_tts_preload(voices=["es-AR-TomasNeural"], delay=0.0, db_path=db_path))
+		await asyncio.sleep(0.05)
+		task.cancel()
+		with pytest.raises(asyncio.CancelledError):
+			await task
