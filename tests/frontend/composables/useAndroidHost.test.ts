@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
-const { pluginMock, state } = vi.hoisted(() => ({
+const { pluginMock, systemBarsMock, state } = vi.hoisted(() => ({
 	pluginMock: {
 		startServer: vi.fn(),
 		stopServer: vi.fn(),
@@ -10,6 +10,10 @@ const { pluginMock, state } = vi.hoisted(() => ({
 		requestStoragePermission: vi.fn(),
 		updateMediaNotification: vi.fn(),
 		updateMediaPosition: vi.fn(),
+	},
+	systemBarsMock: {
+		hide: vi.fn().mockResolvedValue(undefined),
+		show: vi.fn().mockResolvedValue(undefined),
 	},
 	state: {
 		isNative: false,
@@ -22,6 +26,7 @@ vi.mock('@capacitor/core', () => ({
 		isNativePlatform: () => state.isNative,
 		getPlatform: () => state.platform,
 	},
+	SystemBars: systemBarsMock,
 	registerPlugin: () => pluginMock,
 }));
 
@@ -196,5 +201,29 @@ describe('useAndroidHost.ts', () => {
 		// Cambio de pausa: se envía de inmediato
 		await syncAndroidMediaPosition({ duration: 200, position: 45, paused: true });
 		expect(pluginMock.updateMediaPosition).toHaveBeenCalledTimes(3);
+	});
+
+	it('toggleAndroidFullscreen hides and shows SystemBars only on native Android host', async () => {
+		const mod = await import('@/composables/useAndroidHost');
+		const toggleAndroidFullscreen = (mod as any).toggleAndroidFullscreen as () => Promise<boolean>;
+		const isAndroidFullscreen = (mod as any).isAndroidFullscreen as { value: boolean };
+
+		expect(typeof toggleAndroidFullscreen).toBe('function');
+
+		// En web no hace nada
+		await expect(toggleAndroidFullscreen()).resolves.toBe(false);
+		expect(systemBarsMock.hide).not.toHaveBeenCalled();
+
+		// En Android nativo alterna barras del sistema
+		state.isNative = true;
+		state.platform = 'android';
+
+		await expect(toggleAndroidFullscreen()).resolves.toBe(true);
+		expect(systemBarsMock.hide).toHaveBeenCalledTimes(1);
+		expect(isAndroidFullscreen.value).toBe(true);
+
+		await expect(toggleAndroidFullscreen()).resolves.toBe(false);
+		expect(systemBarsMock.show).toHaveBeenCalledTimes(1);
+		expect(isAndroidFullscreen.value).toBe(false);
 	});
 });

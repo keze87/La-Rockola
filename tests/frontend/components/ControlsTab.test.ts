@@ -526,4 +526,32 @@ describe('ControlsTab.vue', () => {
 		await listenBtn!.trigger('click');
 		expect(listenLocally.value).toBe(true);
 	});
+
+	it('toggles native Android fullscreen via SystemBars when Full Rockola is clicked on Android', async () => {
+		const androidHost = await import('@/composables/useAndroidHost');
+		const isNativeSpy = vi.spyOn(androidHost, 'isNativeAndroidHost').mockReturnValue(true);
+		const toggleSpy = vi.spyOn(androidHost as any, 'toggleAndroidFullscreen').mockImplementation(async () => {
+			(androidHost as any).isAndroidFullscreen.value = !(androidHost as any).isAndroidFullscreen.value;
+			return (androidHost as any).isAndroidFullscreen.value;
+		});
+
+		const wrapper = mount(ControlsTab);
+		const fullBtn = wrapper
+			.findAllComponents({ name: 'PillButton' })
+			.find((b) => b.text().includes('Full Rockola'));
+		expect(fullBtn).toBeDefined();
+		expect(fullBtn!.props('icon')).toBe('open_in_full');
+
+		await fullBtn!.trigger('click');
+		await flushPromises();
+
+		expect(toggleSpy).toHaveBeenCalledTimes(1);
+		expect(fullBtn!.props('icon')).toBe('fullscreen_exit');
+
+		isNativeSpy.mockRestore();
+		toggleSpy.mockRestore();
+		if ((androidHost as any).isAndroidFullscreen) {
+			(androidHost as any).isAndroidFullscreen.value = false;
+		}
+	});
 });

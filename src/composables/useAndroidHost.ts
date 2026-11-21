@@ -2,7 +2,7 @@
 // Permite arrancar/detener el servidor embebido (Chaquopy + ForegroundService)
 // y elegir carpetas de la MicroSD resolviendo su ruta real en Android 11+.
 
-import { Capacitor, registerPlugin } from '@capacitor/core';
+import { Capacitor, SystemBars, registerPlugin } from '@capacitor/core';
 import { ref } from 'vue';
 import { listenLocally } from '../stores/usePlaybackStore';
 import { setApiOrigin, useApi } from './useApi';
@@ -64,8 +64,22 @@ export const androidServerStatus = ref<AndroidServerStatus>({
 	needsFolder: false,
 });
 
+export const isAndroidFullscreen = ref<boolean>(false);
+
 export function isNativeAndroidHost(): boolean {
 	return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
+}
+
+export async function toggleAndroidFullscreen(): Promise<boolean> {
+	if (!isNativeAndroidHost()) return false;
+	const next = !isAndroidFullscreen.value;
+	if (next) {
+		await SystemBars.hide();
+	} else {
+		await SystemBars.show();
+	}
+	isAndroidFullscreen.value = next;
+	return next;
 }
 
 export async function initAndroidServer(opts?: { pollIntervalMs?: number; timeoutMs?: number }): Promise<boolean> {

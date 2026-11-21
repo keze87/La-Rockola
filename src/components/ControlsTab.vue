@@ -1,7 +1,13 @@
 <script setup lang="ts">
 	import { computed, ref, watch } from 'vue';
 	import { apiUrl } from '../composables/useApi';
-	import { androidServerStatus, isNativeAndroidHost, pickAndApplyMusicFolder } from '../composables/useAndroidHost';
+	import {
+		androidServerStatus,
+		isAndroidFullscreen,
+		isNativeAndroidHost,
+		pickAndApplyMusicFolder,
+		toggleAndroidFullscreen,
+	} from '../composables/useAndroidHost';
 	import { serverUrl, weatherLocation } from '../composables/player/state';
 	import { useDragSlider } from '../composables/useDragSlider';
 	import { useFullscreen } from '@vueuse/core';
@@ -183,6 +189,16 @@
 	}
 
 	const { isFullscreen, toggle: toggleWebFullscreen } = useFullscreen();
+	const isFullRockola = computed(() => (isNativeAndroidHost() ? isAndroidFullscreen.value : isFullscreen.value));
+
+	async function toggleFullRockola() {
+		if (isNativeAndroidHost()) {
+			await toggleAndroidFullscreen();
+		} else {
+			await toggleWebFullscreen();
+		}
+		haptic();
+	}
 
 	const resolvedWeatherArea = ref<string | null>(null);
 
@@ -480,9 +496,9 @@
 			</PillButton>
 
 			<PillButton
-				:icon="isFullscreen ? 'fullscreen_exit' : 'open_in_full'"
+				:icon="isFullRockola ? 'fullscreen_exit' : 'open_in_full'"
 				color-class="bg-purple-700 hover:bg-purple-600"
-				@click="toggleWebFullscreen"
+				@click="toggleFullRockola"
 			>
 				Full Rockola
 			</PillButton>
