@@ -7,6 +7,7 @@
 		connectToRemoteServer,
 		isAndroidFullscreen,
 		isNativeAndroidHost,
+		lastRemoteServerUrl,
 		pickAndApplyMusicFolder,
 		resetToLocalServer,
 		shareAndroidUrl,
@@ -162,17 +163,34 @@
 
 	const showAndroidFolderPicker = isNativeAndroidHost() && !activeRemoteServerUrl.value;
 	const showRemoteServerSelector = isNativeAndroidHost();
-	const remoteServerInput = ref(activeRemoteServerUrl.value ?? '');
+	const isRemoteServerModalOpen = ref(false);
+	const remoteServerInput = ref(lastRemoteServerUrl.value ?? '');
 	const isConnectingRemote = ref(false);
+
+	function handleToggleRemoteServerSwitch(next: boolean) {
+		haptic();
+		if (next) {
+			remoteServerInput.value = activeRemoteServerUrl.value ?? lastRemoteServerUrl.value ?? '';
+			isRemoteServerModalOpen.value = true;
+		} else {
+			isRemoteServerModalOpen.value = false;
+			if (activeRemoteServerUrl.value) {
+				resetToLocalServer();
+				void loadLibrary(false);
+				showToast('Volviste al servidor de este teléfono', 'info');
+			}
+		}
+	}
 
 	async function handleConnectRemoteServer() {
 		if (isConnectingRemote.value) return;
 		isConnectingRemote.value = true;
 		try {
 			const url = await connectToRemoteServer(remoteServerInput.value);
+			isRemoteServerModalOpen.value = false;
 			showToast(`Conectado al servidor ${url}`, 'success');
 			haptic();
-			window.location.reload();
+			void loadLibrary(false);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : 'No se pudo conectar al servidor';
 			showToast(msg, 'error');
@@ -183,9 +201,10 @@
 
 	function handleUseLocalServer() {
 		resetToLocalServer();
-		remoteServerInput.value = '';
+		isRemoteServerModalOpen.value = false;
 		haptic();
-		window.location.reload();
+		void loadLibrary(false);
+		showToast('Volviste al servidor de este teléfono', 'info');
 	}
 
 	async function handlePickMusicFolder() {
@@ -510,48 +529,74 @@
 			</p>
 		</div>
 
-		<div
-			v-if="showRemoteServerSelector"
-			class="border-carpincho-border bg-carpincho-panel/60 mx-auto mb-6 max-w-md rounded-xl border p-4"
-		>
-			<div
-				class="text-carpincho-secondary mb-2 flex items-center justify-center gap-1.5 text-xs font-bold uppercase"
-			>
-				<i class="material-icons !text-base">dns</i>
-				<span>Servidor conectado</span>
-			</div>
-			<p class="text-carpincho-muted mb-3 text-center text-xs">
-				{{
+		<div v-if="showRemoteServerSelector" class="mx-auto mb-6 max-w-md">
+			<ToggleRow
+				:model-value="Boolean(activeRemoteServerUrl) || isRemoteServerModalOpen"
+				title="Conectar a otro servidor"
+				:description="
 					activeRemoteServerUrl
-						? `Remoto: ${activeRemoteServerUrl}`
-						: `Este teléfono (${androidServerStatus.serverUrl})`
-				}}
-			</p>
-			<div class="flex flex-col gap-2 sm:flex-row">
+						? `Conectado a ${activeRemoteServerUrl}`
+						: 'Usando este teléfono (servidor local)'
+				"
+				icon="dns"
+				@update:model-value="handleToggleRemoteServerSwitch"
+			/>
+		</div>
+
+		<div
+			v-if="isRemoteServerModalOpen"
+			class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+			@click.self="isRemoteServerModalOpen = false"
+		>
+			<div class="border-carpincho-border bg-carpincho-panel w-full max-w-md rounded-2xl border p-5 shadow-2xl">
+				<div class="mb-3 flex items-center justify-between">
+					<h3 class="text-carpincho-secondary flex items-center gap-2 text-base font-bold">
+						<i class="material-icons !text-lg">dns</i>
+						<span>Conectar a otro servidor</span>
+					</h3>
+					<button
+						type="button"
+						class="text-carpincho-muted hover:text-carpincho-text rounded-full p-1"
+						@click="isRemoteServerModalOpen = false"
+					>
+						<i class="material-icons !text-lg">close</i>
+					</button>
+				</div>
+				<p class="text-carpincho-muted mb-3 text-xs">
+					Ingresá la IP o URL de tu PC (ej: 192.168.0.55). Se guarda el último servidor para volver fácil.
+				</p>
 				<input
 					v-model="remoteServerInput"
 					type="text"
 					placeholder="IP de tu PC (ej: 192.168.0.55)"
-					class="border-carpincho-border bg-carpincho-bg text-carpincho-text placeholder:text-carpincho-muted/60 focus:border-carpincho-warning min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm outline-none"
+					class="border-carpincho-border bg-carpincho-bg text-carpincho-text placeholder:text-carpincho-muted/60 focus:border-carpincho-warning mb-4 w-full rounded-lg border px-3 py-2 text-sm outline-none"
 					@keyup.enter="handleConnectRemoteServer"
 				/>
-				<PillButton
-					icon="link"
-					color-class="bg-amber-700 hover:bg-amber-600"
-					:disabled="isConnectingRemote || !remoteServerInput.trim()"
-					@click="handleConnectRemoteServer"
-				>
-					{{ isConnectingRemote ? 'Conectando...' : 'Conectar' }}
-				</PillButton>
-			</div>
-			<div v-if="activeRemoteServerUrl" class="mt-2 flex justify-center">
-				<PillButton
-					icon="smartphone"
-					color-class="bg-neutral-700 hover:bg-neutral-600"
-					@click="handleUseLocalServer"
-				>
-					Volver a este teléfono
-				</PillButton>
+				<div class="flex flex-wrap justify-end gap-2">
+					<PillButton
+						v-if="activeRemoteServerUrl"
+						icon="smartphone"
+						color-class="bg-neutral-700 hover:bg-neutral-600"
+						@click="handleUseLocalServer"
+					>
+						Usar este teléfono
+					</PillButton>
+					<PillButton
+						icon="close"
+						color-class="bg-neutral-800 hover:bg-neutral-700"
+						@click="isRemoteServerModalOpen = false"
+					>
+						Cancelar
+					</PillButton>
+					<PillButton
+						icon="link"
+						color-class="bg-amber-700 hover:bg-amber-600"
+						:disabled="isConnectingRemote || !remoteServerInput.trim()"
+						@click="handleConnectRemoteServer"
+					>
+						{{ isConnectingRemote ? 'Conectando...' : 'Conectar' }}
+					</PillButton>
+				</div>
 			</div>
 		</div>
 

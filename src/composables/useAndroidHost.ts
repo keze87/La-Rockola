@@ -182,7 +182,8 @@ function readSavedRemoteServer(): string | null {
 	}
 }
 
-export const activeRemoteServerUrl = ref<string | null>(readSavedRemoteServer());
+export const lastRemoteServerUrl = ref<string | null>(readSavedRemoteServer());
+export const activeRemoteServerUrl = ref<string | null>(null);
 
 export function normalizeServerOrigin(raw: string | null | undefined): string | null {
 	const cleaned = (raw ?? '').trim().replace(/\/+$/, '');
@@ -221,18 +222,15 @@ export async function connectToRemoteServer(rawUrl: string): Promise<string> {
 	} catch {
 		// Sin acceso a localStorage en modo restringido
 	}
+	lastRemoteServerUrl.value = normalized;
 	activeRemoteServerUrl.value = normalized;
 	setApiOrigin(normalized);
 	return normalized;
 }
 
 export function resetToLocalServer(): void {
-	try {
-		localStorage.removeItem(STORAGE_KEY_REMOTE_SERVER);
-	} catch {
-		// Ignorado
-	}
 	activeRemoteServerUrl.value = null;
+	setApiOrigin(`http://127.0.0.1:${androidServerStatus.value.port || 1729}`);
 }
 
 let recoveryInFlight: Promise<boolean> | null = null;
@@ -316,6 +314,8 @@ export async function ensureLocalAndroidServerAlive(opts?: {
 export async function initAndroidServer(opts?: { pollIntervalMs?: number; timeoutMs?: number }): Promise<boolean> {
 	if (!isNativeAndroidHost()) return false;
 
+	activeRemoteServerUrl.value = null;
+
 	// En Android el teléfono es su propio parlante por defecto ("Escuchar acá")
 	listenLocally.value = true;
 	void getAndroidMediaVolume().then((mediaVol) => {
@@ -323,21 +323,6 @@ export async function initAndroidServer(opts?: { pollIntervalMs?: number; timeou
 			volume.value = mediaVol.level;
 		}
 	});
-
-	const savedRemote = activeRemoteServerUrl.value ?? readSavedRemoteServer();
-	if (savedRemote) {
-		activeRemoteServerUrl.value = savedRemote;
-		setApiOrigin(savedRemote);
-		androidServerStatus.value = {
-			running: true,
-			port: 1729,
-			localIp: 'remoto',
-			serverUrl: savedRemote,
-			musicDir: null,
-			needsFolder: false,
-		};
-		return true;
-	}
 
 	const pollIntervalMs = opts?.pollIntervalMs ?? 250;
 	const timeoutMs = opts?.timeoutMs ?? 15000;

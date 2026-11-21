@@ -368,12 +368,13 @@ describe('useAndroidHost.ts', () => {
 		expect(pluginMock.setMediaVolume).toHaveBeenLastCalledWith({ level: 100 });
 	});
 
-	it('normalizes remote server URLs and connects to a remote PC server on Android', async () => {
+	it('normalizes remote server URLs, remembers last server, and always starts local on boot', async () => {
 		const mod = await import('@/composables/useAndroidHost');
 		const normalizeServerOrigin = (mod as any).normalizeServerOrigin as (raw: string) => string | null;
 		const connectToRemoteServer = (mod as any).connectToRemoteServer as (raw: string) => Promise<string>;
 		const resetToLocalServer = (mod as any).resetToLocalServer as () => void;
 		const activeRemoteServerUrl = (mod as any).activeRemoteServerUrl;
+		const lastRemoteServerUrl = (mod as any).lastRemoteServerUrl;
 
 		expect(normalizeServerOrigin('')).toBeNull();
 		expect(normalizeServerOrigin('   ')).toBeNull();
@@ -392,16 +393,21 @@ describe('useAndroidHost.ts', () => {
 		expect(url).toBe('http://192.168.0.55:1729');
 		expect(getApiOrigin()).toBe('http://192.168.0.55:1729');
 		expect(activeRemoteServerUrl.value).toBe('http://192.168.0.55:1729');
+		expect(lastRemoteServerUrl.value).toBe('http://192.168.0.55:1729');
 		expect(localStorage.getItem('rockola_remote_server_url')).toBe('http://192.168.0.55:1729');
 
-		// Al reiniciar con servidor remoto guardado, no arranca el servidor embebido local
-		const ready = await initAndroidServer({ pollIntervalMs: 5, timeoutMs: 200 });
-		expect(ready).toBe(true);
-		expect(pluginMock.startServer).not.toHaveBeenCalled();
-
+		// Al volver al teléfono, activeRemoteServerUrl se apaga pero lastRemoteServerUrl se conserva
 		resetToLocalServer();
 		expect(activeRemoteServerUrl.value).toBeNull();
-		expect(localStorage.getItem('rockola_remote_server_url')).toBeNull();
+		expect(lastRemoteServerUrl.value).toBe('http://192.168.0.55:1729');
+		expect(localStorage.getItem('rockola_remote_server_url')).toBe('http://192.168.0.55:1729');
+
+		// Al iniciar la app siempre arranca en el servidor local aunque haya último servidor guardado
+		const ready = await initAndroidServer({ pollIntervalMs: 5, timeoutMs: 200 });
+		expect(ready).toBe(true);
+		expect(pluginMock.startServer).toHaveBeenCalledTimes(1);
+		expect(activeRemoteServerUrl.value).toBeNull();
+		expect(getApiOrigin()).toBe('http://127.0.0.1:1729');
 	});
 
 	it('ensureLocalAndroidServerAlive ignores remote mode, ignores transient failures, and restarts only when confirmed dead', async () => {
