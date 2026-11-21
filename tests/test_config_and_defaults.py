@@ -229,7 +229,7 @@ async def test_dj_volume_and_weather_commands_persist_to_config(tmp_path: Path):
 		)
 
 	saved = json.loads(config_file.read_text(encoding="utf-8"))
-	assert saved["dj_carpincho_enabled"] is True
+	assert saved["dj_carpincho_enabled"] is False
 	assert saved["dj_mode"] == "library"
 	assert saved["volume"] == 67
 	assert saved["weather_location"] == "Tafí del Valle"

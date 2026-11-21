@@ -567,7 +567,7 @@ def main() -> None:
 		radio_mode_enabled=settings.radio_mode_enabled,
 		mpv_visible=settings.mpv_visible,
 		use_mpv=not settings.no_mpv,
-		dj_carpincho_enabled=settings.dj_carpincho_enabled,
+		dj_carpincho_enabled=False,
 		dj_mode=settings.dj_mode,
 		volume=settings.volume,
 	)

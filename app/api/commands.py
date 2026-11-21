@@ -157,7 +157,6 @@ async def _cmd_toggle_dj_carpincho(state: PlaybackOrchestrator, req: CommandRequ
 		state.dj_carpincho_enabled = bool(req.state)
 	else:
 		state.dj_carpincho_enabled = not state.dj_carpincho_enabled
-	config_mod.update_config({"dj_carpincho_enabled": state.dj_carpincho_enabled})
 	logger.info(f"DJ Bara cambiado a: {state.dj_carpincho_enabled}")
 	if state.dj_carpincho_enabled and not state.current_track:
 		await state.play_next(skipped_by_user=True)

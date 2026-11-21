@@ -79,7 +79,7 @@ def configure_android_environment(
 		radio_mode_enabled=settings.radio_mode_enabled,
 		mpv_visible=False,
 		use_mpv=False,
-		dj_carpincho_enabled=settings.dj_carpincho_enabled,
+		dj_carpincho_enabled=False,
 		dj_mode=settings.dj_mode,
 		volume=settings.volume,
 	)

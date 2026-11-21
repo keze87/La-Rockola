@@ -79,5 +79,7 @@ describe('FavoritableCover.vue', () => {
 		});
 		expect(customWrapper.find('button').classes()).toContain('right-3');
 		expect(customWrapper.find('button').classes()).toContain('bottom-3');
+		expect(customWrapper.find('button').classes()).toContain('z-20');
+		expect(customWrapper.find('.isolate').exists()).toBe(true);
 	});
 });

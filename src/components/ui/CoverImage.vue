@@ -76,7 +76,10 @@
 </script>
 
 <template>
-	<div ref="elRef" :class="[size, rounded, 'relative flex shrink-0 items-center justify-center overflow-hidden']">
+	<div
+		ref="elRef"
+		:class="[size, rounded, 'relative isolate flex shrink-0 items-center justify-center overflow-hidden']"
+	>
 		<div
 			v-if="isVisible && coverUrl && !isLoaded && !(thumbUrl && isThumbLoaded)"
 			:class="[

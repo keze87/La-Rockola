@@ -271,7 +271,7 @@ def test_android_entry_configuration_and_lifecycle(tmp_path: Path, monkeypatch: 
 	assert config_mod.get_settings().open_browser is False
 	orch = container_mod.get_container().ensure_orchestrator()
 	assert orch.default_sort == "shuffle"
-	assert orch.dj_carpincho_enabled is True
+	assert orch.dj_carpincho_enabled is False
 	assert orch.dj_mode == "favorites"
 	assert orch.volume == 65
 
