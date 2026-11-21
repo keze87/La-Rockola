@@ -52,3 +52,8 @@ android/app/src/main/python/app/
 android/app/src/main/assets/public/
 android/app/src/main/assets/dist/
 android/app/wheels/
+
+# Android release signing secrets
+*.jks
+*.keystore
+android/keystore.properties

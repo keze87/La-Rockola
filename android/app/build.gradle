@@ -46,9 +46,27 @@ android {
     kotlinOptions {
         jvmTarget = "21"
     }
+    signingConfigs {
+        release {
+            def ksPropsFile = rootProject.file('keystore.properties')
+            if (ksPropsFile.exists()) {
+                def props = new Properties()
+                ksPropsFile.withInputStream { props.load(it) }
+                storeFile file(props['storeFile'])
+                storePassword props['storePassword']
+                keyAlias props['keyAlias']
+                keyPassword props['keyPassword']
+            } else if (System.getenv('ROCKOLA_KEYSTORE_PATH')) {
+                storeFile file(System.getenv('ROCKOLA_KEYSTORE_PATH'))
+                storePassword System.getenv('ROCKOLA_KEYSTORE_PASS')
+                keyAlias System.getenv('ROCKOLA_KEY_ALIAS') ?: 'rockola'
+                keyPassword System.getenv('ROCKOLA_KEY_PASS') ?: System.getenv('ROCKOLA_KEYSTORE_PASS')
+            }
+        }
+    }
     buildTypes {
         release {
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.release.storeFile != null ? signingConfigs.release : signingConfigs.debug
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
