@@ -154,7 +154,10 @@ class MainActivity : BridgeActivity() {
 
         applyHeadbarSystemBars()
         registerBackNavigationHandler()
-        bridge?.webView?.settings?.mediaPlaybackRequiresUserGesture = false
+        bridge?.webView?.apply {
+            setBackgroundColor(0xFF1F1A17.toInt())
+            settings.mediaPlaybackRequiresUserGesture = false
+        }
         requestNotificationPermissionIfNeeded()
         ensureServerAutoStarted()
         handleShortcutIntent(intent)

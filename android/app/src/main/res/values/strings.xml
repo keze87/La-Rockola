@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">La Rockola del Carpincho</string>
-    <string name="title_activity_main">La Rockola del Carpincho</string>
+    <string name="app_name">Rockola</string>
+    <string name="title_activity_main">Rockola</string>
     <string name="package_name">ar.carpincho.rockola</string>
     <string name="custom_url_scheme">ar.carpincho.rockola</string>
     <string name="shortcut_fogon_short">Modo Fogón</string>
