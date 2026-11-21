@@ -335,7 +335,7 @@
 	}
 
 	function handleAndroidMediaVolumeChanged(level: number): void {
-		if (listenLocally.value && Number.isFinite(level)) {
+		if ((listenLocally.value || !activeRemoteServerUrl.value) && Number.isFinite(level)) {
 			volume.value = Math.max(0, Math.min(100, Math.round(level)));
 		}
 	}

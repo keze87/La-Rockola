@@ -80,3 +80,97 @@ async def test_android_player_controller_dispatches_callbacks_to_event_loop() ->
 	on_pause.assert_awaited_once_with(False)
 	on_time.assert_awaited_once_with(12.5)
 	on_eof.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_android_player_controller_syncs_notification_from_orchestrator_state() -> None:
+	"""El backend debe actualizar la notificación nativa directamente sin depender de WebKit."""
+	from types import SimpleNamespace
+
+	from app.infrastructure.mpv.android_controller import AndroidPlayerController
+
+	kotlin_player = MagicMock()
+	ctrl = AndroidPlayerController(native_player=kotlin_player)
+	await ctrl.start()
+
+	state = SimpleNamespace(
+		current_track="/storage/B6F2-55E6/musica/tema.mp3",
+		mpv_paused=False,
+		duration=200.0,
+		time_pos=15.0,
+		pause_after_path="/storage/B6F2-55E6/musica/tema.mp3",
+		is_playing_radio_announcement=False,
+		server_port=1729,
+		favorites=["id-1"],
+		path_to_id={"/storage/B6F2-55E6/musica/tema.mp3": "id-1"},
+		id_to_current_path={"id-1": "/storage/B6F2-55E6/musica/tema.mp3"},
+		tracks_cache=[
+			{
+				"path": "/storage/B6F2-55E6/musica/tema.mp3",
+				"display_title": "Barro Tal Vez",
+				"display_artist": "Luis Alberto Spinetta",
+			}
+		],
+		url_metadata={},
+	)
+
+	ctrl.sync_notification_from_state(state)
+	kotlin_player.updateNotification.assert_called_once_with(
+		"Barro Tal Vez",
+		"Luis Alberto Spinetta",
+		False,
+		"http://127.0.0.1:1729/cover?path=%2Fstorage%2FB6F2-55E6%2Fmusica%2Ftema.mp3&size=512",
+		"/storage/B6F2-55E6/musica/tema.mp3",
+		200000,
+		15000,
+		True,
+		True,
+	)
+
+	# Si no cambió nada relevante de metadatos, no spamea a Kotlin
+	ctrl.sync_notification_from_state(state)
+	assert kotlin_player.updateNotification.call_count == 1
+
+	# Modo locutor
+	state.is_playing_radio_announcement = True
+	ctrl.sync_notification_from_state(state)
+	assert kotlin_player.updateNotification.call_count == 2
+	args = kotlin_player.updateNotification.call_args[0]
+	assert args[0] == "Carpincho Locutor"
+	assert args[1] == "La Rockola del Carpincho"
+
+	# Sin tema activo (frenado)
+	state.is_playing_radio_announcement = False
+	state.current_track = None
+	ctrl.sync_notification_from_state(state)
+	assert kotlin_player.updateNotification.call_count == 3
+	args = kotlin_player.updateNotification.call_args[0]
+	assert args[0] == "La Rockola del Carpincho"
+	assert args[1] == "En espera"
+	assert args[2] is True
+
+
+@pytest.mark.asyncio
+async def test_android_player_controller_syncs_notification_position_on_progress() -> None:
+	"""El tick de ExoPlayer debe refrescar el progreso en la notificación aunque el WebView esté apagado."""
+	from types import SimpleNamespace
+
+	from app.infrastructure.mpv.android_controller import AndroidPlayerController
+
+	kotlin_player = MagicMock()
+	state = SimpleNamespace(mpv_paused=False)
+	ctrl = AndroidPlayerController(state_ref=state, native_player=kotlin_player)
+	await ctrl.start()
+
+	handler = kotlin_player.setPythonCallbackHandler.call_args[0][0]
+	handler.on_position(10.0, 180.0)
+	kotlin_player.updateNotificationPosition.assert_called_once_with(180000, 10000, False)
+
+	# Salto menor a 1.5s inmediato se throttlea
+	handler.on_position(10.5, 180.0)
+	assert kotlin_player.updateNotificationPosition.call_count == 1
+
+	# Salto > 1.5s actualiza al instante
+	handler.on_position(45.0, 180.0)
+	assert kotlin_player.updateNotificationPosition.call_count == 2
+	kotlin_player.updateNotificationPosition.assert_called_with(180000, 45000, False)

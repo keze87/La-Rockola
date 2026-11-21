@@ -8,8 +8,10 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 logger = logging.getLogger("RockolaCarpincho")
 
@@ -33,9 +35,12 @@ class _KotlinCallbackBridge:
 		self._ctrl = controller
 
 	def on_position(self, pos_sec: float, dur_sec: float) -> None:
-		self._ctrl._emit("time_update", float(pos_sec))
-		if dur_sec and float(dur_sec) > 0:
-			self._ctrl._emit("duration_update", float(dur_sec))
+		pos = float(pos_sec)
+		dur = float(dur_sec) if dur_sec else 0.0
+		self._ctrl._emit("time_update", pos)
+		if dur > 0:
+			self._ctrl._emit("duration_update", dur)
+		self._ctrl.sync_position(pos, dur)
 
 	def on_duration(self, dur_sec: float) -> None:
 		if dur_sec and float(dur_sec) > 0:
@@ -66,6 +71,115 @@ class AndroidPlayerController:
 		self.is_windows: bool = False
 		self.has_display: bool = False
 		self.is_running: bool = False
+		self._last_notif_sig: tuple[Any, ...] | None = None
+		self._last_pos_sent_at: float = 0.0
+		self._last_pos_sec: float = -1.0
+		self._last_dur_sec: float = -1.0
+		self._last_pos_paused: bool | None = None
+
+	def sync_notification_from_state(self, state: Any) -> None:
+		"""Sincroniza la notificación MediaStyle nativa directamente desde el estado del orquestador."""
+		native = self._ensure_native()
+		if native is None or state is None:
+			return
+
+		track_path = getattr(state, "current_track", None)
+		paused = bool(getattr(state, "mpv_paused", True)) if track_path else True
+		duration_sec = float(getattr(state, "duration", 0.0) or 0.0)
+		position_sec = float(getattr(state, "time_pos", 0.0) or 0.0)
+		is_radio = bool(getattr(state, "is_playing_radio_announcement", False))
+
+		title = "La Rockola del Carpincho"
+		artist = "En espera"
+		cover_url: str | None = None
+
+		if track_path:
+			if is_radio:
+				title = "Carpincho Locutor"
+				artist = "La Rockola del Carpincho"
+			else:
+				info = None
+				for t in getattr(state, "tracks_cache", []) or []:
+					if t.get("path") == track_path:
+						info = t
+						break
+				if info is None:
+					info = (getattr(state, "url_metadata", {}) or {}).get(track_path)
+				title = (
+					(info.get("display_title") or info.get("title") or Path(str(track_path)).stem)
+					if info
+					else Path(str(track_path)).stem
+				)
+				artist = (info.get("display_artist") or info.get("artist") or "Desconocido") if info else "Desconocido"
+				if not str(track_path).startswith(("http://", "https://")):
+					port = int(getattr(state, "server_port", 1729) or 1729)
+					cover_url = f"http://127.0.0.1:{port}/cover?path={quote(str(track_path), safe='')}&size=512"
+
+		path_to_id = getattr(state, "path_to_id", {}) or {}
+		favorites = getattr(state, "favorites", []) or []
+		track_id = path_to_id.get(track_path, track_path) if track_path else None
+		is_favorite = bool(track_path and (track_id in favorites or track_path in favorites))
+		is_pause_after = bool(track_path and getattr(state, "pause_after_path", None) == track_path)
+
+		dur_ms = int(max(0.0, duration_sec) * 1000)
+		pos_ms = int(max(0.0, position_sec) * 1000)
+		sig = (title, artist, paused, cover_url, track_path, dur_ms, is_favorite, is_pause_after)
+		if sig == self._last_notif_sig:
+			return
+
+		self._last_notif_sig = sig
+		self._last_pos_sent_at = time.monotonic()
+		self._last_pos_sec = position_sec
+		self._last_dur_sec = duration_sec
+		self._last_pos_paused = paused
+		try:
+			native.updateNotification(
+				title,
+				artist,
+				paused,
+				cover_url,
+				track_path,
+				dur_ms,
+				pos_ms,
+				is_favorite,
+				is_pause_after,
+			)
+		except Exception as exc:
+			logger.debug(f"Error actualizando notificación nativa Android: {exc}")
+
+	def sync_position(self, pos_sec: float, dur_sec: float, paused: bool | None = None) -> None:
+		"""Actualiza el seekbar de la notificación nativa con throttling de 3s o salto de seek."""
+		native = self._ensure_native()
+		if native is None:
+			return
+
+		resolved_paused = bool(getattr(self.state_ref, "mpv_paused", False)) if paused is None else bool(paused)
+		resolved_dur = (
+			float(dur_sec) if dur_sec and dur_sec > 0 else float(getattr(self.state_ref, "duration", 0.0) or 0.0)
+		)
+		now = time.monotonic()
+
+		is_first = self._last_pos_paused is None
+		paused_changed = resolved_paused != self._last_pos_paused
+		dur_changed = abs(resolved_dur - self._last_dur_sec) > 0.5
+		jumped = abs(pos_sec - self._last_pos_sec) > 1.5
+		elapsed = now - self._last_pos_sent_at >= 3.0
+
+		if not (is_first or paused_changed or dur_changed or jumped or elapsed):
+			return
+
+		self._last_pos_sent_at = now
+		self._last_pos_sec = pos_sec
+		self._last_dur_sec = resolved_dur
+		self._last_pos_paused = resolved_paused
+		try:
+			native.updateNotificationPosition(
+				int(max(0.0, resolved_dur) * 1000),
+				int(max(0.0, pos_sec) * 1000),
+				resolved_paused,
+			)
+		except Exception as exc:
+			logger.debug(f"Error actualizando progreso de notificación Android: {exc}")
 
 	@property
 	def ipc_path(self) -> str | None:

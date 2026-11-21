@@ -86,48 +86,70 @@ describe('mediaSession.ts', () => {
 		expect(mockMediaSession.setActionHandler).toHaveBeenCalledWith('nexttrack', expect.any(Function));
 	});
 
-	it('skips browser navigator.mediaSession on native Android host so foreground service stays sole owner', () => {
+	it('skips Android bridge notification sync on local Android server (handled natively by backend) and keeps it for remote servers', () => {
 		vi.spyOn(androidHost, 'isNativeAndroidHost').mockReturnValue(true);
 		const syncNotifSpy = vi.spyOn(androidHost, 'syncAndroidMediaNotification').mockResolvedValue();
 		const syncPosSpy = vi.spyOn(androidHost, 'syncAndroidMediaPosition').mockResolvedValue();
+		const prevRemote = androidHost.activeRemoteServerUrl.value;
 
-		syncMediaSessionMetadata(
-			'/music/alma.mp3',
-			false,
-			(path) => ({
-				path,
-				display_title: 'Alma de Diamante',
-				display_artist: 'Spinetta Jade',
-			}),
-			{ duration: 180, position: 15, isFavorite: true, isPauseAfter: false }
-		);
+		try {
+			androidHost.activeRemoteServerUrl.value = null;
 
-		expect(syncNotifSpy).toHaveBeenCalledWith(
-			expect.objectContaining({
-				title: 'Alma de Diamante',
-				artist: 'Spinetta Jade',
+			syncMediaSessionMetadata(
+				'/music/alma.mp3',
+				false,
+				(path) => ({
+					path,
+					display_title: 'Alma de Diamante',
+					display_artist: 'Spinetta Jade',
+				}),
+				{ duration: 180, position: 15, isFavorite: true, isPauseAfter: false }
+			);
+			syncMediaSessionPosition('/music/alma.mp3', 180, 42, false);
+
+			expect(syncNotifSpy).not.toHaveBeenCalled();
+			expect(syncPosSpy).not.toHaveBeenCalled();
+			expect(mockMediaSession.metadata).toBeNull();
+			expect(mockMediaSession.playbackState).toBe('none');
+			expect(mockMediaSession.setPositionState).not.toHaveBeenCalled();
+
+			androidHost.activeRemoteServerUrl.value = 'http://192.168.1.50:1729';
+			syncMediaSessionMetadata(
+				'/music/alma.mp3',
+				false,
+				(path) => ({
+					path,
+					display_title: 'Alma de Diamante',
+					display_artist: 'Spinetta Jade',
+				}),
+				{ duration: 180, position: 15, isFavorite: true, isPauseAfter: false }
+			);
+			syncMediaSessionPosition('/music/alma.mp3', 180, 42, false);
+
+			expect(syncNotifSpy).toHaveBeenCalledWith(
+				expect.objectContaining({
+					title: 'Alma de Diamante',
+					artist: 'Spinetta Jade',
+					paused: false,
+					isFavorite: true,
+				})
+			);
+			expect(syncPosSpy).toHaveBeenCalledWith({
+				duration: 180,
+				position: 42,
 				paused: false,
-				isFavorite: true,
-			})
-		);
-		expect(mockMediaSession.metadata).toBeNull();
-		expect(mockMediaSession.playbackState).toBe('none');
+			});
 
-		syncMediaSessionPosition('/music/alma.mp3', 180, 42, false);
-		expect(syncPosSpy).toHaveBeenCalledWith({
-			duration: 180,
-			position: 42,
-			paused: false,
-		});
-		expect(mockMediaSession.setPositionState).not.toHaveBeenCalled();
-
-		bindMediaSessionHandlers('/music/alma.mp3', false, {
-			pause: vi.fn(),
-			prev: vi.fn(),
-			skip: vi.fn(),
-			seek: vi.fn(),
-			seekAbsolute: vi.fn(),
-		});
-		expect(mockMediaSession.setActionHandler).not.toHaveBeenCalled();
+			bindMediaSessionHandlers('/music/alma.mp3', false, {
+				pause: vi.fn(),
+				prev: vi.fn(),
+				skip: vi.fn(),
+				seek: vi.fn(),
+				seekAbsolute: vi.fn(),
+			});
+			expect(mockMediaSession.setActionHandler).not.toHaveBeenCalled();
+		} finally {
+			androidHost.activeRemoteServerUrl.value = prevRemote;
+		}
 	});
 });

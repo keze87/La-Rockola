@@ -86,6 +86,11 @@ def configure_android_environment(
 	)
 	native_player = resolve_native_android_player()
 	if native_player is not None:
+		try:
+			if hasattr(native_player, "getSystemVolumePercent"):
+				orch.volume = int(native_player.getSystemVolumePercent())
+		except Exception:
+			pass
 		orch.mpv = AndroidPlayerController(
 			callbacks={
 				"duration_update": orch.handle_duration_update,

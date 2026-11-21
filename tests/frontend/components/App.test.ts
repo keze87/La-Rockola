@@ -13,6 +13,7 @@ import {
 	queueState,
 	scanStatus,
 	trackMap,
+	volume,
 } from '@/composables/player/state';
 import { useTabs } from '@/composables/player/useTabs';
 
@@ -566,6 +567,31 @@ Dialogue: 0,0:00:20.00,0:00:24.00,Default,,0,0,0,,{\\kf100}Verso {\\kf100}tres
 			isNativeSpy.mockRestore();
 			initSpy.mockRestore();
 			shortcutSpy.mockRestore();
+		}
+	});
+
+	it('updates volume state from hardware volume callback even when listenLocally is false on local Android host', async () => {
+		const androidHost = await import('@/composables/useAndroidHost');
+		const prevListenLocally = listenLocally.value;
+		const prevRemoteUrl = androidHost.activeRemoteServerUrl.value;
+		const prevVol = volume.value;
+
+		try {
+			listenLocally.value = false;
+			androidHost.activeRemoteServerUrl.value = null;
+			volume.value = 50;
+
+			const wrapper = mount(App);
+			await wrapper.vm.$nextTick();
+
+			(window as any).__rockolaOnMediaVolumeChanged(35);
+			expect(volume.value).toBe(35);
+
+			wrapper.unmount();
+		} finally {
+			listenLocally.value = prevListenLocally;
+			androidHost.activeRemoteServerUrl.value = prevRemoteUrl;
+			volume.value = prevVol;
 		}
 	});
 });

@@ -134,16 +134,35 @@ class RockolaForegroundService : Service() {
             },
         )
         notificationManager.initialize()
-        audioPlayer = AndroidAudioPlayer(this) { active ->
-            isActivelyPlaying = isRunning && active
-            if (isActivelyPlaying) {
-                cancelScheduledDemote()
-                acquireLocks()
-                startForegroundWithNotification("Reproduciendo")
-            } else {
-                scheduleDemoteToBackground()
-            }
-        }
+        audioPlayer = AndroidAudioPlayer(
+            context = this,
+            onPlaybackActiveChanged = { active ->
+                isActivelyPlaying = isRunning && active
+                if (isActivelyPlaying) {
+                    cancelScheduledDemote()
+                    acquireLocks()
+                    startForegroundWithNotification("Reproduciendo")
+                } else {
+                    scheduleDemoteToBackground()
+                }
+            },
+            onMediaNotification = { title, artist, paused, coverUrl, trackPath, durationMs, positionMs, isFavorite, isPauseAfter ->
+                applyMediaUpdate(
+                    title = title,
+                    artist = artist,
+                    paused = paused,
+                    coverUrl = coverUrl,
+                    trackPath = trackPath,
+                    durationMs = durationMs,
+                    positionMs = positionMs,
+                    isFavorite = isFavorite,
+                    isPauseAfter = isPauseAfter,
+                )
+            },
+            onPositionNotification = { durationMs, positionMs, paused ->
+                applyPositionUpdate(durationMs, positionMs, paused)
+            },
+        )
         audioPlayer.initialize()
 
         ContextCompat.registerReceiver(
@@ -184,14 +203,7 @@ class RockolaForegroundService : Service() {
                 val durationMs = intent.getLongExtra(EXTRA_DURATION_MS, 0L).coerceAtLeast(0L)
                 val positionMs = intent.getLongExtra(EXTRA_POSITION_MS, 0L).coerceAtLeast(0L)
                 val paused = intent.getBooleanExtra(EXTRA_PAUSED, notificationManager.isPaused)
-                isActivelyPlaying = isRunning && !paused
-                notificationManager.updatePosition(durationMs, positionMs, paused)
-                if (isActivelyPlaying) {
-                    cancelScheduledDemote()
-                    acquireLocks()
-                } else {
-                    scheduleDemoteToBackground()
-                }
+                applyPositionUpdate(durationMs, positionMs, paused)
                 return START_NOT_STICKY
             }
             ACTION_UPDATE_MEDIA -> {
@@ -207,8 +219,7 @@ class RockolaForegroundService : Service() {
                 val isFavorite = intent.getBooleanExtra(EXTRA_IS_FAVORITE, false)
                 val isPauseAfter = intent.getBooleanExtra(EXTRA_IS_PAUSE_AFTER, false)
 
-                isActivelyPlaying = isRunning && !paused && !trackPath.isNullOrBlank()
-                notificationManager.updateMedia(
+                applyMediaUpdate(
                     title = title,
                     artist = artist,
                     paused = paused,
@@ -219,13 +230,6 @@ class RockolaForegroundService : Service() {
                     isFavorite = isFavorite,
                     isPauseAfter = isPauseAfter,
                 )
-                if (isActivelyPlaying) {
-                    cancelScheduledDemote()
-                    acquireLocks()
-                    startForegroundWithNotification(artist)
-                } else {
-                    scheduleDemoteToBackground()
-                }
                 return START_NOT_STICKY
             }
         }
@@ -261,6 +265,49 @@ class RockolaForegroundService : Service() {
         }
 
         return START_NOT_STICKY
+    }
+
+    private fun applyPositionUpdate(durationMs: Long, positionMs: Long, paused: Boolean) {
+        isActivelyPlaying = isRunning && !paused
+        notificationManager.updatePosition(durationMs, positionMs, paused)
+        if (isActivelyPlaying) {
+            cancelScheduledDemote()
+            acquireLocks()
+        } else {
+            scheduleDemoteToBackground()
+        }
+    }
+
+    private fun applyMediaUpdate(
+        title: String,
+        artist: String,
+        paused: Boolean,
+        coverUrl: String?,
+        trackPath: String?,
+        durationMs: Long,
+        positionMs: Long,
+        isFavorite: Boolean,
+        isPauseAfter: Boolean,
+    ) {
+        isActivelyPlaying = isRunning && !paused && !trackPath.isNullOrBlank()
+        notificationManager.updateMedia(
+            title = title,
+            artist = artist,
+            paused = paused,
+            coverUrl = coverUrl,
+            trackPath = trackPath,
+            durationMs = durationMs,
+            positionMs = positionMs,
+            isFavorite = isFavorite,
+            isPauseAfter = isPauseAfter,
+        )
+        if (isActivelyPlaying) {
+            cancelScheduledDemote()
+            acquireLocks()
+            startForegroundWithNotification(artist)
+        } else {
+            scheduleDemoteToBackground()
+        }
     }
 
     private fun startEmbeddedPythonServer(port: Int, musicDir: String?) {

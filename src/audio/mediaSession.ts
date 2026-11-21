@@ -3,6 +3,7 @@
 
 import { apiUrl } from '../composables/useApi';
 import {
+	activeRemoteServerUrl,
 	isNativeAndroidHost,
 	syncAndroidMediaNotification,
 	syncAndroidMediaPosition,
@@ -43,6 +44,7 @@ export function syncMediaSessionMetadata(
 		: null;
 
 	if (isNativeAndroidHost()) {
+		if (!activeRemoteServerUrl.value) return;
 		void syncAndroidMediaNotification({
 			title: info?.display_title || 'La Rockola del Carpincho',
 			artist: info?.display_artist || (trackPath ? 'Desconocido' : 'En espera'),
@@ -81,7 +83,7 @@ export function syncMediaSessionPosition(
 	paused = false
 ): void {
 	if (isNativeAndroidHost()) {
-		if (trackPath && totalDuration > 0) {
+		if (activeRemoteServerUrl.value && trackPath && totalDuration > 0) {
 			void syncAndroidMediaPosition({
 				duration: totalDuration,
 				position: Math.min(Math.max(0, currentPos), totalDuration),

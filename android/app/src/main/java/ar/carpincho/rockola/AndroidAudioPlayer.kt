@@ -1,6 +1,7 @@
 package ar.carpincho.rockola
 
 import android.content.Context
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -13,6 +14,7 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.chaquo.python.PyObject
 import java.io.File
+import kotlin.math.roundToInt
 
 /**
  * Motor de reproducción nativo basado en AndroidX Media3 ExoPlayer.
@@ -22,6 +24,22 @@ import java.io.File
 class AndroidAudioPlayer(
     private val context: Context,
     private val onPlaybackActiveChanged: (active: Boolean) -> Unit,
+    private val onMediaNotification: ((
+        title: String,
+        artist: String,
+        paused: Boolean,
+        coverUrl: String?,
+        trackPath: String?,
+        durationMs: Long,
+        positionMs: Long,
+        isFavorite: Boolean,
+        isPauseAfter: Boolean,
+    ) -> Unit)? = null,
+    private val onPositionNotification: ((
+        durationMs: Long,
+        positionMs: Long,
+        paused: Boolean,
+    ) -> Unit)? = null,
 ) {
     companion object {
         private const val TAG = "RockolaExoPlayer"
@@ -155,13 +173,54 @@ class AndroidAudioPlayer(
     }
 
     fun setVolume(volPercent: Double) {
+        val clamped = volPercent.coerceIn(0.0, 100.0)
+        val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val maxVol = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+        val target = ((clamped / 100.0) * maxVol).roundToInt().coerceIn(0, maxVol)
+        am.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
         mainHandler.post {
             val p = player ?: return@post
-            val clamped = (volPercent / 100.0).toFloat().coerceIn(0f, 1f)
-            lastVolume = clamped
-            if (!isMuted) {
-                p.volume = clamped
-            }
+            lastVolume = 1.0f
+            p.volume = if (isMuted) 0f else 1.0f
+        }
+    }
+
+    fun getSystemVolumePercent(): Int {
+        val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val maxVol = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+        val curVol = am.getStreamVolume(AudioManager.STREAM_MUSIC).coerceIn(0, maxVol)
+        return ((curVol * 100f) / maxVol).roundToInt().coerceIn(0, 100)
+    }
+
+    fun updateNotification(
+        title: String,
+        artist: String,
+        paused: Boolean,
+        coverUrl: String?,
+        trackPath: String?,
+        durationMs: Long,
+        positionMs: Long,
+        isFavorite: Boolean,
+        isPauseAfter: Boolean,
+    ) {
+        mainHandler.post {
+            onMediaNotification?.invoke(
+                title,
+                artist,
+                paused,
+                coverUrl,
+                trackPath,
+                durationMs,
+                positionMs,
+                isFavorite,
+                isPauseAfter,
+            )
+        }
+    }
+
+    fun updateNotificationPosition(durationMs: Long, positionMs: Long, paused: Boolean) {
+        mainHandler.post {
+            onPositionNotification?.invoke(durationMs, positionMs, paused)
         }
     }
 

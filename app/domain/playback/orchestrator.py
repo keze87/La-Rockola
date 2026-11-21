@@ -57,6 +57,8 @@ async def broadcast_state(include_library: bool = False) -> None:
 		state.last_broadcast.update(new_state)
 		await ws_mgr.broadcast_json(diff)
 		state.notify_mpris()
+		if hasattr(state.mpv, "sync_notification_from_state"):
+			state.mpv.sync_notification_from_state(state)
 
 
 class PlaybackOrchestrator:
