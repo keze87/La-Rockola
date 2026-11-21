@@ -106,6 +106,7 @@ class RockolaForegroundService : Service() {
     private lateinit var commandClient: LocalCommandClient
     private lateinit var pythonHost: EmbeddedPythonHost
     private lateinit var notificationManager: MediaNotificationManager
+    private lateinit var audioPlayer: AndroidAudioPlayer
 
     private val noisyReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -133,6 +134,17 @@ class RockolaForegroundService : Service() {
             },
         )
         notificationManager.initialize()
+        audioPlayer = AndroidAudioPlayer(this) { active ->
+            isActivelyPlaying = isRunning && active
+            if (isActivelyPlaying) {
+                cancelScheduledDemote()
+                acquireLocks()
+                startForegroundWithNotification("Reproduciendo")
+            } else {
+                scheduleDemoteToBackground()
+            }
+        }
+        audioPlayer.initialize()
 
         ContextCompat.registerReceiver(
             this,
@@ -345,6 +357,9 @@ class RockolaForegroundService : Service() {
         } catch (_: Exception) {
         }
         notificationManager.release()
+        if (::audioPlayer.isInitialized) {
+            audioPlayer.release()
+        }
         commandClient.shutdown()
         isRunning = false
         isActivelyPlaying = false
