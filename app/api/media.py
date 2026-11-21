@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from mutagen import File as MutagenFile
 
 from app.core.container import get_container
+from app.infrastructure.db.repositories import CoverThumbRepository
 from app.infrastructure.media.mixer import get_carpincho_cover_path
 
 logger = logging.getLogger("RockolaCarpincho")
@@ -131,6 +132,20 @@ async def serve_cover(
 					return Response(status_code=404, headers=cache_headers)
 				return Response(content=c_data, media_type=c_mime, headers=cache_headers)
 
+		db_path = getattr(get_container(), "db_path", None)
+		thumb_repo = CoverThumbRepository(db_path) if db_path else None
+		if size == 128 and thumb_repo is not None:
+			try:
+				cached_thumb = thumb_repo.get(path, mtime, file_size)
+				if cached_thumb is not None:
+					t_blob, t_mime = cached_thumb
+					_set_cover_cache(cache_key, (mtime, file_size, t_blob or None, t_mime, etag))
+					if not t_blob:
+						return Response(status_code=404, headers=cache_headers)
+					return Response(content=t_blob, media_type=t_mime, headers=cache_headers)
+			except Exception as e:
+				logger.debug(f"No pude consultar miniatura 128px en SQLite para {path}: {e}")
+
 		cover_data = None
 		mime_type = "image/jpeg"
 		if size and size > 0 and path in _COVER_MEM_CACHE:
@@ -144,6 +159,11 @@ async def serve_cover(
 			audio = MutagenFile(path)
 			if not audio:
 				_set_cover_cache(cache_key, (mtime, file_size, None, "image/jpeg", etag))
+				if size == 128 and thumb_repo is not None:
+					try:
+						thumb_repo.upsert(path, mtime, file_size, b"", "image/jpeg")
+					except Exception:
+						pass
 				return Response(status_code=404, headers=cache_headers)
 
 			if hasattr(audio, "pictures") and audio.pictures:
@@ -162,6 +182,11 @@ async def serve_cover(
 
 			if not cover_data:
 				_set_cover_cache(cache_key, (mtime, file_size, None, "image/jpeg", etag))
+				if size == 128 and thumb_repo is not None:
+					try:
+						thumb_repo.upsert(path, mtime, file_size, b"", "image/jpeg")
+					except Exception:
+						pass
 				return Response(status_code=404, headers=cache_headers)
 
 			_set_cover_cache(path, (mtime, file_size, cover_data, mime_type, etag))
@@ -169,6 +194,15 @@ async def serve_cover(
 		if size and size > 0:
 			resized_data, r_mime = _resize_cover(cover_data, size)
 			_set_cover_cache(cache_key, (mtime, file_size, resized_data, r_mime, etag))
+			if thumb_repo is not None:
+				try:
+					if size == 128:
+						thumb_repo.upsert(path, mtime, file_size, resized_data, r_mime)
+					elif thumb_repo.get(path, mtime, file_size) is None:
+						thumb_128, thumb_mime = _resize_cover(cover_data, 128)
+						thumb_repo.upsert(path, mtime, file_size, thumb_128, thumb_mime)
+				except Exception as e:
+					logger.debug(f"No pude guardar miniatura 128px en SQLite para {path}: {e}")
 			return Response(content=resized_data, media_type=r_mime, headers=cache_headers)
 
 		return Response(content=cover_data, media_type=mime_type, headers=cache_headers)

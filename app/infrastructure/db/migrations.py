@@ -127,6 +127,20 @@ def _migration_rev_6(conn: sqlite3.Connection) -> None:
 	""")
 
 
+def _migration_rev_7(conn: sqlite3.Connection) -> None:
+	"""Rev 7: Caché persistente de miniaturas de carátulas (128px) para carga instantánea."""
+	c = conn.cursor()
+	c.execute("""
+		CREATE TABLE IF NOT EXISTS cover_thumbs (
+			path TEXT PRIMARY KEY,
+			mtime INTEGER,
+			file_size INTEGER,
+			thumb_blob BLOB,
+			mime_type TEXT
+		)
+	""")
+
+
 MIGRATIONS: list[tuple[int, Callable[[sqlite3.Connection], None], str]] = [
 	(1, _migration_rev_1, "Tablas iniciales de rockola"),
 	(2, _migration_rev_2, "Columnas mtime y file_size"),
@@ -134,6 +148,7 @@ MIGRATIONS: list[tuple[int, Callable[[sqlite3.Connection], None], str]] = [
 	(4, _migration_rev_4, "Columna de huella acústica fingerprint"),
 	(5, _migration_rev_5, "Purga de locuciones radiales en historial"),
 	(6, _migration_rev_6, "Estado persistente e historial de frases del locutor radial"),
+	(7, _migration_rev_7, "Caché persistente de miniaturas de carátulas 128px"),
 ]
 
 

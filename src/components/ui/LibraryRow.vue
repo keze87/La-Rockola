@@ -55,7 +55,7 @@
 		@click="emit('click', track)"
 	>
 		<div class="relative flex items-center justify-center p-2">
-			<FavoritableCover :track="track" />
+			<FavoritableCover :track="track" :size-px="128" />
 
 			<!-- Indicador de tema sonando, superpuesto a la portada -->
 			<div

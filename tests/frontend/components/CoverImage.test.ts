@@ -114,20 +114,41 @@ describe('CoverImage.vue', () => {
 		const wrapper = mount(CoverImage, {
 			props: {
 				path: '/music/first.flac',
+				sizePx: 128,
 			},
 		});
 
 		expect(wrapper.find('.cover-skeleton').exists()).toBe(true);
-		const img = wrapper.find('img');
+		const img = wrapper.find('img.cover-main-img');
 		expect(img.exists()).toBe(true);
 		expect(img.classes()).toContain('opacity-0');
 
 		await img.trigger('load');
 		expect(wrapper.find('.cover-skeleton').exists()).toBe(false);
-		expect(wrapper.find('img').classes()).toContain('opacity-100');
+		expect(wrapper.find('img.cover-main-img').classes()).toContain('opacity-100');
 
 		await wrapper.setProps({ path: '/music/second.flac' });
 		expect(wrapper.find('.cover-skeleton').exists()).toBe(true);
-		expect(wrapper.find('img').classes()).toContain('opacity-0');
+		expect(wrapper.find('img.cover-main-img').classes()).toContain('opacity-0');
+	});
+
+	it('renders progressive 128px thumbnail layer when sizePx > 128', async () => {
+		const wrapper = mount(CoverImage, {
+			props: {
+				path: '/music/big.flac',
+				sizePx: 512,
+			},
+		});
+
+		const thumb = wrapper.find('img.cover-thumb-img');
+		const main = wrapper.find('img.cover-main-img');
+		expect(thumb.exists()).toBe(true);
+		expect(thumb.attributes('src')).toContain('&size=128');
+		expect(main.exists()).toBe(true);
+		expect(main.attributes('src')).toContain('&size=512');
+
+		// Al cargar la miniatura 128px desaparece el skeleton inmediatamente
+		await thumb.trigger('load');
+		expect(wrapper.find('.cover-skeleton').exists()).toBe(false);
 	});
 });

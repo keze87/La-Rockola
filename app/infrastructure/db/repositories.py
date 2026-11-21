@@ -220,3 +220,34 @@ class UrlLogsRepository:
 	def get_recent(self, limit: int = 50) -> list[dict[str, Any]]:
 		"""Retorna el historial de URLs remotas reproducidas."""
 		return execute_query("SELECT * FROM url_logs ORDER BY id DESC LIMIT ?", (limit,), self.db_path)
+
+
+class CoverThumbRepository:
+	"""Caché persistente de miniaturas de carátulas (128px) en SQLite."""
+
+	def __init__(self, db_path: Path | str | None = None) -> None:
+		self.db_path = db_path
+
+	def get(self, path: str, mtime: int, file_size: int) -> tuple[bytes, str] | None:
+		"""Recupera la miniatura cacheada si coincide mtime y file_size; si no existe retorna None."""
+		rows = execute_query(
+			"SELECT thumb_blob, mime_type FROM cover_thumbs WHERE path = ? AND mtime = ? AND file_size = ?",
+			(path, mtime, file_size),
+			self.db_path,
+		)
+		if not rows:
+			return None
+		blob = rows[0].get("thumb_blob")
+		mime = rows[0].get("mime_type") or "image/jpeg"
+		return (bytes(blob) if blob is not None else b"", str(mime))
+
+	def upsert(self, path: str, mtime: int, file_size: int, thumb_blob: bytes, mime_type: str = "image/jpeg") -> None:
+		"""Guarda o actualiza una miniatura 128px en SQLite."""
+		execute_write(
+			"""
+			INSERT OR REPLACE INTO cover_thumbs (path, mtime, file_size, thumb_blob, mime_type)
+			VALUES (?, ?, ?, ?, ?)
+			""",
+			(path, mtime, file_size, thumb_blob, mime_type),
+			self.db_path,
+		)

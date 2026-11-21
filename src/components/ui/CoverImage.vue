@@ -1,5 +1,5 @@
 <script setup lang="ts">
-	import { ref, watch } from 'vue';
+	import { computed, ref, watch } from 'vue';
 	import { useIntersectionObserver } from '@vueuse/core';
 	import { useCover } from '../../composables/useCover';
 	import type { HTMLAttributes } from 'vue';
@@ -29,16 +29,20 @@
 	const { coverUrl, onCoverError } = useCover(() => props.path, {
 		size: () => props.sizePx,
 	});
+	const { coverUrl: rawThumbUrl } = useCover(() => props.path, { size: 128 });
+	const thumbUrl = computed(() => (coverUrl.value && props.sizePx && props.sizePx > 128 ? rawThumbUrl.value : null));
 
 	const elRef = ref<HTMLElement | null>(null);
 	const imgRef = ref<HTMLImageElement | null>(null);
 	const isLoaded = ref(false);
+	const isThumbLoaded = ref(false);
 	const isVisible = ref(import.meta.env.MODE === 'test' || !props.unloadWhenHidden);
 
 	watch(
 		[coverUrl, isVisible],
 		([nextUrl, nextVisible]) => {
 			isLoaded.value = false;
+			isThumbLoaded.value = false;
 			if (nextUrl && nextVisible && imgRef.value?.complete && imgRef.value.naturalWidth > 0) {
 				isLoaded.value = true;
 			}
@@ -74,7 +78,7 @@
 <template>
 	<div ref="elRef" :class="[size, rounded, 'relative flex shrink-0 items-center justify-center overflow-hidden']">
 		<div
-			v-if="isVisible && coverUrl && !isLoaded"
+			v-if="isVisible && coverUrl && !isLoaded && !(thumbUrl && isThumbLoaded)"
 			:class="[
 				size,
 				rounded,
@@ -88,7 +92,7 @@
 			:class="[
 				size,
 				rounded,
-				'absolute inset-0 h-full w-full shrink-0 object-cover transition-opacity duration-200',
+				'cover-main-img absolute inset-0 z-10 h-full w-full shrink-0 object-cover transition-opacity duration-200',
 				isLoaded ? 'opacity-100' : 'opacity-0',
 			]"
 			loading="lazy"
@@ -96,6 +100,20 @@
 			alt=""
 			@load="onImgLoad"
 			@error="onImgError"
+		/>
+		<img
+			v-if="isVisible && thumbUrl && !isLoaded"
+			:src="thumbUrl"
+			:class="[
+				size,
+				rounded,
+				'cover-thumb-img absolute inset-0 h-full w-full shrink-0 object-cover transition-opacity duration-150',
+				isThumbLoaded ? 'opacity-100' : 'opacity-0',
+			]"
+			loading="lazy"
+			decoding="async"
+			alt=""
+			@load="isThumbLoaded = true"
 		/>
 		<div
 			v-else-if="!coverUrl"
