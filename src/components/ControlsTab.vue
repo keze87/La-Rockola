@@ -6,6 +6,7 @@
 		isAndroidFullscreen,
 		isNativeAndroidHost,
 		pickAndApplyMusicFolder,
+		shareAndroidUrl,
 		toggleAndroidFullscreen,
 	} from '../composables/useAndroidHost';
 	import { serverUrl, weatherLocation } from '../composables/player/state';
@@ -198,6 +199,37 @@
 			await toggleWebFullscreen();
 		}
 		haptic();
+	}
+
+	async function handleShareUrl() {
+		const url = currentUrl.value;
+		const title = 'La Rockola del Carpincho';
+		const text = 'Sumate a la ronda desde tu celu:';
+
+		if (isNativeAndroidHost()) {
+			const shared = await shareAndroidUrl({ url, title, text });
+			if (shared) haptic();
+			return;
+		}
+
+		if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+			try {
+				await navigator.share({ title, text, url });
+				haptic();
+				return;
+			} catch (err) {
+				if ((err as Error)?.name === 'AbortError') return;
+			}
+		}
+
+		try {
+			await navigator.clipboard?.writeText(url);
+			showToast('¡Joyita! Link copiado al portapapeles', 'success');
+			haptic();
+		} catch (err) {
+			console.error(err);
+			showToast('Uy, no se pudo compartir el link', 'error');
+		}
 	}
 
 	const resolvedWeatherArea = ref<string | null>(null);
@@ -524,6 +556,9 @@
 				/>
 			</div>
 			<p class="text-carpincho-muted mt-3 text-sm">Escaneá para entrar desde tu celu</p>
+			<PillButton icon="share" color-class="bg-amber-700 hover:bg-amber-600 mt-4" @click="handleShareUrl">
+				Compartir link
+			</PillButton>
 		</div>
 
 		<WeatherLocationModal :is-open="isWeatherModalOpen" @close="isWeatherModalOpen = false" />

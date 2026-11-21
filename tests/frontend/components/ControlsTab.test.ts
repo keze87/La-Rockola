@@ -554,4 +554,51 @@ describe('ControlsTab.vue', () => {
 			(androidHost as any).isAndroidFullscreen.value = false;
 		}
 	});
+
+	it('shares QR URL natively on Android and via Web Share / clipboard fallback on web', async () => {
+		const androidHost = await import('@/composables/useAndroidHost');
+		const isNativeSpy = vi.spyOn(androidHost, 'isNativeAndroidHost').mockReturnValue(true);
+		const shareNativeSpy = vi.spyOn(androidHost as any, 'shareAndroidUrl').mockResolvedValue(true);
+
+		serverUrl.value = 'http://192.168.0.55:1729';
+		const wrapper = mount(ControlsTab);
+
+		const shareBtn = wrapper
+			.findAllComponents({ name: 'PillButton' })
+			.find((b) => b.text().includes('Compartir link'));
+		expect(shareBtn).toBeDefined();
+
+		// En Android usa Intent.ACTION_SEND nativo
+		await shareBtn!.trigger('click');
+		await flushPromises();
+		expect(shareNativeSpy).toHaveBeenCalledWith(
+			expect.objectContaining({
+				url: 'http://192.168.0.55:1729',
+			})
+		);
+
+		// En web usa navigator.share si está disponible o clipboard fallback
+		isNativeSpy.mockReturnValue(false);
+		const writeTextMock = vi.fn().mockResolvedValue(undefined);
+		const originalClipboard = navigator.clipboard;
+		Object.defineProperty(navigator, 'clipboard', {
+			configurable: true,
+			value: { writeText: writeTextMock },
+		});
+		const originalShare = (navigator as any).share;
+		delete (navigator as any).share;
+
+		try {
+			await shareBtn!.trigger('click');
+			await flushPromises();
+			expect(writeTextMock).toHaveBeenCalledWith('http://192.168.0.55:1729');
+		} finally {
+			isNativeSpy.mockRestore();
+			shareNativeSpy.mockRestore();
+			if (originalShare !== undefined) {
+				Object.defineProperty(navigator, 'share', { configurable: true, value: originalShare });
+			}
+			Object.defineProperty(navigator, 'clipboard', { configurable: true, value: originalClipboard });
+		}
+	});
 });

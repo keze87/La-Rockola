@@ -4,4 +4,8 @@
     <string name="title_activity_main">La Rockola del Carpincho</string>
     <string name="package_name">ar.carpincho.rockola</string>
     <string name="custom_url_scheme">ar.carpincho.rockola</string>
+    <string name="shortcut_fogon_short">Modo Fogón</string>
+    <string name="shortcut_fogon_long">Abrir en Modo Fogón</string>
+    <string name="shortcut_queue_short">La Ronda</string>
+    <string name="shortcut_queue_long">Abrir la fila de temas</string>
 </resources>

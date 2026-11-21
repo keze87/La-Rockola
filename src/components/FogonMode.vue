@@ -4,6 +4,7 @@
 	import { useCover } from '../composables/useCover';
 	import { usePlaybackControls } from '../composables/usePlaybackControls';
 	import { usePlayer } from '../composables/usePlayer';
+	import { setAndroidKeepScreenOn } from '../composables/useAndroidHost';
 	import { useSliderFactory } from '../composables/useSliderFactory';
 	import { useContextMenuBindings } from '../composables/useContextMenu';
 	import { useMarquee } from '../composables/useMarquee';
@@ -526,6 +527,7 @@
 	watch(
 		isFogonMode,
 		(active) => {
+			void setAndroidKeepScreenOn(active);
 			if (active) {
 				window.addEventListener('mousemove', handleMouseMove);
 				resetCursorTimer();
@@ -546,6 +548,7 @@
 	);
 
 	onUnmounted(() => {
+		void setAndroidKeepScreenOn(false);
 		window.removeEventListener('mousemove', handleMouseMove);
 		if (cursorTimer) {
 			clearTimeout(cursorTimer);

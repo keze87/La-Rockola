@@ -52,6 +52,9 @@ export interface RockolaServerPlugin {
 	updateMediaNotification(options: MediaNotificationPayload): Promise<{ updated: boolean }>;
 	updateMediaPosition(options: MediaPositionPayload): Promise<{ updated: boolean }>;
 	hapticFeedback(options?: { heavy?: boolean }): Promise<{ performed: boolean }>;
+	setKeepScreenOn(options: { enabled: boolean }): Promise<{ enabled: boolean }>;
+	shareUrl(options: { url: string; title?: string; text?: string }): Promise<{ shared: boolean }>;
+	consumePendingShortcut(): Promise<{ action: string | null }>;
 }
 
 const RockolaServer = registerPlugin<RockolaServerPlugin>('RockolaServer');
@@ -76,6 +79,35 @@ export function triggerAndroidHaptic(heavy = false): void {
 	void RockolaServer.hapticFeedback({ heavy }).catch(() => {
 		// Fallamos silenciosamente si el puente nativo todavía no está listo
 	});
+}
+
+export async function setAndroidKeepScreenOn(enabled: boolean): Promise<void> {
+	if (!isNativeAndroidHost()) return;
+	try {
+		await RockolaServer.setKeepScreenOn({ enabled });
+	} catch {
+		// Ignoramos errores transitorios si la ventana todavía no está adjunta
+	}
+}
+
+export async function shareAndroidUrl(options: { url: string; title?: string; text?: string }): Promise<boolean> {
+	if (!isNativeAndroidHost()) return false;
+	try {
+		const res = await RockolaServer.shareUrl(options);
+		return Boolean(res?.shared);
+	} catch {
+		return false;
+	}
+}
+
+export async function consumeAndroidPendingShortcut(): Promise<string | null> {
+	if (!isNativeAndroidHost()) return null;
+	try {
+		const res = await RockolaServer.consumePendingShortcut();
+		return res?.action?.trim() || null;
+	} catch {
+		return null;
+	}
 }
 
 export async function toggleAndroidFullscreen(): Promise<boolean> {

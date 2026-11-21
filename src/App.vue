@@ -4,6 +4,7 @@
 	import { apiUrl } from './composables/useApi';
 	import {
 		androidServerStatus,
+		consumeAndroidPendingShortcut,
 		initAndroidServer,
 		isNativeAndroidHost,
 		pickAndApplyMusicFolder,
@@ -302,10 +303,32 @@
 		}
 	}
 
+	function openFogonFromAndroid(): void {
+		isLyricsEditorOpen.value = false;
+		isFogonMode.value = true;
+	}
+
+	function openQueueFromAndroid(): void {
+		isLyricsEditorOpen.value = false;
+		isFogonMode.value = false;
+		switchTab('queue');
+	}
+
+	function applyShortcutAction(action: string | null): void {
+		if (action === 'ar.carpincho.rockola.ACTION_OPEN_FOGON') {
+			openFogonFromAndroid();
+		} else if (action === 'ar.carpincho.rockola.ACTION_OPEN_QUEUE') {
+			openQueueFromAndroid();
+		}
+	}
+
 	onMounted(() => {
 		initRouter();
 		window.__rockolaHandleBack = handleAndroidBack;
+		window.__rockolaOpenFogon = openFogonFromAndroid;
+		window.__rockolaOpenQueue = openQueueFromAndroid;
 		if (isNativeAndroidHost()) {
+			void consumeAndroidPendingShortcut().then(applyShortcutAction);
 			initAndroidServer().finally(() => {
 				loadLibrary(false);
 				connectWebSocket();
@@ -317,8 +340,15 @@
 	});
 
 	onUnmounted(() => {
-		if (typeof window !== 'undefined' && window.__rockolaHandleBack === handleAndroidBack) {
+		if (typeof window === 'undefined') return;
+		if (window.__rockolaHandleBack === handleAndroidBack) {
 			delete window.__rockolaHandleBack;
+		}
+		if (window.__rockolaOpenFogon === openFogonFromAndroid) {
+			delete window.__rockolaOpenFogon;
+		}
+		if (window.__rockolaOpenQueue === openQueueFromAndroid) {
+			delete window.__rockolaOpenQueue;
 		}
 	});
 </script>

@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.Environment
 import android.provider.Settings
 import android.view.HapticFeedbackConstants
+import android.view.WindowManager
 import androidx.activity.result.ActivityResult
 import androidx.core.content.ContextCompat
 import com.getcapacitor.JSObject
@@ -183,6 +184,59 @@ class RockolaServerPlugin : Plugin() {
             )
             call.resolve(JSObject().apply { put("performed", performed) })
         }
+    }
+
+    @PluginMethod
+    fun setKeepScreenOn(call: PluginCall) {
+        val enabled = call.getBoolean("enabled") ?: false
+        val hostActivity = activity
+        if (hostActivity == null) {
+            call.resolve(JSObject().apply { put("enabled", false) })
+            return
+        }
+        hostActivity.runOnUiThread {
+            if (enabled) {
+                hostActivity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            } else {
+                hostActivity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+            call.resolve(JSObject().apply { put("enabled", enabled) })
+        }
+    }
+
+    @PluginMethod
+    fun shareUrl(call: PluginCall) {
+        val url = call.getString("url")?.trim()
+        if (url.isNullOrEmpty()) {
+            call.reject("Se requiere una URL válida para compartir")
+            return
+        }
+        val title = call.getString("title") ?: "La Rockola del Carpincho"
+        val text = call.getString("text")
+        val body = if (!text.isNullOrBlank()) "$text\n$url" else url
+        val hostActivity = activity
+        if (hostActivity == null) {
+            call.resolve(JSObject().apply { put("shared", false) })
+            return
+        }
+        hostActivity.runOnUiThread {
+            val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_SUBJECT, title)
+                putExtra(Intent.EXTRA_TEXT, body)
+            }
+            val chooser = Intent.createChooser(sendIntent, title)
+            hostActivity.startActivity(chooser)
+            call.resolve(JSObject().apply { put("shared", true) })
+        }
+    }
+
+    @PluginMethod
+    fun consumePendingShortcut(call: PluginCall) {
+        val action = MainActivity.consumePendingShortcutAction()
+        call.resolve(JSObject().apply {
+            put("action", action ?: JSONObject.NULL)
+        })
     }
 
     @PluginMethod

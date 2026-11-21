@@ -11,6 +11,9 @@ const { pluginMock, systemBarsMock, state } = vi.hoisted(() => ({
 		updateMediaNotification: vi.fn(),
 		updateMediaPosition: vi.fn(),
 		hapticFeedback: vi.fn(),
+		setKeepScreenOn: vi.fn(),
+		shareUrl: vi.fn(),
+		consumePendingShortcut: vi.fn(),
 	},
 	systemBarsMock: {
 		hide: vi.fn().mockResolvedValue(undefined),
@@ -248,5 +251,54 @@ describe('useAndroidHost.ts', () => {
 
 		expect(pluginMock.hapticFeedback).toHaveBeenNthCalledWith(1, { heavy: false });
 		expect(pluginMock.hapticFeedback).toHaveBeenNthCalledWith(2, { heavy: true });
+	});
+
+	it('setAndroidKeepScreenOn, shareAndroidUrl, and consumeAndroidPendingShortcut work only on Android', async () => {
+		const mod = await import('@/composables/useAndroidHost');
+		const setAndroidKeepScreenOn = (mod as any).setAndroidKeepScreenOn as (enabled: boolean) => Promise<void>;
+		const shareAndroidUrl = (mod as any).shareAndroidUrl as (opts: {
+			url: string;
+			title?: string;
+			text?: string;
+		}) => Promise<boolean>;
+		const consumeAndroidPendingShortcut = (mod as any).consumeAndroidPendingShortcut as () => Promise<
+			string | null
+		>;
+
+		expect(typeof setAndroidKeepScreenOn).toBe('function');
+		expect(typeof shareAndroidUrl).toBe('function');
+		expect(typeof consumeAndroidPendingShortcut).toBe('function');
+
+		// En web no llaman al plugin nativo
+		await setAndroidKeepScreenOn(true);
+		await expect(shareAndroidUrl({ url: 'http://192.168.0.10:1729' })).resolves.toBe(false);
+		await expect(consumeAndroidPendingShortcut()).resolves.toBeNull();
+		expect(pluginMock.setKeepScreenOn).not.toHaveBeenCalled();
+		expect(pluginMock.shareUrl).not.toHaveBeenCalled();
+		expect(pluginMock.consumePendingShortcut).not.toHaveBeenCalled();
+
+		// En Android delegan al plugin
+		state.isNative = true;
+		state.platform = 'android';
+		pluginMock.setKeepScreenOn.mockResolvedValue({ enabled: true });
+		pluginMock.shareUrl.mockResolvedValue({ shared: true });
+		pluginMock.consumePendingShortcut.mockResolvedValue({ action: 'ar.carpincho.rockola.ACTION_OPEN_FOGON' });
+
+		await setAndroidKeepScreenOn(true);
+		await setAndroidKeepScreenOn(false);
+		expect(pluginMock.setKeepScreenOn).toHaveBeenNthCalledWith(1, { enabled: true });
+		expect(pluginMock.setKeepScreenOn).toHaveBeenNthCalledWith(2, { enabled: false });
+
+		await expect(
+			shareAndroidUrl({ url: 'http://192.168.0.10:1729', title: 'Rockola', text: 'Sumate' })
+		).resolves.toBe(true);
+		expect(pluginMock.shareUrl).toHaveBeenCalledWith({
+			url: 'http://192.168.0.10:1729',
+			title: 'Rockola',
+			text: 'Sumate',
+		});
+
+		await expect(consumeAndroidPendingShortcut()).resolves.toBe('ar.carpincho.rockola.ACTION_OPEN_FOGON');
+		expect(pluginMock.consumePendingShortcut).toHaveBeenCalledTimes(1);
 	});
 });

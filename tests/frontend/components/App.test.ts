@@ -466,4 +466,39 @@ Dialogue: 0,0:00:20.00,0:00:24.00,Default,,0,0,0,,{\\kf100}Verso {\\kf100}tres
 		await container.trigger('touchend');
 		expect(activeTab.value).toBe('queue');
 	});
+
+	it('exposes launcher shortcut hooks (__rockolaOpenFogon, __rockolaOpenQueue) and consumes pending Android shortcut on mount', async () => {
+		const androidHost = await import('@/composables/useAndroidHost');
+		const isNativeSpy = vi.spyOn(androidHost, 'isNativeAndroidHost').mockReturnValue(true);
+		vi.spyOn(androidHost, 'initAndroidServer').mockResolvedValue(true);
+		const shortcutSpy = vi
+			.spyOn(androidHost as any, 'consumeAndroidPendingShortcut')
+			.mockResolvedValue('ar.carpincho.rockola.ACTION_OPEN_FOGON');
+
+		try {
+			const wrapper = mount(App);
+			await wrapper.vm.$nextTick();
+			await new Promise((resolve) => setTimeout(resolve, 10));
+			await wrapper.vm.$nextTick();
+
+			expect(typeof (window as any).__rockolaOpenFogon).toBe('function');
+			expect(typeof (window as any).__rockolaOpenQueue).toBe('function');
+			expect(isFogonMode.value).toBe(true);
+
+			isFogonMode.value = false;
+			(window as any).__rockolaOpenQueue();
+			expect(activeTab.value).toBe('queue');
+			expect(isFogonMode.value).toBe(false);
+
+			(window as any).__rockolaOpenFogon();
+			expect(isFogonMode.value).toBe(true);
+
+			wrapper.unmount();
+			expect((window as any).__rockolaOpenFogon).toBeUndefined();
+			expect((window as any).__rockolaOpenQueue).toBeUndefined();
+		} finally {
+			isNativeSpy.mockRestore();
+			shortcutSpy.mockRestore();
+		}
+	});
 });

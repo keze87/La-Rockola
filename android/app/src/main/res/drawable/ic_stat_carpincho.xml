@@ -1,0 +1,10 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Silueta monocromática de carpincho para barra de estado Android -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M18.2,7.2C17.4,6.4 16.3,6 15.1,6L14.5,4.4C14.3,3.9 13.7,3.8 13.3,4.2L12.1,5.6C9.5,5.9 7.2,7.4 5.9,9.6C5.1,9.7 4.4,10.2 4.1,11L3.6,12.3C3.3,13.1 3.7,14.1 4.5,14.5L5.2,14.8L5.2,18.2C5.2,19 5.9,19.6 6.7,19.6C7.5,19.6 8.1,19 8.1,18.2L8.1,16.5C9.4,16.9 10.9,17.1 12.4,17.1L12.4,18.2C12.4,19 13.1,19.6 13.9,19.6C14.7,19.6 15.3,19 15.3,18.2L15.3,16.5C16.2,16.1 16.9,15.5 17.4,14.7L18.4,14.7C19.8,14.7 21,13.5 21,12.1L21,10.8C21,9.2 19.8,7.9 18.2,7.2ZM16.8,9.8C16.3,9.8 15.9,9.4 15.9,8.9C15.9,8.4 16.3,8 16.8,8C17.3,8 17.7,8.4 17.7,8.9C17.7,9.4 17.3,9.8 16.8,9.8Z" />
+</vector>

@@ -880,4 +880,34 @@ Dialogue: 0,0:00:01.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Letra {\\kf100}animad
 		await coverWrapper.trigger('touchend');
 		expect(isFogonMode.value).toBe(true);
 	});
+
+	it('enables keep-screen-on while fogon mode is active and disables it on close or unmount', async () => {
+		const androidHost = await import('@/composables/useAndroidHost');
+		const keepScreenSpy = vi.spyOn(androidHost as any, 'setAndroidKeepScreenOn').mockResolvedValue(undefined);
+
+		try {
+			isFogonMode.value = false;
+			const wrapper = mount(FogonMode);
+			await wrapper.vm.$nextTick();
+			expect(keepScreenSpy).toHaveBeenCalledWith(false);
+
+			keepScreenSpy.mockClear();
+			isFogonMode.value = true;
+			await wrapper.vm.$nextTick();
+			expect(keepScreenSpy).toHaveBeenCalledWith(true);
+
+			keepScreenSpy.mockClear();
+			isFogonMode.value = false;
+			await wrapper.vm.$nextTick();
+			expect(keepScreenSpy).toHaveBeenCalledWith(false);
+
+			isFogonMode.value = true;
+			await wrapper.vm.$nextTick();
+			keepScreenSpy.mockClear();
+			wrapper.unmount();
+			expect(keepScreenSpy).toHaveBeenCalledWith(false);
+		} finally {
+			keepScreenSpy.mockRestore();
+		}
+	});
 });

@@ -9,6 +9,7 @@ import android.os.Bundle
 import androidx.activity.OnBackPressedCallback
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.getcapacitor.BridgeActivity
@@ -16,16 +17,28 @@ import com.getcapacitor.BridgeActivity
 /**
  * Actividad principal de Capacitor. Registra el plugin RockolaServer,
  * configura barras edge-to-edge transparentes con íconos claros,
- * arranca automáticamente el servidor embebido, delega navegación atrás a Vue
+ * arranca automáticamente el servidor embebido, delega navegación atrás y shortcuts a Vue
  * y mantiene activos los timers del WebView solo mientras suena música.
  */
 class MainActivity : BridgeActivity() {
 
     companion object {
         private const val REQ_POST_NOTIFICATIONS = 1001
+        const val ACTION_OPEN_FOGON = "ar.carpincho.rockola.ACTION_OPEN_FOGON"
+        const val ACTION_OPEN_QUEUE = "ar.carpincho.rockola.ACTION_OPEN_QUEUE"
+
+        @Volatile
+        private var pendingShortcutAction: String? = null
+
+        fun consumePendingShortcutAction(): String? {
+            val action = pendingShortcutAction
+            pendingShortcutAction = null
+            return action
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         registerPlugin(RockolaServerPlugin::class.java)
         super.onCreate(savedInstanceState)
 
@@ -34,6 +47,13 @@ class MainActivity : BridgeActivity() {
         bridge?.webView?.settings?.mediaPlaybackRequiresUserGesture = false
         requestNotificationPermissionIfNeeded()
         ensureServerAutoStarted()
+        handleShortcutIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleShortcutIntent(intent)
     }
 
     override fun onResume() {
@@ -96,6 +116,26 @@ class MainActivity : BridgeActivity() {
                     arrayOf(Manifest.permission.POST_NOTIFICATIONS),
                     REQ_POST_NOTIFICATIONS
                 )
+            }
+        }
+    }
+
+    private fun handleShortcutIntent(intent: Intent?) {
+        val action = intent?.action ?: return
+        val jsHook = when (action) {
+            ACTION_OPEN_FOGON -> "__rockolaOpenFogon"
+            ACTION_OPEN_QUEUE -> "__rockolaOpenQueue"
+            else -> return
+        }
+        pendingShortcutAction = action
+        val webView = bridge?.webView ?: return
+        webView.post {
+            webView.evaluateJavascript(
+                "(function(){ if (typeof window.$jsHook === 'function') { window.$jsHook(); return 'ok'; } return 'pending'; })()",
+            ) { result ->
+                if (result == "\"ok\"") {
+                    pendingShortcutAction = null
+                }
             }
         }
     }

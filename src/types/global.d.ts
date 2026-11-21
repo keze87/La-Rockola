@@ -9,5 +9,7 @@ declare global {
 	interface Window {
 		webkitAudioContext: typeof AudioContext;
 		__rockolaHandleBack?: () => boolean;
+		__rockolaOpenFogon?: () => void;
+		__rockolaOpenQueue?: () => void;
 	}
 }

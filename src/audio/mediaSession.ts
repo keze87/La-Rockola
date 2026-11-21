@@ -54,6 +54,7 @@ export function syncMediaSessionMetadata(
 			isFavorite: Boolean(extras?.isFavorite),
 			isPauseAfter: Boolean(extras?.isPauseAfter),
 		});
+		return;
 	}
 
 	if (!('mediaSession' in navigator)) return;
@@ -79,12 +80,15 @@ export function syncMediaSessionPosition(
 	currentPos: number,
 	paused = false
 ): void {
-	if (isNativeAndroidHost() && trackPath && totalDuration > 0) {
-		void syncAndroidMediaPosition({
-			duration: totalDuration,
-			position: Math.min(Math.max(0, currentPos), totalDuration),
-			paused,
-		});
+	if (isNativeAndroidHost()) {
+		if (trackPath && totalDuration > 0) {
+			void syncAndroidMediaPosition({
+				duration: totalDuration,
+				position: Math.min(Math.max(0, currentPos), totalDuration),
+				paused,
+			});
+		}
+		return;
 	}
 
 	if (!('mediaSession' in navigator) || !navigator.mediaSession.setPositionState) return;
@@ -109,6 +113,7 @@ export function bindMediaSessionHandlers(
 	getCurrentPos: () => number = () => 0,
 	getDuration: () => number = () => 0
 ): void {
+	if (isNativeAndroidHost()) return;
 	if (!('mediaSession' in navigator)) return;
 
 	const checkPaused = typeof isPausedFn === 'function' ? isPausedFn : () => isPausedFn;
