@@ -29,7 +29,6 @@ class MediaNotificationManager(
     private val notificationId: Int,
     private val onCommand: (cmd: String, extra: Map<String, Any>) -> Unit,
     private val onRequestArtwork: (coverUrl: String) -> Unit,
-    private val onPlayRequested: () -> Unit,
 ) {
     private var mediaSession: MediaSessionCompat? = null
 
@@ -74,7 +73,6 @@ class MediaNotificationManager(
             setCallback(object : MediaSessionCompat.Callback() {
                 override fun onPlay() {
                     if (currentPaused) {
-                        onPlayRequested()
                         onCommand("pause", emptyMap())
                     }
                 }

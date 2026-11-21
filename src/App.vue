@@ -375,7 +375,7 @@
 			@click="pickAndApplyMusicFolder"
 		>
 			<i class="material-icons text-base">sd_card</i>
-			<span>Elegir carpeta de música en tu MicroSD para arrancar la ronda</span>
+			<span>Elegir la carpeta de música para arrancar la ronda</span>
 		</button>
 		<button
 			v-else-if="!hasMpv && !listenLocally && !hasLocalPlayer"

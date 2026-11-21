@@ -6,8 +6,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
-import android.media.AudioAttributes
-import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.net.wifi.WifiManager
 import android.os.Build
@@ -18,8 +16,10 @@ import androidx.core.content.ContextCompat
 
 /**
  * Servicio en primer plano orquestador que mantiene vivo el servidor FastAPI/Uvicorn
- * sobre Chaquopy, junto con WakeLock, WifiLock, AudioFocus, protección al desconectar
- * auriculares y el administrador de notificaciones multimedia.
+ * sobre Chaquopy, junto con WakeLock, WifiLock, protección al desconectar auriculares
+ * (`ACTION_AUDIO_BECOMING_NOISY`) y el administrador de notificaciones multimedia.
+ * El AudioFocus lo gestiona directamente el motor de audio del WebView para evitar
+ * conflictos de foco dentro del mismo proceso.
  */
 class RockolaForegroundService : Service() {
 
@@ -89,10 +89,6 @@ class RockolaForegroundService : Service() {
     private lateinit var commandClient: LocalCommandClient
     private lateinit var pythonHost: EmbeddedPythonHost
     private lateinit var notificationManager: MediaNotificationManager
-    private lateinit var audioManager: AudioManager
-    private var focusRequest: AudioFocusRequest? = null
-    private var hasAudioFocus: Boolean = false
-    private var pausedByTransientFocusLoss: Boolean = false
 
     private val noisyReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -102,39 +98,10 @@ class RockolaForegroundService : Service() {
         }
     }
 
-    private val audioFocusListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
-        when (focusChange) {
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
-                hasAudioFocus = false
-                if (!notificationManager.isPaused) {
-                    pausedByTransientFocusLoss = true
-                    commandClient.sendCommand("pause")
-                }
-            }
-            AudioManager.AUDIOFOCUS_LOSS -> {
-                hasAudioFocus = false
-                pausedByTransientFocusLoss = false
-                if (!notificationManager.isPaused) {
-                    commandClient.sendCommand("pause")
-                }
-            }
-            AudioManager.AUDIOFOCUS_GAIN -> {
-                hasAudioFocus = true
-                if (pausedByTransientFocusLoss) {
-                    pausedByTransientFocusLoss = false
-                    if (notificationManager.isPaused) {
-                        commandClient.sendCommand("pause")
-                    }
-                }
-            }
-        }
-    }
-
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
-        audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         commandClient = LocalCommandClient { currentPort }
         pythonHost = EmbeddedPythonHost(this)
         notificationManager = MediaNotificationManager(
@@ -147,7 +114,6 @@ class RockolaForegroundService : Service() {
                     notificationManager.applyArtworkIfCurrent(coverUrl, bmp)
                 }
             },
-            onPlayRequested = { requestAudioFocus() },
         )
         notificationManager.initialize()
 
@@ -170,9 +136,6 @@ class RockolaForegroundService : Service() {
                 return START_STICKY
             }
             ACTION_MEDIA_PLAY_PAUSE -> {
-                if (notificationManager.isPaused) {
-                    requestAudioFocus()
-                }
                 commandClient.sendCommand("pause")
                 return START_STICKY
             }
@@ -193,7 +156,6 @@ class RockolaForegroundService : Service() {
                 val positionMs = intent.getLongExtra(EXTRA_POSITION_MS, 0L).coerceAtLeast(0L)
                 val paused = intent.getBooleanExtra(EXTRA_PAUSED, notificationManager.isPaused)
                 isActivelyPlaying = isRunning && !paused
-                if (!paused) requestAudioFocus()
                 notificationManager.updatePosition(durationMs, positionMs, paused)
                 return START_STICKY
             }
@@ -211,10 +173,6 @@ class RockolaForegroundService : Service() {
                 val isPauseAfter = intent.getBooleanExtra(EXTRA_IS_PAUSE_AFTER, false)
 
                 isActivelyPlaying = isRunning && !paused
-                if (!paused) {
-                    pausedByTransientFocusLoss = false
-                    requestAudioFocus()
-                }
                 notificationManager.updateMedia(
                     title = title,
                     artist = artist,
@@ -285,41 +243,6 @@ class RockolaForegroundService : Service() {
         }
     }
 
-    private fun requestAudioFocus() {
-        if (hasAudioFocus) return
-        val result = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val req = focusRequest ?: AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-                .setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                        .build(),
-                )
-                .setOnAudioFocusChangeListener(audioFocusListener)
-                .build()
-                .also { focusRequest = it }
-            audioManager.requestAudioFocus(req)
-        } else {
-            @Suppress("DEPRECATION")
-            audioManager.requestAudioFocus(
-                audioFocusListener,
-                AudioManager.STREAM_MUSIC,
-                AudioManager.AUDIOFOCUS_GAIN,
-            )
-        }
-        hasAudioFocus = (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
-    }
-
-    private fun abandonAudioFocus() {
-        hasAudioFocus = false
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            focusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
-        } else {
-            @Suppress("DEPRECATION")
-            audioManager.abandonAudioFocus(audioFocusListener)
-        }
-    }
-
     private fun acquireLocks() {
         if (wakeLock == null) {
             val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -360,7 +283,6 @@ class RockolaForegroundService : Service() {
         pythonHost.stop()
         isRunning = false
         isActivelyPlaying = false
-        abandonAudioFocus()
         releaseLocks()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -379,7 +301,6 @@ class RockolaForegroundService : Service() {
         }
         notificationManager.release()
         commandClient.shutdown()
-        abandonAudioFocus()
         isRunning = false
         isActivelyPlaying = false
         releaseLocks()

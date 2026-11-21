@@ -153,4 +153,4 @@ Cuando el servidor arranca, abre automáticamente el reproductor en tu navegador
 
 ## 📱 Soporte para Android (Servidor + Cliente)
 
-La Rockola del Carpincho cuenta con integración nativa para Android (**Capacitor + Chaquopy + ForegroundService**) con acceso directo a carpetas de la tarjeta **MicroSD**, además de modo cliente **PWA instalable** y soporte `--no-mpv` para servidores sin salida local. Consultá la guía completa en [docs/ANDROID.md](docs/ANDROID.md).
+La Rockola del Carpincho cuenta con integración nativa para Android (**Capacitor + Chaquopy + ForegroundService**) con acceso directo a carpetas de música, además de modo cliente **PWA instalable** y soporte `--no-mpv` para servidores sin salida local. Consultá la guía completa en [docs/ANDROID.md](docs/ANDROID.md).

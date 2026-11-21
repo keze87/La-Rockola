@@ -436,7 +436,7 @@
 
 		<div v-if="showAndroidFolderPicker" class="mb-4 flex flex-col items-center gap-2">
 			<PillButton icon="sd_card" color-class="bg-amber-700 hover:bg-amber-600" @click="handlePickMusicFolder">
-				Elegir carpeta de música (MicroSD)
+				Elegir carpeta de música
 			</PillButton>
 			<p v-if="androidServerStatus.musicDir" class="text-carpincho-muted max-w-xs truncate text-xs">
 				Carpeta activa: {{ androidServerStatus.musicDir }}
