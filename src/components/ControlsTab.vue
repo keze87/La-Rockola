@@ -507,7 +507,10 @@
 			</PillButton>
 		</div>
 
-		<div v-if="!hasMpv && !listenLocally && !hasLocalPlayer" class="mb-4 flex flex-wrap justify-center gap-3">
+		<div
+			v-if="!hasMpv && !listenLocally && !hasLocalPlayer && (!isNativeAndroidHost() || activeRemoteServerUrl)"
+			class="mb-4 flex flex-wrap justify-center gap-3"
+		>
 			<PillButton
 				icon="headphones"
 				color-class="bg-carpincho-success hover:brightness-110 text-white font-bold"

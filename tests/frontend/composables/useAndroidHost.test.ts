@@ -107,7 +107,7 @@ describe('useAndroidHost.ts', () => {
 
 		const ready = await initAndroidServer({ pollIntervalMs: 5, timeoutMs: 2000 });
 		expect(ready).toBe(true);
-		expect(listenLocally.value).toBe(true);
+		expect(listenLocally.value).toBe(false);
 		expect(pluginMock.startServer).toHaveBeenCalledTimes(1);
 		expect(getApiOrigin()).toBe('http://127.0.0.1:1729');
 		expect(androidServerStatus.value.running).toBe(true);

@@ -316,8 +316,8 @@ export async function initAndroidServer(opts?: { pollIntervalMs?: number; timeou
 
 	activeRemoteServerUrl.value = null;
 
-	// En Android el teléfono es su propio parlante por defecto ("Escuchar acá")
-	listenLocally.value = true;
+	// En Android el backend nativo (ExoPlayer) reproduce el audio fuera del WebView
+	listenLocally.value = false;
 	void getAndroidMediaVolume().then((mediaVol) => {
 		if (mediaVol) {
 			volume.value = mediaVol.level;
