@@ -969,4 +969,57 @@ Dialogue: 0,0:00:01.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Letra {\\kf100}animad
 			enterPipSpy.mockRestore();
 		}
 	});
+
+	it('skips next/prev on horizontal swipe over the fogon cover art without closing fogon mode', async () => {
+		const fetchMock = vi.fn().mockResolvedValue({
+			ok: true,
+			json: () => Promise.resolve({ status: 'ok' }),
+		} as unknown as Response);
+		global.fetch = fetchMock;
+
+		isFogonMode.value = true;
+		const wrapper = mount(FogonMode);
+		const coverWrapper = wrapper.find('.fogon-cover-wrapper');
+		expect(coverWrapper.exists()).toBe(true);
+
+		// Swipe a la izquierda -> siguiente tema
+		await coverWrapper.trigger('touchstart', { touches: [{ clientX: 240, clientY: 160 }] });
+		await coverWrapper.trigger('touchmove', { touches: [{ clientX: 140, clientY: 165 }] });
+		expect(coverWrapper.attributes('style')).toContain('translateX(-100px)');
+		await coverWrapper.trigger('touchend');
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({
+				method: 'POST',
+				body: JSON.stringify({ cmd: 'skip' }),
+			})
+		);
+		expect(isFogonMode.value).toBe(true);
+
+		fetchMock.mockClear();
+
+		// Swipe a la derecha -> tema anterior
+		await coverWrapper.trigger('touchstart', { touches: [{ clientX: 120, clientY: 160 }] });
+		await coverWrapper.trigger('touchmove', { touches: [{ clientX: 220, clientY: 162 }] });
+		expect(coverWrapper.attributes('style')).toContain('translateX(100px)');
+		await coverWrapper.trigger('touchend');
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({
+				method: 'POST',
+				body: JSON.stringify({ cmd: 'prev' }),
+			})
+		);
+		expect(isFogonMode.value).toBe(true);
+
+		fetchMock.mockClear();
+
+		// Deslizamiento corto horizontal (< umbral) no dispara comandos
+		await coverWrapper.trigger('touchstart', { touches: [{ clientX: 160, clientY: 160 }] });
+		await coverWrapper.trigger('touchmove', { touches: [{ clientX: 125, clientY: 160 }] });
+		await coverWrapper.trigger('touchend');
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
 });
