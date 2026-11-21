@@ -6,6 +6,7 @@
 import { watch, watchEffect } from 'vue';
 import { useEventListener, useMediaControls, useTitle } from '@vueuse/core';
 import { apiUrl } from '../useApi';
+import { isNativeAndroidHost, setAndroidMediaVolume } from '../useAndroidHost';
 import { useCommands } from './useCommands';
 import { useLibrary } from './useLibrary';
 import { usePlaybackControls } from '../usePlaybackControls';
@@ -71,7 +72,11 @@ export function _startLocalPlayer(path: string) {
 	const isRadioStream = path.includes('radio_announcement') || path.includes('radio_pregenerated');
 	lp.src = apiUrl('/stream?path=' + encodeURIComponent(path) + (isRadioStream ? `&t=${Date.now()}` : ''));
 	lp.currentTime = 0;
-	lp.volume = Number.isFinite(volume.value) ? Math.max(0, Math.min(1, volume.value / 100)) : 1;
+	lp.volume = isNativeAndroidHost()
+		? 1
+		: Number.isFinite(volume.value)
+			? Math.max(0, Math.min(1, volume.value / 100))
+			: 1;
 	lp.muted = Boolean(serverMuted.value);
 	lp.load();
 
@@ -114,6 +119,10 @@ export function useLocalPlayback() {
 
 	function setVolume(vollevel?: number) {
 		const targetVol = vollevel !== undefined ? vollevel : parseInt(volume.value.toString());
+		if (isNativeAndroidHost() && listenLocally.value) {
+			void setAndroidMediaVolume(targetVol);
+			return;
+		}
 		sendCmd('set_volume', { vollevel: targetVol });
 	}
 
@@ -128,7 +137,11 @@ export function useLocalPlayback() {
 			[localPlayerRef, volume, serverMuted],
 			([lp, newVol, newMuted]) => {
 				if (!lp) return;
-				lp.volume = Number.isFinite(newVol) ? Math.max(0, Math.min(1, newVol / 100)) : 1;
+				lp.volume = isNativeAndroidHost()
+					? 1
+					: Number.isFinite(newVol)
+						? Math.max(0, Math.min(1, newVol / 100))
+						: 1;
 				lp.muted = Boolean(newMuted);
 			},
 			{ immediate: true }

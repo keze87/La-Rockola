@@ -1,5 +1,6 @@
 import { computePosition, flip, shift, offset } from '@floating-ui/vue';
 import { reactive, nextTick, toValue, type MaybeRefOrGetter, ref } from 'vue';
+import { useHaptics } from './player/useHaptics';
 import type { Track } from '../types';
 
 interface CtxMenuState {
@@ -50,12 +51,15 @@ function isTouchEventOrigin(event: MouseEvent | TouchEvent): boolean {
 export const menuRef = ref<HTMLElement | null>(null);
 
 export function useContextMenu() {
+	const { haptic } = useHaptics();
+
 	function openCtxMenu(
 		event: MouseEvent | TouchEvent,
 		track: Track,
 		source = 'library',
 		index: number | null = null
 	) {
+		const hadFiredBefore = ctxLongPressFired;
 		if (ctxLongPressTimer) {
 			clearTimeout(ctxLongPressTimer);
 			ctxLongPressTimer = null;
@@ -72,6 +76,9 @@ export function useContextMenu() {
 			// long-press consumido e ignoramos eventos residuales hasta un nuevo toque real.
 			ctxLongPressFired = true;
 			suppressBackdropUntilNewPointer = true;
+			if (!hadFiredBefore) {
+				haptic(true);
+			}
 		} else {
 			suppressBackdropUntilNewPointer = false;
 		}
@@ -166,8 +173,7 @@ export function useContextMenu() {
 
 		ctxLongPressTimer = setTimeout(() => {
 			ctxLongPressFired = true;
-
-			if (window.navigator.vibrate) window.navigator.vibrate([10, 30, 20]);
+			haptic(true);
 
 			triggerEl = el;
 			openCtxMenu(e, track, source, index); // Le pasamos el evento original a openCtxMenu

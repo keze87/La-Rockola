@@ -1,6 +1,7 @@
 import { _startLocalPlayer, _stopLocalPlayer, applyRemoteSeek } from './useLocalPlayback';
 import { applyLibrarySort } from './useLibrary';
 import { useToasts } from './useToasts';
+import { isNativeAndroidHost } from '../useAndroidHost';
 import { getWsUrl } from '../useApi';
 import { useWebSocket } from '@vueuse/core';
 import {
@@ -150,7 +151,9 @@ export function useSocket() {
 						if (state.local_ip !== undefined) localIp.value = state.local_ip;
 						if (state.top_played) topPlayedState.value = state.top_played;
 						if (state.url_metadata) urlMetadata.value = state.url_metadata;
-						if (state.volume !== undefined) volume.value = state.volume;
+						if (state.volume !== undefined && !(isNativeAndroidHost() && listenLocally.value)) {
+							volume.value = state.volume;
+						}
 						if (state.weather_location !== undefined) weatherLocation.value = state.weather_location;
 						if (state.default_sort !== undefined) {
 							defaultSort.value = state.default_sort;

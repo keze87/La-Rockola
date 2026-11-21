@@ -354,4 +354,28 @@ describe('useSocket.ts', () => {
 		expect(activeSort.value).toBe('artist');
 		expect(currentTracks.value.map((t) => t.path)).toEqual(['/m/a.mp3', '/m/z.mp3']);
 	});
+
+	it('does not overwrite local volume from server state_update when playing locally on Android', async () => {
+		const androidHost = await import('@/composables/useAndroidHost');
+		const isNativeSpy = vi.spyOn(androidHost, 'isNativeAndroidHost').mockReturnValue(true);
+
+		try {
+			listenLocally.value = true;
+			volume.value = 55;
+
+			const { connectWebSocket } = useSocket();
+			connectWebSocket();
+
+			capturedOptions.onMessage(null, {
+				data: JSON.stringify({
+					type: 'state_update',
+					volume: 95,
+				}),
+			});
+
+			expect(volume.value).toBe(55);
+		} finally {
+			isNativeSpy.mockRestore();
+		}
+	});
 });

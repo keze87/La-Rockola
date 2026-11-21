@@ -4,7 +4,7 @@
 
 import { Capacitor, SystemBars, registerPlugin } from '@capacitor/core';
 import { ref } from 'vue';
-import { listenLocally } from '../stores/usePlaybackStore';
+import { listenLocally, volume } from '../stores/usePlaybackStore';
 import { setApiOrigin, useApi } from './useApi';
 
 export interface AndroidServerInfo {
@@ -57,6 +57,8 @@ export interface RockolaServerPlugin {
 	consumePendingShortcut(): Promise<{ action: string | null }>;
 	setFogonState(options: { active: boolean }): Promise<{ active: boolean }>;
 	enterPipMode(): Promise<{ entered: boolean }>;
+	getMediaVolume(): Promise<{ level: number; muted: boolean }>;
+	setMediaVolume(options: { level: number }): Promise<{ level: number; muted: boolean }>;
 }
 
 const RockolaServer = registerPlugin<RockolaServerPlugin>('RockolaServer');
@@ -132,6 +134,30 @@ export async function enterAndroidPipMode(): Promise<boolean> {
 	}
 }
 
+export async function getAndroidMediaVolume(): Promise<{ level: number; muted: boolean } | null> {
+	if (!isNativeAndroidHost()) return null;
+	try {
+		const res = await RockolaServer.getMediaVolume();
+		if (res && typeof res.level === 'number') {
+			return { level: Math.max(0, Math.min(100, res.level)), muted: Boolean(res.muted) };
+		}
+		return null;
+	} catch {
+		return null;
+	}
+}
+
+export async function setAndroidMediaVolume(level: number): Promise<number | null> {
+	if (!isNativeAndroidHost()) return null;
+	const clamped = Math.max(0, Math.min(100, Math.round(level)));
+	try {
+		const res = await RockolaServer.setMediaVolume({ level: clamped });
+		return typeof res?.level === 'number' ? res.level : clamped;
+	} catch {
+		return null;
+	}
+}
+
 export async function toggleAndroidFullscreen(): Promise<boolean> {
 	if (!isNativeAndroidHost()) return false;
 	const next = !isAndroidFullscreen.value;
@@ -149,6 +175,11 @@ export async function initAndroidServer(opts?: { pollIntervalMs?: number; timeou
 
 	// En Android el teléfono es su propio parlante por defecto ("Escuchar acá")
 	listenLocally.value = true;
+	void getAndroidMediaVolume().then((mediaVol) => {
+		if (mediaVol) {
+			volume.value = mediaVol.level;
+		}
+	});
 
 	const pollIntervalMs = opts?.pollIntervalMs ?? 250;
 	const timeoutMs = opts?.timeoutMs ?? 15000;

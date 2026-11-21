@@ -122,7 +122,7 @@
 		moveDrag: moveVol,
 		endDrag: endVol,
 	} = useDragSlider({
-		max: 110,
+		max: () => (isNativeAndroidHost() ? 100 : 110),
 		getValue: () => volume.value,
 		onUpdate: (val) => {
 			volume.value = Math.round(val);

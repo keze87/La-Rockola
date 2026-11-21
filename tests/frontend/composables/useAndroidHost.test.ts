@@ -16,6 +16,8 @@ const { pluginMock, systemBarsMock, state } = vi.hoisted(() => ({
 		consumePendingShortcut: vi.fn(),
 		setFogonState: vi.fn(),
 		enterPipMode: vi.fn(),
+		getMediaVolume: vi.fn(),
+		setMediaVolume: vi.fn(),
 	},
 	systemBarsMock: {
 		hide: vi.fn().mockResolvedValue(undefined),
@@ -331,5 +333,38 @@ describe('useAndroidHost.ts', () => {
 
 		await expect(enterAndroidPipMode()).resolves.toBe(true);
 		expect(pluginMock.enterPipMode).toHaveBeenCalledTimes(1);
+	});
+
+	it('getAndroidMediaVolume and setAndroidMediaVolume delegate to native STREAM_MUSIC plugin only on Android', async () => {
+		const mod = await import('@/composables/useAndroidHost');
+		const getAndroidMediaVolume = (mod as any).getAndroidMediaVolume as () => Promise<{
+			level: number;
+			muted: boolean;
+		} | null>;
+		const setAndroidMediaVolume = (mod as any).setAndroidMediaVolume as (level: number) => Promise<number | null>;
+
+		expect(typeof getAndroidMediaVolume).toBe('function');
+		expect(typeof setAndroidMediaVolume).toBe('function');
+
+		// En web no llaman al plugin nativo
+		await expect(getAndroidMediaVolume()).resolves.toBeNull();
+		await expect(setAndroidMediaVolume(65)).resolves.toBeNull();
+		expect(pluginMock.getMediaVolume).not.toHaveBeenCalled();
+		expect(pluginMock.setMediaVolume).not.toHaveBeenCalled();
+
+		// En Android delegan al plugin
+		state.isNative = true;
+		state.platform = 'android';
+		pluginMock.getMediaVolume.mockResolvedValue({ level: 55, muted: false });
+		pluginMock.setMediaVolume.mockResolvedValue({ level: 80, muted: false });
+
+		await expect(getAndroidMediaVolume()).resolves.toEqual({ level: 55, muted: false });
+		await expect(setAndroidMediaVolume(80)).resolves.toBe(80);
+		expect(pluginMock.setMediaVolume).toHaveBeenCalledWith({ level: 80 });
+
+		// Clampa valores fuera de 0..100
+		pluginMock.setMediaVolume.mockResolvedValue({ level: 100, muted: false });
+		await setAndroidMediaVolume(110);
+		expect(pluginMock.setMediaVolume).toHaveBeenLastCalledWith({ level: 100 });
 	});
 });

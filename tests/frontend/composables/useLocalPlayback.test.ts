@@ -53,6 +53,30 @@ describe('useLocalPlayback', () => {
 		);
 	});
 
+	it('setVolume uses Android STREAM_MUSIC volume and keeps HTMLAudioElement at full volume on native Android', async () => {
+		const androidHost = await import('@/composables/useAndroidHost');
+		const isNativeSpy = vi.spyOn(androidHost, 'isNativeAndroidHost').mockReturnValue(true);
+		const setMediaVolSpy = vi.spyOn(androidHost as any, 'setAndroidMediaVolume').mockResolvedValue(65);
+		const fetchMock = vi.fn();
+		global.fetch = fetchMock;
+
+		try {
+			listenLocally.value = true;
+			const { setVolume } = useLocalPlayback();
+
+			volume.value = 65;
+			await nextTick();
+			expect(mockAudioEl.volume).toBe(1);
+
+			await setVolume();
+			expect(setMediaVolSpy).toHaveBeenCalledWith(65);
+			expect(fetchMock).not.toHaveBeenCalled();
+		} finally {
+			isNativeSpy.mockRestore();
+			setMediaVolSpy.mockRestore();
+		}
+	});
+
 	it('_sendLocalPlayerUpdate sends local_player_update payload over websocket', () => {
 		const wsSendMock = vi.fn();
 		setWsSend(wsSendMock);

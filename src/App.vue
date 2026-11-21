@@ -58,6 +58,7 @@
 		queueState,
 		scanStatus,
 		switchTab,
+		volume,
 	} = usePlayer();
 
 	const { createSlider } = useSliderFactory();
@@ -331,12 +332,19 @@
 		}
 	}
 
+	function handleAndroidMediaVolumeChanged(level: number): void {
+		if (listenLocally.value && Number.isFinite(level)) {
+			volume.value = Math.max(0, Math.min(100, Math.round(level)));
+		}
+	}
+
 	onMounted(() => {
 		initRouter();
 		window.__rockolaHandleBack = handleAndroidBack;
 		window.__rockolaOpenFogon = openFogonFromAndroid;
 		window.__rockolaOpenQueue = openQueueFromAndroid;
 		window.__rockolaSetPipMode = handleAndroidPipMode;
+		window.__rockolaOnMediaVolumeChanged = handleAndroidMediaVolumeChanged;
 		if (isNativeAndroidHost()) {
 			void consumeAndroidPendingShortcut().then(applyShortcutAction);
 			initAndroidServer().finally(() => {
@@ -366,6 +374,9 @@
 		}
 		if (window.__rockolaSetPipMode === handleAndroidPipMode) {
 			delete window.__rockolaSetPipMode;
+		}
+		if (window.__rockolaOnMediaVolumeChanged === handleAndroidMediaVolumeChanged) {
+			delete window.__rockolaOnMediaVolumeChanged;
 		}
 	});
 </script>

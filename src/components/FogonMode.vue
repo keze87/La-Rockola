@@ -810,7 +810,7 @@
 
 									<DragSlider
 										:model-value="volume"
-										:max="110"
+										:max="isNativeAndroidHost() ? 100 : 110"
 										@update:model-value="handleVolumeUpdate"
 										@commit="handleVolumeCommit"
 									/>

@@ -12,5 +12,6 @@ declare global {
 		__rockolaOpenFogon?: () => void;
 		__rockolaOpenQueue?: () => void;
 		__rockolaSetPipMode?: (active: boolean) => void;
+		__rockolaOnMediaVolumeChanged?: (level: number, muted: boolean) => void;
 	}
 }

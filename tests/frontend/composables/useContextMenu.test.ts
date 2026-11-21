@@ -217,4 +217,38 @@ describe('useContextMenu.ts', () => {
 		dismissFromBackdrop();
 		expect(ctxMenu.visible).toBe(false);
 	});
+
+	it('triggers heavy haptic feedback via useHaptics when opening context menu from touch', async () => {
+		const androidHost = await import('@/composables/useAndroidHost');
+		const isNativeSpy = vi.spyOn(androidHost, 'isNativeAndroidHost').mockReturnValue(true);
+		const nativeHapticSpy = vi.spyOn(androidHost, 'triggerAndroidHaptic').mockImplementation(() => {});
+
+		try {
+			const { ctxMenu, onCtxTouchStart, openCtxMenu } = useContextMenu();
+			const touchEvent = {
+				touches: [{ screenX: 50, screenY: 50 }],
+				currentTarget: document.createElement('div'),
+			} as unknown as TouchEvent;
+
+			// Caso 1: por timer de pulsación larga (500ms)
+			onCtxTouchStart(touchEvent, sampleTrack, 'library', 1);
+			vi.advanceTimersByTime(500);
+			expect(ctxMenu.visible).toBe(true);
+			expect(nativeHapticSpy).toHaveBeenCalledWith(true);
+
+			// Caso 2: cuando WebView dispara contextmenu táctil antes de 500ms
+			nativeHapticSpy.mockClear();
+			onCtxTouchStart(touchEvent, sampleTrack, 'library', 1);
+			openCtxMenu(
+				{ clientX: 50, clientY: 50, pointerType: 'touch' } as unknown as MouseEvent,
+				sampleTrack,
+				'library',
+				1
+			);
+			expect(nativeHapticSpy).toHaveBeenCalledWith(true);
+		} finally {
+			isNativeSpy.mockRestore();
+			nativeHapticSpy.mockRestore();
+		}
+	});
 });

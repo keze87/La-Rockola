@@ -2,17 +2,24 @@ package ar.carpincho.rockola
 
 import android.Manifest
 import android.app.Activity
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.provider.Settings
 import android.view.HapticFeedbackConstants
 import android.view.WindowManager
 import androidx.activity.result.ActivityResult
 import androidx.core.content.ContextCompat
+import kotlin.math.roundToInt
 import com.getcapacitor.JSObject
 import com.getcapacitor.PermissionState
 import com.getcapacitor.Plugin
@@ -42,6 +49,65 @@ import org.json.JSONObject
     ]
 )
 class RockolaServerPlugin : Plugin() {
+
+    companion object {
+        private const val ACTION_VOLUME_CHANGED = "android.media.VOLUME_CHANGED_ACTION"
+    }
+
+    private var volumeReceiver: BroadcastReceiver? = null
+
+    override fun load() {
+        super.load()
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context?, intent: Intent?) {
+                if (intent?.action != ACTION_VOLUME_CHANGED) return
+                val (percent, muted) = readMediaVolumeState()
+                bridge?.webView?.post {
+                    bridge?.webView?.evaluateJavascript(
+                        "window.__rockolaOnMediaVolumeChanged && window.__rockolaOnMediaVolumeChanged($percent, $muted)",
+                        null,
+                    )
+                }
+            }
+        }
+        volumeReceiver = receiver
+        ContextCompat.registerReceiver(
+            context,
+            receiver,
+            IntentFilter(ACTION_VOLUME_CHANGED),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+    }
+
+    override fun handleOnDestroy() {
+        volumeReceiver?.let {
+            try {
+                context.unregisterReceiver(it)
+            } catch (_: Exception) {
+            }
+        }
+        volumeReceiver = null
+        super.handleOnDestroy()
+    }
+
+    private fun readMediaVolumeState(): Pair<Int, Boolean> {
+        val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val maxVol = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+        val curVol = am.getStreamVolume(AudioManager.STREAM_MUSIC).coerceIn(0, maxVol)
+        val percent = ((curVol * 100f) / maxVol).roundToInt().coerceIn(0, 100)
+        val muted = am.isStreamMute(AudioManager.STREAM_MUSIC) || curVol == 0
+        return Pair(percent, muted)
+    }
+
+    private fun getSystemVibrator(): Vibrator? {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val vm = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
+            vm?.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+        }
+    }
 
     private fun hasFullStorageAccess(): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -174,6 +240,24 @@ class RockolaServerPlugin : Plugin() {
     @PluginMethod
     fun hapticFeedback(call: PluginCall) {
         val heavy = call.getBoolean("heavy") ?: false
+        val vibrator = getSystemVibrator()
+        if (vibrator?.hasVibrator() == true) {
+            try {
+                val durationMs = if (heavy) 36L else 14L
+                val amplitude = if (heavy) 210 else 110
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    vibrator.vibrate(VibrationEffect.createOneShot(durationMs, amplitude))
+                } else {
+                    @Suppress("DEPRECATION")
+                    vibrator.vibrate(durationMs)
+                }
+                call.resolve(JSObject().apply { put("performed", true) })
+                return
+            } catch (_: Exception) {
+                // Caemos al feedback táctil del WebView si el dispositivo restringe Vibrator
+            }
+        }
+
         val webView = bridge?.webView
         if (webView == null) {
             call.resolve(JSObject().apply { put("performed", false) })
@@ -182,7 +266,7 @@ class RockolaServerPlugin : Plugin() {
         val constant = if (heavy) {
             HapticFeedbackConstants.LONG_PRESS
         } else {
-            HapticFeedbackConstants.CLOCK_TICK
+            HapticFeedbackConstants.VIRTUAL_KEY
         }
         webView.post {
             @Suppress("DEPRECATION")
@@ -192,6 +276,29 @@ class RockolaServerPlugin : Plugin() {
             )
             call.resolve(JSObject().apply { put("performed", performed) })
         }
+    }
+
+    @PluginMethod
+    fun getMediaVolume(call: PluginCall) {
+        val (percent, muted) = readMediaVolumeState()
+        call.resolve(JSObject().apply {
+            put("level", percent)
+            put("muted", muted)
+        })
+    }
+
+    @PluginMethod
+    fun setMediaVolume(call: PluginCall) {
+        val requested = (call.getInt("level") ?: 50).coerceIn(0, 100)
+        val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val maxVol = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+        val target = ((requested / 100f) * maxVol).roundToInt().coerceIn(0, maxVol)
+        am.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
+        val (percent, muted) = readMediaVolumeState()
+        call.resolve(JSObject().apply {
+            put("level", percent)
+            put("muted", muted)
+        })
     }
 
     @PluginMethod
