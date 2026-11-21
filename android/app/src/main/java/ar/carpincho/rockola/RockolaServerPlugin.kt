@@ -102,15 +102,43 @@ class RockolaServerPlugin : Plugin() {
         val artist = call.getString("artist") ?: "En espera"
         val paused = call.getBoolean("paused") ?: true
         val coverUrl = call.getString("coverUrl")
+        val trackPath = call.getString("trackPath")
+        val durationSec = call.getDouble("duration") ?: 0.0
+        val positionSec = call.getDouble("position") ?: 0.0
+        val isFavorite = call.getBoolean("isFavorite") ?: false
+        val isPauseAfter = call.getBoolean("isPauseAfter") ?: false
 
         val intent = Intent(context, RockolaForegroundService::class.java).apply {
             action = RockolaForegroundService.ACTION_UPDATE_MEDIA
             putExtra(RockolaForegroundService.EXTRA_TITLE, title)
             putExtra(RockolaForegroundService.EXTRA_ARTIST, artist)
             putExtra(RockolaForegroundService.EXTRA_PAUSED, paused)
+            putExtra(RockolaForegroundService.EXTRA_DURATION_MS, (durationSec * 1000.0).toLong().coerceAtLeast(0L))
+            putExtra(RockolaForegroundService.EXTRA_POSITION_MS, (positionSec * 1000.0).toLong().coerceAtLeast(0L))
+            putExtra(RockolaForegroundService.EXTRA_IS_FAVORITE, isFavorite)
+            putExtra(RockolaForegroundService.EXTRA_IS_PAUSE_AFTER, isPauseAfter)
             if (!coverUrl.isNullOrBlank()) {
                 putExtra(RockolaForegroundService.EXTRA_COVER_URL, coverUrl)
             }
+            if (!trackPath.isNullOrBlank()) {
+                putExtra(RockolaForegroundService.EXTRA_TRACK_PATH, trackPath)
+            }
+        }
+        context.startService(intent)
+        call.resolve(JSObject().apply { put("updated", true) })
+    }
+
+    @PluginMethod
+    fun updateMediaPosition(call: PluginCall) {
+        val durationSec = call.getDouble("duration") ?: 0.0
+        val positionSec = call.getDouble("position") ?: 0.0
+        val paused = call.getBoolean("paused") ?: true
+
+        val intent = Intent(context, RockolaForegroundService::class.java).apply {
+            action = RockolaForegroundService.ACTION_UPDATE_POSITION
+            putExtra(RockolaForegroundService.EXTRA_DURATION_MS, (durationSec * 1000.0).toLong().coerceAtLeast(0L))
+            putExtra(RockolaForegroundService.EXTRA_POSITION_MS, (positionSec * 1000.0).toLong().coerceAtLeast(0L))
+            putExtra(RockolaForegroundService.EXTRA_PAUSED, paused)
         }
         context.startService(intent)
         call.resolve(JSObject().apply { put("updated", true) })

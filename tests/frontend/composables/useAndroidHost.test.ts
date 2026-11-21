@@ -9,6 +9,7 @@ const { pluginMock, state } = vi.hoisted(() => ({
 		hasStoragePermission: vi.fn(),
 		requestStoragePermission: vi.fn(),
 		updateMediaNotification: vi.fn(),
+		updateMediaPosition: vi.fn(),
 	},
 	state: {
 		isNative: false,
@@ -31,7 +32,9 @@ import {
 	initAndroidServer,
 	isNativeAndroidHost,
 	pickAndApplyMusicFolder,
+	resetAndroidMediaPositionThrottle,
 	syncAndroidMediaNotification,
+	syncAndroidMediaPosition,
 } from '@/composables/useAndroidHost';
 
 describe('useAndroidHost.ts', () => {
@@ -39,6 +42,7 @@ describe('useAndroidHost.ts', () => {
 		state.isNative = false;
 		state.platform = 'web';
 		listenLocally.value = false;
+		resetAndroidMediaPositionThrottle();
 		clearApiOrigin();
 		vi.clearAllMocks();
 		androidServerStatus.value = {
@@ -144,12 +148,53 @@ describe('useAndroidHost.ts', () => {
 			artist: 'Spinetta',
 			paused: false,
 			coverUrl: 'http://127.0.0.1:1729/cover?path=a.mp3',
+			trackPath: '/music/a.mp3',
+			duration: 210,
+			position: 12,
+			isFavorite: true,
+			isPauseAfter: true,
 		});
 		expect(pluginMock.updateMediaNotification).toHaveBeenCalledWith({
 			title: 'Barro Tal Vez',
 			artist: 'Spinetta',
 			paused: false,
 			coverUrl: 'http://127.0.0.1:1729/cover?path=a.mp3',
+			trackPath: '/music/a.mp3',
+			duration: 210,
+			position: 12,
+			isFavorite: true,
+			isPauseAfter: true,
 		});
+	});
+
+	it('syncAndroidMediaPosition forwards throttled progress and immediate seek/pause updates', async () => {
+		pluginMock.updateMediaPosition.mockResolvedValue({ updated: true });
+
+		await syncAndroidMediaPosition({ duration: 200, position: 10, paused: false });
+		expect(pluginMock.updateMediaPosition).not.toHaveBeenCalled();
+
+		state.isNative = true;
+		state.platform = 'android';
+
+		// Primer envío: siempre pasa
+		await syncAndroidMediaPosition({ duration: 200, position: 10, paused: false });
+		expect(pluginMock.updateMediaPosition).toHaveBeenCalledTimes(1);
+		expect(pluginMock.updateMediaPosition).toHaveBeenLastCalledWith({
+			duration: 200,
+			position: 10,
+			paused: false,
+		});
+
+		// Tick normal (< 1.5s y < 3s): se filtra (throttle)
+		await syncAndroidMediaPosition({ duration: 200, position: 10.25, paused: false });
+		expect(pluginMock.updateMediaPosition).toHaveBeenCalledTimes(1);
+
+		// Seek (> 1.5s): se envía de inmediato
+		await syncAndroidMediaPosition({ duration: 200, position: 45, paused: false });
+		expect(pluginMock.updateMediaPosition).toHaveBeenCalledTimes(2);
+
+		// Cambio de pausa: se envía de inmediato
+		await syncAndroidMediaPosition({ duration: 200, position: 45, paused: true });
+		expect(pluginMock.updateMediaPosition).toHaveBeenCalledTimes(3);
 	});
 });

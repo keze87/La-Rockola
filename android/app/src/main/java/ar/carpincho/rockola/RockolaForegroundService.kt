@@ -12,6 +12,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.wifi.WifiManager
 import android.os.Build
+import android.os.Bundle
 import android.os.IBinder
 import android.os.PowerManager
 import android.support.v4.media.MediaMetadataCompat
@@ -22,6 +23,7 @@ import androidx.core.app.NotificationCompat
 import androidx.media.app.NotificationCompat.MediaStyle
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
+import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
@@ -30,7 +32,7 @@ import java.net.URL
 /**
  * Servicio en primer plano que mantiene vivo el servidor FastAPI/Uvicorn
  * ejecutado sobre Chaquopy, junto con WakeLock, WifiLock y controles MediaStyle
- * en la barra de notificaciones y pantalla de bloqueo.
+ * con barra de progreso, favorito y pausa al terminar en la barra de notificaciones.
  */
 class RockolaForegroundService : Service() {
 
@@ -44,7 +46,13 @@ class RockolaForegroundService : Service() {
         const val ACTION_MEDIA_PREV = "ar.carpincho.rockola.ACTION_MEDIA_PREV"
         const val ACTION_MEDIA_PLAY_PAUSE = "ar.carpincho.rockola.ACTION_MEDIA_PLAY_PAUSE"
         const val ACTION_MEDIA_NEXT = "ar.carpincho.rockola.ACTION_MEDIA_NEXT"
+        const val ACTION_MEDIA_FAVORITE = "ar.carpincho.rockola.ACTION_MEDIA_FAVORITE"
+        const val ACTION_MEDIA_PAUSE_AFTER = "ar.carpincho.rockola.ACTION_MEDIA_PAUSE_AFTER"
         const val ACTION_UPDATE_MEDIA = "ar.carpincho.rockola.ACTION_UPDATE_MEDIA"
+        const val ACTION_UPDATE_POSITION = "ar.carpincho.rockola.ACTION_UPDATE_POSITION"
+
+        const val CUSTOM_ACTION_FAVORITE = "ar.carpincho.rockola.CUSTOM_FAVORITE"
+        const val CUSTOM_ACTION_PAUSE_AFTER = "ar.carpincho.rockola.CUSTOM_PAUSE_AFTER"
 
         const val EXTRA_PORT = "port"
         const val EXTRA_MUSIC_DIR = "music_dir"
@@ -52,6 +60,11 @@ class RockolaForegroundService : Service() {
         const val EXTRA_ARTIST = "media_artist"
         const val EXTRA_PAUSED = "media_paused"
         const val EXTRA_COVER_URL = "media_cover_url"
+        const val EXTRA_TRACK_PATH = "media_track_path"
+        const val EXTRA_DURATION_MS = "media_duration_ms"
+        const val EXTRA_POSITION_MS = "media_position_ms"
+        const val EXTRA_IS_FAVORITE = "media_is_favorite"
+        const val EXTRA_IS_PAUSE_AFTER = "media_is_pause_after"
 
         private const val CHANNEL_ID = "rockola_server_channel"
         private const val NOTIFICATION_ID = 1729
@@ -88,6 +101,11 @@ class RockolaForegroundService : Service() {
     private var currentPaused: Boolean = true
     private var currentCoverUrl: String? = null
     private var currentArtwork: Bitmap? = null
+    private var currentTrackPath: String? = null
+    private var currentDurationMs: Long = 0L
+    private var currentPositionMs: Long = 0L
+    private var currentIsFavorite: Boolean = false
+    private var currentIsPauseAfter: Boolean = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -115,42 +133,103 @@ class RockolaForegroundService : Service() {
                 override fun onSkipToPrevious() {
                     sendPlaybackCommand("prev")
                 }
+
+                override fun onSeekTo(pos: Long) {
+                    val clamped = pos.coerceAtLeast(0L)
+                    currentPositionMs = clamped
+                    syncMediaSessionState()
+                    sendPlaybackCommand("seek_absolute", mapOf("amount" to (clamped / 1000.0)))
+                }
+
+                override fun onCustomAction(action: String?, extras: Bundle?) {
+                    when (action) {
+                        CUSTOM_ACTION_FAVORITE -> toggleFavoriteFromNotification()
+                        CUSTOM_ACTION_PAUSE_AFTER -> togglePauseAfterFromNotification()
+                    }
+                }
             })
             isActive = true
         }
         syncMediaSessionState()
     }
 
+    private fun toggleFavoriteFromNotification() {
+        val path = currentTrackPath ?: return
+        currentIsFavorite = !currentIsFavorite
+        syncMediaSessionState()
+        updateNotification(currentArtist)
+        sendPlaybackCommand("toggle_favorite", mapOf("path" to path))
+    }
+
+    private fun togglePauseAfterFromNotification() {
+        val path = currentTrackPath ?: return
+        currentIsPauseAfter = !currentIsPauseAfter
+        syncMediaSessionState()
+        updateNotification(currentArtist)
+        sendPlaybackCommand("pause_after", mapOf("path" to path))
+    }
+
     private fun syncMediaSessionState() {
         val session = mediaSession ?: return
         val stateCode = if (currentPaused) PlaybackStateCompat.STATE_PAUSED else PlaybackStateCompat.STATE_PLAYING
+        val speed = if (currentPaused) 0.0f else 1.0f
         val actions = PlaybackStateCompat.ACTION_PLAY or
             PlaybackStateCompat.ACTION_PAUSE or
             PlaybackStateCompat.ACTION_PLAY_PAUSE or
             PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
-            PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
+            PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
+            PlaybackStateCompat.ACTION_SEEK_TO
 
-        session.setPlaybackState(
-            PlaybackStateCompat.Builder()
-                .setActions(actions)
-                .setState(stateCode, PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN, 1.0f)
-                .build()
-        )
-        session.setMetadata(
-            MediaMetadataCompat.Builder()
-                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, currentTitle)
-                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, currentArtist)
-                .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, "La Rockola del Carpincho")
-                .apply {
-                    currentArtwork?.let { putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, it) }
-                }
-                .build()
-        )
+        val stateBuilder = PlaybackStateCompat.Builder()
+            .setActions(actions)
+            .setState(stateCode, currentPositionMs, speed)
+
+        if (!currentTrackPath.isNullOrBlank()) {
+            val favIcon = if (currentIsFavorite) {
+                R.drawable.ic_notif_favorite_filled
+            } else {
+                R.drawable.ic_notif_favorite_border
+            }
+            val favLabel = if (currentIsFavorite) "Quitar de favoritos" else "Agregar a favoritos"
+            stateBuilder.addCustomAction(
+                PlaybackStateCompat.CustomAction.Builder(CUSTOM_ACTION_FAVORITE, favLabel, favIcon).build()
+            )
+
+            val pauseAfterIcon = if (currentIsPauseAfter) {
+                R.drawable.ic_notif_pause_after_on
+            } else {
+                R.drawable.ic_notif_pause_after_off
+            }
+            val pauseAfterLabel = if (currentIsPauseAfter) "Cancelar pausa al terminar" else "Pausar al terminar"
+            stateBuilder.addCustomAction(
+                PlaybackStateCompat.CustomAction.Builder(CUSTOM_ACTION_PAUSE_AFTER, pauseAfterLabel, pauseAfterIcon)
+                    .build()
+            )
+        }
+
+        session.setPlaybackState(stateBuilder.build())
+
+        val metaBuilder = MediaMetadataCompat.Builder()
+            .putString(MediaMetadataCompat.METADATA_KEY_TITLE, currentTitle)
+            .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, currentArtist)
+            .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, "La Rockola del Carpincho")
+
+        if (currentDurationMs > 0L) {
+            metaBuilder.putLong(MediaMetadataCompat.METADATA_KEY_DURATION, currentDurationMs)
+        }
+        currentArtwork?.let { metaBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, it) }
+        session.setMetadata(metaBuilder.build())
     }
 
-    private fun sendPlaybackCommand(cmd: String) {
+    private fun sendPlaybackCommand(cmd: String, extraFields: Map<String, Any> = emptyMap()) {
         Thread({
             try {
+                val payload = JSONObject().apply {
+                    put("cmd", cmd)
+                    for ((k, v) in extraFields) {
+                        put(k, v)
+                    }
+                }
                 val url = URL("http://127.0.0.1:$currentPort/command")
                 val conn = (url.openConnection() as HttpURLConnection).apply {
                     requestMethod = "POST"
@@ -160,7 +239,7 @@ class RockolaForegroundService : Service() {
                     readTimeout = 2000
                 }
                 conn.outputStream.use { out ->
-                    out.write("""{"cmd":"$cmd"}""".toByteArray(Charsets.UTF_8))
+                    out.write(payload.toString().toByteArray(Charsets.UTF_8))
                 }
                 conn.responseCode
                 conn.disconnect()
@@ -191,6 +270,24 @@ class RockolaForegroundService : Service() {
                 sendPlaybackCommand("skip")
                 return START_STICKY
             }
+            ACTION_MEDIA_FAVORITE -> {
+                toggleFavoriteFromNotification()
+                return START_STICKY
+            }
+            ACTION_MEDIA_PAUSE_AFTER -> {
+                togglePauseAfterFromNotification()
+                return START_STICKY
+            }
+            ACTION_UPDATE_POSITION -> {
+                val durationMs = intent.getLongExtra(EXTRA_DURATION_MS, currentDurationMs).coerceAtLeast(0L)
+                val positionMs = intent.getLongExtra(EXTRA_POSITION_MS, currentPositionMs).coerceAtLeast(0L)
+                val paused = intent.getBooleanExtra(EXTRA_PAUSED, currentPaused)
+                currentDurationMs = durationMs
+                currentPositionMs = positionMs
+                currentPaused = paused
+                syncMediaSessionState()
+                return START_STICKY
+            }
             ACTION_UPDATE_MEDIA -> {
                 val title = intent.getStringExtra(EXTRA_TITLE)?.takeIf { it.isNotBlank() }
                     ?: "La Rockola del Carpincho"
@@ -198,12 +295,22 @@ class RockolaForegroundService : Service() {
                     ?: "En espera"
                 val paused = intent.getBooleanExtra(EXTRA_PAUSED, true)
                 val coverUrl = intent.getStringExtra(EXTRA_COVER_URL)?.takeIf { it.isNotBlank() }
+                val trackPath = intent.getStringExtra(EXTRA_TRACK_PATH)?.takeIf { it.isNotBlank() }
+                val durationMs = intent.getLongExtra(EXTRA_DURATION_MS, 0L).coerceAtLeast(0L)
+                val positionMs = intent.getLongExtra(EXTRA_POSITION_MS, 0L).coerceAtLeast(0L)
+                val isFavorite = intent.getBooleanExtra(EXTRA_IS_FAVORITE, false)
+                val isPauseAfter = intent.getBooleanExtra(EXTRA_IS_PAUSE_AFTER, false)
 
                 val coverChanged = coverUrl != currentCoverUrl
                 currentTitle = title
                 currentArtist = artist
                 currentPaused = paused
                 currentCoverUrl = coverUrl
+                currentTrackPath = trackPath
+                currentDurationMs = durationMs
+                currentPositionMs = positionMs
+                currentIsFavorite = isFavorite
+                currentIsPauseAfter = isPauseAfter
 
                 if (coverChanged) {
                     currentArtwork = null
@@ -448,18 +555,27 @@ class RockolaForegroundService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val favPending = serviceActionPendingIntent(ACTION_MEDIA_FAVORITE, 5)
         val prevPending = serviceActionPendingIntent(ACTION_MEDIA_PREV, 2)
         val playPausePending = serviceActionPendingIntent(ACTION_MEDIA_PLAY_PAUSE, 3)
         val nextPending = serviceActionPendingIntent(ACTION_MEDIA_NEXT, 4)
-        val stopPending = serviceActionPendingIntent(ACTION_STOP, 1)
+        val pauseAfterPending = serviceActionPendingIntent(ACTION_MEDIA_PAUSE_AFTER, 6)
 
+        val favIcon = if (currentIsFavorite) R.drawable.ic_notif_favorite_filled else R.drawable.ic_notif_favorite_border
+        val favLabel = if (currentIsFavorite) "Quitar de favoritos" else "Agregar a favoritos"
         val playPauseIcon = if (currentPaused) android.R.drawable.ic_media_play else android.R.drawable.ic_media_pause
         val playPauseLabel = if (currentPaused) "Reproducir" else "Pausar"
+        val pauseAfterIcon = if (currentIsPauseAfter) {
+            R.drawable.ic_notif_pause_after_on
+        } else {
+            R.drawable.ic_notif_pause_after_off
+        }
+        val pauseAfterLabel = if (currentIsPauseAfter) "Cancelar pausa al terminar" else "Pausar al terminar"
 
         val largeIcon = currentArtwork ?: BitmapFactory.decodeResource(resources, R.mipmap.ic_launcher)
 
         val mediaStyle = MediaStyle()
-            .setShowActionsInCompactView(0, 1, 2)
+            .setShowActionsInCompactView(1, 2, 3)
         mediaSession?.sessionToken?.let { mediaStyle.setMediaSession(it) }
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
@@ -471,10 +587,11 @@ class RockolaForegroundService : Service() {
             .setContentIntent(openPending)
             .setOngoing(true)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .addAction(favIcon, favLabel, favPending)
             .addAction(android.R.drawable.ic_media_previous, "Anterior", prevPending)
             .addAction(playPauseIcon, playPauseLabel, playPausePending)
             .addAction(android.R.drawable.ic_media_next, "Siguiente", nextPending)
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Detener", stopPending)
+            .addAction(pauseAfterIcon, pauseAfterLabel, pauseAfterPending)
             .setStyle(mediaStyle)
             .build()
     }

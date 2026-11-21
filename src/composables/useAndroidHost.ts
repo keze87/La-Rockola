@@ -29,6 +29,17 @@ export interface MediaNotificationPayload {
 	artist: string;
 	paused: boolean;
 	coverUrl?: string | null;
+	trackPath?: string | null;
+	duration?: number;
+	position?: number;
+	isFavorite?: boolean;
+	isPauseAfter?: boolean;
+}
+
+export interface MediaPositionPayload {
+	duration: number;
+	position: number;
+	paused: boolean;
 }
 
 export interface RockolaServerPlugin {
@@ -39,6 +50,7 @@ export interface RockolaServerPlugin {
 	hasStoragePermission(): Promise<{ granted: boolean }>;
 	requestStoragePermission(): Promise<{ granted: boolean }>;
 	updateMediaNotification(options: MediaNotificationPayload): Promise<{ updated: boolean }>;
+	updateMediaPosition(options: MediaPositionPayload): Promise<{ updated: boolean }>;
 }
 
 const RockolaServer = registerPlugin<RockolaServerPlugin>('RockolaServer');
@@ -118,14 +130,67 @@ export async function stopAndroidServer(): Promise<void> {
 	androidServerStatus.value.running = false;
 }
 
+let lastPosSentAt = 0;
+let lastPosValue = -1;
+let lastDurationValue = -1;
+let lastPausedValue: boolean | null = null;
+
+export function resetAndroidMediaPositionThrottle(): void {
+	lastPosSentAt = 0;
+	lastPosValue = -1;
+	lastDurationValue = -1;
+	lastPausedValue = null;
+}
+
 export async function syncAndroidMediaNotification(payload: MediaNotificationPayload): Promise<void> {
 	if (!isNativeAndroidHost()) return;
+	const duration = payload.duration ?? 0;
+	const position = payload.position ?? 0;
+	lastPosSentAt = Date.now();
+	lastPosValue = position;
+	lastDurationValue = duration;
+	lastPausedValue = payload.paused;
 	try {
 		await RockolaServer.updateMediaNotification({
 			title: payload.title,
 			artist: payload.artist,
 			paused: payload.paused,
 			coverUrl: payload.coverUrl ?? null,
+			trackPath: payload.trackPath ?? null,
+			duration,
+			position,
+			isFavorite: Boolean(payload.isFavorite),
+			isPauseAfter: Boolean(payload.isPauseAfter),
+		});
+	} catch {
+		// Ignoramos errores transitorios si el servicio todavía está levantando
+	}
+}
+
+export async function syncAndroidMediaPosition(payload: MediaPositionPayload): Promise<void> {
+	if (!isNativeAndroidHost()) return;
+
+	const now = Date.now();
+	const isFirst = lastPausedValue === null;
+	const pausedChanged = payload.paused !== lastPausedValue;
+	const durationChanged = Math.abs(payload.duration - lastDurationValue) > 0.5;
+	const jumped = Math.abs(payload.position - lastPosValue) > 1.5;
+	const elapsed = now - lastPosSentAt >= 3000;
+
+	if (!isFirst && !pausedChanged && !durationChanged && !jumped && !elapsed) {
+		return;
+	}
+
+	lastPosSentAt = now;
+	lastPosValue = payload.position;
+	lastDurationValue = payload.duration;
+	lastPausedValue = payload.paused;
+
+	try {
+		await RockolaServer.updateMediaPosition({
+			duration: payload.duration,
+			position: payload.position,
+			paused: payload.paused,
 		});
 	} catch {
 		// Ignoramos errores transitorios si el servicio todavía está levantando

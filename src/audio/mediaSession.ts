@@ -2,7 +2,11 @@
 // estado de reproducción y teclas multimedia físicas con el sistema operativo.
 
 import { apiUrl } from '../composables/useApi';
-import { isNativeAndroidHost, syncAndroidMediaNotification } from '../composables/useAndroidHost';
+import {
+	isNativeAndroidHost,
+	syncAndroidMediaNotification,
+	syncAndroidMediaPosition,
+} from '../composables/useAndroidHost';
 import type { Track } from '../types';
 
 export interface MediaSessionActionCallbacks {
@@ -14,10 +18,18 @@ export interface MediaSessionActionCallbacks {
 	onOptimisticSeek?: (newPos: number) => void;
 }
 
+export interface MediaSessionExtraMetadata {
+	duration?: number;
+	position?: number;
+	isFavorite?: boolean;
+	isPauseAfter?: boolean;
+}
+
 export function syncMediaSessionMetadata(
 	trackPath: string | null,
 	paused: boolean,
-	getTrackInfo: (path: string) => Track
+	getTrackInfo: (path: string) => Track,
+	extras?: MediaSessionExtraMetadata
 ): void {
 	const info = trackPath ? getTrackInfo(trackPath) : null;
 	const resolvedCover =
@@ -36,6 +48,11 @@ export function syncMediaSessionMetadata(
 			artist: info?.display_artist || (trackPath ? 'Desconocido' : 'En espera'),
 			paused: trackPath ? paused : true,
 			coverUrl: artworkSrc,
+			trackPath,
+			duration: extras?.duration ?? 0,
+			position: extras?.position ?? 0,
+			isFavorite: Boolean(extras?.isFavorite),
+			isPauseAfter: Boolean(extras?.isPauseAfter),
 		});
 	}
 
@@ -56,7 +73,20 @@ export function syncMediaSessionMetadata(
 	}
 }
 
-export function syncMediaSessionPosition(trackPath: string | null, totalDuration: number, currentPos: number): void {
+export function syncMediaSessionPosition(
+	trackPath: string | null,
+	totalDuration: number,
+	currentPos: number,
+	paused = false
+): void {
+	if (isNativeAndroidHost() && trackPath && totalDuration > 0) {
+		void syncAndroidMediaPosition({
+			duration: totalDuration,
+			position: Math.min(Math.max(0, currentPos), totalDuration),
+			paused,
+		});
+	}
+
 	if (!('mediaSession' in navigator) || !navigator.mediaSession.setPositionState) return;
 
 	if (totalDuration > 0 && trackPath) {

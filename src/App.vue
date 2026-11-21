@@ -268,7 +268,7 @@
 	>
 		<!-- BARRA SUPERIOR DE NAVEGACIÓN -->
 		<nav
-			class="bg-carpincho-panel border-carpincho-primary shrink-0 cursor-pointer overflow-hidden border-b px-5 pt-[max(10px,env(safe-area-inset-top))] pb-2"
+			class="bg-carpincho-panel border-carpincho-primary shrink-0 cursor-pointer overflow-hidden border-b px-5 pt-[calc(10px+var(--rockola-safe-top))] pb-2"
 			@click="
 				isFogonMode = true;
 				haptic();

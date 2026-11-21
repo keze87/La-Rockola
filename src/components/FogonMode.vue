@@ -503,7 +503,7 @@
 	<transition name="fogon">
 		<div
 			v-if="isFogonMode"
-			class="fogon-container bg-carpincho-panel text-carpincho-text fixed inset-0 z-[10000] flex items-center justify-center overflow-hidden overscroll-contain p-4 sm:p-6 md:p-10"
+			class="fogon-container bg-carpincho-panel text-carpincho-text fixed inset-0 z-[10000] flex items-center justify-center overflow-hidden overscroll-contain px-4 pt-[calc(1rem+var(--rockola-safe-top))] pb-[calc(1rem+var(--rockola-safe-bottom))] sm:p-6 sm:pt-[calc(1.5rem+var(--rockola-safe-top))] sm:pb-[calc(1.5rem+var(--rockola-safe-bottom))] md:p-10 md:pt-[calc(2.5rem+var(--rockola-safe-top))] md:pb-[calc(2.5rem+var(--rockola-safe-bottom))]"
 			:class="{ 'cursor-none [&_*]:cursor-none': isCursorInactive }"
 		>
 			<!-- Fondo ambiental cálido y liviano cohesivo con la estética carpincha -->
@@ -519,7 +519,7 @@
 			<!-- Botón flotante para cerrar el fogón (arriba a la derecha) -->
 			<button
 				aria-label="Cerrar vista de fogón"
-				class="fogon-close-btn text-carpincho-text/70 hover:text-carpincho-warning absolute top-4 right-4 z-40 p-2 transition hover:scale-110 active:scale-95 md:top-8 md:right-8"
+				class="fogon-close-btn text-carpincho-text/70 hover:text-carpincho-warning absolute top-[calc(1rem+var(--rockola-safe-top))] right-4 z-40 p-2 transition hover:scale-110 active:scale-95 md:top-[calc(2rem+var(--rockola-safe-top))] md:right-8"
 				@click="closeFogon"
 			>
 				<i class="material-icons text-4xl">keyboard_arrow_down</i>

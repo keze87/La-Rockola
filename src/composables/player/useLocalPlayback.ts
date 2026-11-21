@@ -25,6 +25,7 @@ import {
 	djBaraEnabled,
 	djNextTrack,
 	duration,
+	favorites,
 	isDraggingSeek,
 	isPaused,
 	isPlaying,
@@ -193,11 +194,19 @@ export function useLocalPlayback() {
 		});
 
 		watchEffect(() => {
-			syncMediaSessionMetadata(currentTrackPath.value, isPaused.value, getTrackInfo);
+			const path = currentTrackPath.value;
+			const isFav = Boolean(path && favorites.value.includes(path));
+			const isPauseAfter = Boolean(path && pauseAfterPath.value === path);
+			syncMediaSessionMetadata(path, isPaused.value, getTrackInfo, {
+				duration: duration.value,
+				position: localPlayerRef.value?.currentTime || 0,
+				isFavorite: isFav,
+				isPauseAfter,
+			});
 		});
 
 		watch([localTimePos, duration, isPaused], () => {
-			syncMediaSessionPosition(currentTrackPath.value, duration.value, localTimePos.value);
+			syncMediaSessionPosition(currentTrackPath.value, duration.value, localTimePos.value, isPaused.value);
 		});
 
 		watchEffect(() => {
