@@ -601,4 +601,25 @@ describe('ControlsTab.vue', () => {
 			Object.defineProperty(navigator, 'clipboard', { configurable: true, value: originalClipboard });
 		}
 	});
+
+	it('hides "Escuchar acá" toggle on local Android host unless connected to remote server', async () => {
+		const androidHost = await import('@/composables/useAndroidHost');
+		const isNativeSpy = vi.spyOn(androidHost, 'isNativeAndroidHost').mockReturnValue(true);
+		const prevRemoteUrl = androidHost.activeRemoteServerUrl.value;
+
+		try {
+			androidHost.activeRemoteServerUrl.value = null;
+			const wrapper = mount(ControlsTab);
+
+			expect(wrapper.text()).not.toContain('Escuchar acá');
+
+			androidHost.activeRemoteServerUrl.value = 'http://192.168.1.50:1729';
+			await wrapper.vm.$nextTick();
+
+			expect(wrapper.text()).toContain('Escuchar acá');
+		} finally {
+			androidHost.activeRemoteServerUrl.value = prevRemoteUrl;
+			isNativeSpy.mockRestore();
+		}
+	});
 });

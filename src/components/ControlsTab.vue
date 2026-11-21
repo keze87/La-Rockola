@@ -418,6 +418,7 @@
 
 		<!-- Interruptor para escuchar en el cliente -->
 		<ToggleRow
+			v-if="!isNativeAndroidHost() || activeRemoteServerUrl"
 			v-model="listenLocally"
 			icon="headphones"
 			title="Escuchar acá"

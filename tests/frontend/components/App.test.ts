@@ -4,9 +4,12 @@ import App from '@/App.vue';
 import {
 	activeTab,
 	currentTrackPath,
+	hasLocalPlayer,
+	hasMpv,
 	isFogonMode,
 	isScanning,
 	isSynthesizingRadio,
+	listenLocally,
 	queueState,
 	scanStatus,
 	trackMap,
@@ -524,5 +527,45 @@ Dialogue: 0,0:00:20.00,0:00:24.00,Default,,0,0,0,,{\\kf100}Verso {\\kf100}tres
 		expect((window as any).__rockolaSetPipMode).toBeUndefined();
 		expect((androidHost as any).isAndroidPipMode.value).toBe(false);
 		expect(document.documentElement.classList.contains('android-pip')).toBe(false);
+	});
+
+	it('hides "El servidor corre sin MPV" banner on local Android host unless connected remotely', async () => {
+		const androidHost = await import('@/composables/useAndroidHost');
+		const isNativeSpy = vi.spyOn(androidHost, 'isNativeAndroidHost').mockReturnValue(true);
+		const initSpy = vi.spyOn(androidHost, 'initAndroidServer').mockResolvedValue(true);
+		const shortcutSpy = vi.spyOn(androidHost, 'consumeAndroidPendingShortcut').mockResolvedValue(null);
+		const prevHasMpv = hasMpv.value;
+		const prevListenLocally = listenLocally.value;
+		const prevHasLocalPlayer = hasLocalPlayer.value;
+		const prevRemoteUrl = androidHost.activeRemoteServerUrl.value;
+		const prevNeedsFolder = androidHost.androidServerStatus.value.needsFolder;
+
+		try {
+			hasMpv.value = false;
+			listenLocally.value = false;
+			hasLocalPlayer.value = false;
+			androidHost.androidServerStatus.value.needsFolder = false;
+			androidHost.activeRemoteServerUrl.value = null;
+
+			const wrapper = mount(App);
+			await wrapper.vm.$nextTick();
+
+			expect(wrapper.text()).not.toContain('El servidor corre sin MPV');
+
+			androidHost.activeRemoteServerUrl.value = 'http://192.168.1.50:1729';
+			await wrapper.vm.$nextTick();
+
+			expect(wrapper.text()).toContain('El servidor corre sin MPV');
+			wrapper.unmount();
+		} finally {
+			hasMpv.value = prevHasMpv;
+			listenLocally.value = prevListenLocally;
+			hasLocalPlayer.value = prevHasLocalPlayer;
+			androidHost.activeRemoteServerUrl.value = prevRemoteUrl;
+			androidHost.androidServerStatus.value.needsFolder = prevNeedsFolder;
+			isNativeSpy.mockRestore();
+			initSpy.mockRestore();
+			shortcutSpy.mockRestore();
+		}
 	});
 });

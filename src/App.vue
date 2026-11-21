@@ -3,6 +3,7 @@
 	import { Toaster } from 'vue-sonner';
 	import { apiUrl } from './composables/useApi';
 	import {
+		activeRemoteServerUrl,
 		androidServerStatus,
 		consumeAndroidPendingShortcut,
 		ensureLocalAndroidServerAlive,
@@ -518,7 +519,9 @@
 			<span>Elegir la carpeta de música para arrancar la ronda</span>
 		</button>
 		<button
-			v-else-if="!hasMpv && !listenLocally && !hasLocalPlayer"
+			v-else-if="
+				!hasMpv && !listenLocally && !hasLocalPlayer && (!isNativeAndroidHost() || activeRemoteServerUrl)
+			"
 			type="button"
 			class="bg-carpincho-success flex w-full shrink-0 cursor-pointer items-center justify-center gap-2 px-4 py-2 text-xs font-bold text-white shadow-sm"
 			@click="
