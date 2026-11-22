@@ -627,17 +627,6 @@
 				class="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,_rgba(43,38,34,0.35)_0%,_rgba(31,26,23,0.92)_100%)]"
 			/>
 
-			<button
-				v-if="canEnterAndroidPip"
-				type="button"
-				aria-label="Abrir en ventana flotante"
-				title="Abrir en ventana flotante (PiP)"
-				class="fogon-pip-btn touch-target text-carpincho-text/70 hover:text-carpincho-warning absolute top-[calc(1rem+var(--rockola-safe-top))] left-4 z-40 p-2 transition hover:scale-110 active:scale-95 md:top-[calc(2rem+var(--rockola-safe-top))] md:left-8"
-				@click="openAndroidPip"
-			>
-				<i class="material-icons text-2xl sm:text-3xl" aria-hidden="true">picture_in_picture_alt</i>
-			</button>
-
 			<!-- Botón flotante para cerrar el fogón (arriba a la derecha) -->
 			<button
 				type="button"
