@@ -468,9 +468,22 @@ class SafTreeBrowser(
         return false
     }
 
-    fun readSiblingText(docUriString: String, extensions: List<String>): Pair<String, String>? {
+    data class SiblingTextMatch(
+        val ext: String,
+        val content: String,
+        val uri: String,
+    )
+
+    fun readSiblingText(docUriString: String, extensions: List<String>): SiblingTextMatch? {
         val cached = getParentCache(docUriString)
-        val (treeUri, parentDocId, fileName) = cached ?: parseLocationFromDocUri(docUriString) ?: return null
+        val location = cached ?: parseLocationFromDocUri(docUriString) ?: return null
+        val treeUri = location.first
+        val parentDocId = location.second
+        val fileName = if (cached != null) {
+            location.third
+        } else {
+            provider.queryDocumentInfo(treeUri, docUriString)?.name?.takeIf { it.isNotBlank() } ?: location.third
+        }
         val dotIdx = fileName.lastIndexOf('.')
         val stem = if (dotIdx > 0) fileName.substring(0, dotIdx) else fileName
         if (stem.isBlank()) return null
@@ -488,7 +501,7 @@ class SafTreeBrowser(
             } ?: continue
             val content = provider.readDocumentText(match.uri)
             if (content != null) {
-                return Pair(normalizedExt, content)
+                return SiblingTextMatch(normalizedExt, content, match.uri)
             }
         }
         return null
@@ -832,8 +845,9 @@ object AndroidStorageBridge {
         val exts = extensionsCsv.split(',').map { it.trim() }.filter { it.isNotEmpty() }
         val result = activeBrowser.readSiblingText(docUriString, exts) ?: return null
         return JSONObject().apply {
-            put("ext", result.first)
-            put("content", result.second)
+            put("ext", result.ext)
+            put("content", result.content)
+            put("uri", result.uri)
         }.toString()
     }
 

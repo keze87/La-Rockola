@@ -103,8 +103,8 @@ async def get_lyrics_content(
 			raise HTTPException(status_code=403, detail="Ruta fuera de las carpetas de música")
 		sibling = get_storage_backend(path).read_sibling_lyrics(path, extensions=(".ass",))
 		if sibling:
-			return {"exists": True, "content": sibling[1], "format": "ass", "path": sibling[2]}
-		return {"exists": False, "content": "", "format": "", "path": f"{path}.ass"}
+			return {"exists": True, "content": sibling[1], "format": "ass", "path": sibling[2], "read_only": True}
+		return {"exists": False, "content": "", "format": "", "path": "", "read_only": True}
 
 	p = _require_track_path(path)
 	base_path = p.with_suffix("")

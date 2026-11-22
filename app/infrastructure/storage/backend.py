@@ -528,9 +528,10 @@ class AndroidSafStorageBackend:
 			payload = json.loads(str(raw))
 			ext = str(payload.get("ext") or "")
 			content = str(payload.get("content") or "")
-			if not ext or not content:
+			uri = str(payload.get("uri") or "")
+			if not ext or not content or not uri:
 				return None
-			return ext, content, f"{track_ref}{ext}"
+			return ext, content, uri
 		except Exception:
 			return None
 

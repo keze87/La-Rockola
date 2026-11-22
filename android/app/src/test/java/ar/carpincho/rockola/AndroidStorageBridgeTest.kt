@@ -1,6 +1,7 @@
 package ar.carpincho.rockola
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -151,9 +152,46 @@ class AndroidStorageBridgeTest {
         assertTrue(found.any { it.uri == rootTrackUri && it.relativePath == "rock.mp3" })
 
         val lyrics = browser.readSiblingText(trackUri, listOf(".ass", ".lrc"))
-        assertEquals(".ass", lyrics?.first)
-        assertEquals("[Script Info]\nTitle: Zamba", lyrics?.second)
+        assertEquals(".ass", lyrics?.ext)
+        assertEquals("[Script Info]\nTitle: Zamba", lyrics?.content)
+        assertEquals(assUri, lyrics?.uri)
         assertNull(browser.readSiblingText(rootTrackUri, listOf(".ass", ".lrc")))
+    }
+
+    @Test
+    fun `readSiblingText resuelve URI real y funciona con IDs opacos cacheados`() {
+        val treeUri = "content://com.example.provider/tree/root-1"
+        val folderDocId = "opaque-folder-99"
+        val songDocId = "opaque-song-42"
+        val lrcDocId = "opaque-lrc-43"
+        val songUri = "$treeUri/document/$songDocId"
+        val lrcUri = "$treeUri/document/$lrcDocId"
+
+        val provider = FakeSafProvider(
+            validTreeUris = setOf(treeUri),
+            persistedTrees = setOf(treeUri),
+            roots = mapOf(
+                treeUri to SafDocumentEntry("root-1", "Music", SafTreeBrowser.MIME_TYPE_DIR, 0L, 100L, "$treeUri/document/root-1"),
+            ),
+            treeChildren = mapOf(
+                Pair(treeUri, "root-1") to listOf(
+                    SafDocumentEntry(folderDocId, "Cumbia", SafTreeBrowser.MIME_TYPE_DIR, 0L, 100L, "$treeUri/document/$folderDocId"),
+                ),
+                Pair(treeUri, folderDocId) to listOf(
+                    SafDocumentEntry(songDocId, "la_cumbia.mp3", "audio/mpeg", 1024L, 100L, songUri),
+                    SafDocumentEntry(lrcDocId, "la_cumbia.lrc", "text/plain", 64L, 100L, lrcUri),
+                ),
+            ),
+            textFiles = mapOf(lrcUri to "[00:01.00]Cumbia"),
+        )
+
+        val browser = SafTreeBrowser(provider)
+        assertEquals(1, browser.listAudioFiles(treeUri).size)
+        val sibling = browser.readSiblingText(songUri, listOf(".ass", ".lrc"))
+        assertNotNull(sibling)
+        assertEquals(".lrc", sibling!!.ext)
+        assertEquals("[00:01.00]Cumbia", sibling.content)
+        assertEquals(lrcUri, sibling.uri)
     }
 
     @Test

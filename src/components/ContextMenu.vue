@@ -1,6 +1,7 @@
 <script setup lang="ts">
 	import { ref, watch } from 'vue';
 	import { buildSpaPath } from '../composables/useAppRouter';
+	import { isNativeAndroidHost } from '../composables/useAndroidHost';
 	import { menuRef, useContextMenu } from '../composables/useContextMenu';
 	import { usePlaybackControls } from '../composables/usePlaybackControls';
 	import { usePlayer } from '../composables/usePlayer';
@@ -61,7 +62,7 @@
 
 	async function ctxEditLyrics() {
 		const track = ctxMenu.track;
-		if (!track) return;
+		if (!track || isNativeAndroidHost() || track.path.startsWith('content://')) return;
 
 		closeCtxMenu();
 		isFogonMode.value = false;
@@ -335,7 +336,13 @@
 					<i class="material-icons">timer</i>
 					Frenar la chata tras este tema
 				</button>
-				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxEditLyrics">
+				<button
+					v-if="!isNativeAndroidHost() && !ctxMenu.track?.path?.startsWith('content://')"
+					type="button"
+					class="ctx-menu-item"
+					role="menuitem"
+					@click="ctxEditLyrics"
+				>
 					<i class="material-icons">lyrics</i>
 					Editar letras
 				</button>
@@ -369,7 +376,13 @@
 					<i class="material-icons">person_search</i>
 					Buscar en la librería
 				</button>
-				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxEditLyrics">
+				<button
+					v-if="!isNativeAndroidHost() && !ctxMenu.track?.path?.startsWith('content://')"
+					type="button"
+					class="ctx-menu-item"
+					role="menuitem"
+					@click="ctxEditLyrics"
+				>
 					<i class="material-icons">lyrics</i>
 					Editar letras
 				</button>
@@ -399,7 +412,13 @@
 					<i class="material-icons">person_search</i>
 					Buscar en la librería
 				</button>
-				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxEditLyrics">
+				<button
+					v-if="!isNativeAndroidHost() && !ctxMenu.track?.path?.startsWith('content://')"
+					type="button"
+					class="ctx-menu-item"
+					role="menuitem"
+					@click="ctxEditLyrics"
+				>
 					<i class="material-icons">lyrics</i>
 					Editar letras
 				</button>
@@ -425,7 +444,13 @@
 					<i class="material-icons">person_search</i>
 					Buscar en la librería
 				</button>
-				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxEditLyrics">
+				<button
+					v-if="!isNativeAndroidHost() && !ctxMenu.track?.path?.startsWith('content://')"
+					type="button"
+					class="ctx-menu-item"
+					role="menuitem"
+					@click="ctxEditLyrics"
+				>
 					<i class="material-icons">lyrics</i>
 					Editar letras
 				</button>

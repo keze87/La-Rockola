@@ -7,6 +7,7 @@
 import { ref, computed } from 'vue';
 import type { Track } from '../types';
 import { apiUrl } from './useApi';
+import { isNativeAndroidHost } from './useAndroidHost';
 
 export interface LyricsProviderResult {
 	provider: string;
@@ -79,6 +80,12 @@ export function shiftAssTimestamps(assContent: string, deltaMs: number): string 
 
 export function useLyricsEditor(initialTrack: Track) {
 	const track = ref<Track>(initialTrack);
+	const isReadOnly = computed(() => isNativeAndroidHost() || track.value.path.startsWith('content://'));
+	const readOnlyReason = computed(() =>
+		isReadOnly.value
+			? 'En Android la biblioteca SAF es de solo lectura: podés consultar letras, pero no guardar cambios en los archivos.'
+			: ''
+	);
 
 	// 1. Audio en Streaming directo del backend para evitar demoras por red o MPV
 	const audioElement = ref<HTMLAudioElement | null>(null);
@@ -275,6 +282,7 @@ export function useLyricsEditor(initialTrack: Track) {
 	const isSaving = ref(false);
 
 	async function saveLyrics() {
+		if (isReadOnly.value) return false;
 		// Si ya existía un archivo en disco y tiene modificaciones respecto a la carga, mostramos el diff
 		if (originalContent.value && originalContent.value.trim() !== '' && hasChanges.value) {
 			isDiffModalOpen.value = true;
@@ -284,6 +292,7 @@ export function useLyricsEditor(initialTrack: Track) {
 	}
 
 	async function confirmSave() {
+		if (isReadOnly.value) return false;
 		isSaving.value = true;
 		try {
 			const res = await fetch(apiUrl('/api/lyrics/save'), {
@@ -344,6 +353,8 @@ export function useLyricsEditor(initialTrack: Track) {
 		saveToken,
 		isDiffModalOpen,
 		isSaving,
+		isReadOnly,
+		readOnlyReason,
 		saveLyrics,
 		confirmSave,
 	};

@@ -236,3 +236,61 @@ def test_lyrics_allows_known_track_from_library_cache(client, music_dir, tmp_pat
 	response = client.post("/api/lyrics/save", json={"path": str(track), "content": "[00:01.00]Hola", "format": "lrc"})
 	assert response.status_code == 200
 	assert (extra / "song.lrc").exists()
+
+
+def test_saf_lyrics_content_returns_real_sibling_uri_and_read_only_flag(client, isolate_container, monkeypatch):
+	import json
+
+	tree = "content://com.android.externalstorage.documents/tree/primary%3AMusic"
+	track_uri = f"{tree}/document/primary%3AMusic%2Fzamba.mp3"
+	ass_uri = f"{tree}/document/opaque-ass-99"
+	isolate_container.settings.music_dir = tree
+	isolate_container.settings.music_dir2 = None
+
+	class FakeBridge:
+		@staticmethod
+		def isAuthorizedDocumentUri(uri, trees_json, require_audio):
+			return uri == track_uri and tree in json.loads(trees_json)
+
+		@staticmethod
+		def findSiblingTextJson(uri, exts):
+			if uri == track_uri:
+				return json.dumps({"ext": ".ass", "content": "[Script Info]\nTitle: Zamba", "uri": ass_uri})
+			return None
+
+	monkeypatch.setattr("app.infrastructure.storage.backend.get_android_storage_bridge", lambda: FakeBridge)
+	res = client.get("/api/lyrics/content", params={"path": track_uri})
+	assert res.status_code == 200
+	data = res.json()
+	assert data["exists"] is True
+	assert data["path"] == ass_uri
+	assert data["read_only"] is True
+
+	save_res = client.post("/api/lyrics/save", json={"path": track_uri, "content": "nuevo", "format": "ass"})
+	assert save_res.status_code == 400
+
+
+def test_saf_lyrics_content_when_missing_does_not_fabricate_path(client, isolate_container, monkeypatch):
+	import json
+
+	tree = "content://com.android.externalstorage.documents/tree/primary%3AMusic"
+	track_uri = f"{tree}/document/primary%3AMusic%2Fzamba.mp3"
+	isolate_container.settings.music_dir = tree
+	isolate_container.settings.music_dir2 = None
+
+	class FakeBridge:
+		@staticmethod
+		def isAuthorizedDocumentUri(uri, trees_json, require_audio):
+			return uri == track_uri and tree in json.loads(trees_json)
+
+		@staticmethod
+		def findSiblingTextJson(uri, exts):
+			return None
+
+	monkeypatch.setattr("app.infrastructure.storage.backend.get_android_storage_bridge", lambda: FakeBridge)
+	res = client.get("/api/lyrics/content", params={"path": track_uri})
+	assert res.status_code == 200
+	data = res.json()
+	assert data["exists"] is False
+	assert data["path"] == ""
+	assert data["read_only"] is True

@@ -59,6 +59,8 @@
 		isSaving,
 		saveLyrics,
 		confirmSave,
+		isReadOnly,
+		readOnlyReason,
 	} = editor;
 
 	const audioRef = ref<HTMLAudioElement | null>(null);
@@ -174,6 +176,15 @@
 				</button>
 			</div>
 		</header>
+
+		<!-- BANNER SOLO LECTURA EN ANDROID / SAF -->
+		<div
+			v-if="isReadOnly"
+			class="flex shrink-0 items-center gap-2.5 border-b border-stone-700 bg-stone-900 px-4 py-2 text-xs text-stone-300"
+		>
+			<i class="material-icons shrink-0 !text-base text-amber-400">lock</i>
+			<span>{{ readOnlyReason }}</span>
+		</div>
 
 		<!-- BANNER DE EN CONSTRUCCIÓN / WIP -->
 		<div
@@ -391,7 +402,8 @@
 				</button>
 				<button
 					type="button"
-					:disabled="isSaving"
+					:disabled="isSaving || isReadOnly"
+					:title="isReadOnly ? readOnlyReason : undefined"
 					class="btn-save bg-carpincho-primary text-carpincho-bg flex items-center gap-2 rounded-xl px-5 py-2 text-xs font-bold shadow-md transition-all hover:brightness-110 active:scale-95 disabled:opacity-50"
 					@click="saveLyrics"
 				>

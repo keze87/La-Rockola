@@ -222,4 +222,20 @@ Dialogue: 0,0:01:10.00,0:01:15.25,Default,,0,0,0,,Mundo`;
 			})
 		);
 	});
+
+	it('marks SAF content:// tracks as read-only and blocks saving', async () => {
+		const safTrack: Track = {
+			...mockTrack,
+			path: 'content://com.android.externalstorage.documents/tree/primary%3AMusic/document/123',
+		};
+		const editor = useLyricsEditor(safTrack);
+		expect(editor.isReadOnly.value).toBe(true);
+		expect(editor.readOnlyReason.value).toBeTruthy();
+
+		editor.editorContent.value = '[Events]\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,Editado';
+		const saved = await editor.saveLyrics();
+		expect(saved).toBe(false);
+		expect(editor.isDiffModalOpen.value).toBe(false);
+		expect(fetchMock).not.toHaveBeenCalledWith('/api/lyrics/save', expect.anything());
+	});
 });
