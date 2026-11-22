@@ -2,16 +2,18 @@ package ar.carpincho.rockola
 
 import android.Manifest
 import android.app.Activity
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.database.ContentObserver
 import android.media.AudioManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.provider.Settings
 import android.view.HapticFeedbackConstants
 import android.view.WindowManager
 import androidx.activity.result.ActivityResult
@@ -50,20 +52,20 @@ import kotlin.math.roundToInt
 )
 class RockolaServerPlugin : Plugin() {
 
-    companion object {
-        private const val ACTION_VOLUME_CHANGED = "android.media.VOLUME_CHANGED_ACTION"
-    }
-
-    private var volumeReceiver: BroadcastReceiver? = null
+    private var volumeObserver: ContentObserver? = null
+    private var lastNotifiedVolumeState: Pair<Int, Boolean>? = null
     private val pluginExecutor: ExecutorService = Executors.newSingleThreadExecutor()
 
     override fun load() {
         super.load()
         AndroidStorageBridge.initialize(context)
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(ctx: Context?, intent: Intent?) {
-                if (intent?.action != ACTION_VOLUME_CHANGED) return
-                val (percent, muted) = readMediaVolumeState()
+        lastNotifiedVolumeState = readMediaVolumeState()
+        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                val current = readMediaVolumeState()
+                if (current == lastNotifiedVolumeState) return
+                lastNotifiedVolumeState = current
+                val (percent, muted) = current
                 bridge?.webView?.post {
                     bridge?.webView?.evaluateJavascript(
                         "window.__rockolaOnMediaVolumeChanged && window.__rockolaOnMediaVolumeChanged($percent, $muted)",
@@ -72,12 +74,11 @@ class RockolaServerPlugin : Plugin() {
                 }
             }
         }
-        volumeReceiver = receiver
-        ContextCompat.registerReceiver(
-            context,
-            receiver,
-            IntentFilter(ACTION_VOLUME_CHANGED),
-            ContextCompat.RECEIVER_NOT_EXPORTED,
+        volumeObserver = observer
+        context.contentResolver.registerContentObserver(
+            Settings.System.CONTENT_URI,
+            true,
+            observer,
         )
 
         RockolaForegroundService.onPipStateNeedsRefresh = {
@@ -102,13 +103,13 @@ class RockolaServerPlugin : Plugin() {
     override fun handleOnDestroy() {
         RockolaForegroundService.onPipStateNeedsRefresh = null
         RockolaForegroundService.onNativeCommandError = null
-        volumeReceiver?.let {
+        volumeObserver?.let {
             try {
-                context.unregisterReceiver(it)
+                context.contentResolver.unregisterContentObserver(it)
             } catch (_: Exception) {
             }
         }
-        volumeReceiver = null
+        volumeObserver = null
         pluginExecutor.shutdownNow()
         super.handleOnDestroy()
     }
