@@ -56,6 +56,12 @@ export interface PlayerState {
 	volume?: number;
 	weather_location?: string;
 	default_sort?: 'time' | 'artist' | 'mood' | 'shuffle';
+	music_dir?: string;
+	music_dir_configured?: boolean;
+	folder_status?:
+		'ok' | 'unconfigured' | 'missing' | 'permission_denied' | 'storage_unavailable' | 'unsupported_provider';
+	folder_display_name?: string | null;
+	folder_error?: string | null;
 }
 
 export interface ApiResponse<T = unknown> {

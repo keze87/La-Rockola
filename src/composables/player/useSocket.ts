@@ -3,7 +3,15 @@ import { applyLibrarySort } from './useLibrary';
 import { useToasts } from './useToasts';
 import { ensureLocalAndroidServerAlive, isNativeAndroidHost } from '../useAndroidHost';
 import { getWsUrl } from '../useApi';
-import { connectionState, isHostMode } from '../../stores/useServerConnectionStore';
+import {
+	type LibraryFolderStatus,
+	connectionState,
+	isHostMode,
+	libraryFolderError,
+	libraryFolderStatus,
+	localMusicDir,
+	localMusicDisplayName,
+} from '../../stores/useServerConnectionStore';
 import { useWebSocket } from '@vueuse/core';
 import {
 	activeSort,
@@ -180,6 +188,18 @@ export function useSocket() {
 						if (state.server_muted !== undefined) serverMuted.value = state.server_muted;
 						if (state.server_url !== undefined) serverUrl.value = state.server_url;
 						if (state.local_ip !== undefined) localIp.value = state.local_ip;
+						if (isHostMode.value && state.folder_status !== undefined) {
+							libraryFolderStatus.value = state.folder_status as LibraryFolderStatus;
+							if (state.music_dir !== undefined) {
+								localMusicDir.value = state.music_dir ? state.music_dir.trim() || null : null;
+							}
+							if (state.folder_display_name !== undefined) {
+								localMusicDisplayName.value = state.folder_display_name;
+							}
+							if (state.folder_error !== undefined) {
+								libraryFolderError.value = state.folder_error;
+							}
+						}
 						if (state.top_played) topPlayedState.value = state.top_played;
 						if (state.url_metadata) urlMetadata.value = state.url_metadata;
 						if (state.volume !== undefined && !(isNativeAndroidHost() && listenLocally.value)) {

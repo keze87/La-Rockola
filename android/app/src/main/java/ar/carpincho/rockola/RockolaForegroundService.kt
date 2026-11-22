@@ -93,6 +93,10 @@ class RockolaForegroundService : Service() {
         var currentMusicDir: String? = null
             private set
 
+        internal fun updateMusicDir(musicDir: String?) {
+            currentMusicDir = musicDir?.trim()?.takeIf { it.isNotEmpty() }
+        }
+
         @Volatile
         var currentServerUrl: String = "http://127.0.0.1:$DEFAULT_PORT"
             private set
@@ -148,6 +152,7 @@ class RockolaForegroundService : Service() {
     override fun onCreate() {
         super.onCreate()
         activeInstance = this
+        AndroidStorageBridge.initialize(this)
         commandClient = MediaCommandClient(initialTarget = currentMediaTarget)
         pythonHost = EmbeddedPythonHost(this)
         hostCoordinator = HostLifecycleCoordinator(

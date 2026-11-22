@@ -77,10 +77,17 @@ class PlaybackOrchestrator:
 		dj_carpincho_enabled: bool = False,
 		dj_mode: str = "shuffle",
 		volume: int = 100,
+		music_dir_configured: bool | None = None,
 	) -> None:
 		self.db_path = Path(db_path) if db_path else get_default_db_path()
 		self.initial_dir = initial_dir
 		self.secondary_dir = secondary_dir
+		self.music_dir_configured: bool = (
+			bool(initial_dir) if music_dir_configured is None else bool(music_dir_configured)
+		)
+		self.folder_status: str = "unconfigured"
+		self.folder_display_name: str | None = None
+		self.folder_error: str | None = None
 		self.open_browser = open_browser
 		self.default_sort = default_sort
 		self.has_mpv: bool = bool(use_mpv)
@@ -118,6 +125,7 @@ class PlaybackOrchestrator:
 		self.is_scanning: bool = False
 		self.is_analyzing_mood: bool = False
 		self.scan_phase: str = "idle"
+		self.refresh_folder_status()
 		self.scan_current: int = 0
 		self.scan_total: int = 0
 		self.scan_message: str = ""
@@ -364,6 +372,19 @@ class PlaybackOrchestrator:
 		ws_mgr = get_container().ws_manager
 		return bool(ws_mgr and getattr(ws_mgr, "local_player_ws", None) is not None)
 
+	def refresh_folder_status(self):
+		"""Valida la carpeta de música actual usando el backend POSIX o SAF."""
+		from app.infrastructure.storage import FolderValidationResult, get_storage_backend
+
+		if not self.initial_dir:
+			res = FolderValidationResult(status="unconfigured", path="", display_name=None, error=None)
+		else:
+			res = get_storage_backend(self.initial_dir).validate_root(self.initial_dir)
+		self.folder_status = res.status
+		self.folder_display_name = res.display_name
+		self.folder_error = res.error
+		return res
+
 	def get_full_state_dict(self, include_library: bool = False) -> dict[str, Any]:
 		"""Genera un diccionario con el estado completo actual."""
 		active_favs = [self.id_to_current_path.get(fav_id, fav_id) for fav_id in self.favorites]
@@ -412,6 +433,11 @@ class PlaybackOrchestrator:
 			"weather_location": self.weather_location,
 			"has_local_player": self._has_local_player(),
 			"default_sort": getattr(self, "default_sort", "time"),
+			"music_dir": self.initial_dir or "",
+			"music_dir_configured": bool(getattr(self, "music_dir_configured", bool(self.initial_dir))),
+			"folder_status": getattr(self, "folder_status", "unconfigured"),
+			"folder_display_name": getattr(self, "folder_display_name", None),
+			"folder_error": getattr(self, "folder_error", None),
 		}
 
 		if include_library:
@@ -437,6 +463,8 @@ class PlaybackOrchestrator:
 			return False
 		str_path = str(path)
 		if str_path in self.path_to_id:
+			return False
+		if str_path.startswith("content://"):
 			return False
 		try:
 			announcement_p = getattr(self, "radio_announcement_path", None)

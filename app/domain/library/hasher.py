@@ -6,9 +6,12 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import struct
 from pathlib import Path
 from typing import BinaryIO
+
+from app.infrastructure.storage import get_saf_name, get_storage_backend, is_saf_uri
 
 logger = logging.getLogger("RockolaCarpincho")
 
@@ -84,14 +87,20 @@ def generate_audio_hash(filepath: str | Path, chunk_size: int = 1024 * 1024) -> 
 	Genera un hash basado únicamente en el stream de audio, inmune a cambios de metadata.
 	Soporta MD5 nativo de FLAC, salto de ID3 en MP3 y átomo mdat en MP4/M4A.
 	"""
-	p = Path(filepath)
-	suffix = p.suffix.lower()
+	saf = is_saf_uri(filepath)
+	ref: str | Path = str(filepath) if saf else Path(filepath)
+	suffix = os.path.splitext(get_saf_name(ref))[1].lower()
+	backend = get_storage_backend(ref)
 
 	if suffix == ".flac":
 		try:
 			from mutagen.flac import FLAC
 
-			audio = FLAC(p)
+			if saf:
+				with backend.open_binary(ref) as flac_f:
+					audio = FLAC(flac_f)
+			else:
+				audio = FLAC(ref)
 			md5_sig = getattr(audio.info, "md5_signature", 0)
 			if md5_sig:
 				return f"flac:{md5_sig:032x}"
@@ -99,8 +108,11 @@ def generate_audio_hash(filepath: str | Path, chunk_size: int = 1024 * 1024) -> 
 			pass
 
 	try:
-		file_size = p.stat().st_size
-		with open(p, "rb") as f:
+		st = backend.stat_file(ref)
+		if st is None:
+			raise FileNotFoundError(ref)
+		file_size = st[1]
+		with backend.open_binary(ref) as f:
 			if suffix == ".mp3":
 				start, end = _mp3_audio_bounds(f, file_size)
 			elif suffix in (".m4a", ".mp4"):
@@ -110,7 +122,7 @@ def generate_audio_hash(filepath: str | Path, chunk_size: int = 1024 * 1024) -> 
 			return _hash_byte_range(f, start, end, chunk_size)
 	except Exception as e:
 		logger.debug(f"Pifió el audio hash para {filepath}: {e}")
-		return hashlib.md5(str(p).encode("utf-8")).hexdigest()
+		return hashlib.md5(str(ref).encode("utf-8")).hexdigest()
 
 
 def generate_smart_hash(filepath: str | Path, chunk_size: int = 1024 * 1024) -> str:
@@ -118,16 +130,21 @@ def generate_smart_hash(filepath: str | Path, chunk_size: int = 1024 * 1024) -> 
 	Lee 1MB al 15% y 1MB al 85% del archivo evitando metadatos iniciales y finales.
 	Genera un MD5 único basado puramente en los datos de la onda musical.
 	"""
-	p = Path(filepath)
+	saf = is_saf_uri(filepath)
+	ref: str | Path = str(filepath) if saf else Path(filepath)
+	backend = get_storage_backend(ref)
 	try:
-		file_size = p.stat().st_size
+		st = backend.stat_file(ref)
+		if st is None:
+			raise FileNotFoundError(ref)
+		file_size = st[1]
 		if file_size < chunk_size * 3:
-			with open(p, "rb") as f:
+			with backend.open_binary(ref) as f:
 				f.seek(file_size // 2)
 				data = f.read(file_size // 4)
 				return hashlib.md5(data).hexdigest()
 
-		with open(p, "rb") as f:
+		with backend.open_binary(ref) as f:
 			f.seek(int(file_size * 0.15))
 			chunk1 = f.read(chunk_size)
 
@@ -141,7 +158,7 @@ def generate_smart_hash(filepath: str | Path, chunk_size: int = 1024 * 1024) -> 
 			return hasher.hexdigest()
 	except Exception as e:
 		logger.debug(f"Pifió el hash inteligente para {filepath}: {e}")
-		return hashlib.md5(str(p).encode("utf-8")).hexdigest()
+		return hashlib.md5(str(ref).encode("utf-8")).hexdigest()
 
 
 def parse_fp(fp_str: str | None) -> list[int] | None:

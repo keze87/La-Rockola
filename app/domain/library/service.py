@@ -27,8 +27,21 @@ from app.domain.library.mood import calculate_mood_scores, extract_audio_feature
 from app.infrastructure.binaries.manager import find_binary, get_clean_env
 from app.infrastructure.db.repositories import TrackRepository
 from app.infrastructure.media.mixer import get_carpincho_cover_path
+from app.infrastructure.storage import get_storage_backend, is_saf_uri, open_mutagen_file
 
 logger = logging.getLogger("RockolaCarpincho")
+
+
+def _extract_cover_bytes_from_audio(audio: Any) -> bytes | None:
+	if hasattr(audio, "pictures") and audio.pictures:
+		return bytes(audio.pictures[0].data)
+	if hasattr(audio, "tags") and audio.tags:
+		for key, tag in audio.tags.items():
+			if key.startswith("APIC"):
+				return bytes(tag.data)
+		if "covr" in audio.tags:
+			return bytes(audio.tags["covr"][0])
+	return None
 
 
 def get_cover_art_uri(path: str, state_ref: Any = None) -> str:
@@ -60,20 +73,17 @@ def get_cover_art_uri(path: str, state_ref: Any = None) -> str:
 		if os.path.exists(tmp_cover):
 			return f"file://{tmp_cover}"
 
-		audio = MutagenFile(path)
-		if not audio:
-			return ""
-		cover_data = None
-
-		if hasattr(audio, "pictures") and audio.pictures:
-			cover_data = audio.pictures[0].data
-		elif hasattr(audio, "tags") and audio.tags:
-			for key, tag in audio.tags.items():
-				if key.startswith("APIC"):
-					cover_data = tag.data
-					break
-			if not cover_data and "covr" in audio.tags:
-				cover_data = audio.tags["covr"][0]
+		if is_saf_uri(path):
+			with open_mutagen_file(path, easy=False) as saf_audio:
+				audio = saf_audio
+				if not audio:
+					return ""
+				cover_data = _extract_cover_bytes_from_audio(audio)
+		else:
+			audio = MutagenFile(path)
+			if not audio:
+				return ""
+			cover_data = _extract_cover_bytes_from_audio(audio)
 
 		if cover_data:
 			with open(tmp_cover, "wb") as f:
@@ -232,7 +242,7 @@ class LibraryService:
 
 		logger.info(f"Pegando una ojeada por estas carpetas: {target_dirs}")
 		audio_extensions = {".flac", ".m4a", ".mp3", ".ogg", ".wav", ".mp4", ".mkv", ".avi", ".webm"}
-		raw_files: list[Path] = []
+		raw_entries: list[tuple[str | Path, float, int]] = []
 
 		if state:
 			state.scan_phase = "discovering"
@@ -243,27 +253,55 @@ class LibraryService:
 		for target_dir in target_dirs:
 			if not target_dir:
 				continue
+			if is_saf_uri(target_dir):
+				backend = get_storage_backend(str(target_dir))
+				validation = backend.validate_root(str(target_dir))
+				if state:
+					state.folder_status = validation.status
+					state.folder_display_name = validation.display_name
+					state.folder_error = validation.error
+				if validation.status != "ok":
+					logger.warning("Carpeta SAF no accesible (%s): %s", validation.status, target_dir)
+					continue
+				for entry in backend.iter_audio_files(str(target_dir), audio_extensions):
+					raw_entries.append((entry.path, entry.mtime, entry.size))
+					if state and len(raw_entries) % 50 == 0:
+						state.scan_total = len(raw_entries)
+				continue
+
 			music_dir = Path(target_dir).expanduser()
 			if not music_dir.exists():
 				logger.warning(f"Che, este lugar está más pelado que la nada misma: {music_dir}")
+				if state:
+					state.folder_status = "missing"
+					state.folder_error = f"La carpeta no existe o no es accesible: {music_dir}"
 				continue
+			if state:
+				state.folder_status = "ok"
+				state.folder_display_name = music_dir.name
+				state.folder_error = None
 			for root_str, _dirs, files in os.walk(music_dir):
 				for fname in files:
 					if os.path.splitext(fname)[1].lower() in audio_extensions:
-						raw_files.append(Path(root_str) / fname)
-						if state and len(raw_files) % 50 == 0:
-							state.scan_total = len(raw_files)
+						fp = Path(root_str) / fname
+						try:
+							st = fp.stat()
+							raw_entries.append((fp, float(st.st_mtime), int(st.st_size)))
+						except OSError:
+							continue
+						if state and len(raw_entries) % 50 == 0:
+							state.scan_total = len(raw_entries)
 
-		logger.info(f"Encontré {len(raw_files)} archivos en total. Revisando cuáles son nuevos o cambiaron...")
+		logger.info(f"Encontré {len(raw_entries)} archivos en total. Revisando cuáles son nuevos o cambiaron...")
 		if state:
 			state.scan_phase = "metadata"
-			state.scan_total = len(raw_files)
+			state.scan_total = len(raw_entries)
 			state.scan_current = 0
 			state.scan_message = (
-				f"Encontré {len(raw_files)} archivos en total. Revisando cuáles son nuevos o cambiaron..."
+				f"Encontré {len(raw_entries)} archivos en total. Revisando cuáles son nuevos o cambiaron..."
 			)
 
-		raw_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+		raw_entries.sort(key=lambda item: item[1], reverse=True)
 		has_ffmpeg = is_mood_available()
 		has_fpcalc = bool(find_binary("fpcalc"))
 
@@ -299,16 +337,10 @@ class LibraryService:
 		new_tracks_for_reconciliation: list[dict[str, Any]] = []
 
 		cache_hits: dict[str, tuple[float, dict[str, Any], str]] = {}
-		miss_files: list[tuple[Path, float, int]] = []
+		miss_files: list[tuple[str | Path, float, int]] = []
 
-		for f in raw_files:
-			file_str = str(f)
-			try:
-				stat = f.stat()
-				current_mtime = stat.st_mtime
-				current_size = stat.st_size
-			except OSError:
-				continue
+		for f_ref, current_mtime, current_size in raw_entries:
+			file_str = str(f_ref)
 
 			if (
 				file_str in track_cache_by_path
@@ -345,22 +377,22 @@ class LibraryService:
 				}
 				cache_hits[file_str] = (current_mtime, td, th)
 			else:
-				miss_files.append((f, current_mtime, current_size))
+				miss_files.append((f_ref, current_mtime, current_size))
 
 		logger.info(
-			f"⏱️ [scan] Caché evaluada: {len(cache_hits)} hits, {len(miss_files)} nuevos/modificados (total={len(raw_files)})."
+			f"⏱️ [scan] Caché evaluada: {len(cache_hits)} hits, {len(miss_files)} nuevos/modificados (total={len(raw_entries)})."
 		)
 		if state:
 			state.scan_current = len(cache_hits)
 			if miss_files:
-				state.scan_message = f"Leyendo metadatos ({len(cache_hits)}/{len(raw_files)})..."
+				state.scan_message = f"Leyendo metadatos ({len(cache_hits)}/{len(raw_entries)})..."
 
 		miss_results: dict[str, tuple[float, dict[str, Any], str, tuple[Any, ...], str | None]] = {}
 		if miss_files:
 			t_meta = time.perf_counter()
 
 			def _process_single_file(
-				item: tuple[Path, float, int],
+				item: tuple[str | Path, float, int],
 			) -> tuple[str, float, dict[str, Any], str, tuple[Any, ...], str | None]:
 				target_f, mtime, size = item
 				track_obj = Track(target_f, extract_mood=extract_mood, extract_fingerprint=bool(extract_fingerprint))
@@ -396,7 +428,7 @@ class LibraryService:
 					if state:
 						current_total = len(cache_hits) + processed_count
 						state.scan_current = current_total
-						state.scan_message = f"Leyendo metadatos ({current_total}/{len(raw_files)})..."
+						state.scan_message = f"Leyendo metadatos ({current_total}/{len(raw_entries)})..."
 					if processed_count % 50 == 0:
 						logger.info(
 							f"Ya procesé la data de {processed_count}/{len(miss_files)} joyitas nuevas/modificadas..."
@@ -405,8 +437,8 @@ class LibraryService:
 			logger.info(f"⏱️ [scan] Metadatos nuevos ({len(miss_files)}) en {time.perf_counter() - t_meta:.2f}s.")
 
 		tracks: list[dict[str, Any]] = []
-		for f in raw_files:
-			file_str = str(f)
+		for f_ref, _mtime, _size in raw_entries:
+			file_str = str(f_ref)
 			if file_str in cache_hits:
 				current_mtime, track_dict, track_hash = cache_hits[file_str]
 				seen_track_ids.add(track_hash)
@@ -541,6 +573,9 @@ class LibraryService:
 			energy = t_dict.get("energy", 0.0)
 			centroid = t_dict.get("spectral_centroid", 0.0)
 			fp = t_dict.get("fingerprint")
+
+			if is_saf_uri(path_str):
+				return t_dict["track_hash"], path_str, bpm, energy, centroid, fp
 
 			if need_mood and ffmpeg_bin:
 				tag_bpm = None

@@ -6,14 +6,17 @@ import { Capacitor, SystemBars, registerPlugin } from '@capacitor/core';
 import { ref, watch } from 'vue';
 import { listenLocally, volume } from '../stores/usePlaybackStore';
 import {
+	type LibraryFolderStatus,
 	STORAGE_KEY_REMOTE_SERVER,
 	activeMediaTarget,
 	activeRemoteServerUrl,
 	clearServerError,
 	isHostMode,
 	lastRemoteServerUrl,
+	libraryFolderError,
 	libraryFolderStatus,
 	localMusicDir,
+	localMusicDisplayName,
 	localServerIp,
 	localServerLanUrl,
 	localServerPort,
@@ -78,6 +81,13 @@ export interface RockolaServerPlugin {
 	stopServer(): Promise<{ stopped: boolean }>;
 	getStatus(): Promise<AndroidServerInfo>;
 	pickMusicFolder(): Promise<PickMusicFolderResult>;
+	validateMusicFolder?(options?: { uri?: string }): Promise<{
+		valid: boolean;
+		status: LibraryFolderStatus;
+		uri: string;
+		displayName?: string | null;
+		error?: string | null;
+	}>;
 	hasStoragePermission(): Promise<{ granted: boolean }>;
 	requestStoragePermission(): Promise<{ granted: boolean }>;
 	updateMediaNotification(options: MediaNotificationPayload): Promise<{ updated: boolean }>;
@@ -573,16 +583,40 @@ export function ensureLocalAndroidServerAlive(opts?: {
 	return recoveryInFlight;
 }
 
+export async function validateAndroidMusicFolder(uri?: string): Promise<LibraryFolderStatus> {
+	if (!isNativeAndroidHost() || typeof RockolaServer.validateMusicFolder !== 'function') {
+		return libraryFolderStatus.value;
+	}
+	try {
+		const res = await RockolaServer.validateMusicFolder(uri ? { uri } : undefined);
+		libraryFolderStatus.value = res.status;
+		localMusicDisplayName.value = res.displayName ?? null;
+		libraryFolderError.value = res.error ?? null;
+		return res.status;
+	} catch {
+		return libraryFolderStatus.value;
+	}
+}
+
 export async function pickAndApplyMusicFolder(): Promise<string | null> {
 	if (!isNativeAndroidHost()) return null;
 
 	const res = await RockolaServer.pickMusicFolder();
-	const selectedPath = res?.path?.trim();
+	if (res?.status && res.status !== 'ok') {
+		libraryFolderStatus.value = res.status as LibraryFolderStatus;
+		localMusicDisplayName.value = res.displayName ?? null;
+		libraryFolderError.value = res.error ?? 'No se pudo acceder a la carpeta seleccionada';
+		return null;
+	}
+
+	const selectedPath = res?.path?.trim() || res?.uri?.trim();
 	if (!selectedPath) return null;
 
 	await useApi().setMusicDir(selectedPath);
 	localMusicDir.value = selectedPath;
+	localMusicDisplayName.value = res?.displayName ?? null;
 	libraryFolderStatus.value = 'ok';
+	libraryFolderError.value = null;
 	return selectedPath;
 }
 

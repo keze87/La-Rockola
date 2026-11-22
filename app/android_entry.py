@@ -52,13 +52,24 @@ def configure_android_environment(
 
 	config_path = get_config_path()
 	file_settings = Settings.from_config_file(config_path)
-	chosen_music = music_dir or file_settings.music_dir or get_default_music_dir()
-	if chosen_music and chosen_music != "~/Music":
-		chosen_music = str(Path(chosen_music).expanduser().resolve())
+
+	from app.infrastructure.storage import normalize_music_root
+
+	explicit_arg = (music_dir or "").strip()
+	if explicit_arg:
+		chosen_music = normalize_music_root(explicit_arg)
+		music_configured = True
+	elif file_settings.music_dir_configured and file_settings.music_dir:
+		chosen_music = normalize_music_root(file_settings.music_dir)
+		music_configured = True
+	else:
+		chosen_music = get_default_music_dir()
+		music_configured = bool(chosen_music)
 
 	settings = file_settings.model_copy(
 		update={
 			"music_dir": chosen_music,
+			"music_dir_configured": music_configured,
 			"port": port,
 			"host": host,
 			"open_browser": False,
@@ -88,6 +99,7 @@ def configure_android_environment(
 		dj_carpincho_enabled=False,
 		dj_mode=settings.dj_mode,
 		volume=settings.volume,
+		music_dir_configured=settings.music_dir_configured,
 	)
 	native_player = resolve_native_android_player()
 	if native_player is not None:
@@ -121,6 +133,7 @@ def configure_android_environment(
 		"local_ip": urls["local_ip"],
 		"server_url": urls["local_url"],
 		"music_dir": settings.music_dir,
+		"music_dir_configured": settings.music_dir_configured,
 		"data_dir": resolved_data,
 		"dist_dir": resolved_dist,
 	}

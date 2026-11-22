@@ -7,19 +7,41 @@ from __future__ import annotations
 import hashlib
 import io
 import logging
+import mimetypes
 import os
-from pathlib import Path
+import re
 
 from fastapi import APIRouter, Query, Request, Response
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from mutagen import File as MutagenFile
 
 from app.core.container import get_container
 from app.infrastructure.db.repositories import CoverThumbRepository
 from app.infrastructure.media.mixer import get_carpincho_cover_path
+from app.infrastructure.storage import get_saf_name, get_storage_backend, is_saf_uri, open_mutagen_file
 
 logger = logging.getLogger("RockolaCarpincho")
 router = APIRouter(tags=["Media"])
+
+
+def _extract_mutagen_cover(audio: object) -> tuple[bytes | None, str]:
+	if not audio:
+		return None, "image/jpeg"
+	pics = getattr(audio, "pictures", None)
+	if pics:
+		return bytes(pics[0].data), str(getattr(pics[0], "mime", "image/jpeg"))
+	tags = getattr(audio, "tags", None)
+	if tags:
+		for key, tag in tags.items():
+			if str(key).startswith("APIC"):
+				return bytes(tag.data), str(getattr(tag, "mime", "image/jpeg"))
+		if "covr" in tags:
+			covr_item = tags["covr"][0]
+			raw = bytes(covr_item)
+			mime = "image/jpeg" if raw.startswith(b"\xff\xd8") else "image/png"
+			return raw, mime
+	return None, "image/jpeg"
+
 
 HAS_PIL = False
 try:
@@ -82,7 +104,7 @@ async def serve_cover(
 		is_announcement = False
 		if state and hasattr(state, "is_radio_announcement"):
 			is_announcement = state.is_radio_announcement(path)
-		elif path and Path(path).name in ("radio_announcement.mp3", "radio_pregenerated.mp3"):
+		elif path and get_saf_name(path) in ("radio_announcement.mp3", "radio_pregenerated.mp3"):
 			is_announcement = True
 
 		if is_announcement:
@@ -105,12 +127,19 @@ async def serve_cover(
 				mime = "image/png" if carpincho_img.suffix.lower() == ".png" else "image/jpeg"
 				return FileResponse(carpincho_img, media_type=mime, headers=cache_headers)
 
-		if not os.path.exists(path):
-			return Response(status_code=404)
-
-		st = os.stat(path)
-		mtime = int(st.st_mtime)
-		file_size = st.st_size
+		saf = is_saf_uri(path)
+		if saf:
+			st_info = get_storage_backend(path).stat_file(path)
+			if st_info is None:
+				return Response(status_code=404)
+			mtime = int(st_info[0])
+			file_size = st_info[1]
+		else:
+			if not os.path.exists(path):
+				return Response(status_code=404)
+			st = os.stat(path)
+			mtime = int(st.st_mtime)
+			file_size = st.st_size
 		etag_raw = f"{path}:{mtime}:{file_size}:s={size}" if (size and size > 0) else f"{path}:{mtime}:{file_size}"
 		etag = f'"{hashlib.md5(etag_raw.encode()).hexdigest()}"'
 		cache_headers = {
@@ -156,30 +185,12 @@ async def serve_cover(
 				mime_type = c_mime
 
 		if not cover_data:
-			audio = MutagenFile(path)
-			if not audio:
-				_set_cover_cache(cache_key, (mtime, file_size, None, "image/jpeg", etag))
-				if size == 128 and thumb_repo is not None:
-					try:
-						thumb_repo.upsert(path, mtime, file_size, b"", "image/jpeg")
-					except Exception:
-						pass
-				return Response(status_code=404, headers=cache_headers)
-
-			if hasattr(audio, "pictures") and audio.pictures:
-				cover_data = audio.pictures[0].data
-				mime_type = getattr(audio.pictures[0], "mime", "image/jpeg")
-			elif hasattr(audio, "tags") and audio.tags:
-				for key, tag in audio.tags.items():
-					if key.startswith("APIC"):
-						cover_data = tag.data
-						mime_type = getattr(tag, "mime", "image/jpeg")
-						break
-				if not cover_data and "covr" in audio.tags:
-					covr_item = audio.tags["covr"][0]
-					cover_data = bytes(covr_item)
-					mime_type = "image/jpeg" if cover_data.startswith(b"\xff\xd8") else "image/png"
-
+			if saf:
+				with open_mutagen_file(path, easy=False) as audio:
+					cover_data, mime_type = _extract_mutagen_cover(audio)
+			else:
+				audio = MutagenFile(path)
+				cover_data, mime_type = _extract_mutagen_cover(audio)
 			if not cover_data:
 				_set_cover_cache(cache_key, (mtime, file_size, None, "image/jpeg", etag))
 				if size == 128 and thumb_repo is not None:
@@ -212,8 +223,80 @@ async def serve_cover(
 		return Response(status_code=404)
 
 
+def _build_saf_stream_response(
+	path: str,
+	file_size: int,
+	media_type: str,
+	cache_control: str,
+	range_header: str | None,
+) -> Response:
+	backend = get_storage_backend(path)
+	base_headers = {
+		"Accept-Ranges": "bytes",
+		"Cache-Control": cache_control,
+	}
+	if file_size <= 0 and not range_header:
+		return Response(
+			content=b"", status_code=200, media_type=media_type, headers={**base_headers, "Content-Length": "0"}
+		)
+
+	start = 0
+	end = max(0, file_size - 1)
+	status_code = 200
+	if range_header:
+		match = re.match(r"^\s*bytes=(\d*)-(\d*)\s*$", range_header.split(",", 1)[0])
+		if not match or file_size <= 0:
+			return Response(status_code=416, headers={**base_headers, "Content-Range": f"bytes */{file_size}"})
+		raw_start, raw_end = match.group(1), match.group(2)
+		if raw_start == "" and raw_end == "":
+			return Response(status_code=416, headers={**base_headers, "Content-Range": f"bytes */{file_size}"})
+		if raw_start == "":
+			suffix_len = int(raw_end)
+			if suffix_len <= 0:
+				return Response(status_code=416, headers={**base_headers, "Content-Range": f"bytes */{file_size}"})
+			start = max(0, file_size - suffix_len)
+			end = file_size - 1
+		else:
+			start = int(raw_start)
+			end = int(raw_end) if raw_end else file_size - 1
+			if start >= file_size or end < start:
+				return Response(status_code=416, headers={**base_headers, "Content-Range": f"bytes */{file_size}"})
+			end = min(end, file_size - 1)
+		status_code = 206
+
+	content_length = end - start + 1
+	headers = {
+		**base_headers,
+		"Content-Length": str(content_length),
+	}
+	if status_code == 206:
+		headers["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+
+	def _iter_chunks():
+		with backend.open_binary(path) as f:
+			if start > 0:
+				f.seek(start)
+			remaining = content_length
+			while remaining > 0:
+				chunk = f.read(min(65536, remaining))
+				if not chunk:
+					break
+				remaining -= len(chunk)
+				yield chunk
+
+	return StreamingResponse(
+		_iter_chunks(),
+		status_code=status_code,
+		media_type=media_type,
+		headers=headers,
+	)
+
+
 @router.get("/stream")
-async def stream_audio(path: str = Query(..., description="Ruta de la canción a transmitir")) -> Response:
+async def stream_audio(
+	path: str = Query(..., description="Ruta de la canción a transmitir"),
+	request: Request = None,  # type: ignore[assignment]
+) -> Response:
 	"""Transmite el archivo de audio para reproducción local en el navegador del cliente."""
 	state = get_container().ensure_orchestrator()
 	is_radio = state.is_radio_announcement(path) if (state and hasattr(state, "is_radio_announcement")) else False
@@ -241,12 +324,21 @@ async def stream_audio(path: str = Query(..., description="Ruta de la canción a
 				return RedirectResponse(url=direct_url, status_code=307)
 		return Response(status_code=502)
 
-	if not os.path.exists(path):
-		return Response(status_code=404)
-
 	cache_control = (
 		"no-store, no-cache, must-revalidate" if is_radio else "public, max-age=86400, stale-while-revalidate=172800"
 	)
+
+	if is_saf_uri(path):
+		st_info = get_storage_backend(path).stat_file(path)
+		if st_info is None:
+			return Response(status_code=404)
+		media_type = mimetypes.guess_type(get_saf_name(path))[0] or "application/octet-stream"
+		range_header = request.headers.get("range") if request else None
+		return _build_saf_stream_response(path, st_info[1], media_type, cache_control, range_header)
+
+	if not os.path.exists(path):
+		return Response(status_code=404)
+
 	return FileResponse(
 		path,
 		headers={
@@ -269,6 +361,18 @@ async def serve_lrc(
 	if not is_radio and path not in path_to_id and not any(t.get("path") == path for t in tracks_cache):
 		return Response(status_code=404)
 
+	headers = (
+		{"Cache-Control": "no-store, no-cache, must-revalidate"}
+		if is_radio
+		else {"Cache-Control": "public, max-age=600, must-revalidate"}
+	)
+
+	if is_saf_uri(path):
+		sibling = get_storage_backend(path).read_sibling_lyrics(path, extensions=(".ass", ".lrc"))
+		if sibling is None:
+			return Response(status_code=404)
+		return Response(content=sibling[1], media_type="text/plain; charset=utf-8", headers=headers)
+
 	# Buscamos subtítulos (.ass prioritario para karaoke palabra por palabra, o .lrc de respaldo)
 	from app.infrastructure.media.mixer import resolve_subtitle_path
 
@@ -278,11 +382,6 @@ async def serve_lrc(
 	if not target_path or not target_path.exists():
 		return Response(status_code=404)
 
-	headers = (
-		{"Cache-Control": "no-store, no-cache, must-revalidate"}
-		if is_radio
-		else {"Cache-Control": "public, max-age=600, must-revalidate"}
-	)
 	return FileResponse(
 		target_path,
 		media_type="text/plain; charset=utf-8",

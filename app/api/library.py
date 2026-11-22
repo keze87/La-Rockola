@@ -6,13 +6,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter
 
 from app.core.container import get_container
 from app.domain.playback.orchestrator import broadcast_state
+from app.infrastructure.storage import normalize_music_root
 
 logger = logging.getLogger("RockolaCarpincho")
 router = APIRouter(tags=["Library"])
@@ -48,9 +48,11 @@ async def scan_library(dir: str | None = None, dir2: str | None = None) -> dict[
 	target1 = dir or getattr(state, "initial_dir", None) or "~/Music"
 	target2 = dir2 or getattr(state, "secondary_dir", None)
 
-	target_dirs = [str(Path(target1).expanduser().resolve())]
+	target_dirs = [normalize_music_root(target1)] if target1 else []
 	if target2:
-		target_dirs.append(str(Path(target2).expanduser().resolve()))
+		norm2 = normalize_music_root(target2)
+		if norm2:
+			target_dirs.append(norm2)
 
 	logger.info(f"Iniciando escaneo de directorios: {target_dirs}")
 	state.is_scanning = True

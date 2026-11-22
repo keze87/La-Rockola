@@ -38,13 +38,19 @@ def get_default_music_dir() -> str:
 	if is_android():
 		for cand in _ANDROID_MUSIC_CANDIDATES:
 			resolved = Path(cand).expanduser()
-			if resolved.is_dir():
-				return str(resolved)
+			try:
+				if resolved.is_dir() and os.access(resolved, os.R_OK):
+					return str(resolved)
+			except OSError:
+				continue
+		# No asumimos rutas inexistentes en Android: se deja sin configurar hasta que elija SAF
+		return ""
 	return "~/Music"
 
 
 DEFAULT_CONFIG: dict[str, Any] = {
 	"music_dir": "~/Music",
+	"music_dir_configured": False,
 	"music_dir2": None,
 	"port": 1729,
 	"host": "0.0.0.0",
@@ -149,16 +155,27 @@ def get_config_path(custom_path: str | Path | None = None) -> Path:
 
 def load_config(config_path: Path | None = None) -> dict[str, Any]:
 	"""Carga la configuración desde el JSON persistente o devuelve los valores por defecto."""
+	from app.infrastructure.binaries.manager import is_android
+
 	path = config_path or get_config_path()
 	cfg = dict(DEFAULT_CONFIG)
+	loaded_data: dict[str, Any] | None = None
 	if path.is_file():
 		try:
 			with open(path, "r", encoding="utf-8") as f:
 				data = json.load(f)
 				if isinstance(data, dict):
+					loaded_data = data
 					cfg.update(data)
 		except Exception as e:
 			logger.warning(f"No se pudo leer {path}, usamos los valores por defecto: {e}")
+
+	if loaded_data is not None and "music_dir_configured" not in loaded_data and "music_dir" in loaded_data:
+		cfg["music_dir_configured"] = bool(str(loaded_data.get("music_dir") or "").strip())
+	elif loaded_data is None and is_android():
+		android_default = get_default_music_dir()
+		cfg["music_dir"] = android_default
+		cfg["music_dir_configured"] = bool(android_default)
 	return cfg
 
 
@@ -200,6 +217,9 @@ class Settings(BaseSettings):
 	)
 
 	music_dir: str = Field(default="~/Music", description="Carpeta principal de música")
+	music_dir_configured: bool = Field(
+		default=False, description="Indica si el usuario configuró explícitamente la carpeta"
+	)
 	music_dir2: str | None = Field(default=None, description="Carpeta secundaria de música")
 	port: int = Field(default=1729, description="Puerto del servidor HTTP")
 	host: str = Field(default="0.0.0.0", description="IP de escucha del servidor")

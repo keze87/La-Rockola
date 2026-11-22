@@ -7,7 +7,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
@@ -21,6 +20,7 @@ from app.domain.library.mood import is_mood_available
 from app.domain.playback.orchestrator import broadcast_state
 from app.infrastructure.binaries.ytdlp import YtDlpAdapter
 from app.infrastructure.db.connection import execute_write
+from app.infrastructure.storage import get_storage_backend, normalize_music_root
 from app.infrastructure.weather.client import (
 	build_weather_phrase,
 	extract_location_from_weather_data,
@@ -78,33 +78,86 @@ async def get_system_capabilities() -> dict[str, Any]:
 	}
 
 
+@router.get("/system/info")
+async def get_system_info() -> dict[str, Any]:
+	"""Devuelve configuración de carpetas, estado de permisos SAF y datos de red del servidor."""
+	state = get_container().ensure_orchestrator()
+	settings = get_container().settings
+	initial_dir = (getattr(state, "initial_dir", None) if state else None) or getattr(settings, "music_dir", "") or ""
+	secondary_dir = (getattr(state, "secondary_dir", None) if state else None) or getattr(settings, "music_dir2", None)
+	configured = bool(
+		getattr(state, "music_dir_configured", getattr(settings, "music_dir_configured", False))
+		if state
+		else getattr(settings, "music_dir_configured", False)
+	)
+	validation = (
+		state.refresh_folder_status()
+		if state and hasattr(state, "refresh_folder_status")
+		else get_storage_backend(initial_dir).validate_root(initial_dir)
+	)
+	return {
+		"music_dir": initial_dir,
+		"music_dir2": secondary_dir,
+		"music_dir_configured": configured,
+		"folder_status": validation.status,
+		"folder_display_name": validation.display_name,
+		"folder_error": validation.error,
+		"port": getattr(state, "server_port", getattr(settings, "port", 1729))
+		if state
+		else getattr(settings, "port", 1729),
+		"local_ip": getattr(state, "local_ip", "127.0.0.1") if state else "127.0.0.1",
+		"server_url": getattr(state, "server_url", "http://127.0.0.1:1729") if state else "http://127.0.0.1:1729",
+	}
+
+
 @router.post("/system/music-dir")
 async def update_music_dir(req: MusicDirRequest) -> dict[str, Any]:
-	"""Actualiza dinámicamente la carpeta de música (ej. MicroSD en Android) y dispara un reescaneo."""
-	target_path = Path(req.dir).expanduser().resolve()
-	if not target_path.is_dir():
-		raise HTTPException(status_code=400, detail=f"La carpeta no existe o no es accesible: {req.dir}")
+	"""Actualiza dinámicamente la carpeta de música (SAF o POSIX) y dispara un reescaneo."""
+	raw_dir = normalize_music_root(req.dir)
+	validation = get_storage_backend(raw_dir).validate_root(raw_dir)
+	if validation.status != "ok":
+		raise HTTPException(
+			status_code=400,
+			detail=validation.error or f"La carpeta no existe o no es accesible: {req.dir}",
+		)
 
-	resolved_dir = str(target_path)
+	resolved_dir = validation.path or raw_dir
 	resolved_dir2: str | None = None
 	if req.dir2:
-		target_path2 = Path(req.dir2).expanduser().resolve()
-		if not target_path2.is_dir():
-			raise HTTPException(status_code=400, detail=f"La carpeta secundaria no existe: {req.dir2}")
-		resolved_dir2 = str(target_path2)
+		raw_dir2 = normalize_music_root(req.dir2)
+		val2 = get_storage_backend(raw_dir2).validate_root(raw_dir2)
+		if val2.status != "ok":
+			raise HTTPException(
+				status_code=400,
+				detail=val2.error or f"La carpeta secundaria no existe: {req.dir2}",
+			)
+		resolved_dir2 = val2.path or raw_dir2
 
 	state = get_container().ensure_orchestrator()
 	if state:
 		state.initial_dir = resolved_dir
 		state.secondary_dir = resolved_dir2
+		state.music_dir_configured = True
+		state.folder_status = validation.status
+		state.folder_display_name = validation.display_name
+		state.folder_error = None
 
-	config_mod.update_config({"music_dir": resolved_dir, "music_dir2": resolved_dir2})
+	config_mod.update_config(
+		{
+			"music_dir": resolved_dir,
+			"music_dir2": resolved_dir2,
+			"music_dir_configured": True,
+		}
+	)
 	asyncio.create_task(scan_library(dir=resolved_dir, dir2=resolved_dir2))
 
 	return {
 		"status": "ok",
 		"music_dir": resolved_dir,
 		"music_dir2": resolved_dir2,
+		"music_dir_configured": True,
+		"folder_status": validation.status,
+		"folder_display_name": validation.display_name,
 	}
 
 

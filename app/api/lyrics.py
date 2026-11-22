@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from app.core.container import get_container
 from app.domain.lyrics.converter import LyricsAssConverter
 from app.domain.lyrics.service import get_lyrics_service
+from app.infrastructure.storage import get_storage_backend, is_saf_uri
 
 logger = logging.getLogger("RockolaCarpincho")
 
@@ -39,17 +40,24 @@ def _is_allowed_track_path(raw_path: str) -> bool:
 	if not raw_path or raw_path.startswith(("http://", "https://")):
 		return False
 	container = get_container()
+	state = container.orchestrator
+	tracks_cache = getattr(state, "tracks_cache", None) or []
+
+	if is_saf_uri(raw_path):
+		return any(t.get("path") == raw_path for t in tracks_cache) or raw_path == getattr(state, "current_track", None)
+
 	resolved = Path(raw_path).expanduser().resolve()
 
 	roots = [container.settings.music_dir, container.settings.music_dir2]
 	for root in roots:
-		if root and resolved.is_relative_to(Path(root).expanduser().resolve()):
+		if root and not is_saf_uri(root) and resolved.is_relative_to(Path(root).expanduser().resolve()):
 			return True
 
-	state = container.orchestrator
-	for track in getattr(state, "tracks_cache", None) or []:
+	for track in tracks_cache:
 		track_path = track.get("path")
-		is_local = bool(track_path) and not str(track_path).startswith(("http://", "https://"))
+		is_local = (
+			bool(track_path) and not str(track_path).startswith(("http://", "https://")) and not is_saf_uri(track_path)
+		)
 		if is_local and Path(track_path).expanduser().resolve() == resolved:
 			return True
 	return False
@@ -117,6 +125,14 @@ async def get_lyrics_content(
 	Obtiene el contenido actual del archivo .ass asociado a la pista.
 	Solo se consideran letras existentes si existe un archivo .ass (con soporte palabra por palabra).
 	"""
+	if is_saf_uri(path):
+		if not _is_allowed_track_path(path):
+			raise HTTPException(status_code=403, detail="Ruta fuera de las carpetas de música")
+		sibling = get_storage_backend(path).read_sibling_lyrics(path, extensions=(".ass",))
+		if sibling:
+			return {"exists": True, "content": sibling[1], "format": "ass", "path": sibling[2]}
+		return {"exists": False, "content": "", "format": "", "path": f"{path}.ass"}
+
 	p = _require_track_path(path)
 	base_path = p.with_suffix("")
 	ass_path = base_path.with_suffix(".ass")
@@ -138,6 +154,14 @@ async def save_lyrics_content(payload: SaveLyricsRequest) -> dict:
 	Si se guarda un .ass y la pista no tiene un .lrc preexistente,
 	genera automáticamente un .lrc complementario para otros reproductores.
 	"""
+	if is_saf_uri(payload.path):
+		if not _is_allowed_track_path(payload.path):
+			raise HTTPException(status_code=403, detail="Ruta fuera de las carpetas de música")
+		raise HTTPException(
+			status_code=400,
+			detail="No se pueden guardar letras en archivos SAF de solo lectura desde Android",
+		)
+
 	p = _require_track_path(payload.path)
 	target_ext = f".{payload.format}"
 	target_path = p.with_suffix(target_ext)

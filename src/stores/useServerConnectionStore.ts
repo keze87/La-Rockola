@@ -66,6 +66,7 @@ export const localServerPort = ref<number>(1729);
 export const localServerIp = ref<string>('127.0.0.1');
 export const localServerLanUrl = ref<string>('http://127.0.0.1:1729');
 export const localMusicDir = ref<string | null>(null);
+export const localMusicDisplayName = ref<string | null>(null);
 export const libraryFolderStatus = ref<LibraryFolderStatus>('ok');
 export const libraryFolderError = ref<string | null>(null);
 export const lastServerError = ref<ServerErrorInfo | null>(null);
@@ -183,6 +184,7 @@ export function resetServerConnectionStore(): void {
 	localServerIp.value = '127.0.0.1';
 	localServerLanUrl.value = 'http://127.0.0.1:1729';
 	localMusicDir.value = null;
+	localMusicDisplayName.value = null;
 	libraryFolderStatus.value = 'ok';
 	libraryFolderError.value = null;
 	lastServerError.value = null;
@@ -198,6 +200,7 @@ export function useServerConnectionStore() {
 		localServerIp,
 		localServerLanUrl,
 		localMusicDir,
+		localMusicDisplayName,
 		libraryFolderStatus,
 		libraryFolderError,
 		lastServerError,

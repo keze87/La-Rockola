@@ -641,4 +641,28 @@ describe('useAndroidHost.ts', () => {
 		expect(store.localServerState.value).toBe('unavailable');
 		expect(store.lastServerError.value?.message).toContain('Puerto ocupado en Uvicorn');
 	});
+
+	it('pickAndApplyMusicFolder handles SAF permission_denied without calling /system/music-dir', async () => {
+		const mod = await import('@/composables/useAndroidHost');
+		const store = await import('@/stores/useServerConnectionStore');
+
+		state.isNative = true;
+		state.platform = 'android';
+		store.resetServerConnectionStore();
+
+		pluginMock.pickMusicFolder.mockResolvedValue({
+			path: null,
+			uri: 'content://com.android.externalstorage.documents/tree/ABCD-1234%3AMusic',
+			status: 'permission_denied',
+			error: 'El permiso sobre la carpeta fue revocado',
+		});
+		const fetchMock = vi.fn();
+		global.fetch = fetchMock;
+
+		const selected = await mod.pickAndApplyMusicFolder();
+		expect(selected).toBeNull();
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(store.libraryFolderStatus.value).toBe('permission_denied');
+		expect(store.libraryFolderError.value).toContain('revocado');
+	});
 });

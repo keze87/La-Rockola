@@ -15,6 +15,7 @@ from mutagen import File as MutagenFile
 from app.domain.library.hasher import generate_smart_hash
 from app.domain.library.mood import extract_audio_features_ffmpeg
 from app.infrastructure.binaries.manager import find_binary, get_clean_env
+from app.infrastructure.storage import get_saf_stem, is_saf_uri, open_mutagen_file
 
 logger = logging.getLogger("RockolaCarpincho")
 
@@ -46,6 +47,16 @@ def get_track_duration_seconds(path: str | Path | None, tracks_cache: list[dict[
 				dur = parse_duration_str(t.get("duration_str"))
 				if dur > 0:
 					return dur
+	if is_saf_uri(path):
+		try:
+			with open_mutagen_file(str(path), easy=False) as audio:
+				if audio and audio.info and getattr(audio.info, "length", None) is not None:
+					dur = float(audio.info.length)
+					if dur > 0.0:
+						return dur
+		except Exception:
+			pass
+		return 0.0
 	p = Path(path)
 	if p.is_file():
 		try:
@@ -88,8 +99,10 @@ class Track:
 	"""Representa una pista musical con sus metadatos y análisis acústico."""
 
 	def __init__(self, path: Path | str, extract_mood: bool = True, extract_fingerprint: bool = True) -> None:
-		self.path = Path(path)
-		self.title = self.path.stem
+		self.is_saf = is_saf_uri(path)
+		self.raw_path = str(path)
+		self.path: Path | str = self.raw_path if self.is_saf else Path(path)
+		self.title = get_saf_stem(self.raw_path)
 		self.artist = "Desconocido"
 		self.album = "Desconocido"
 		self.duration_str = "0:00"
@@ -113,53 +126,62 @@ class Track:
 			self.fingerprint = None
 
 		self.search_string = f"{self.artist} {self.title}".lower()
-		self.track_hash = str(generate_smart_hash(self.path))
+		self.track_hash = str(generate_smart_hash(self.raw_path if self.is_saf else self.path))
 
 	def _extract_metadata(self) -> None:
 		try:
+			if self.is_saf:
+				with open_mutagen_file(self.raw_path, easy=True) as audio:
+					self._apply_mutagen_tags(audio)
+				return
 			audio = MutagenFile(self.path, easy=True)
 			if audio is None:
 				audio = MutagenFile(self.path)
-			if audio and getattr(audio, "tags", None):
-				tags = {k.lower(): v for k, v in audio.tags.items()}
-				for k in ["title", "©nam", "tit2"]:
-					if k in tags:
-						val = tags[k]
-						self.title = val[0] if isinstance(val, list) else str(val)
-						break
-				for k in ["artist", "©art", "tpe1"]:
-					if k in tags:
-						val = tags[k]
-						self.artist = val[0] if isinstance(val, list) else str(val)
-						break
-				for k in ["album", "©alb", "talb"]:
-					if k in tags:
-						val = tags[k]
-						self.album = val[0] if isinstance(val, list) else str(val)
-						break
-				for k in ["tbpm", "bpm", "tempo", "tmpo"]:
-					if k in tags:
-						val = tags[k]
-						val_str = val[0] if isinstance(val, list) else str(val)
-						try:
-							clean_num = re.search(r"[-+]?\d*\.?\d+", str(val_str))
-							if clean_num:
-								parsed_bpm = float(clean_num.group(0))
-								if parsed_bpm > 0:
-									self.tag_bpm = round(parsed_bpm, 1)
-									break
-						except (ValueError, TypeError):
-							pass
-			if audio and hasattr(audio, "info") and hasattr(audio.info, "length"):
-				length = audio.info.length
-				if length:
-					mins = int(length // 60)
-					secs = int(length % 60)
-					self.duration_str = f"{mins}:{secs:02d}"
+			self._apply_mutagen_tags(audio)
 		except Exception as e:
 			logger.warning(f"No le pude leer la mente (metadata) a {self.path}: {e}")
 
+	def _apply_mutagen_tags(self, audio: Any) -> None:
+		if audio and getattr(audio, "tags", None):
+			tags = {k.lower(): v for k, v in audio.tags.items()}
+			for k in ["title", "©nam", "tit2"]:
+				if k in tags:
+					val = tags[k]
+					self.title = val[0] if isinstance(val, list) else str(val)
+					break
+			for k in ["artist", "©art", "tpe1"]:
+				if k in tags:
+					val = tags[k]
+					self.artist = val[0] if isinstance(val, list) else str(val)
+					break
+			for k in ["album", "©alb", "talb"]:
+				if k in tags:
+					val = tags[k]
+					self.album = val[0] if isinstance(val, list) else str(val)
+					break
+			for k in ["tbpm", "bpm", "tempo", "tmpo"]:
+				if k in tags:
+					val = tags[k]
+					val_str = val[0] if isinstance(val, list) else str(val)
+					try:
+						clean_num = re.search(r"[-+]?\d*\.?\d+", str(val_str))
+						if clean_num:
+							parsed_bpm = float(clean_num.group(0))
+							if parsed_bpm > 0:
+								self.tag_bpm = round(parsed_bpm, 1)
+								break
+					except (ValueError, TypeError):
+						pass
+		if audio and hasattr(audio, "info") and hasattr(audio.info, "length"):
+			length = audio.info.length
+			if length:
+				mins = int(length // 60)
+				secs = int(length % 60)
+				self.duration_str = f"{mins}:{secs:02d}"
+
 	def _extract_fingerprint(self) -> None:
+		if self.is_saf:
+			return
 		fpcalc_bin = find_binary("fpcalc")
 		if fpcalc_bin:
 			try:
@@ -184,7 +206,7 @@ class Track:
 
 	def analyze_mood(self, ffmpeg_bin: str | None = None) -> tuple[float, float, float]:
 		"""Analiza BPM, energía y centroide espectral del archivo de audio."""
-		bin_to_use = ffmpeg_bin or find_binary("ffmpeg")
+		bin_to_use = None if self.is_saf else (ffmpeg_bin or find_binary("ffmpeg"))
 		if bin_to_use:
 			b, e, c = extract_audio_features_ffmpeg(self.path, bin_to_use)
 			if b < 0.0:
