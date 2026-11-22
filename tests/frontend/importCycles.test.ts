@@ -46,7 +46,44 @@ function extractStaticImports(filePath: string): string[] {
 	return imports;
 }
 
+function findImportCycles(graph: Map<string, string[]>, labelFn: (p: string) => string): string[] {
+	const state = new Map<string, 'visiting' | 'visited'>();
+	const cycles: string[] = [];
+
+	function dfs(node: string, stack: string[]) {
+		state.set(node, 'visiting');
+		for (const next of graph.get(node) ?? []) {
+			const nextState = state.get(next);
+			if (nextState === 'visiting') {
+				const idx = stack.indexOf(next);
+				const cycle = [...stack.slice(idx), next].map(labelFn);
+				cycles.push(cycle.join(' -> '));
+			} else if (!nextState) {
+				dfs(next, [...stack, next]);
+			}
+		}
+		state.set(node, 'visited');
+	}
+
+	for (const file of graph.keys()) {
+		if (!state.get(file)) {
+			dfs(file, [file]);
+		}
+	}
+
+	return cycles;
+}
+
 describe('Grafo de imports en src/', () => {
+	it('detecta ciclos reales en un grafo sintético', () => {
+		const synthetic = new Map<string, string[]>([
+			['a.ts', ['b.ts']],
+			['b.ts', ['c.ts']],
+			['c.ts', ['a.ts']],
+		]);
+		expect(findImportCycles(synthetic, (p) => p)).toEqual(['a.ts -> b.ts -> c.ts -> a.ts']);
+	});
+
 	it('no contiene ciclos de imports estáticos', () => {
 		const files = collectSourceFiles(SRC_ROOT);
 		const graph = new Map<string, string[]>();
@@ -54,30 +91,7 @@ describe('Grafo de imports en src/', () => {
 			graph.set(file, extractStaticImports(file));
 		}
 
-		const state = new Map<string, 'visiting' | 'visited'>();
-		const cycles: string[] = [];
-
-		function dfs(node: string, stack: string[]) {
-			state.set(node, 'visiting');
-			for (const next of graph.get(node) ?? []) {
-				const nextState = state.get(next);
-				if (nextState === 'visiting') {
-					const idx = stack.indexOf(next);
-					const cycle = [...stack.slice(idx), next].map((p) => path.relative(SRC_ROOT, p));
-					cycles.push(cycle.join(' -> '));
-				} else if (!nextState) {
-					dfs(next, [...stack, next]);
-				}
-			}
-			state.set(node, 'visited');
-		}
-
-		for (const file of files) {
-			if (!state.get(file)) {
-				dfs(file, [file]);
-			}
-		}
-
+		const cycles = findImportCycles(graph, (p) => path.relative(SRC_ROOT, p));
 		expect(cycles).toEqual([]);
 	});
 });

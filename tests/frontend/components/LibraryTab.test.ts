@@ -210,7 +210,7 @@ describe('LibraryTab.vue', () => {
 		expect(charlyRow?.props('hasPlayed')).toBe(false);
 	});
 
-	it('triggers loadLibrary(true) on pull-to-refresh when scrolled at top, and ignores when scrolled down or scanning', async () => {
+	it('triggers lightweight library refresh (/library) on pull-to-refresh when scrolled at top, and ignores when scrolled down or scanning', async () => {
 		const fetchMock = vi.fn().mockResolvedValue({
 			ok: true,
 			json: () => Promise.resolve({ status: 'ok', data: mockTracks }),

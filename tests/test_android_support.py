@@ -768,25 +768,48 @@ def test_stage_android_assets_excludes_desktop_cli_and_binary_installers(tmp_pat
 
 
 def test_isolate_container_fixture_restores_env_and_settings(tmp_path: Path) -> None:
-	"""Verifica que el fixture autouse de conftest restaure os.environ y _settings tras mutaciones."""
+	"""Verifica en dos fases que el fixture autouse de conftest restaure os.environ y _settings entre tests."""
 	import os
+	import shutil
+	import subprocess
+	import sys
+	import textwrap
 
-	from app.core import config as config_mod
-	from tests.conftest import isolate_container
+	repo_root = Path(__file__).resolve().parent.parent
+	shutil.copy2(repo_root / "tests" / "conftest.py", tmp_path / "conftest.py")
+	probe_test = tmp_path / "test_isolation_probe.py"
+	probe_test.write_text(
+		textwrap.dedent(
+			"""
+			import os
+			from app.core import config as config_mod
 
-	orig_data_dir = os.environ.get("ROCKOLA_DATA_DIR")
-	gen = isolate_container.__wrapped__()
-	next(gen)
-	os.environ["ROCKOLA_DATA_DIR"] = str(tmp_path / "dirty_data")
-	os.environ["ROCKOLA_SKIP_FRONTEND_BUILD"] = "1"
-	config_mod.set_settings(config_mod.Settings(port=9999))
-	try:
-		gen.close()
-	except StopIteration:
-		pass
+			def test_phase_1_mutates_env_and_settings(tmp_path):
+				os.environ["ROCKOLA_DATA_DIR"] = str(tmp_path / "dirty_data")
+				os.environ["ROCKOLA_SKIP_FRONTEND_BUILD"] = "1"
+				config_mod.set_settings(config_mod.Settings(port=9999))
+				assert config_mod.get_settings().port == 9999
 
-	assert os.environ.get("ROCKOLA_DATA_DIR") == orig_data_dir
-	assert "ROCKOLA_SKIP_FRONTEND_BUILD" not in os.environ or orig_data_dir is not None
+			def test_phase_2_sees_clean_restored_state():
+				assert "ROCKOLA_SKIP_FRONTEND_BUILD" not in os.environ
+				assert config_mod.get_settings().port != 9999
+			"""
+		).lstrip(),
+		encoding="utf-8",
+	)
+
+	env = dict(os.environ)
+	env["PYTHONPATH"] = str(repo_root)
+	env.pop("ROCKOLA_SKIP_FRONTEND_BUILD", None)
+	proc = subprocess.run(
+		[sys.executable, "-m", "pytest", str(probe_test), "--no-cov", "-p", "no:cacheprovider", "-o", "addopts="],
+		cwd=tmp_path,
+		env=env,
+		capture_output=True,
+		text=True,
+		check=False,
+	)
+	assert proc.returncode == 0, f"Falló aislamiento de conftest:\n{proc.stdout}\n{proc.stderr}"
 
 
 @pytest.mark.asyncio
