@@ -294,4 +294,49 @@ describe('public/sw.js lifecycle & offline resilience', () => {
 			expect(readFileSync(iconFile).byteLength).toBeGreaterThan(0);
 		}
 	});
+
+	it('does not call skipWaiting if shell cache.addAll fails during install', async () => {
+		const { listeners, cachesMock, selfObj } = loadServiceWorkerEnv();
+		cachesMock.open.mockResolvedValueOnce({
+			addAll: vi.fn().mockRejectedValueOnce(new Error('network down')),
+			put: vi.fn(),
+			match: vi.fn(),
+		});
+
+		let installPromise: Promise<unknown> | undefined;
+		listeners.get('install')!({
+			waitUntil: (p: Promise<unknown>) => {
+				installPromise = p;
+			},
+		});
+
+		await expect(installPromise).rejects.toThrow('network down');
+		expect(selfObj.skipWaiting).not.toHaveBeenCalled();
+	});
+
+	it('falls back to cached index.html on offline SPA navigation before OFFLINE_HTML', async () => {
+		const fetchMock = vi.fn().mockRejectedValue(new Error('offline'));
+		const { listeners, cachesMock } = loadServiceWorkerEnv(fetchMock);
+		const cachedShell = new Response('<html>SPA SHELL</html>', {
+			status: 200,
+			headers: { 'Content-Type': 'text/html' },
+		});
+		cachesMock.match.mockImplementation(async (req: unknown) => {
+			if (req === './index.html') return cachedShell;
+			return undefined;
+		});
+
+		let responsePromise: Promise<Response> | undefined;
+		listeners.get('fetch')!({
+			request: { method: 'GET', url: 'http://localhost:1729/letras', mode: 'navigate' } as Request,
+			waitUntil: vi.fn(),
+			respondWith: (p: Promise<Response>) => {
+				responsePromise = p;
+			},
+		});
+
+		const res = await responsePromise!;
+		expect(res.status).toBe(200);
+		expect(await res.text()).toContain('SPA SHELL');
+	});
 });

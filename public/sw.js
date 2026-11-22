@@ -54,7 +54,7 @@ self.addEventListener('install', (event) => {
 	event.waitUntil(
 		caches
 			.open(CACHE_NAME)
-			.then((cache) => cache.addAll(SHELL_ASSETS).catch(() => {}))
+			.then((cache) => cache.addAll(SHELL_ASSETS))
 			.then(() => self.skipWaiting())
 	);
 });
@@ -112,9 +112,17 @@ self.addEventListener('fetch', (event) => {
 			.catch(async () => {
 				const cached = await caches.match(req);
 				if (cached) return cached;
-				return new Response(OFFLINE_HTML, {
+				if (req.mode === 'navigate') {
+					const spaFallback = (await caches.match('./index.html')) || (await caches.match('./'));
+					if (spaFallback) return spaFallback;
+					return new Response(OFFLINE_HTML, {
+						status: 503,
+						headers: { 'Content-Type': 'text/html; charset=utf-8' },
+					});
+				}
+				return new Response('Sin conexión', {
 					status: 503,
-					headers: { 'Content-Type': 'text/html; charset=utf-8' },
+					headers: { 'Content-Type': 'text/plain; charset=utf-8' },
 				});
 			})
 	);
