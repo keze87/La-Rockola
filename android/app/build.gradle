@@ -77,7 +77,13 @@ android {
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
+        releaseSmoke {
+            initWith release
+            signingConfig signingConfigs.debug
+            matchingFallbacks = ['release']
+        }
     }
+    testBuildType(project.findProperty('ROCKOLA_TEST_BUILD_TYPE')?.toString() ?: 'debug')
 }
 
 kotlin {

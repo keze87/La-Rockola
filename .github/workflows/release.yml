@@ -154,10 +154,24 @@ jobs:
                   python3 scripts/build_android.py --skip-frontend --flavor arm64 --release
 
             - name: Verify APK v2/v3/v4 signature with apksigner
+              env:
+                  EXPECTED_CERT_SHA256: ${{ secrets.ANDROID_SIGNING_CERT_SHA256 }}
               run: |
                   APKSIGNER="$(find "${ANDROID_HOME}/build-tools" -name apksigner | sort -V | tail -n 1)"
                   APK_FILE="$(ls android/app/build/outputs/apk/arm64/release/*.apk | head -n 1)"
-                  "$APKSIGNER" verify --print-certs "$APK_FILE"
+                  CERT_OUT="$("$APKSIGNER" verify --print-certs "$APK_FILE")"
+                  echo "$CERT_OUT"
+                  if [ -n "$EXPECTED_CERT_SHA256" ]; then
+                    ACTUAL_SHA256="$(printf '%s\n' "$CERT_OUT" | sed -n 's/.*SHA-256 digest: \([0-9a-fA-F:]*\).*/\1/p' | head -n 1 | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+                    NORM_EXPECTED="$(printf '%s' "$EXPECTED_CERT_SHA256" | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+                    if [ "$ACTUAL_SHA256" != "$NORM_EXPECTED" ]; then
+                      echo "❌ El fingerprint SHA-256 del certificado ($ACTUAL_SHA256) no coincide con ANDROID_SIGNING_CERT_SHA256 ($NORM_EXPECTED)" >&2
+                      exit 1
+                    fi
+                    echo "✅ Fingerprint SHA-256 de firma verificado: $ACTUAL_SHA256"
+                  else
+                    echo "⚠️ ANDROID_SIGNING_CERT_SHA256 no configurado; se omitió la comparación de fingerprint."
+                  fi
 
             - name: Upload Android Release Artifact & R8 Mapping
               uses: actions/upload-artifact@v4

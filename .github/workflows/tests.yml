@@ -132,9 +132,16 @@ jobs:
     android-instrumented:
         name: Android Instrumented Smoke Test (x86_64)
         runs-on: ubuntu-latest
+        timeout-minutes: 30
         steps:
             - name: Checkout repository
               uses: actions/checkout@v7
+
+            - name: Enable KVM for Android emulator
+              run: |
+                  echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+                  sudo udevadm control --reload-rules
+                  sudo udevadm trigger --name-match=kvm
 
             - name: Set up Java 21
               uses: actions/setup-java@v4
@@ -166,10 +173,34 @@ jobs:
                   npm run build
                   python3 scripts/build_android.py --skip-frontend --sync-only
 
-            - name: Run EmbeddedRuntimeSmokeTest on x86_64 emulator
+            - name: Cache Android AVD
+              uses: actions/cache@v4
+              id: avd-cache
+              with:
+                  path: |
+                      ~/.android/avd/*
+                      ~/.android/adb*
+                  key: avd-api34-x86_64-pixel6-v1
+
+            - name: Create AVD and generate snapshot for caching
+              if: steps.avd-cache.outputs.cache-hit != 'true'
               uses: reactivecircus/android-emulator-runner@v2
               with:
                   api-level: 34
                   arch: x86_64
                   profile: pixel_6
-                  script: ./android/gradlew -p android connectedX86_64DebugAndroidTest --no-daemon
+                  force-avd-creation: false
+                  emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+                  disable-animations: false
+                  script: echo "AVD snapshot listo"
+
+            - name: Run EmbeddedRuntimeSmokeTest on x86_64 emulator (R8 releaseSmoke)
+              uses: reactivecircus/android-emulator-runner@v2
+              with:
+                  api-level: 34
+                  arch: x86_64
+                  profile: pixel_6
+                  force-avd-creation: false
+                  emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+                  disable-animations: true
+                  script: ./android/gradlew -p android -PROCKOLA_TEST_BUILD_TYPE=releaseSmoke connectedX86_64ReleaseSmokeAndroidTest --no-daemon
