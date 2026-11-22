@@ -5,7 +5,9 @@ Pruebas unitarias para la portada radio.jpg y los locutores dinámicos en cabina
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from app.core.container import AppContainer, set_container
 from app.domain.playback.orchestrator import PlaybackOrchestrator
@@ -229,3 +231,88 @@ class TestRadioLocutoresAndCover:
 				db_path=db_path,
 			)
 			assert fortuna_bytes == b"ID3fortuna"
+
+
+def test_cancel_pregeneration_cleans_sidecar_subtitles(tmp_path: Path) -> None:
+	"""cancel_pregeneration debe borrar .lrc/.srt/.ass viejos para no mezclar letras entre segmentos."""
+	from app.domain.radio.service import RadioService
+
+	svc = RadioService()
+	pre_mp3 = tmp_path / "radio_pregenerated.mp3"
+	svc.pregenerated_path = pre_mp3
+	for ext in (".mp3", ".lrc", ".srt", ".ass"):
+		pre_mp3.with_suffix(ext).write_text("viejo", encoding="utf-8")
+
+	svc.cancel_pregeneration()
+
+	for ext in (".mp3", ".lrc", ".srt", ".ass"):
+		assert not pre_mp3.with_suffix(ext).exists()
+
+
+def test_assemble_announcement_audio_removes_stale_ass_and_subtitles(tmp_path: Path) -> None:
+	"""assemble_announcement_audio debe limpiar .ass/.lrc/.srt previos antes de guardar los actuales."""
+	from app.domain.radio.service import assemble_announcement_audio
+
+	out_mp3 = tmp_path / "radio_announcement.mp3"
+	stale_ass = out_mp3.with_suffix(".ass")
+	stale_ass.write_text("[Events]\nViejo ASS", encoding="utf-8")
+
+	fake_mp3 = b"ID3\x04\x00\x00\x00\x00\x00\x00" + b"\xff\xfb\x90\x00" * 20
+	with patch("app.domain.radio.service.find_binary", return_value=None):
+		ok = assemble_announcement_audio(
+			segments=[(fake_mp3, "intro", "es-AR-TomasNeural", "Hola gente", [(0.0, 1.0, "Hola gente")])],
+			output_path=out_mp3,
+		)
+
+	assert ok is True
+	assert not stale_ass.exists()
+	assert out_mp3.with_suffix(".lrc").exists()
+
+
+@pytest.mark.asyncio
+async def test_toggle_dj_carpincho_cancels_stale_radio_pregeneration() -> None:
+	"""Cambiar DJ Bara debe invalidar cualquier locución pregenerada para no confundir el cierre."""
+	from app.api.commands import _cmd_toggle_dj_carpincho
+	from app.api.schemas import CommandRequest
+
+	state = MagicMock()
+	state.dj_carpincho_enabled = False
+	state.current_track = "/music/tema.mp3"
+	state.dj_next_track = {"path": "/music/otro.mp3"}
+
+	req = CommandRequest(cmd="toggle_dj_carpincho", state=True)
+	await _cmd_toggle_dj_carpincho(state, req, MagicMock())
+	state._cancel_radio_pregeneration.assert_called_once()
+
+	state._cancel_radio_pregeneration.reset_mock()
+	req_off = CommandRequest(cmd="toggle_dj_carpincho", state=False)
+	await _cmd_toggle_dj_carpincho(state, req_off, MagicMock())
+	state._cancel_radio_pregeneration.assert_called_once()
+	assert state.dj_next_track is None
+
+
+@pytest.mark.asyncio
+async def test_serve_lrc_for_radio_sets_no_store_cache_control(tmp_path: Path) -> None:
+	"""El endpoint /lrc para locuciones radiales debe usar no-store para que WebView no cachee letras viejas."""
+	from types import SimpleNamespace
+
+	from app.api.media import serve_lrc
+
+	ann_mp3 = tmp_path / "radio_announcement.mp3"
+	ann_lrc = tmp_path / "radio_announcement.lrc"
+	ann_mp3.write_bytes(b"mp3")
+	ann_lrc.write_text("[00:00.00] Segmento fresco\n", encoding="utf-8")
+
+	fake_state = SimpleNamespace(
+		is_radio_announcement=lambda p: str(p) == str(ann_mp3),
+		path_to_id={},
+		tracks_cache=[],
+		radio_pregenerated_path=str(tmp_path / "radio_pregenerated.mp3"),
+	)
+	fake_container = MagicMock()
+	fake_container.ensure_orchestrator.return_value = fake_state
+
+	with patch("app.api.media.get_container", return_value=fake_container):
+		resp = await serve_lrc(path=str(ann_mp3))
+
+	assert "no-store" in resp.headers.get("cache-control", "")

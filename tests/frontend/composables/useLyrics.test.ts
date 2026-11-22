@@ -302,4 +302,30 @@ Dialogue: 0,0:02:14.81,0:02:17.31,Default,,0,0,0,,{\\blur3}{\\kf0}A{\\k3} {\\kf1
 		const activeMan = activeSyls?.find((s) => localTimePos.value >= s.start && localTimePos.value < s.end);
 		expect(activeMan?.text.trim()).toBe('man');
 	});
+
+	it('reloads radio announcement lyrics with cache-buster even when path matches currentLoadedPath', async () => {
+		const localTimePos = ref(0);
+		const { lyrics, loadLyrics } = useLyrics({ localTimePos });
+
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValueOnce({
+				ok: true,
+				text: () => Promise.resolve('[00:00.00] Primer segmento\n'),
+			} as unknown as Response)
+			.mockResolvedValueOnce({
+				ok: true,
+				text: () => Promise.resolve('[00:00.00] Segundo segmento\n'),
+			} as unknown as Response);
+		global.fetch = fetchMock;
+
+		const radioPath = '/data/user/0/ar.carpincho.rockola/cache/radio_announcement.mp3';
+		await loadLyrics(radioPath);
+		expect(lyrics.value.map((l) => l.text)).toEqual(['Primer segmento']);
+
+		await loadLyrics(radioPath);
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+		expect(fetchMock.mock.calls[1][0]).toContain('&_t=');
+		expect(lyrics.value.map((l) => l.text)).toEqual(['Segundo segmento']);
+	});
 });

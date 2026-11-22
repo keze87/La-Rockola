@@ -278,7 +278,11 @@ async def serve_lrc(
 	if not target_path or not target_path.exists():
 		return Response(status_code=404)
 
-	headers = {"Cache-Control": "no-cache"} if is_radio else {"Cache-Control": "public, max-age=600, must-revalidate"}
+	headers = (
+		{"Cache-Control": "no-store, no-cache, must-revalidate"}
+		if is_radio
+		else {"Cache-Control": "public, max-age=600, must-revalidate"}
+	)
 	return FileResponse(
 		target_path,
 		media_type="text/plain; charset=utf-8",

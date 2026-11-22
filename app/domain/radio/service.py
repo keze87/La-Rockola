@@ -149,6 +149,11 @@ def assemble_announcement_audio(
 	"""
 	out_p = Path(output_path)
 	out_p.parent.mkdir(parents=True, exist_ok=True)
+	for ext in (".ass", ".lrc", ".srt"):
+		try:
+			out_p.with_suffix(ext).unlink(missing_ok=True)
+		except Exception:
+			pass
 	work_dir = Path(tempfile.mkdtemp(prefix="rockola_announcement_"))
 	tmp_dest = out_p.parent / f".tmp_{out_p.name}"
 
@@ -1116,8 +1121,9 @@ class RadioService:
 		if self.pregenerated_path:
 			try:
 				p = Path(self.pregenerated_path)
-				if p.exists():
-					p.unlink(missing_ok=True)
+				for candidate in (p, *(p.with_suffix(ext) for ext in (".lrc", ".srt", ".ass"))):
+					if candidate.exists():
+						candidate.unlink(missing_ok=True)
 			except Exception as e:
 				logger.debug(f"No se pudo limpiar archivo de pregeneración parcial: {e}")
 
@@ -1332,7 +1338,7 @@ class RadioService:
 					res_notify = on_synthesis_status(True)
 					if asyncio.iscoroutine(res_notify):
 						await res_notify
-				await asyncio.wait_for(asyncio.shield(self.pregeneration_task), timeout=3.0)
+				await asyncio.wait_for(asyncio.shield(self.pregeneration_task), timeout=8.0)
 				if self.pregenerated_announcement:
 					pre = self.pregenerated_announcement
 					self.pregenerated_announcement = None

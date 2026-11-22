@@ -310,8 +310,13 @@ export function useLyrics(player: { localTimePos: Ref<number> }) {
 		return ' ';
 	});
 
+	function isRadioAnnouncementPath(path: string): boolean {
+		return path.includes('radio_announcement') || path.includes('radio_pregenerated');
+	}
+
 	async function loadLyrics(path: string | null) {
-		if (path === currentLoadedPath) {
+		const isRadio = Boolean(path && isRadioAnnouncementPath(path));
+		if (path === currentLoadedPath && !isRadio) {
 			if (currentFetchPromise) await currentFetchPromise;
 			return;
 		}
@@ -322,7 +327,10 @@ export function useLyrics(player: { localTimePos: Ref<number> }) {
 
 		const fetchTask = (async () => {
 			try {
-				const res = await fetch(apiUrl('/lrc?path=' + encodeURIComponent(path)));
+				const query = isRadio
+					? `/lrc?path=${encodeURIComponent(path)}&_t=${Date.now()}`
+					: `/lrc?path=${encodeURIComponent(path)}`;
+				const res = await fetch(apiUrl(query), isRadio ? { cache: 'no-store' } : undefined);
 
 				if (res.ok && typeof res.text === 'function') {
 					const text = await res.text();
