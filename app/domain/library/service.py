@@ -263,7 +263,35 @@ class LibraryService:
 				if validation.status != "ok":
 					logger.warning("Carpeta SAF no accesible (%s): %s", validation.status, target_dir)
 					continue
-				for entry in backend.iter_audio_files(str(target_dir), audio_extensions):
+				outcome = backend.scan_audio_files(str(target_dir), audio_extensions)
+				if outcome.status in (
+					"permission_denied",
+					"storage_unavailable",
+					"unsupported_provider",
+					"provider_error",
+				):
+					logger.warning(
+						"Error de escaneo SAF (%s) en %s: %s",
+						outcome.status,
+						target_dir,
+						outcome.error or "sin detalle",
+					)
+					if state:
+						state.folder_status = outcome.status
+						state.folder_error = outcome.error or f"No se pudo leer la carpeta ({outcome.status})."
+					continue
+				if outcome.status == "partial_failure":
+					logger.warning(
+						"Escaneo SAF parcial en %s (%d subcarpetas fallidas): %s",
+						target_dir,
+						len(outcome.failed_dirs),
+						outcome.error or "",
+					)
+					if state:
+						state.folder_error = (
+							f"No se pudieron leer {len(outcome.failed_dirs)} subcarpeta(s): {outcome.error or ''}"
+						).strip()
+				for entry in outcome.files:
 					raw_entries.append((entry.path, entry.mtime, entry.size))
 					if state and len(raw_entries) % 50 == 0:
 						state.scan_total = len(raw_entries)

@@ -193,8 +193,18 @@ class ScannedAudioFile:
 
 	path: str
 	name: str
-	mtime: float
-	size: int
+	mtime: float | None
+	size: int | None
+
+
+@dataclass(slots=True)
+class SafScanOutcome:
+	"""Resultado estructurado de un escaneo SAF diferenciando vacío de errores de acceso."""
+
+	status: str
+	files: list[ScannedAudioFile]
+	failed_dirs: list[str]
+	error: str | None = None
 
 
 class _NamedBinaryStream:
@@ -342,9 +352,20 @@ class AndroidSafStorageBackend:
 	"""Backend respaldado por ContentResolver/DocumentsContract vía AndroidStorageBridge."""
 
 	@staticmethod
-	def _norm_mtime(raw_mtime: Any) -> float:
-		val = float(raw_mtime or 0.0)
+	def _norm_mtime(raw_mtime: Any) -> float | None:
+		if raw_mtime is None:
+			return None
+		val = float(raw_mtime)
+		if val < 0:
+			return None
 		return val / 1000.0 if val > 1e11 else val
+
+	@staticmethod
+	def _norm_size(raw_size: Any) -> int | None:
+		if raw_size is None:
+			return None
+		val = int(raw_size)
+		return val if val >= 0 else None
 
 	def validate_root(self, root: str | None) -> FolderValidationResult:
 		cleaned = (root or "").strip()
@@ -374,15 +395,31 @@ class AndroidSafStorageBackend:
 				error=str(exc),
 			)
 
-	def iter_audio_files(self, root: str, audio_extensions: set[str]) -> list[ScannedAudioFile]:
+	def scan_audio_files(self, root: str, audio_extensions: set[str]) -> SafScanOutcome:
 		bridge = get_android_storage_bridge()
 		if bridge is None:
-			return []
+			return SafScanOutcome(
+				status="storage_unavailable",
+				files=[],
+				failed_dirs=[],
+				error="El puente nativo SAF de Android no está disponible.",
+			)
+		status = "success_empty"
+		failed_dirs: list[str] = []
+		error: str | None = None
 		try:
-			items = json.loads(str(bridge.listAudioFilesJson(str(root))))
+			if hasattr(bridge, "scanAudioFilesJson"):
+				payload = json.loads(str(bridge.scanAudioFilesJson(str(root))))
+				status = str(payload.get("status") or "provider_error")
+				items = payload.get("files") or []
+				failed_dirs = [str(d) for d in (payload.get("failed_dirs") or [])]
+				error = payload.get("error")
+			else:
+				items = json.loads(str(bridge.listAudioFilesJson(str(root))))
+				status = "success_with_files" if items else "success_empty"
 		except Exception as exc:
 			logger.warning("Error enumerando carpeta SAF %s: %s", root, exc)
-			return []
+			return SafScanOutcome(status="provider_error", files=[], failed_dirs=[], error=str(exc))
 
 		found: list[ScannedAudioFile] = []
 		for item in items:
@@ -396,10 +433,15 @@ class AndroidSafStorageBackend:
 					path=uri,
 					name=name,
 					mtime=self._norm_mtime(item.get("mtime")),
-					size=int(item.get("size") or 0),
+					size=self._norm_size(item.get("size")),
 				)
 			)
-		return found
+		if status == "success_empty" and found:
+			status = "success_with_files"
+		return SafScanOutcome(status=status, files=found, failed_dirs=failed_dirs, error=error)
+
+	def iter_audio_files(self, root: str, audio_extensions: set[str]) -> list[ScannedAudioFile]:
+		return self.scan_audio_files(root, audio_extensions).files
 
 	def _is_saf_ref_authorized(self, track_ref: str | Path) -> bool:
 		uri = str(track_ref)

@@ -330,3 +330,55 @@ async def test_scan_library_on_android_returns_unconfigured_when_no_music_dir(
 	res = await library_api.scan_library()
 	assert res["status"] == "unconfigured"
 	assert res["folder_status"] == "unconfigured"
+
+
+def test_saf_scan_outcome_distinguishes_empty_from_provider_error_and_unknown_size(
+	monkeypatch: pytest.MonkeyPatch,
+) -> None:
+	"""AndroidSafStorageBackend.scan_audio_files no confunde error de proveedor con carpeta vacía ni 0 bytes."""
+	from app.infrastructure.storage.backend import AndroidSafStorageBackend
+
+	tree_uri = "content://com.android.externalstorage.documents/tree/ABCD-1234%3AMusic"
+	track_uri = f"{tree_uri}/document/ABCD-1234%3AMusic%2Fdesconocido.mp3"
+
+	class _ErrorBridge:
+		def scanAudioFilesJson(self, _tree: str) -> str:
+			return json.dumps(
+				{
+					"status": "provider_error",
+					"files": [],
+					"failed_dirs": [],
+					"error": "Fallo del ContentProvider",
+				}
+			)
+
+	class _UnknownMetaBridge:
+		def scanAudioFilesJson(self, _tree: str) -> str:
+			return json.dumps(
+				{
+					"status": "success_with_files",
+					"files": [
+						{
+							"uri": track_uri,
+							"name": "desconocido.mp3",
+							"size": None,
+							"mtime": None,
+						}
+					],
+					"failed_dirs": [],
+					"error": None,
+				}
+			)
+
+	backend = AndroidSafStorageBackend()
+	with patch("app.infrastructure.storage.backend.get_android_storage_bridge", return_value=_ErrorBridge()):
+		err_outcome = backend.scan_audio_files(tree_uri, {".mp3"})
+	assert err_outcome.status == "provider_error"
+	assert err_outcome.error == "Fallo del ContentProvider"
+
+	with patch("app.infrastructure.storage.backend.get_android_storage_bridge", return_value=_UnknownMetaBridge()):
+		ok_outcome = backend.scan_audio_files(tree_uri, {".mp3"})
+	assert ok_outcome.status == "success_with_files"
+	assert len(ok_outcome.files) == 1
+	assert ok_outcome.files[0].size is None
+	assert ok_outcome.files[0].mtime is None

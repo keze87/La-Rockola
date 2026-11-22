@@ -11,6 +11,8 @@ private class FakeSafProvider(
     private val roots: Map<String, SafDocumentEntry?> = emptyMap(),
     private val documents: Map<String, SafDocumentEntry?> = emptyMap(),
     private val throwSecurityOnTree: Set<String> = emptySet(),
+    private val throwSecurityOnDir: Set<String> = emptySet(),
+    private val throwIoOnDir: Set<String> = emptySet(),
     private val treeChildren: Map<Pair<String, String>, List<SafDocumentEntry>> = emptyMap(),
     private val textFiles: Map<String, String> = emptyMap(),
 ) : SafTreeProvider {
@@ -27,8 +29,11 @@ private class FakeSafProvider(
 
     override fun queryDocumentInfo(treeUri: String, docUri: String): SafDocumentEntry? = documents[docUri]
 
-    override fun listChildren(treeUri: String, parentDocumentId: String): List<SafDocumentEntry> =
-        treeChildren[Pair(treeUri, parentDocumentId)].orEmpty()
+    override fun listChildren(treeUri: String, parentDocumentId: String): List<SafDocumentEntry> {
+        if (parentDocumentId in throwSecurityOnDir) throw SecurityException("Subcarpeta sin permiso")
+        if (parentDocumentId in throwIoOnDir) throw IllegalStateException("Error del proveedor")
+        return treeChildren[Pair(treeUri, parentDocumentId)].orEmpty()
+    }
 
     override fun readDocumentText(docUri: String): String? = textFiles[docUri]
 }
@@ -191,5 +196,68 @@ class AndroidStorageBridgeTest {
             ),
         )
         org.junit.Assert.assertFalse(revokedBrowser.isAuthorizedDocumentUri(validSong, listOf(treeOk)))
+    }
+
+    @Test
+    fun `scanAudioFiles diferencia carpeta vacia, permiso revocado, SD ausente, fallo parcial y tamano desconocido`() {
+        val treeOk = "content://com.android.externalstorage.documents/tree/ABCD-1234%3AMusic"
+        val rootDocId = "ABCD-1234:Music"
+        val subBadId = "ABCD-1234:Music/Prohibida"
+        val unknownSizeTrack = "$treeOk/document/ABCD-1234%3AMusic%2Fstream.flac"
+
+        // 1. Carpeta válida pero vacía -> SUCCESS_EMPTY
+        val emptyRes = SafTreeBrowser(
+            FakeSafProvider(
+                validTreeUris = setOf(treeOk),
+                persistedTrees = setOf(treeOk),
+                roots = mapOf(
+                    treeOk to SafDocumentEntry(rootDocId, "Music", SafTreeBrowser.MIME_TYPE_DIR, -1L, -1L, treeOk),
+                ),
+            ),
+        ).scanAudioFiles(treeOk)
+        assertEquals(SafScanStatus.SUCCESS_EMPTY, emptyRes.status)
+        assertTrue(emptyRes.files.isEmpty())
+
+        // 2. Permiso revocado -> PERMISSION_DENIED (no SUCCESS_EMPTY)
+        val deniedRes = SafTreeBrowser(
+            FakeSafProvider(validTreeUris = setOf(treeOk), persistedTrees = emptySet()),
+        ).scanAudioFiles(treeOk)
+        assertEquals(SafScanStatus.PERMISSION_DENIED, deniedRes.status)
+
+        // 3. Tarjeta SD retirada -> STORAGE_UNAVAILABLE
+        val unavailRes = SafTreeBrowser(
+            FakeSafProvider(validTreeUris = setOf(treeOk), persistedTrees = setOf(treeOk), roots = emptyMap()),
+        ).scanAudioFiles(treeOk)
+        assertEquals(SafScanStatus.STORAGE_UNAVAILABLE, unavailRes.status)
+
+        // 4. Subcarpeta inaccesible -> PARTIAL_FAILURE preservando las canciones leídas y tamaño desconocido (-1L)
+        val partialRes = SafTreeBrowser(
+            FakeSafProvider(
+                validTreeUris = setOf(treeOk),
+                persistedTrees = setOf(treeOk),
+                roots = mapOf(
+                    treeOk to SafDocumentEntry(rootDocId, "Music", SafTreeBrowser.MIME_TYPE_DIR, -1L, -1L, treeOk),
+                ),
+                throwSecurityOnDir = setOf(subBadId),
+                treeChildren = mapOf(
+                    Pair(treeOk, rootDocId) to listOf(
+                        SafDocumentEntry(subBadId, "Prohibida", SafTreeBrowser.MIME_TYPE_DIR, -1L, -1L, "$treeOk/sub"),
+                        SafDocumentEntry(
+                            "ABCD-1234:Music/stream.flac",
+                            "stream.flac",
+                            "audio/flac",
+                            -1L,
+                            -1L,
+                            unknownSizeTrack,
+                        ),
+                    ),
+                ),
+            ),
+        ).scanAudioFiles(treeOk)
+        assertEquals(SafScanStatus.PARTIAL_FAILURE, partialRes.status)
+        assertEquals(1, partialRes.files.size)
+        assertEquals(listOf(subBadId), partialRes.failedDirs)
+        assertEquals(-1L, partialRes.files[0].size)
+        assertTrue(partialRes.files[0].mtimeSec < 0.0)
     }
 }

@@ -44,6 +44,18 @@ data class SafDocumentEntry(
     val uri: String,
 )
 
+enum class SafScanStatus {
+    SUCCESS_EMPTY,
+    SUCCESS_WITH_FILES,
+    PERMISSION_DENIED,
+    STORAGE_UNAVAILABLE,
+    UNSUPPORTED_PROVIDER,
+    PARTIAL_FAILURE,
+    PROVIDER_ERROR;
+
+    fun wireName(): String = name.lowercase()
+}
+
 data class SafAudioTrackEntry(
     val uri: String,
     val name: String,
@@ -51,6 +63,13 @@ data class SafAudioTrackEntry(
     val size: Long,
     val mtimeSec: Double,
     val mimeType: String,
+)
+
+data class SafScanResult(
+    val status: SafScanStatus,
+    val files: List<SafAudioTrackEntry>,
+    val failedDirs: List<String> = emptyList(),
+    val error: String? = null,
 )
 
 interface SafTreeProvider {
@@ -130,14 +149,41 @@ class SafTreeBrowser(
         }
     }
 
-    fun listAudioFiles(treeUriString: String): List<SafAudioTrackEntry> {
+    fun scanAudioFiles(treeUriString: String): SafScanResult {
+        val validation = validateTreeUri(treeUriString)
+        when (validation.status) {
+            SafFolderStatus.OK -> Unit
+            SafFolderStatus.PERMISSION_REVOKED ->
+                return SafScanResult(SafScanStatus.PERMISSION_DENIED, emptyList(), error = validation.error)
+            SafFolderStatus.UNSUPPORTED_PROVIDER ->
+                return SafScanResult(SafScanStatus.UNSUPPORTED_PROVIDER, emptyList(), error = validation.error)
+            SafFolderStatus.UNCONFIGURED, SafFolderStatus.UNAVAILABLE ->
+                return SafScanResult(SafScanStatus.STORAGE_UNAVAILABLE, emptyList(), error = validation.error)
+        }
+
         val root = try {
             provider.queryRootInfo(treeUriString)
-        } catch (_: Exception) {
-            null
-        } ?: return emptyList()
+        } catch (sec: SecurityException) {
+            return SafScanResult(
+                SafScanStatus.PERMISSION_DENIED,
+                emptyList(),
+                error = sec.message ?: "Permiso SAF revocado.",
+            )
+        } catch (e: Exception) {
+            return SafScanResult(
+                SafScanStatus.PROVIDER_ERROR,
+                emptyList(),
+                error = e.message ?: "Error consultando raíz SAF.",
+            )
+        } ?: return SafScanResult(
+            SafScanStatus.STORAGE_UNAVAILABLE,
+            emptyList(),
+            error = "La carpeta seleccionada no está disponible.",
+        )
 
         val collected = ArrayList<SafAudioTrackEntry>()
+        val failedDirs = ArrayList<String>()
+        var firstDirError: String? = null
         val visitedDirs = HashSet<String>()
         val queue = ArrayDeque<Pair<String, String>>()
         queue.add(Pair(root.documentId, ""))
@@ -147,8 +193,12 @@ class SafTreeBrowser(
             val (dirDocId, prefix) = queue.removeFirst()
             val children = try {
                 provider.listChildren(treeUriString, dirDocId)
-            } catch (_: Exception) {
-                emptyList()
+            } catch (e: Exception) {
+                failedDirs.add(dirDocId)
+                if (firstDirError == null) {
+                    firstDirError = e.message ?: e.javaClass.simpleName
+                }
+                continue
             }
             for (child in children) {
                 if (child.mimeType == MIME_TYPE_DIR) {
@@ -170,14 +220,21 @@ class SafTreeBrowser(
                         name = child.name,
                         relativePath = relPath,
                         size = child.size,
-                        mtimeSec = child.lastModifiedMs / 1000.0,
+                        mtimeSec = if (child.lastModifiedMs >= 0L) child.lastModifiedMs / 1000.0 else -1.0,
                         mimeType = child.mimeType,
                     ),
                 )
             }
         }
-        return collected
+        val status = when {
+            failedDirs.isNotEmpty() -> SafScanStatus.PARTIAL_FAILURE
+            collected.isEmpty() -> SafScanStatus.SUCCESS_EMPTY
+            else -> SafScanStatus.SUCCESS_WITH_FILES
+        }
+        return SafScanResult(status, collected, failedDirs, firstDirError)
     }
+
+    fun listAudioFiles(treeUriString: String): List<SafAudioTrackEntry> = scanAudioFiles(treeUriString).files
 
     fun isAuthorizedDocumentUri(
         docUriString: String,
@@ -374,8 +431,8 @@ private class AndroidSafTreeProvider(private val context: Context) : SafTreeProv
         val docId = cursor.getString(0) ?: ""
         val name = cursor.getString(1) ?: ""
         val mime = cursor.getString(2) ?: "application/octet-stream"
-        val size = if (cursor.isNull(3)) 0L else cursor.getLong(3).coerceAtLeast(0L)
-        val modified = if (cursor.isNull(4)) 0L else cursor.getLong(4).coerceAtLeast(0L)
+        val size = if (cursor.isNull(3)) -1L else cursor.getLong(3).coerceAtLeast(0L)
+        val modified = if (cursor.isNull(4)) -1L else cursor.getLong(4).coerceAtLeast(0L)
         return SafDocumentEntry(
             documentId = docId,
             name = name,
@@ -440,6 +497,38 @@ object AndroidStorageBridge {
     }
 
     @JvmStatic
+    fun scanAudioFilesJson(treeUriString: String): String {
+        val activeBrowser = browser ?: return JSONObject().apply {
+            put("status", SafScanStatus.STORAGE_UNAVAILABLE.wireName())
+            put("files", JSONArray())
+            put("failed_dirs", JSONArray())
+            put("error", "AndroidStorageBridge no inicializado")
+        }.toString()
+        val res = activeBrowser.scanAudioFiles(treeUriString)
+        val arr = JSONArray()
+        for (entry in res.files) {
+            arr.put(
+                JSONObject().apply {
+                    put("uri", entry.uri)
+                    put("name", entry.name)
+                    put("relative_path", entry.relativePath)
+                    put("size", if (entry.size >= 0L) entry.size else JSONObject.NULL)
+                    put("mtime", if (entry.mtimeSec >= 0.0) entry.mtimeSec else JSONObject.NULL)
+                    put("mime_type", entry.mimeType)
+                },
+            )
+        }
+        val failedArr = JSONArray()
+        for (d in res.failedDirs) failedArr.put(d)
+        return JSONObject().apply {
+            put("status", res.status.wireName())
+            put("files", arr)
+            put("failed_dirs", failedArr)
+            put("error", res.error ?: JSONObject.NULL)
+        }.toString()
+    }
+
+    @JvmStatic
     fun listAudioFilesJson(treeUriString: String): String {
         val activeBrowser = browser ?: return "[]"
         val files = activeBrowser.listAudioFiles(treeUriString)
@@ -450,8 +539,8 @@ object AndroidStorageBridge {
                     put("uri", entry.uri)
                     put("name", entry.name)
                     put("relative_path", entry.relativePath)
-                    put("size", entry.size)
-                    put("mtime", entry.mtimeSec)
+                    put("size", if (entry.size >= 0L) entry.size else JSONObject.NULL)
+                    put("mtime", if (entry.mtimeSec >= 0.0) entry.mtimeSec else JSONObject.NULL)
                     put("mime_type", entry.mimeType)
                 },
             )
@@ -472,13 +561,13 @@ object AndroidStorageBridge {
             ctx.contentResolver.query(Uri.parse(docUriString), projection, null, null, null)?.use { cursor ->
                 if (!cursor.moveToFirst()) return null
                 val name = cursor.getString(0) ?: ""
-                val size = if (cursor.isNull(1)) 0L else cursor.getLong(1).coerceAtLeast(0L)
-                val mtimeMs = if (cursor.isNull(2)) 0L else cursor.getLong(2).coerceAtLeast(0L)
+                val size: Any = if (cursor.isNull(1)) JSONObject.NULL else cursor.getLong(1).coerceAtLeast(0L)
+                val mtime: Any = if (cursor.isNull(2)) JSONObject.NULL else cursor.getLong(2).coerceAtLeast(0L) / 1000.0
                 val mime = cursor.getString(3) ?: "application/octet-stream"
                 JSONObject().apply {
                     put("name", name)
                     put("size", size)
-                    put("mtime", mtimeMs / 1000.0)
+                    put("mtime", mtime)
                     put("mime_type", mime)
                 }.toString()
             }
