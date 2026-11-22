@@ -367,4 +367,49 @@ class AndroidStorageBridgeTest {
         assertTrue(afterCancel.files.isEmpty())
         assertEquals(false, afterCancel.hasMore)
     }
+
+    @Test
+    fun `readSiblingText cachea indice de letras por carpeta y evita re-listar en cada cancion`() {
+        val treeUri = "content://com.android.externalstorage.documents/tree/primary%3AMusic"
+        val doc1 = "$treeUri/document/primary%3AMusic%2Ftema1.mp3"
+        val doc2 = "$treeUri/document/primary%3AMusic%2Ftema2.mp3"
+        val lrc1 = "$treeUri/document/primary%3AMusic%2Ftema1.lrc"
+        var listCalls = 0
+        var queryDocCalls = 0
+
+        val baseProvider = FakeSafProvider(
+            validTreeUris = setOf(treeUri),
+            persistedTrees = setOf(treeUri),
+            treeChildren = mapOf(
+                Pair(treeUri, "primary:Music") to listOf(
+                    SafDocumentEntry("primary:Music/tema1.mp3", "tema1.mp3", "audio/mpeg", 1024L, 100L, doc1),
+                    SafDocumentEntry("primary:Music/tema2.mp3", "tema2.mp3", "audio/mpeg", 1024L, 100L, doc2),
+                    SafDocumentEntry("primary:Music/tema1.lrc", "tema1.lrc", "text/plain", 64L, 100L, lrc1),
+                ),
+            ),
+            textFiles = mapOf(lrc1 to "[00:01.00]Tema 1"),
+        )
+        val countingProvider = object : SafTreeProvider by baseProvider {
+            override fun listChildren(treeUri: String, parentDocumentId: String): List<SafDocumentEntry> {
+                listCalls += 1
+                return baseProvider.listChildren(treeUri, parentDocumentId)
+            }
+
+            override fun queryDocumentInfo(treeUri: String, docUri: String): SafDocumentEntry? {
+                queryDocCalls += 1
+                return baseProvider.queryDocumentInfo(treeUri, docUri)
+            }
+        }
+
+        val browser = SafTreeBrowser(countingProvider)
+        val found1 = browser.readSiblingText(doc1, listOf(".ass", ".lrc"))
+        assertEquals("[00:01.00]Tema 1", found1?.content)
+        val missing2 = browser.readSiblingText(doc2, listOf(".ass", ".lrc"))
+        assertNull(missing2)
+        val found1Again = browser.readSiblingText(doc1, listOf(".ass", ".lrc"))
+        assertEquals("[00:01.00]Tema 1", found1Again?.content)
+
+        assertEquals(1, listCalls)
+        assertEquals(0, queryDocCalls)
+    }
 }

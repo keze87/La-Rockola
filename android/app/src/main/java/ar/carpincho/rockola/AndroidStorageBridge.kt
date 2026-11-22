@@ -121,12 +121,22 @@ class SafTreeBrowser(
         @Volatile var cancelled: Boolean = false,
     )
 
+    private data class CachedDirLyrics(
+        val fetchedAtMs: Long,
+        val byLowerName: Map<String, String>,
+    )
+
     private val cacheLock = Any()
     private var activeTreeForCache: String? = null
     private val parentCache = object : LinkedHashMap<String, Triple<String, String, String>>(128, 0.75f, true) {
         override fun removeEldestEntry(
             eldest: MutableMap.MutableEntry<String, Triple<String, String, String>>?,
         ): Boolean = size > maxParentCacheSize.coerceAtLeast(16)
+    }
+    private val dirLyricsCache = object : LinkedHashMap<String, CachedDirLyrics>(64, 0.75f, true) {
+        override fun removeEldestEntry(
+            eldest: MutableMap.MutableEntry<String, CachedDirLyrics>?,
+        ): Boolean = size > 128
     }
     private val scanSessions = ConcurrentHashMap<String, ScanSession>()
 
@@ -136,6 +146,7 @@ class SafTreeBrowser(
         synchronized(cacheLock) {
             if (activeTreeForCache != null && activeTreeForCache != treeUri) {
                 parentCache.clear()
+                dirLyricsCache.clear()
             }
             activeTreeForCache = treeUri
             parentCache[docUri] = Triple(treeUri, dirDocId, name)
@@ -145,12 +156,50 @@ class SafTreeBrowser(
     private fun getParentCache(docUri: String): Triple<String, String, String>? =
         synchronized(cacheLock) { parentCache[docUri] }
 
+    private fun indexDirLyrics(treeUri: String, dirDocId: String, children: List<SafDocumentEntry>): Map<String, String> {
+        val map = HashMap<String, String>()
+        for (child in children) {
+            if (child.mimeType == MIME_TYPE_DIR) continue
+            val lower = child.name.lowercase()
+            if (lower.endsWith(".ass") || lower.endsWith(".lrc")) {
+                map[lower] = child.uri
+            }
+        }
+        synchronized(cacheLock) {
+            if (activeTreeForCache != null && activeTreeForCache != treeUri) {
+                parentCache.clear()
+                dirLyricsCache.clear()
+            }
+            activeTreeForCache = treeUri
+            dirLyricsCache["$treeUri|$dirDocId"] = CachedDirLyrics(System.currentTimeMillis(), map)
+        }
+        return map
+    }
+
+    private fun getOrFetchDirLyrics(treeUri: String, dirDocId: String): Map<String, String> {
+        val now = System.currentTimeMillis()
+        val key = "$treeUri|$dirDocId"
+        synchronized(cacheLock) {
+            val cached = dirLyricsCache[key]
+            if (cached != null && (now - cached.fetchedAtMs) < 120_000L) {
+                return cached.byLowerName
+            }
+        }
+        val children = try {
+            provider.listChildren(treeUri, dirDocId)
+        } catch (_: Exception) {
+            return emptyMap()
+        }
+        return indexDirLyrics(treeUri, dirDocId, children)
+    }
+
     fun startScanSession(treeUriString: String): String {
         val sessionId = UUID.randomUUID().toString()
         synchronized(cacheLock) {
             if (activeTreeForCache != null && activeTreeForCache != treeUriString) {
                 parentCache.clear()
             }
+            dirLyricsCache.clear()
             activeTreeForCache = treeUriString
         }
         val validation = validateTreeUri(treeUriString)
@@ -241,6 +290,7 @@ class SafTreeBrowser(
                 }
                 continue
             }
+            indexDirLyrics(session.treeUri, dirDocId, children)
             for (child in children) {
                 if (child.mimeType == MIME_TYPE_DIR) {
                     if (session.visitedDirs.add(child.documentId)) {
@@ -479,29 +529,26 @@ class SafTreeBrowser(
         val location = cached ?: parseLocationFromDocUri(docUriString) ?: return null
         val treeUri = location.first
         val parentDocId = location.second
-        val fileName = if (cached != null) {
-            location.third
+        val parsedName = location.third
+        val fileName = if (cached != null || parsedName.lastIndexOf('.') > 0) {
+            parsedName
         } else {
-            provider.queryDocumentInfo(treeUri, docUriString)?.name?.takeIf { it.isNotBlank() } ?: location.third
+            provider.queryDocumentInfo(treeUri, docUriString)?.name?.takeIf { it.isNotBlank() } ?: parsedName
         }
         val dotIdx = fileName.lastIndexOf('.')
         val stem = if (dotIdx > 0) fileName.substring(0, dotIdx) else fileName
         if (stem.isBlank()) return null
 
-        val siblings = try {
-            provider.listChildren(treeUri, parentDocId)
-        } catch (_: Exception) {
-            emptyList()
-        }
+        val dirLyrics = getOrFetchDirLyrics(treeUri, parentDocId)
+        if (dirLyrics.isEmpty()) return null
+
         for (rawExt in extensions) {
             val normalizedExt = if (rawExt.startsWith('.')) rawExt.lowercase() else ".${rawExt.lowercase()}"
-            val targetName = "$stem$normalizedExt"
-            val match = siblings.firstOrNull {
-                it.mimeType != MIME_TYPE_DIR && it.name.equals(targetName, ignoreCase = true)
-            } ?: continue
-            val content = provider.readDocumentText(match.uri)
+            val targetKey = "$stem$normalizedExt".lowercase()
+            val matchUri = dirLyrics[targetKey] ?: continue
+            val content = provider.readDocumentText(matchUri)
             if (content != null) {
-                return SiblingTextMatch(normalizedExt, content, match.uri)
+                return SiblingTextMatch(normalizedExt, content, matchUri)
             }
         }
         return null
