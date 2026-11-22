@@ -140,6 +140,9 @@ async def lifespan(app: FastAPI):
 			pass
 
 	logger.info("Cerrando La Rockola del Carpincho. ¡Nos vemos en los fogones!")
+	from app.api.commands import flush_pending_volume_persist
+
+	flush_pending_volume_persist()
 	if state:
 		if hasattr(state, "mpris_service") and state.mpris_service:
 			state.mpris_service.disconnect()

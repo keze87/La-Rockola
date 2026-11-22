@@ -297,3 +297,36 @@ def test_settings_from_config_sanitizes_invalid_dj_mode_and_volume(tmp_path: Pat
 	settings = Settings.from_config_file(config_file)
 	assert settings.dj_mode == "shuffle"
 	assert settings.volume == 110
+
+
+def test_shutdown_flushes_pending_volume_persist(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+	"""Un set_volume seguido de shutdown inmediato (lifespan o stop_embedded_server) debe persistir el volumen."""
+	from fastapi.testclient import TestClient
+
+	from app import android_entry
+	from app.api import commands as commands_mod
+	from app.core import config as config_mod
+	from app.main import create_app
+
+	config_file = tmp_path / "rockola_config.json"
+	music_dir = tmp_path / "music"
+	music_dir.mkdir()
+	monkeypatch.setenv("ROCKOLA_DATA_DIR", str(tmp_path))
+	monkeypatch.setattr(config_mod, "get_config_path", lambda: config_file)
+	config_mod.set_settings(config_mod.Settings(music_dir=str(music_dir), music_dir_configured=True))
+
+	app = create_app()
+	with TestClient(app) as client:
+		res = client.post("/command", json={"cmd": "set_volume", "vollevel": 42})
+		assert res.status_code == 200
+		# Antes del shutdown aún no venció el debounce de 500 ms
+		assert not config_file.exists()
+
+	saved = json.loads(config_file.read_text(encoding="utf-8"))
+	assert saved["volume"] == 42
+
+	# También stop_embedded_server debe vaciar el debounce pendiente
+	commands_mod._schedule_volume_persist(37)
+	android_entry.stop_embedded_server()
+	saved_after_stop = json.loads(config_file.read_text(encoding="utf-8"))
+	assert saved_after_stop["volume"] == 37

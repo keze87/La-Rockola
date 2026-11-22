@@ -333,6 +333,9 @@ def start_embedded_server(
 def stop_embedded_server() -> None:
 	"""Solicita el apagado limpio del servidor Uvicorn embebido."""
 	global _host_state, _stop_requested
+	from app.api.commands import flush_pending_volume_persist
+
+	flush_pending_volume_persist()
 	with _server_lock:
 		_stop_requested = True
 		if _active_server is not None:
