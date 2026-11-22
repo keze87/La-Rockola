@@ -60,24 +60,33 @@ import {
 import type { PlayerState, Track } from '../../types';
 
 let socketGeneration = 0;
+let socketRequested = false;
+let activeCloseHandle: (() => void) | null = null;
 
 export function useSocket() {
 	const { showToast } = useToasts();
 
 	function disconnectWebSocket(): void {
+		socketRequested = false;
 		socketGeneration += 1;
+		const closeFn = activeCloseHandle;
+		activeCloseHandle = null;
+		closeFn?.();
 		closeSocketHandle();
 		connectionState.value = 'disconnected';
 	}
 
 	function reconnectWebSocket(opts?: { onlyIfActive?: boolean }): void {
-		const wasConnected = isSocketConnected();
-		if (opts?.onlyIfActive && !wasConnected) return;
+		const shouldReconnect = !opts?.onlyIfActive || socketRequested;
+		// Siempre invalidamos la generación y cerramos el handle previo aunque estuviera reconnecting
 		disconnectWebSocket();
-		connectWebSocket();
+		if (shouldReconnect) {
+			connectWebSocket();
+		}
 	}
 
 	function connectWebSocket(): void {
+		socketRequested = true;
 		// Evitamos abrir múltiples conexiones si ya está instanciado
 		if (isSocketConnected()) return;
 
@@ -259,10 +268,12 @@ export function useSocket() {
 			},
 		});
 
-		setWsSend(send, () => {
+		const closeThisSocket = () => {
 			intentionallyClosed = true;
 			close(1000, 'server_switch');
-		});
+		};
+		activeCloseHandle = closeThisSocket;
+		setWsSend(send, closeThisSocket);
 	}
 
 	return { connectWebSocket, disconnectWebSocket, reconnectWebSocket };

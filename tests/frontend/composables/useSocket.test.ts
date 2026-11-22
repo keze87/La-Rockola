@@ -41,18 +41,22 @@ import {
 import * as localPlayback from '@/composables/player/useLocalPlayback';
 
 let capturedOptions: any = null;
+let capturedUrl = '';
 let mockWsSend = vi.fn();
+let mockWsClose = vi.fn();
 
 vi.mock('@vueuse/core', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('@vueuse/core')>();
 	return {
 		...actual,
 		useWebSocket: (url: string, options: any) => {
+			capturedUrl = url;
 			capturedOptions = options;
 			mockWsSend = vi.fn();
+			mockWsClose = vi.fn();
 			return {
 				send: mockWsSend,
-				close: vi.fn(),
+				close: mockWsClose,
 				open: vi.fn(),
 			};
 		},
@@ -406,5 +410,34 @@ describe('useSocket.ts', () => {
 		} finally {
 			isNativeSpy.mockRestore();
 		}
+	});
+
+	it('migrates websocket to new server when switching while connectionState is reconnecting', async () => {
+		const { setApiOrigin, clearApiOrigin } = await import('@/composables/useApi');
+		const { connectionState } = await import('@/stores/useServerConnectionStore');
+
+		setApiOrigin('http://192.168.0.10:1729');
+		const { connectWebSocket, disconnectWebSocket, reconnectWebSocket } = useSocket();
+		connectWebSocket();
+
+		const oldCallbacks = capturedOptions;
+		const oldClose = mockWsClose;
+		expect(capturedUrl).toContain('192.168.0.10:1729');
+
+		// Simular desconexión temporal: entra en 'reconnecting' sin handle activo en UI store
+		oldCallbacks.onDisconnected();
+		setWsSend(null);
+		expect(connectionState.value).toBe('reconnecting');
+
+		setApiOrigin('http://192.168.0.20:1729');
+		reconnectWebSocket({ onlyIfActive: true });
+
+		expect(oldClose).toHaveBeenCalledTimes(1);
+		expect(oldCallbacks.autoReconnect.retries(1)).toBe(false);
+		expect(capturedUrl).toContain('192.168.0.20:1729');
+		expect(capturedOptions).not.toBe(oldCallbacks);
+
+		disconnectWebSocket();
+		clearApiOrigin();
 	});
 });
