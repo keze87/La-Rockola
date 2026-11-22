@@ -1,67 +1,103 @@
-# 📱 La Rockola del Carpincho en Android
+# Guía de Arquitectura y Compilación Android — La Rockola del Carpincho
 
-Esta guía explica cómo funciona **La Rockola del Carpincho** tanto como **servidor** (llevando tu biblioteca musical en el teléfono o en la tarjeta **MicroSD**) como **cliente** (app APK nativa o PWA instalable desde Chrome).
-
----
-
-## 🏗️ Arquitectura en Android
-
-La versión de Android reutiliza el 100% del backend en Python y del frontend en Vue 3:
-
-1. **Cliente Nativo (Capacitor + Vue 3):** Empaqueta la interfaz web compilada (`dist/`) dentro de un WebView configurado con `androidScheme: "http"` y `usesCleartextTraffic="true"` para comunicarse sin bloqueos con `http://127.0.0.1:1729` o con otro servidor en la red Wi-Fi.
-2. **Servidor Embebido (Chaquopy + FastAPI/Uvicorn):** Corre en segundo plano dentro de `RockolaForegroundService` (`foregroundServiceType="mediaPlayback"`) con `PARTIAL_WAKE_LOCK` y `WifiLock`, arrancando automáticamente al abrir la app en modo `--no-mpv` (`NullMpvController`).
-3. **Acceso Real a la MicroSD (`RockolaServerPlugin`):**
-    - Solicita `READ_MEDIA_AUDIO` (Android 13+) o `MANAGE_EXTERNAL_STORAGE` (_Acceso a todos los archivos_) para que Python y `mutagen` puedan leer carpetas arbitrarias de la tarjeta MicroSD (`/storage/XXXX-XXXX/...`) sin las trabas de _Scoped Storage_.
-    - La base de datos `rockola.db`, `rockola_config.json` y los audios temporales de radio se guardan siempre en el almacenamiento interno privado de la app (`ROCKOLA_DATA_DIR`), nunca en la MicroSD.
-4. **Cliente Web / PWA para Invitados:** Cualquier otro teléfono conectado al mismo Wi-Fi puede entrar a la IP mostrada en la notificación o escanear el QR en **Las Perillas**, e instalar la web como PWA (_"Agregar a pantalla principal"_) gracias a `/manifest.webmanifest` y `/sw.js`.
+La edición Android empaqueta la interfaz **Vue 3 + TypeScript + Tailwind CSS**, el contenedor nativo **Capacitor 8**, los componentes nativos **Kotlin + Media3 ExoPlayer**, y el servidor **FastAPI + Uvicorn** corriendo sobre **Chaquopy 17.2.0 (Python 3.13)** con verificación estricta de alineamiento **16 KB (`0x4000`)**.
 
 ---
 
-## 🛠️ Cómo Compilar el APK
+## 🏗️ Arquitectura Real (Host Local vs Cliente Remoto)
 
-### Requisitos previos
+La app maneja dos modos explícitos desde un único store reactivo (`src/stores/useServerConnectionStore.ts`):
 
-- **Node.js** y dependencias instaladas (`npm install`).
-- **Android Studio** o **Android SDK + NDK** (`ANDROID_HOME` configurado) y JDK 21.
-- **Python 3.11** disponible en el `PATH` del equipo de compilación para que Chaquopy resuelva las ruedas nativas (`pip` / `buildPython`).
+1. **Modo Host local (`serverMode = 'host'`)**:
+    - Arranca el servicio `RockolaForegroundService` coordinado por `HostLifecycleCoordinator` y el servidor Python embebido (`app/android_entry.py`) con bloqueo de concurrencia contra instancias duplicadas.
+    - Escucha en `0.0.0.0:1729` (por defecto) para que otros celulares en la misma red Wi-Fi se conecten escaneando el código QR o entrando por navegador.
+    - Reproduce el audio localmente fuera del WebView mediante **Media3 ExoPlayer** (`AndroidAudioPlayer.kt`).
+2. **Modo Cliente remoto (`serverMode = 'remote'`)**:
+    - Se conecta a un servidor Rockola ya activo (por ejemplo, tu PC en `http://192.168.0.55:1729`) verificando `/health` antes de aplicar el cambio.
+    - Resetea cola, pista actual, biblioteca, carátulas y WebSocket al cambiar de origen usando contadores de generación (`mediaTargetGeneration`) para descartar paquetes atrasados.
+    - Enruta controles nativos de notificación, pantalla de bloqueo y **Picture-in-Picture (PiP)** mediante `MediaCommandClient.kt` directamente hacia el origen activo (`HOST` o `REMOTE`) con reporte explícito de errores HTTP, autenticación o timeouts hacia la UI.
 
-> [!NOTE]
-> El backend usa Pydantic v2 (`pydantic-core`), que incluye código nativo en Rust. El script `scripts/build_android.py` descarga y reetiqueta automáticamente las ruedas `android_24_*` faltantes en `android/app/wheels/`, y `android/app/build.gradle` define sabores (`arm64`, `armv7`, `x86_64`) para generar APKs livianos separados por arquitectura.
+---
 
-### Pasos de compilación
+## 🔋 Ciclo de Vida del Servicio y Políticas de Android
 
-1. **Sincronizar frontend, backend Python y Capacitor:**
+El servidor HTTP embebido y el servicio en primer plano **no** abusan de `FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK` cuando no hay música sonando:
 
-    ```bash
-    npm run android:sync
+- **Reproducción activa**: El servicio se promueve a foreground (`mediaPlayback`) junto con la notificación MediaStyle, carátula, barra de progreso y candados `PARTIAL_WAKE_LOCK` + `WifiManager.WIFI_MODE_FULL_LOW_LATENCY` (o `WIFI_MODE_FULL_HIGH_PERF` en API < 29).
+- **En pausa**: Soltamos inmediatamente `WakeLock`/`WifiLock` y ejecutamos `STOP_FOREGROUND_DETACH`, dejando la notificación descartable para poder reanudar sin consumir batería en primer plano.
+- **Detenido / cambio de destino**: Desmontamos el modo foreground con `STOP_FOREGROUND_REMOVE` antes de cancelar la notificación para evitar inconsistencias de ciclo de vida.
+- **Cierre desde Recientes (`onTaskRemoved`) y apagado**: Si no hay reproducción activa, el servicio detiene Uvicorn de forma ordenada (`should_exit = True` + join acotado de hasta 4 segundos en `HostLifecycleCoordinator`) y se cierra limpio sin hilos Python huérfanos. Si cerrás la app desde Recientes mientras está en reposo, Android también detendrá el servidor embebido.
+
+---
+
+## 📁 Almacenamiento SAF Real (Memoria Interna y MicroSD)
+
+La aplicación **no solicita** `MANAGE_EXTERNAL_STORAGE` y **no copia** tu biblioteca musical al almacenamiento privado de la app:
+
+- **Selector nativo (`ACTION_OPEN_DOCUMENT_TREE`)**: Persistimos permisos de lectura sobre el árbol SAF elegido (`takePersistableUriPermission`).
+- **Instalación limpia**: En instalaciones nuevas donde ninguna carpeta estándar de Android sea legible, `music_dir` inicia vacío (`""`, `music_dir_configured = false`) y se pide elegir carpeta explícitamente.
+- **Acceso directo por file descriptor**: `AndroidStorageBridge.kt` enumera pistas recursivamente vía `DocumentsContract` y entrega descriptores nativos (`detachFd`) a `app/infrastructure/storage/backend.py` (`AndroidSafStorageBackend` + `os.fdopen(fd, "rb")`) para leer tags ID3/FLAC/MP4 con Mutagen, calcular hashes, transmitir con soporte HTTP `206 Partial Content` (`Range` en `/api/v1/stream`), extraer portadas (`/cover`) y leer letras hermanas `.ass` / `.lrc` (`/lrc`, `/api/v1/lyrics/content`).
+- **Limitaciones conocidas**:
+    - Si revocás permisos o expulsás la tarjeta MicroSD, el sistema reporta estados explícitos (`permission_denied`, `storage_unavailable`, `unsupported_provider`) con acción directa para reelegir carpeta.
+    - Al montarse árboles SAF de solo lectura desde Android, guardar letras nuevas (`POST /api/v1/lyrics/save`) devuelve HTTP 400 explicando la restricción.
+
+---
+
+## ⚙️ Requisitos, ABIs, Alineamiento 16 KB y Firma Release
+
+### Requisitos de compilación
+
+- **Node.js 22+** y **npm**
+- **Java JDK 21** (`JAVA_HOME=/usr/lib/jvm/java-21-openjdk` en Linux si tu `java` por defecto no trae `javac`)
+- **Android SDK** (`ANDROID_HOME` o `android/local.properties` con `compileSdk 36`, `minSdk 24`)
+- **Python 3.13** disponible para `buildPython` de Chaquopy `17.2.0`
+
+### ABIs y verificación binaria de 16 KB (`0x4000`)
+
+- **Arquitecturas soportadas**: `arm64` (`arm64-v8a`) y `x86_64` con `versionCode` diferenciado (`base * 10 + 1` y `base * 10 + 2`). Se removió `armv7` (32 bits) ya que el stack `cp313` de Play exige 64-bit y 16 KB.
+- **Wheels nativos sin reetiquetado Linux**: Usamos `pydantic==2.14.3` / `pydantic-core==2.50.4` desde `https://pypi.flet.dev` y `aiohttp==3.10.10` / `frozenlist==1.4.1` / `multidict==6.1.0` / `yarl==1.16.0` desde `https://chaquo.com/pypi-13.1`, eliminando `pillow`/`libfreetype.so` mediante `AndroidImageResizer.kt` (`BitmapFactory`).
+- **Verificador automático**: `scripts/verify_android_apk.py` audita cada `.so` dentro de `lib/` **y dentro de archivos comprimidos `.imy` de Chaquopy**, exigiendo `PT_LOAD p_align >= 0x4000` y ausencia de `RUNPATH/RPATH` apuntando a `com.termux`.
+
+### Firma obligatoria en Release
+
+Los builds **Release fallan explícitamente** si falta firma (nunca caen silenciosamente en `signingConfigs.debug`). Podés configurarla de dos formas:
+
+1. Archivo local `android/keystore.properties` (ignorado por Git):
+    ```properties
+    storeFile=/ruta/absoluta/a/tu-keystore.jks
+    storePassword=...
+    keyAlias=rockola
+    keyPassword=...
     ```
+2. Variables de entorno (CI/CD):
+   `ROCKOLA_KEYSTORE_PATH`, `ROCKOLA_KEYSTORE_PASSWORD`, `ROCKOLA_KEY_ALIAS`, `ROCKOLA_KEY_PASSWORD`.
 
-    _(Esto ejecuta `npm run build`, copia únicamente `app/` a `android/app/src/main/python/app/`, limpia cualquier `assets/dist/` obsoleto y corre `npx cap sync android` para dejar el frontend en `android/app/src/main/assets/public/`)._
-
-2. **Generar los APKs por arquitectura (`arm64`, `armv7`, `x86_64`):**
-    - Por consola (con `ANDROID_HOME` configurado):
-        ```bash
-        npm run android:build
-        ```
-        Los binarios se generan en `android/app/build/outputs/apk/<sabor>/debug/` (por ejemplo `arm64/debug/app-arm64-debug.apk`).
-    - O abriendo la carpeta `android/` directamente desde **Android Studio** y ejecutando **Build > Build Bundle(s) / APK(s) > Build APK(s)**.
-
----
-
-## 📲 Configuración Inicial en el Teléfono
-
-1. Instalá el APK generado y abrí **La Rockola del Carpincho** (el servidor arranca solo en segundo plano).
-2. En el primer arranque, tocá el aviso **"Elegir carpeta de música en tu MicroSD"** (o entrá en **Las Perillas → Elegir carpeta de música (MicroSD)**).
-3. Concedé el permiso de acceso a archivos cuando Android lo solicite y seleccioná la carpeta donde tenés tus MP3/FLAC en la tarjeta SD.
-4. Tocá **"Escuchar en este dispositivo"** (o activá **Escuchar acá** en **Las Perillas**) para reproducir por el teléfono o parlante Bluetooth conectado.
-5. **Recomendado para sesiones largas:** en _Ajustes → Aplicaciones → La Rockola del Carpincho → Batería_, seleccioná **"Sin restricciones"** para evitar que la capa del fabricante cierre el servicio tras varias horas con la pantalla apagada.
-
----
-
-## 💻 Modo Headless en Linux/PC (`--no-mpv`)
-
-Si querés correr La Rockola en una Raspberry Pi, servidor casero o PC sin parlantes ni MPV instalado para escuchar únicamente desde celulares o navegadores:
+### Comandos principales
 
 ```bash
-python server.py --no-mpv --no-browser
+# Compilar frontend + sincronizar assets + APK arm64 Debug + verificar ELFs 16 KB + .sha256
+python3 scripts/build_android.py --flavor arm64
+
+# Compilar APK o AAB Release firmado (y verificado 16 KB + .sha256)
+python3 scripts/build_android.py --flavor arm64 --release
+python3 scripts/build_android.py --flavor arm64 --release --bundle
+
+# Correr pruebas unitarias JVM de Kotlin y compilación de test instrumentado
+./android/gradlew -p android testArm64DebugUnitTest compileArm64DebugAndroidTestKotlin
 ```
+
+---
+
+## 📊 Matriz de Soporte de Funcionalidades
+
+| Funcionalidad                                                   |   Escritorio (Linux/Win)    |                            Android Host Local                             |         Android Cliente Remoto         |               PWA Navegador               |
+| :-------------------------------------------------------------- | :-------------------------: | :-----------------------------------------------------------------------: | :------------------------------------: | :---------------------------------------: |
+| Reproducción nativa de servidor                                 |         Sí (`mpv`)          |                             Sí (`ExoPlayer`)                              |       Controla servidor destino        |           Controla / Web Audio            |
+| Stream local en navegador (`Escuchar acá`)                      |             Sí              |                         No aplica (usa ExoPlayer)                         |         Sí (`Range` streaming)         |                    Sí                     |
+| Acceso a carpetas / MicroSD                                     |        POSIX directo        |                        SAF `content://` sin copia                         |        Biblioteca del servidor         |          Biblioteca del servidor          |
+| Controles en notificación / Pantalla bloqueo / PiP              |        MPRIS (Linux)        |                      MediaSession + MediaStyle + PiP                      | MediaSession + PiP hacia origen remoto |           Media Session API web           |
+| Locutor radial Carpincho (`edge-tts`)                           |             Sí              |                           Sí (online para TTS)                            |       Controla servidor destino        |         Controla servidor destino         |
+| Mezcla de cortina musical radial y análisis BPM/Mood (`ffmpeg`) |             Sí              |        Degrada elegante (oculta Mood; tags BPM ID3 siguen activos)        |   Según capacidades del host remoto    |        Según capacidades del host         |
+| Huella acústica (`fpcalc`)                                      |             Sí              |                      No disponible (usa smart-hash)                       |   Según capacidades del host remoto    |                    N/A                    |
+| Editor de letras `.ass` / `.lrc`                                | Lectura y guardado en disco | Lectura SAF + consulta online (guardado bloqueado si SAF es solo lectura) | Lectura y guardado en servidor destino |  Lectura y guardado en servidor destino   |
+| Desconexión offline (Service Worker)                            |             N/A             |                    Desactivado (assets locales en APK)                    |  Desactivado (assets locales en APK)   | Caché `rockola-shell-v2` + fallback `503` |
