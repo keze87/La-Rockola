@@ -119,7 +119,7 @@ async def test_android_player_controller_syncs_notification_from_orchestrator_st
 		"Barro Tal Vez",
 		"Luis Alberto Spinetta",
 		False,
-		"http://127.0.0.1:1729/cover?path=%2Fstorage%2FB6F2-55E6%2Fmusica%2Ftema.mp3&size=512",
+		"http://127.0.0.1:1729/cover?path=%2Fstorage%2FB6F2-55E6%2Fmusica%2Ftema.mp3&size=256",
 		"/storage/B6F2-55E6/musica/tema.mp3",
 		200000,
 		15000,

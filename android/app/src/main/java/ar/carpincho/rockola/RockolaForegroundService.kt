@@ -181,12 +181,38 @@ class RockolaForegroundService : Service() {
             channelId = CHANNEL_ID,
             notificationId = NOTIFICATION_ID,
             onCommand = { cmd, extra, expectedGen, onResult ->
-                commandClient.sendCommand(cmd, extra, expectedGen, onResult)
+                val targetNow = currentMediaTarget
+                if (targetNow.mode == MediaTargetMode.HOST &&
+                    expectedGen == targetNow.generation &&
+                    com.chaquo.python.Python.isStarted()
+                ) {
+                    val payloadJson = MediaCommandClient.serializeCommandJson(cmd, extra)
+                    stopExecutor.execute {
+                        val dispatched = try {
+                            com.chaquo.python.Python.getInstance()
+                                .getModule("app.android_entry")
+                                .callAttr("dispatch_native_command", cmd, payloadJson)
+                                .toBoolean()
+                        } catch (_: Exception) {
+                            false
+                        }
+                        if (dispatched) {
+                            onResult(CommandResult.Success)
+                        } else {
+                            commandClient.sendCommand(cmd, extra, expectedGen, onResult)
+                        }
+                    }
+                } else {
+                    commandClient.sendCommand(cmd, extra, expectedGen, onResult)
+                }
             },
             onRequestArtwork = { coverUrl, expectedGen ->
                 commandClient.fetchArtwork(coverUrl, expectedGen) { bmp ->
                     notificationManager.applyArtworkIfCurrent(coverUrl, expectedGen, bmp)
                 }
+            },
+            onLookupCachedArtwork = { coverUrl, expectedGen ->
+                commandClient.getCachedArtwork(coverUrl, expectedGen)
             },
             onCommandFailed = { cmd, result ->
                 onNativeCommandError?.invoke(cmd, result.errorCode(), result.userMessage())

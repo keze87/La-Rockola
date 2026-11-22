@@ -118,7 +118,7 @@ class AndroidPlayerController:
 				artist = (info.get("display_artist") or info.get("artist") or "Desconocido") if info else "Desconocido"
 				if not str(track_path).startswith(("http://", "https://")):
 					port = int(getattr(state, "server_port", 1729) or 1729)
-					cover_url = f"http://127.0.0.1:{port}/cover?path={quote(str(track_path), safe='')}&size=512"
+					cover_url = f"http://127.0.0.1:{port}/cover?path={quote(str(track_path), safe='')}&size=256"
 
 		path_to_id = getattr(state, "path_to_id", {}) or {}
 		favorites = getattr(state, "favorites", []) or []

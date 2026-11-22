@@ -62,7 +62,8 @@ sealed class CommandResult {
  */
 class MediaCommandClient(
     initialTarget: MediaTarget = MediaTarget(MediaTargetMode.HOST, "http://127.0.0.1:1729"),
-    private val timeoutMs: Int = 3000,
+    private val timeoutMs: Int = 10_000,
+    private val artworkTimeoutMs: Int = 12_000,
     private val artworkMaxBytes: Int = 6 * 1024 * 1024,
     private val bitmapDecoder: (InputStream) -> Bitmap? = { stream -> BitmapFactory.decodeStream(stream) },
     private val logWarn: (String) -> Unit = { msg ->
@@ -188,6 +189,14 @@ class MediaCommandClient(
         }
     }
 
+    fun getCachedArtwork(coverUrl: String, expectedGeneration: Long? = null): Bitmap? {
+        val target = currentTarget
+        if (expectedGeneration != null && expectedGeneration != target.generation) return null
+        val cacheKey = "${target.generation}|${target.normalizedOrigin()}|$coverUrl"
+        val cached = synchronized(cacheLock) { artworkCache[cacheKey] }
+        return if (cached != null && !cached.isRecycled) cached else null
+    }
+
     fun fetchArtwork(
         coverUrl: String,
         expectedGeneration: Long? = null,
@@ -208,31 +217,47 @@ class MediaCommandClient(
             val activeNow = currentTarget
             if (activeNow.generation != target.generation) return@execute
 
-            var conn: HttpURLConnection? = null
-            try {
-                conn = (URL(coverUrl).openConnection() as HttpURLConnection).apply {
-                    connectTimeout = timeoutMs
-                    readTimeout = timeoutMs
-                    val origin = target.normalizedOrigin()
-                    if (origin.isNotEmpty() && coverUrl.startsWith(origin)) {
-                        target.authHeader?.takeIf { it.isNotBlank() }?.let {
-                            setRequestProperty("Authorization", it)
+            for (attempt in 0..1) {
+                var conn: HttpURLConnection? = null
+                try {
+                    conn = (URL(coverUrl).openConnection() as HttpURLConnection).apply {
+                        connectTimeout = artworkTimeoutMs
+                        readTimeout = artworkTimeoutMs
+                        val origin = target.normalizedOrigin()
+                        if (origin.isNotEmpty() && coverUrl.startsWith(origin)) {
+                            target.authHeader?.takeIf { it.isNotBlank() }?.let {
+                                setRequestProperty("Authorization", it)
+                            }
                         }
                     }
-                }
-                if (conn.responseCode !in 200..299) return@execute
-                val bmp = conn.inputStream.use { bitmapDecoder(it) } ?: return@execute
-                if (currentTarget.generation != target.generation) return@execute
+                    val code = conn.responseCode
+                    if (code !in 200..299) {
+                        if (code >= 500 && attempt == 0) {
+                            Thread.sleep(250)
+                            continue
+                        }
+                        return@execute
+                    }
+                    val bmp = conn.inputStream.use { bitmapDecoder(it) } ?: return@execute
+                    if (currentTarget.generation != target.generation) return@execute
 
-                synchronized(cacheLock) {
-                    artworkCache[cacheKey] = bmp
-                    artworkCacheBytes += bitmapSize(bmp)
+                    synchronized(cacheLock) {
+                        artworkCache[cacheKey] = bmp
+                        artworkCacheBytes += bitmapSize(bmp)
+                    }
+                    onLoaded(bmp)
+                    return@execute
+                } catch (_: Exception) {
+                    if (attempt == 0) {
+                        try {
+                            Thread.sleep(250)
+                        } catch (_: InterruptedException) {
+                            return@execute
+                        }
+                    }
+                } finally {
+                    conn?.disconnect()
                 }
-                onLoaded(bmp)
-            } catch (_: Exception) {
-                // La ausencia de carátula no frena la notificación; cae al ícono por defecto
-            } finally {
-                conn?.disconnect()
             }
         }
     }

@@ -2,6 +2,7 @@ package ar.carpincho.rockola
 
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -228,6 +229,37 @@ class MediaCommandClientTest {
         remoteDelayMs.set(0)
         assertTrue(execAndAwait() is CommandResult.Disconnected)
 
+        client.shutdown()
+    }
+
+    @Test
+    fun fetchArtworkRetriesTransientFailureAndInvokesDecoder() {
+        val attempts = AtomicInteger(0)
+        val artServer = MiniHttpServer { _, _, _, _ ->
+            if (attempts.incrementAndGet() == 1) {
+                503 to "busy"
+            } else {
+                200 to "FAKE_JPG"
+            }
+        }
+        val decodedPayloads = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val retryLatch = CountDownLatch(1)
+        val client = MediaCommandClient(
+            initialTarget = MediaTarget(MediaTargetMode.HOST, "http://127.0.0.1:${artServer.port}", null, 1L),
+            timeoutMs = 500,
+            artworkTimeoutMs = 1500,
+            bitmapDecoder = { stream ->
+                decodedPayloads.add(stream.readBytes().toString(Charsets.UTF_8))
+                retryLatch.countDown()
+                null
+            },
+        )
+        client.fetchArtwork("http://127.0.0.1:${artServer.port}/cover?path=a.mp3", expectedGeneration = 1L) {}
+        assertTrue(retryLatch.await(3, TimeUnit.SECONDS))
+        assertEquals(2, attempts.get())
+        assertEquals(listOf("FAKE_JPG"), decodedPayloads)
+        assertNull(client.getCachedArtwork("http://127.0.0.1:${artServer.port}/cover?path=a.mp3", 1L))
+        artServer.stop()
         client.shutdown()
     }
 }

@@ -30,6 +30,7 @@ class MediaNotificationManager(
     private val notificationId: Int,
     private val onCommand: (cmd: String, extra: Map<String, Any>, generation: Long, onResult: (CommandResult) -> Unit) -> Unit,
     private val onRequestArtwork: (coverUrl: String, generation: Long) -> Unit,
+    private val onLookupCachedArtwork: (coverUrl: String, generation: Long) -> Bitmap? = { _, _ -> null },
     private val onCommandFailed: (cmd: String, result: CommandResult) -> Unit,
 ) {
     private var mediaSession: MediaSessionCompat? = null
@@ -194,9 +195,16 @@ class MediaNotificationManager(
         currentIsPauseAfter = isPauseAfter
 
         if (coverChanged) {
-            currentArtwork = null
             if (coverUrl != null) {
-                onRequestArtwork(coverUrl, targetGen)
+                val cached = onLookupCachedArtwork(coverUrl, targetGen)
+                if (cached != null && !cached.isRecycled) {
+                    currentArtwork = cached
+                } else {
+                    currentArtwork = null
+                    onRequestArtwork(coverUrl, targetGen)
+                }
+            } else {
+                currentArtwork = null
             }
         }
         val hasTrack = !trackPath.isNullOrBlank()

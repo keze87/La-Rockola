@@ -6,6 +6,8 @@ y expone ciclo de vida limpio de inicio y apagado para Uvicorn.
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 import os
 import threading
@@ -29,9 +31,59 @@ logger = logging.getLogger("RockolaCarpincho")
 _server_lock = threading.Lock()
 _active_server: Any = None
 _active_thread: threading.Thread | None = None
+_server_loop: asyncio.AbstractEventLoop | None = None
 _host_state: str = "stopped"
 _last_error: str | None = None
 _stop_requested: bool = False
+
+
+def set_server_event_loop(loop: asyncio.AbstractEventLoop | None) -> None:
+	"""Registra el event loop activo de Uvicorn para despachar comandos nativos sin HTTP."""
+	global _server_loop
+	with _server_lock:
+		_server_loop = loop
+
+
+def dispatch_native_command(cmd: str, extra_json: str = "{}") -> bool:
+	"""Agenda un comando del orquestador directo en el event loop de Uvicorn sin pasar por HTTP."""
+	with _server_lock:
+		loop = _server_loop
+	if loop is None or loop.is_closed():
+		return False
+
+	from app.api.commands import COMMAND_HANDLERS
+	from app.api.schemas import CommandRequest
+	from app.domain.playback.orchestrator import broadcast_state
+
+	handler = COMMAND_HANDLERS.get(cmd)
+	if handler is None:
+		return False
+
+	container = get_container()
+	state = container.orchestrator
+	if state is None:
+		return False
+	mgr = container.ws_manager
+
+	try:
+		raw_extra = json.loads(extra_json) if extra_json else {}
+		if not isinstance(raw_extra, dict):
+			raw_extra = {}
+		raw_extra["cmd"] = cmd
+		req = CommandRequest(**raw_extra)
+	except Exception:
+		logger.warning("Payload inválido en dispatch_native_command(%s)", cmd)
+		return False
+
+	async def _run() -> None:
+		try:
+			await handler(state, req, mgr)
+			await broadcast_state()
+		except Exception:
+			logger.exception("Error ejecutando comando nativo '%s'", cmd)
+
+	asyncio.run_coroutine_threadsafe(_run(), loop)
+	return True
 
 
 def _invoke_ready_callback(callback: Any) -> None:
@@ -229,6 +281,7 @@ def start_embedded_server(
 
 			async def _startup_and_mark_ready(sockets: Any = None) -> None:
 				global _host_state
+				set_server_event_loop(asyncio.get_running_loop())
 				await orig_startup(sockets=sockets)
 				should_notify = False
 				with _server_lock:
@@ -251,6 +304,7 @@ def start_embedded_server(
 			_host_state = "failed"
 		raise
 	finally:
+		set_server_event_loop(None)
 		with _server_lock:
 			if server is None or _active_server is server:
 				_active_server = None

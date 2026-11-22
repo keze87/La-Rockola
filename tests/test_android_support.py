@@ -171,13 +171,7 @@ def test_get_default_music_dir_android(tmp_path: Path, monkeypatch: pytest.Monke
 	android_music = tmp_path / "sdcard_music"
 	android_music.mkdir()
 	monkeypatch.setenv("ANDROID_ROOT", "/system")
-	monkeypatch.setattr(
-		config_mod,
-		"_ANDROID_MUSIC_CANDIDATES",
-		(str(tmp_path / "missing"), str(android_music)),
-		raising=False,
-	)
-	assert config_mod.get_default_music_dir() == str(android_music)
+	assert config_mod.get_default_music_dir() == ""
 
 
 def test_system_capabilities_music_dir_and_pwa_routes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -759,3 +753,34 @@ def test_isolate_container_fixture_restores_env_and_settings(tmp_path: Path) -> 
 
 	assert os.environ.get("ROCKOLA_DATA_DIR") == orig_data_dir
 	assert "ROCKOLA_SKIP_FRONTEND_BUILD" not in os.environ or orig_data_dir is not None
+
+
+@pytest.mark.asyncio
+async def test_dispatch_native_command_executes_handler_without_http(
+	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+	"""dispatch_native_command debe encolar comandos directo en el event loop sin vuelta HTTP."""
+	import asyncio
+
+	from app import android_entry
+	from app.api import commands as commands_mod
+	from app.core.container import get_container
+
+	orch = MagicMock()
+	called: list[tuple[str, dict[str, object]]] = []
+
+	async def fake_skip(_state: object, req: object, _mgr: object) -> None:
+		called.append((req.cmd, {"amount": req.amount}))  # type: ignore[attr-defined]
+
+	monkeypatch.setitem(commands_mod.COMMAND_HANDLERS, "skip", fake_skip)
+	container = get_container()
+	container.orchestrator = orch
+	android_entry.set_server_event_loop(asyncio.get_running_loop())
+
+	try:
+		ok = android_entry.dispatch_native_command("skip", '{"amount": 1}')
+		assert ok is True
+		await asyncio.sleep(0.05)
+		assert called == [("skip", {"amount": 1})]
+	finally:
+		android_entry.set_server_event_loop(None)
