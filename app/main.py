@@ -64,6 +64,17 @@ async def lifespan(app: FastAPI):
 		logger.error(f"Error preparando base de datos en arranque: {e}")
 
 	state = container.ensure_orchestrator()
+	if state:
+		from app.core.config import get_settings
+		from app.domain.library.service import LibraryService
+
+		settings_now = get_settings()
+		preload_dirs = [d for d in (settings_now.music_dir, settings_now.music_dir2) if d and str(d).strip()]
+		if preload_dirs:
+			preloaded = LibraryService(db_path=db_path).preload_cached_tracks(state, music_dirs=preload_dirs)
+			if preloaded:
+				logger.info(f"⚡ Caché inicial cargada desde SQLite: {preloaded} temas disponibles al toque.")
+
 	restored_session = bool(state and hasattr(state, "restore_playback_session") and state.restore_playback_session())
 	if state and hasattr(state, "mpv") and state.mpv and hasattr(state.mpv, "start"):
 		try:

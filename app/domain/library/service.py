@@ -228,6 +228,89 @@ class LibraryService:
 				seen_track_ids.add(old_id)
 				missing_db_tracks.remove(best_match)
 
+	def preload_cached_tracks(
+		self,
+		state: Any,
+		music_dirs: list[str | Path] | None = None,
+	) -> int:
+		"""Carga inmediata desde SQLite para mostrar la biblioteca al instante mientras reescanea en fondo."""
+		if state is None:
+			return 0
+
+		try:
+			rows = self.track_repo.list_for_scan_cache()
+		except Exception as e:
+			logger.warning(f"No pude precargar la caché de la DB en arranque: {e}")
+			return 0
+
+		from app.infrastructure.storage import get_saf_name
+
+		normalized_roots = [str(d).rstrip("/") for d in (music_dirs or []) if str(d).strip()]
+		tracks: list[dict[str, Any]] = []
+		cache_by_path: dict[str, Any] = {}
+		id_to_current_path: dict[str, str] = {}
+		path_to_id: dict[str, str] = {}
+
+		for row in rows:
+			file_str = str(row["path"])
+			if normalized_roots:
+				matched = False
+				for root in normalized_roots:
+					if is_saf_uri(root):
+						if file_str == root or file_str.startswith(f"{root}/"):
+							matched = True
+							break
+					elif file_str == root or file_str.startswith((f"{root}/", f"{root}\\")):
+						matched = True
+						break
+				if not matched:
+					continue
+
+			track_id = str(row["track_id"])
+			title = row["title"]
+			artist = row["artist"]
+			album = row["album"]
+			fallback_name = get_saf_name(file_str) if is_saf_uri(file_str) else os.path.basename(file_str)
+			track_dict = {
+				"path": file_str,
+				"title": title,
+				"album": album,
+				"artist": artist,
+				"display_title": title or fallback_name,
+				"display_artist": artist or "Carpincho Anónimo",
+				"duration_str": row["duration_str"] or "",
+				"mtime": float(row["mtime"] or 0.0),
+				"file_size": row["file_size"],
+				"track_hash": track_id,
+				"bpm": float(row["bpm"]) if row["bpm"] is not None else 0.0,
+				"energy": float(row["energy"]) if row["energy"] is not None else 0.0,
+				"spectral_centroid": float(row["spectral_centroid"]) if row["spectral_centroid"] is not None else 0.0,
+				"fingerprint": row["fingerprint"],
+				"audio_hash": row.get("audio_hash") if isinstance(row, dict) else row["audio_hash"],
+			}
+			tracks.append(track_dict)
+			cache_by_path[file_str] = {"mtime": track_dict["mtime"], "data": track_dict}
+			id_to_current_path[track_id] = file_str
+			path_to_id[file_str] = track_id
+
+		if not tracks:
+			return 0
+
+		calculate_mood_scores(tracks)
+		state.tracks_cache = tracks
+		state.track_cache_by_path = cache_by_path
+		if isinstance(getattr(state, "id_to_current_path", None), dict):
+			state.id_to_current_path.clear()
+			state.id_to_current_path.update(id_to_current_path)
+		else:
+			state.id_to_current_path = id_to_current_path
+		if isinstance(getattr(state, "path_to_id", None), dict):
+			state.path_to_id.clear()
+			state.path_to_id.update(path_to_id)
+		else:
+			state.path_to_id = path_to_id
+		return len(tracks)
+
 	def scan_directory(
 		self,
 		target_dirs: list[str | Path],
@@ -357,8 +440,8 @@ class LibraryService:
 		id_to_current_path = getattr(state, "id_to_current_path", {}) if state else {}
 		path_to_id = getattr(state, "path_to_id", {}) if state else {}
 
-		id_to_current_path.clear()
-		path_to_id.clear()
+		new_id_to_current_path: dict[str, str] = {}
+		new_path_to_id: dict[str, str] = {}
 		new_cache: dict[str, Any] = {}
 		tracks_to_insert: list[tuple[Any, ...]] = []
 		seen_track_ids: set[str] = set()
@@ -476,8 +559,8 @@ class LibraryService:
 				seen_track_ids.add(track_hash)
 				new_cache[file_str] = {"mtime": current_mtime, "data": track_dict}
 				tracks.append(track_dict)
-				id_to_current_path[track_hash] = file_str
-				path_to_id[file_str] = track_hash
+				new_id_to_current_path[track_hash] = file_str
+				new_path_to_id[file_str] = track_hash
 			elif file_str in miss_results:
 				current_mtime, track_dict, track_hash, db_tuple, fp = miss_results[file_str]
 				tracks_to_insert.append(db_tuple)
@@ -486,8 +569,8 @@ class LibraryService:
 					new_tracks_for_reconciliation.append(track_dict)
 				new_cache[file_str] = {"mtime": current_mtime, "data": track_dict}
 				tracks.append(track_dict)
-				id_to_current_path[track_hash] = file_str
-				path_to_id[file_str] = track_hash
+				new_id_to_current_path[track_hash] = file_str
+				new_path_to_id[file_str] = track_hash
 
 		missing_db_tracks = [t for t in db_cache.values() if t["track_hash"] not in seen_track_ids]
 		if state and missing_db_tracks and new_tracks_for_reconciliation:
@@ -497,8 +580,8 @@ class LibraryService:
 			missing_db_tracks=missing_db_tracks,
 			tracks_to_insert=tracks_to_insert,
 			tracks=tracks,
-			id_to_current_path=id_to_current_path,
-			path_to_id=path_to_id,
+			id_to_current_path=new_id_to_current_path,
+			path_to_id=new_path_to_id,
 			seen_track_ids=seen_track_ids,
 		)
 
@@ -506,6 +589,10 @@ class LibraryService:
 		if state:
 			state.scan_message = "Calculando puntajes de vibra..."
 		calculate_mood_scores(tracks)
+		id_to_current_path.clear()
+		id_to_current_path.update(new_id_to_current_path)
+		path_to_id.clear()
+		path_to_id.update(new_path_to_id)
 		if state:
 			state.tracks_cache = tracks
 			state.track_cache_by_path = new_cache
