@@ -4,14 +4,12 @@ Esquemas Pydantic V2 para validación exhaustiva de payloads HTTP y eventos WebS
 
 from __future__ import annotations
 
-from typing import Generic, Literal, TypeVar
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-T = TypeVar("T")
 
-
-class ApiResponse(BaseModel, Generic[T]):
+class ApiResponse[T](BaseModel):
 	"""Respuesta estándar de la API REST."""
 
 	model_config = ConfigDict(extra="allow")

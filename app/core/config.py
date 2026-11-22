@@ -12,7 +12,7 @@ import os
 import sys
 import threading
 from pathlib import Path
-from typing import Any, Literal, TypeAlias, get_args
+from typing import Any, Literal, get_args
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -21,8 +21,8 @@ logger = logging.getLogger("RockolaCarpincho")
 
 DEFAULT_WEATHER_LOCATION = "San Miguel de Tucumán"
 
-SortMode: TypeAlias = Literal["time", "artist", "mood", "shuffle"]
-DjModeConfig: TypeAlias = Literal["shuffle", "favorites", "library"]
+type SortMode = Literal["time", "artist", "mood", "shuffle"]
+type DjModeConfig = Literal["shuffle", "favorites", "library"]
 
 _ANDROID_MUSIC_CANDIDATES = (
 	"~/storage/music",
@@ -242,10 +242,10 @@ class Settings(BaseSettings):
 	def from_config_file(cls, path: Path | None = None) -> Settings:
 		"""Instancia los settings combinando el archivo JSON con defaults y variables de entorno."""
 		loaded = load_config(path)
-		if loaded.get("default_sort") not in get_args(SortMode):
+		if loaded.get("default_sort") not in get_args(getattr(SortMode, "__value__", SortMode)):
 			logger.warning(f"default_sort inválido ({loaded.get('default_sort')!r}) en la config, uso 'time'")
 			loaded["default_sort"] = DEFAULT_CONFIG["default_sort"]
-		if loaded.get("dj_mode") not in get_args(DjModeConfig):
+		if loaded.get("dj_mode") not in get_args(getattr(DjModeConfig, "__value__", DjModeConfig)):
 			logger.warning(f"dj_mode inválido ({loaded.get('dj_mode')!r}) en la config, uso 'shuffle'")
 			loaded["dj_mode"] = DEFAULT_CONFIG["dj_mode"]
 		raw_vol = loaded.get("volume", DEFAULT_CONFIG["volume"])

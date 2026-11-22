@@ -7,11 +7,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
-from typing import Any, Literal, TypeAlias
+from typing import Any, Literal
 
 logger = logging.getLogger("RockolaCarpincho")
 
-DjMode: TypeAlias = Literal["shuffle", "favorites", "library"]
+type DjMode = Literal["shuffle", "favorites", "library"]
 
 
 class DjBaraSelector:

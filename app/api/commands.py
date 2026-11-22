@@ -236,7 +236,7 @@ async def _cmd_toggle_radio_mode(state: PlaybackOrchestrator, req: CommandReques
 async def _cmd_set_default_sort(state: PlaybackOrchestrator, req: CommandRequest, _mgr: Any) -> None:
 	if req.sort and isinstance(req.sort, str):
 		new_sort = req.sort.strip().lower()
-		if new_sort in get_args(config_mod.SortMode):
+		if new_sort in get_args(getattr(config_mod.SortMode, "__value__", config_mod.SortMode)):
 			state.default_sort = new_sort
 			config_mod.update_config({"default_sort": new_sort})
 			logger.info(f"Modo de ordenamiento por defecto guardado en config: {new_sort}")
