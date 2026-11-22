@@ -90,16 +90,15 @@ async def get_system_info() -> dict[str, Any]:
 		if state
 		else getattr(settings, "music_dir_configured", False)
 	)
-	validation = (
-		state.refresh_folder_status()
-		if state and hasattr(state, "refresh_folder_status")
-		else get_storage_backend(initial_dir).validate_root(initial_dir)
-	)
+	if state and hasattr(state, "refresh_folder_status"):
+		validation = await asyncio.to_thread(state.refresh_folder_status)
+	else:
+		validation = await asyncio.to_thread(get_storage_backend(initial_dir).validate_root, initial_dir)
 	audio_ready = True
 	audio_error: str | None = None
 	mpv_ctrl = getattr(state, "mpv", None) if state else None
 	if mpv_ctrl is not None and hasattr(mpv_ctrl, "_ensure_native"):
-		native = mpv_ctrl._ensure_native()
+		native = await asyncio.to_thread(mpv_ctrl._ensure_native)
 		audio_ready = native is not None
 		if not audio_ready:
 			audio_error = getattr(mpv_ctrl, "native_error", None) or "Reproductor nativo Android no disponible."
@@ -124,7 +123,7 @@ async def get_system_info() -> dict[str, Any]:
 async def update_music_dir(req: MusicDirRequest) -> dict[str, Any]:
 	"""Actualiza dinámicamente la carpeta de música (SAF o POSIX) y dispara un reescaneo."""
 	raw_dir = normalize_music_root(req.dir)
-	validation = get_storage_backend(raw_dir).validate_root(raw_dir)
+	validation = await asyncio.to_thread(get_storage_backend(raw_dir).validate_root, raw_dir)
 	if validation.status != "ok":
 		raise HTTPException(
 			status_code=400,
@@ -135,7 +134,7 @@ async def update_music_dir(req: MusicDirRequest) -> dict[str, Any]:
 	resolved_dir2: str | None = None
 	if req.dir2:
 		raw_dir2 = normalize_music_root(req.dir2)
-		val2 = get_storage_backend(raw_dir2).validate_root(raw_dir2)
+		val2 = await asyncio.to_thread(get_storage_backend(raw_dir2).validate_root, raw_dir2)
 		if val2.status != "ok":
 			raise HTTPException(
 				status_code=400,
@@ -151,6 +150,7 @@ async def update_music_dir(req: MusicDirRequest) -> dict[str, Any]:
 		state.folder_status = validation.status
 		state.folder_display_name = validation.display_name
 		state.folder_error = None
+		state._folder_status_cache = None
 
 	config_mod.update_config(
 		{

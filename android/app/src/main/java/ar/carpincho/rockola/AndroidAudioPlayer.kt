@@ -14,6 +14,8 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.chaquo.python.PyObject
 import java.io.File
+import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import kotlin.math.roundToInt
 
 /**
@@ -54,6 +56,9 @@ class AndroidAudioPlayer(
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val pythonCallbackExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "RockolaPyCallback").apply { isDaemon = true }
+    }
     private var player: ExoPlayer? = null
     private var lastVolume: Float = 1.0f
     private var isMuted: Boolean = false
@@ -280,6 +285,7 @@ class AndroidAudioPlayer(
             activeInstance = null
         }
         pyCallbackHandler = null
+        pythonCallbackExecutor.shutdownNow()
         mainHandler.post {
             mainHandler.removeCallbacks(positionTicker)
             player?.release()
@@ -290,9 +296,15 @@ class AndroidAudioPlayer(
     private fun dispatchToPython(method: String, vararg args: Any) {
         val handler = pyCallbackHandler ?: return
         try {
-            handler.callAttr(method, *args)
-        } catch (e: Exception) {
-            Log.w(TAG, "Error despachando callback '$method' a Python: ${e.message}")
+            pythonCallbackExecutor.execute {
+                try {
+                    handler.callAttr(method, *args)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error despachando callback '$method' a Python: ${e.message}")
+                }
+            }
+        } catch (_: RejectedExecutionException) {
+            // El player ya fue liberado
         }
     }
 }

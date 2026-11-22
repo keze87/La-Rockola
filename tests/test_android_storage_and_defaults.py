@@ -248,13 +248,68 @@ def test_saf_storage_scan_stream_range_lyrics_and_status(tmp_path: Path, monkeyp
 	assert lrc_res.status_code == 200
 	assert "Río Paraná" in lrc_res.text
 
-	# Simula revocación de permiso o extracción de tarjeta SD
+	# Simula revocación de permiso o extracción de tarjeta SD (invalidando caché TTL de 3s)
 	fake_bridge.validation_status[tree_uri] = "permission_denied"
+	orch._folder_status_cache = None
 	revoked_info = client.get("/api/v1/system/info")
 	assert revoked_info.status_code == 200
 	assert revoked_info.json()["folder_status"] == "permission_denied"
 
 	fake_bridge.validation_status[tree_uri] = "storage_unavailable"
+	orch._folder_status_cache = None
 	unavail_info = client.get("/api/v1/system/info")
 	assert unavail_info.status_code == 200
 	assert unavail_info.json()["folder_status"] == "storage_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_system_info_runs_validation_off_event_loop_and_caches_folder_status(
+	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+	"""get_system_info debe validar fuera del event loop (to_thread) y cachear refresh_folder_status por unos segundos."""
+	import threading
+
+	from app.api import system as system_api
+	from app.domain.playback.orchestrator import PlaybackOrchestrator
+	from app.infrastructure import storage as storage_mod
+
+	music_dir = tmp_path / "music"
+	music_dir.mkdir()
+	db_path = tmp_path / "rockola.db"
+
+	call_threads: list[int] = []
+	real_backend = storage_mod.get_storage_backend(str(music_dir))
+	orig_validate = real_backend.validate_root
+
+	def tracked_validate(root: str):
+		call_threads.append(threading.get_ident())
+		return orig_validate(root)
+
+	monkeypatch.setattr(real_backend, "validate_root", tracked_validate)
+	monkeypatch.setattr(storage_mod, "get_storage_backend", lambda _p="": real_backend)
+
+	orch = PlaybackOrchestrator(initial_dir=str(music_dir), db_path=db_path, use_mpv=False, music_dir_configured=True)
+	assert len(call_threads) == 1  # llamada inicial en __init__
+
+	loop_tid = threading.get_ident()
+	fake_container = type(
+		"C",
+		(),
+		{
+			"ensure_orchestrator": staticmethod(lambda: orch),
+			"settings": type(
+				"S", (), {"music_dir": str(music_dir), "music_dir2": None, "music_dir_configured": True, "port": 1729}
+			)(),
+		},
+	)()
+	monkeypatch.setattr(system_api, "get_container", lambda: fake_container)
+
+	# Primera llamada a get_system_info dentro del TTL usa caché (sin bloquear ni re-consultar)
+	await system_api.get_system_info()
+	assert len(call_threads) == 1
+
+	# Forzando refresco (o vencido el TTL) corre en worker thread (distinto de loop_tid)
+	orch._folder_status_cache = None
+	await system_api.get_system_info()
+	assert len(call_threads) == 2
+	assert call_threads[-1] != loop_tid

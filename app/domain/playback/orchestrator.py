@@ -88,6 +88,7 @@ class PlaybackOrchestrator:
 		self.folder_status: str = "unconfigured"
 		self.folder_display_name: str | None = None
 		self.folder_error: str | None = None
+		self._folder_status_cache: tuple[float, str, Any] | None = None
 		self.open_browser = open_browser
 		self.default_sort = default_sort
 		self.has_mpv: bool = bool(use_mpv)
@@ -372,17 +373,26 @@ class PlaybackOrchestrator:
 		ws_mgr = get_container().ws_manager
 		return bool(ws_mgr and getattr(ws_mgr, "local_player_ws", None) is not None)
 
-	def refresh_folder_status(self):
-		"""Valida la carpeta de música actual usando el backend POSIX o SAF."""
+	def refresh_folder_status(self, force: bool = False):
+		"""Valida la carpeta de música actual usando el backend POSIX o SAF con caché breve (3 s)."""
 		from app.infrastructure.storage import FolderValidationResult, get_storage_backend
 
-		if not self.initial_dir:
+		current_dir = self.initial_dir or ""
+		now = time.monotonic()
+		cached = getattr(self, "_folder_status_cache", None)
+		if not force and cached is not None:
+			cached_at, cached_dir, cached_res = cached
+			if cached_dir == current_dir and (now - cached_at) < 3.0:
+				return cached_res
+
+		if not current_dir:
 			res = FolderValidationResult(status="unconfigured", path="", display_name=None, error=None)
 		else:
-			res = get_storage_backend(self.initial_dir).validate_root(self.initial_dir)
+			res = get_storage_backend(current_dir).validate_root(current_dir)
 		self.folder_status = res.status
 		self.folder_display_name = res.display_name
 		self.folder_error = res.error
+		self._folder_status_cache = (now, current_dir, res)
 		return res
 
 	def get_full_state_dict(self, include_library: bool = False) -> dict[str, Any]:
