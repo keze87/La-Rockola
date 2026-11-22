@@ -15,15 +15,20 @@ from urllib.parse import quote
 
 logger = logging.getLogger("RockolaCarpincho")
 
+_ANDROID_PLAYER_CLS: Any | None = None
+
 
 def resolve_native_android_player() -> Any | None:
 	"""Obtiene la instancia activa de AndroidAudioPlayer desde la JVM vía Chaquopy."""
+	global _ANDROID_PLAYER_CLS
 	try:
-		from java import jclass
+		if _ANDROID_PLAYER_CLS is None:
+			from java import jclass
 
-		cls = jclass("ar.carpincho.rockola.AndroidAudioPlayer")
-		return cls.getActiveInstance()
+			_ANDROID_PLAYER_CLS = jclass("ar.carpincho.rockola.AndroidAudioPlayer")
+		return _ANDROID_PLAYER_CLS.getActiveInstance()
 	except Exception as exc:
+		_ANDROID_PLAYER_CLS = None
 		logger.debug(f"AndroidAudioPlayer no disponible en este entorno: {exc}")
 		return None
 
@@ -154,7 +159,7 @@ class AndroidPlayerController:
 
 	def sync_position(self, pos_sec: float, dur_sec: float, paused: bool | None = None) -> None:
 		"""Actualiza el seekbar de la notificación nativa con throttling de 3s o salto de seek."""
-		native = self._ensure_native()
+		native = self._native if self._native is not None else self._ensure_native()
 		if native is None:
 			return
 
@@ -189,6 +194,10 @@ class AndroidPlayerController:
 	@property
 	def ipc_path(self) -> str | None:
 		return None
+
+	def is_native_available(self) -> bool:
+		"""Verifica si la instancia nativa AndroidAudioPlayer está disponible y actualiza native_error."""
+		return self._ensure_native() is not None
 
 	def _ensure_native(self) -> Any | None:
 		active = resolve_native_android_player()

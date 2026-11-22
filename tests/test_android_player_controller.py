@@ -271,3 +271,44 @@ async def test_system_info_exposes_audio_error_when_android_player_missing(
 	info = await system_api.get_system_info()
 	assert info["audio_ready"] is False
 	assert isinstance(info["audio_error"], str) and info["audio_error"]
+
+
+@pytest.mark.asyncio
+async def test_consecutive_position_ticks_do_not_re_resolve_jclass(
+	monkeypatch: pytest.MonkeyPatch,
+) -> None:
+	"""Muchos ticks consecutivos no deben volver a resolver jclass ni consultar JNI innecesariamente."""
+	import sys
+	from types import SimpleNamespace
+
+	from app.infrastructure.mpv import android_controller
+
+	player = MagicMock(name="player")
+	jclass_calls = 0
+	active_instance_calls = 0
+
+	class _FakePlayerClass:
+		@staticmethod
+		def getActiveInstance() -> object:
+			nonlocal active_instance_calls
+			active_instance_calls += 1
+			return player
+
+	def _fake_jclass(name: str) -> object:
+		nonlocal jclass_calls
+		assert name == "ar.carpincho.rockola.AndroidAudioPlayer"
+		jclass_calls += 1
+		return _FakePlayerClass
+
+	monkeypatch.setitem(sys.modules, "java", SimpleNamespace(jclass=_fake_jclass))
+	if hasattr(android_controller, "_ANDROID_PLAYER_CLS"):
+		monkeypatch.setattr(android_controller, "_ANDROID_PLAYER_CLS", None)
+
+	ctrl = android_controller.AndroidPlayerController(native_player=None)
+	assert ctrl.is_native_available() is True
+
+	for i in range(20):
+		ctrl._bridge.on_position(i * 4.0, 180.0)
+
+	assert jclass_calls == 1
+	assert active_instance_calls == 1

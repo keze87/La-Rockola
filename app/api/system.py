@@ -97,9 +97,8 @@ async def get_system_info() -> dict[str, Any]:
 	audio_ready = True
 	audio_error: str | None = None
 	mpv_ctrl = getattr(state, "mpv", None) if state else None
-	if mpv_ctrl is not None and hasattr(mpv_ctrl, "_ensure_native"):
-		native = await asyncio.to_thread(mpv_ctrl._ensure_native)
-		audio_ready = native is not None
+	if mpv_ctrl is not None and hasattr(mpv_ctrl, "is_native_available"):
+		audio_ready = bool(await asyncio.to_thread(mpv_ctrl.is_native_available))
 		if not audio_ready:
 			audio_error = getattr(mpv_ctrl, "native_error", None) or "Reproductor nativo Android no disponible."
 	return {
