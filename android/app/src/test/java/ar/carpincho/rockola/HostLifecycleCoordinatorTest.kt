@@ -107,17 +107,18 @@ class HostLifecycleCoordinatorTest {
     }
 
     @Test
-    fun `stop ante hilo colgado respeta timeout acotado y marca error`() {
+    fun `stop ante hilo colgado pasa a STOP_TIMED_OUT, bloquea reinicios y pasa a STOPPED al terminar`() {
         val coordinator = HostLifecycleCoordinator()
         val readyLatch = CountDownLatch(1)
         val releaseZombie = CountDownLatch(1)
         val zombieExited = CountDownLatch(1)
+        val stopHookCalls = AtomicInteger(0)
 
         assertTrue(
             coordinator.start(
                 port = 1729,
                 musicDir = null,
-                onRequestStop = { /* No libera el hilo a propósito */ },
+                onRequestStop = { stopHookCalls.incrementAndGet() },
             ) { onReady ->
                 onReady()
                 readyLatch.countDown()
@@ -128,15 +129,41 @@ class HostLifecycleCoordinatorTest {
         assertTrue(readyLatch.await(2, TimeUnit.SECONDS))
 
         val startNs = System.nanoTime()
-        val clean = coordinator.stop(timeoutMs = 150L)
+        val clean = coordinator.stop(timeoutMs = 120L)
         val elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNs)
 
         assertFalse(clean)
         assertTrue("El stop acotado tardó demasiado: ${elapsedMs}ms", elapsedMs < 1000L)
-        assertEquals(HostServerState.FAILED, coordinator.state)
+        assertEquals(HostServerState.STOP_TIMED_OUT, coordinator.state)
+        assertTrue(coordinator.hasActiveWorker)
         assertTrue((coordinator.lastError ?: "").isNotBlank())
 
-        // Liberar el hilo zombi luego no pisa el nuevo arranque
+        // No debe permitir iniciar otro servidor mientras el worker anterior sigue vivo
+        val secondSpawned = AtomicBoolean(false)
+        assertFalse(
+            coordinator.start(1729, null, {}) {
+                secondSpawned.set(true)
+            },
+        )
+        assertFalse(secondSpawned.get())
+
+        // Un nuevo intento de stop() sigue invocando el stopHook sin perder la referencia al worker
+        assertFalse(coordinator.stop(timeoutMs = 50L))
+        assertEquals(2, stopHookCalls.get())
+        assertEquals(HostServerState.STOP_TIMED_OUT, coordinator.state)
+        assertTrue(coordinator.hasActiveWorker)
+
+        // Cuando el worker anterior finalmente termina, el estado pasa a STOPPED y permite reiniciar
+        releaseZombie.countDown()
+        assertTrue(zombieExited.await(2, TimeUnit.SECONDS))
+        val deadline = System.currentTimeMillis() + 2000L
+        while (coordinator.state != HostServerState.STOPPED && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10L)
+        }
+        assertEquals(HostServerState.STOPPED, coordinator.state)
+        assertFalse(coordinator.hasActiveWorker)
+        assertNull(coordinator.lastError)
+
         val restartedLatch = CountDownLatch(1)
         val stopNew = CountDownLatch(1)
         assertTrue(
@@ -147,12 +174,51 @@ class HostLifecycleCoordinatorTest {
             },
         )
         assertTrue(restartedLatch.await(2, TimeUnit.SECONDS))
-        releaseZombie.countDown()
-        assertTrue(zombieExited.await(2, TimeUnit.SECONDS))
         assertEquals(HostServerState.READY, coordinator.state)
 
         assertTrue(coordinator.stop(1000L))
         assertEquals(HostServerState.STOPPED, coordinator.state)
+    }
+
+    @Test
+    fun `stop concurrente espera al mismo worker y termina en STOPPED`() {
+        val coordinator = HostLifecycleCoordinator()
+        val readyLatch = CountDownLatch(1)
+        val allowExit = CountDownLatch(1)
+        val stopCalls = AtomicInteger(0)
+
+        assertTrue(
+            coordinator.start(
+                port = 1731,
+                musicDir = null,
+                onRequestStop = {
+                    if (stopCalls.incrementAndGet() == 1) {
+                        Thread {
+                            Thread.sleep(80L)
+                            allowExit.countDown()
+                        }.start()
+                    }
+                },
+            ) { onReady ->
+                onReady()
+                readyLatch.countDown()
+                allowExit.await(2, TimeUnit.SECONDS)
+            },
+        )
+        assertTrue(readyLatch.await(2, TimeUnit.SECONDS))
+
+        val results = CopyOnWriteArrayList<Boolean>()
+        val done = CountDownLatch(3)
+        repeat(3) {
+            Thread {
+                results.add(coordinator.stop(timeoutMs = 2000L))
+                done.countDown()
+            }.start()
+        }
+        assertTrue(done.await(3, TimeUnit.SECONDS))
+        assertEquals(listOf(true, true, true), results.toList())
+        assertEquals(HostServerState.STOPPED, coordinator.state)
+        assertFalse(coordinator.hasActiveWorker)
     }
 
     @Test

@@ -174,10 +174,13 @@ class RockolaForegroundService : Service() {
                 hostState = nextState
                 lastHostError = err
                 isRunning = hostCoordinator.isRunning
-                if (nextState == HostServerState.FAILED && err != null) {
+                if ((nextState == HostServerState.FAILED || nextState == HostServerState.STOP_TIMED_OUT) && err != null) {
                     onNativeCommandError?.invoke("host_server", "HOST_FAILED", err)
                 }
-                if (nextState == HostServerState.STOPPED || nextState == HostServerState.FAILED) {
+                if (nextState == HostServerState.STOPPED ||
+                    nextState == HostServerState.FAILED ||
+                    nextState == HostServerState.STOP_TIMED_OUT
+                ) {
                     if (currentMediaTarget.mode == MediaTargetMode.HOST) {
                         isActivelyPlaying = false
                         isMediaPlaying = false
@@ -561,8 +564,12 @@ class RockolaForegroundService : Service() {
         }
         val clean = hostCoordinator.stop(timeoutMs)
         isRunning = hostCoordinator.isRunning
-        mainHandler.post {
-            stopSelf()
+        hostState = hostCoordinator.state
+        lastHostError = hostCoordinator.lastError
+        if (clean) {
+            mainHandler.post {
+                stopSelf()
+            }
         }
         return clean
     }
@@ -572,9 +579,11 @@ class RockolaForegroundService : Service() {
         isMediaPlaying = false
         demoteFromForeground(keepDismissibleNotification = false)
         stopExecutor.execute {
-            hostCoordinator.stop(STOP_JOIN_TIMEOUT_MS)
-            mainHandler.post {
-                stopSelf()
+            val clean = hostCoordinator.stop(STOP_JOIN_TIMEOUT_MS)
+            if (clean) {
+                mainHandler.post {
+                    stopSelf()
+                }
             }
         }
     }

@@ -8,6 +8,7 @@ enum class HostServerState {
     STARTING,
     READY,
     STOPPING,
+    STOP_TIMED_OUT,
     FAILED;
 
     fun wireName(): String = name.lowercase()
@@ -41,6 +42,15 @@ class HostLifecycleCoordinator(
     val isRunning: Boolean
         get() = state == HostServerState.STARTING || state == HostServerState.READY
 
+    val hasActiveWorker: Boolean
+        get() = synchronized(lock) {
+            activeThread != null ||
+                state == HostServerState.STARTING ||
+                state == HostServerState.READY ||
+                state == HostServerState.STOPPING ||
+                state == HostServerState.STOP_TIMED_OUT
+        }
+
     fun start(
         port: Int,
         @Suppress("UNUSED_PARAMETER") musicDir: String?,
@@ -52,7 +62,9 @@ class HostLifecycleCoordinator(
         synchronized(lock) {
             if (state == HostServerState.STARTING ||
                 state == HostServerState.READY ||
-                state == HostServerState.STOPPING
+                state == HostServerState.STOPPING ||
+                state == HostServerState.STOP_TIMED_OUT ||
+                activeThread?.isAlive == true
             ) {
                 return false
             }
@@ -105,7 +117,9 @@ class HostLifecycleCoordinator(
         var shouldNotify = false
         synchronized(lock) {
             if (activeRunId != runId) return
-            val wasStopping = stopRequestedForRun || state == HostServerState.STOPPING
+            val wasStopping = stopRequestedForRun ||
+                state == HostServerState.STOPPING ||
+                state == HostServerState.STOP_TIMED_OUT
             activeThread = null
             activeStopHook = null
             if (error != null && !wasStopping) {
@@ -127,7 +141,18 @@ class HostLifecycleCoordinator(
         var notifyStopping = false
         synchronized(lock) {
             when (state) {
-                HostServerState.STOPPED, HostServerState.FAILED -> return true
+                HostServerState.STOPPED -> return true
+                HostServerState.FAILED -> {
+                    if (activeThread?.isAlive != true) {
+                        activeThread = null
+                        activeStopHook = null
+                        return true
+                    }
+                    stopRequestedForRun = true
+                    runId = activeRunId
+                    threadToJoin = activeThread
+                    stopHook = activeStopHook
+                }
                 HostServerState.STARTING, HostServerState.READY -> {
                     stopRequestedForRun = true
                     runId = activeRunId
@@ -136,7 +161,7 @@ class HostLifecycleCoordinator(
                     setStateLocked(HostServerState.STOPPING, null)
                     notifyStopping = true
                 }
-                HostServerState.STOPPING -> {
+                HostServerState.STOPPING, HostServerState.STOP_TIMED_OUT -> {
                     stopRequestedForRun = true
                     runId = activeRunId
                     threadToJoin = activeThread
@@ -168,16 +193,12 @@ class HostLifecycleCoordinator(
             if (activeRunId == runId) {
                 if (threadToJoin != null && threadToJoin.isAlive) {
                     timedOut = true
-                    // Avanzamos el runId para que el hilo zombi no contamine futuros reinicios
-                    runIdCounter += 1L
-                    activeRunId = runIdCounter
-                    activeThread = null
-                    activeStopHook = null
+                    // Mantenemos activeRunId, activeThread y activeStopHook para no perder control del worker vivo
                     setStateLocked(
-                        HostServerState.FAILED,
+                        HostServerState.STOP_TIMED_OUT,
                         "El servidor embebido no respondió al apagado en ${timeoutMs}ms",
                     )
-                } else if (state == HostServerState.STOPPING) {
+                } else if (state == HostServerState.STOPPING || state == HostServerState.STOP_TIMED_OUT) {
                     activeThread = null
                     activeStopHook = null
                     setStateLocked(HostServerState.STOPPED, null)
