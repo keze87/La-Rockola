@@ -26,7 +26,7 @@ import {
 	setRemoteMode,
 	setServerError,
 } from '../stores/useServerConnectionStore';
-import { useSocket } from './player/useSocket';
+import { requestSocketReconnect } from './player/connectionActions';
 import { setApiOrigin, useApi } from './useApi';
 
 export interface AndroidServerInfo {
@@ -355,7 +355,7 @@ export async function connectToRemoteServer(
 	if (opts?.onServerChanged) {
 		opts.onServerChanged();
 	} else {
-		useSocket().reconnectWebSocket({ onlyIfActive: true });
+		requestSocketReconnect({ onlyIfActive: true });
 	}
 	return normalized;
 }
@@ -370,7 +370,7 @@ export function disconnectFromRemoteServer(opts?: { onServerChanged?: () => void
 	if (opts?.onServerChanged) {
 		opts.onServerChanged();
 	} else {
-		useSocket().reconnectWebSocket({ onlyIfActive: true });
+		requestSocketReconnect({ onlyIfActive: true });
 	}
 }
 

@@ -1,4 +1,5 @@
 import { _startLocalPlayer, _stopLocalPlayer, applyRemoteSeek } from './useLocalPlayback';
+import { registerSocketReconnectHandler } from './connectionActions';
 import { applyLibrarySort } from './useLibrary';
 import { useToasts } from './useToasts';
 import { ensureLocalAndroidServerAlive, isNativeAndroidHost } from '../useAndroidHost';
@@ -285,6 +286,8 @@ export function useSocket() {
 		activeCloseHandle = closeThisSocket;
 		setWsSend(send, closeThisSocket);
 	}
+
+	registerSocketReconnectHandler(reconnectWebSocket);
 
 	return { connectWebSocket, disconnectWebSocket, reconnectWebSocket };
 }
