@@ -43,18 +43,12 @@ class RockolaServerPlugin : Plugin() {
         super.load()
         AndroidStorageBridge.initialize(context)
         lastNotifiedVolumeState = readMediaVolumeState()
+        // Settings.System.CONTENT_URI es un best-effort para botones físicos de volumen:
+        // algunos OEMs/versiones (Android 14-16) no siempre emiten cambios por esta URI,
+        // por lo que también re-leemos el volumen en handleOnResume().
         val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean) {
-                val current = readMediaVolumeState()
-                if (current == lastNotifiedVolumeState) return
-                lastNotifiedVolumeState = current
-                val (percent, muted) = current
-                bridge?.webView?.post {
-                    bridge?.webView?.evaluateJavascript(
-                        "window.__rockolaOnMediaVolumeChanged && window.__rockolaOnMediaVolumeChanged($percent, $muted)",
-                        null,
-                    )
-                }
+                notifyMediaVolumeIfChanged()
             }
         }
         volumeObserver = observer
@@ -83,6 +77,11 @@ class RockolaServerPlugin : Plugin() {
         }
     }
 
+    override fun handleOnResume() {
+        super.handleOnResume()
+        notifyMediaVolumeIfChanged()
+    }
+
     override fun handleOnDestroy() {
         RockolaForegroundService.onPipStateNeedsRefresh = null
         RockolaForegroundService.onNativeCommandError = null
@@ -95,6 +94,19 @@ class RockolaServerPlugin : Plugin() {
         volumeObserver = null
         pluginExecutor.shutdownNow()
         super.handleOnDestroy()
+    }
+
+    private fun notifyMediaVolumeIfChanged() {
+        val current = readMediaVolumeState()
+        if (current == lastNotifiedVolumeState) return
+        lastNotifiedVolumeState = current
+        val (percent, muted) = current
+        bridge?.webView?.post {
+            bridge?.webView?.evaluateJavascript(
+                "window.__rockolaOnMediaVolumeChanged && window.__rockolaOnMediaVolumeChanged($percent, $muted)",
+                null,
+            )
+        }
     }
 
     private fun readMediaVolumeState(): Pair<Int, Boolean> {
