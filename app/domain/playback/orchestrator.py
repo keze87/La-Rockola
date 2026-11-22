@@ -514,7 +514,7 @@ class PlaybackOrchestrator:
 		"""Persiste cola, orden, historial, pista actual y configuraciones de forma atómica."""
 		sig = self._build_session_signature()
 		now = time.time()
-		if not force and sig == self._last_session_sig and (now - self._last_session_save_at) < 5.0:
+		if not force and sig == self._last_session_sig and (now - self._last_session_save_at) < 20.0:
 			return
 		payload = {
 			"saved_at": now,
