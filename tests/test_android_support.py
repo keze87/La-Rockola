@@ -498,7 +498,12 @@ def test_verify_android_apk_elf_page_alignment_and_termux_runpath(tmp_path: Path
 
 	apk_good = tmp_path / "good.apk"
 	with zipfile.ZipFile(apk_good, "w") as zf:
-		zf.writestr("lib/arm64-v8a/libok.so", good_elf)
+		import struct
+
+		info = zipfile.ZipInfo("lib/arm64-v8a/libok.so")
+		pad_needed = (0x4000 - (30 + len(info.filename.encode("utf-8")) + 4)) % 0x4000
+		info.extra = struct.pack("<HH", 0xFFFF, pad_needed) + (b"\x00" * pad_needed)
+		zf.writestr(info, good_elf)
 		zf.writestr("assets/chaquopy/requirements-arm64-v8a.imy", imy_good.read_bytes())
 
 	res_good = verify_android_archive(apk_good)

@@ -128,7 +128,7 @@ class _FakeAndroidStorageBridge:
 		allowed = [e.strip().lower() for e in extensions_csv.split(",") if e.strip()]
 		if ext.lower() not in allowed:
 			return None
-		return json.dumps({"ext": ext, "content": content})
+		return json.dumps({"ext": ext, "content": content, "uri": f"{doc_uri}_sibling{ext}"})
 
 
 def test_fresh_android_install_leaves_music_dir_unconfigured(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
