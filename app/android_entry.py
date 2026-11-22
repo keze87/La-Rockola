@@ -297,6 +297,16 @@ def start_embedded_server(
 
 		server.run()
 		return True
+	except SystemExit as exc:
+		code = getattr(exc, "code", 1)
+		if code in (None, 0):
+			return True
+		msg = f"No se pudo abrir el puerto {port} (¿ya está en uso?)"
+		logger.exception(msg)
+		with _server_lock:
+			_last_error = msg
+			_host_state = "failed"
+		raise RuntimeError(msg) from exc
 	except Exception as exc:
 		logger.exception("Error fatal en servidor embebido")
 		with _server_lock:

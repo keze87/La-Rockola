@@ -784,3 +784,53 @@ async def test_dispatch_native_command_executes_handler_without_http(
 		assert called == [("skip", {"amount": 1})]
 	finally:
 		android_entry.set_server_event_loop(None)
+
+
+def test_start_embedded_server_converts_port_bind_system_exit_into_failed_state(
+	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+	"""Si el puerto ya está ocupado y Uvicorn hace sys.exit(1), debe pasar a failed con last_error."""
+	import socket
+
+	from app import android_entry
+
+	dist_dir = tmp_path / "dist"
+	dist_dir.mkdir()
+	(dist_dir / "index.html").write_text("<html></html>", encoding="utf-8")
+	data_dir = tmp_path / "data"
+	data_dir.mkdir()
+	empty_music = tmp_path / "music"
+	empty_music.mkdir()
+
+	# Ocupamos un puerto libre en 127.0.0.1
+	sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+	sock.bind(("127.0.0.1", 0))
+	sock.listen(1)
+	busy_port = sock.getsockname()[1]
+
+	monkeypatch.setattr(android_entry, "_host_state", "stopped")
+	monkeypatch.setattr(android_entry, "_last_error", None)
+	monkeypatch.setattr(android_entry, "_active_server", None)
+	monkeypatch.setattr(android_entry, "_active_thread", None)
+	monkeypatch.setattr(android_entry, "_stop_requested", False)
+
+	try:
+		with pytest.raises(RuntimeError, match=str(busy_port)):
+			android_entry.start_embedded_server(
+				data_dir=str(data_dir),
+				dist_dir=str(dist_dir),
+				music_dir=str(empty_music),
+				port=busy_port,
+				host="127.0.0.1",
+			)
+
+		state = android_entry.get_server_info()
+		assert state["host_state"] == "failed"
+		assert state["last_error"]
+		assert str(busy_port) in str(state["last_error"])
+	finally:
+		sock.close()
+		monkeypatch.setattr(android_entry, "_host_state", "stopped")
+		monkeypatch.setattr(android_entry, "_last_error", None)
+		monkeypatch.setattr(android_entry, "_active_server", None)
+		monkeypatch.setattr(android_entry, "_active_thread", None)
