@@ -455,7 +455,11 @@
 		<div
 			class="bg-carpincho-panel border-carpincho-border flex max-w-sm flex-col items-center rounded-2xl border p-6 shadow-xl"
 		>
-			<img src="/favicon.png" alt="La Rockola del Carpincho" class="mb-4 h-20 w-20 rounded-2xl shadow" />
+			<img
+				:src="apiUrl('/favicon.png')"
+				alt="La Rockola del Carpincho"
+				class="mb-4 h-20 w-20 rounded-2xl shadow"
+			/>
 			<h1 class="text-carpincho-warning mb-2 text-xl font-bold">Elegí tu carpeta de música</h1>
 			<p class="text-carpincho-muted mb-6 text-sm leading-relaxed">
 				Para arrancar la ronda en este celu, seleccioná la carpeta de tu memoria interna o tarjeta MicroSD donde
