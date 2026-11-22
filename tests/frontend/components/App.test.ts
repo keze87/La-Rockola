@@ -624,4 +624,41 @@ Dialogue: 0,0:00:20.00,0:00:24.00,Default,,0,0,0,,{\\kf100}Verso {\\kf100}tres
 			initSpy.mockRestore();
 		}
 	});
+
+	it('shows dedicated folder onboarding screen before main UI on Android Host when unconfigured', async () => {
+		const androidHost = await import('@/composables/useAndroidHost');
+		const store = await import('@/stores/useServerConnectionStore');
+		const isNativeSpy = vi.spyOn(androidHost, 'isNativeAndroidHost').mockReturnValue(true);
+		const initSpy = vi.spyOn(androidHost, 'initAndroidServer').mockResolvedValue(true);
+		const pickSpy = vi.spyOn(androidHost, 'pickAndApplyMusicFolder').mockResolvedValue('content://tree/music');
+		store.resetServerConnectionStore();
+		store.setHostMode();
+		store.libraryFolderStatus.value = 'unconfigured';
+
+		try {
+			const wrapper = mount(App);
+			await wrapper.vm.$nextTick();
+
+			const onboarding = wrapper.find('.android-folder-onboarding');
+			expect(onboarding.exists()).toBe(true);
+			expect(wrapper.find('nav [role="tablist"]').exists()).toBe(false);
+
+			const pickBtn = onboarding.findAll('button').find((b) => b.text().includes('Elegir carpeta'));
+			expect(pickBtn).toBeDefined();
+			await pickBtn!.trigger('click');
+			expect(pickSpy).toHaveBeenCalledTimes(1);
+
+			store.libraryFolderStatus.value = 'ok';
+			await wrapper.vm.$nextTick();
+			expect(wrapper.find('.android-folder-onboarding').exists()).toBe(false);
+			expect(wrapper.find('nav [role="tablist"]').exists()).toBe(true);
+
+			wrapper.unmount();
+		} finally {
+			store.resetServerConnectionStore();
+			isNativeSpy.mockRestore();
+			initSpy.mockRestore();
+			pickSpy.mockRestore();
+		}
+	});
 });

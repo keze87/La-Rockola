@@ -35,7 +35,7 @@ El servidor HTTP embebido y el servicio en primer plano **no** abusan de `FOREGR
 
 - **Network Security Config (`network_security_config.xml`)**: Se reemplazó `usesCleartextTraffic="true"` global por una configuración explícita de `localhost` / `127.0.0.1` junto con `base-config` documentando que el modo Cliente Remoto se conecta por HTTP plano a IPs LAN privadas (`192.168.x.x`, `10.x.x.x`) que no admiten CIDR en `<domain-config>`.
 - **Permisos mínimos y backup**: Se eliminaron `READ_MEDIA_AUDIO`, `READ_EXTERNAL_STORAGE` y `FileProvider` (acceso 100% SAF), y se desactivó `allowBackup` (`false`) con gesto atrás predictivo (`enableOnBackInvokedCallback="true"`).
-- **Precarga TTS controlada**: En Android, `run_tts_preload` solo se ejecuta en **Wi-Fi / Ethernet no medida** (`ConnectivityManager` + `NET_CAPABILITY_NOT_METERED`) y respeta un tope máximo de **64 MB** en `tts_cache.db` (podando por `last_used` antes de seguir descargando).
+- **Precarga TTS controlada**: En Android, `run_tts_preload` solo se ejecuta en **Wi-Fi / Ethernet no medida** (`ConnectivityManager` + `NET_CAPABILITY_NOT_METERED`) y respeta un tope máximo de **333 MB** en `tts_cache.db` (podando por `last_used` antes de seguir descargando).
 
 ---
 

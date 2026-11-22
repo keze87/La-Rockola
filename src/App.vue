@@ -447,8 +447,34 @@
 	<!-- MENÚ CONTEXTUAL (global, compartido entre pestañas) -->
 	<ContextMenu />
 
+	<!-- BIENVENIDA ANDROID: ELEGIR CARPETA ANTES DE ENTRAR A LA UI -->
+	<section
+		v-if="isNativeAndroidHost() && isHostMode && libraryFolderStatus === 'unconfigured'"
+		class="android-folder-onboarding bg-carpincho-bg text-carpincho-text flex h-full w-full flex-col items-center justify-center px-6 text-center"
+	>
+		<div
+			class="bg-carpincho-panel border-carpincho-border flex max-w-sm flex-col items-center rounded-2xl border p-6 shadow-xl"
+		>
+			<img src="/favicon.png" alt="La Rockola del Carpincho" class="mb-4 h-20 w-20 rounded-2xl shadow" />
+			<h1 class="text-carpincho-warning mb-2 text-xl font-bold">Elegí tu carpeta de música</h1>
+			<p class="text-carpincho-muted mb-6 text-sm leading-relaxed">
+				Para arrancar la ronda en este celu, seleccioná la carpeta de tu memoria interna o tarjeta MicroSD donde
+				guardás tus temas.
+			</p>
+			<button
+				type="button"
+				class="touch-target bg-carpincho-primary hover:bg-carpincho-secondary flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-bold text-white shadow transition-colors"
+				@click="pickAndApplyMusicFolder"
+			>
+				<i class="material-icons text-lg" aria-hidden="true">folder_open</i>
+				<span>Elegir carpeta de música</span>
+			</button>
+		</div>
+	</section>
+
 	<!-- VISTA PRINCIPAL (se oculta cuando el fogón o el editor de letras están abiertos a pantalla completa para no recalcular repintados) -->
 	<div
+		v-else
 		v-show="!isFogonMode && !isLyricsEditorOpen"
 		class="app-main-content flex min-h-0 w-full flex-1 flex-col overflow-hidden"
 	>

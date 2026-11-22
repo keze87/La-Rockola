@@ -115,7 +115,7 @@ async def lifespan(app: FastAPI):
 			run_tts_preload(
 				concurrency=1,
 				delay=0.5,
-				max_mb=64.0 if android_mode else 256.0,
+				max_mb=333.0,
 				require_unmetered_wifi=android_mode,
 				quiet=True,
 			)

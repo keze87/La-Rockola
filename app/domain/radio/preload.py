@@ -188,7 +188,7 @@ async def run_tts_preload(
 	max_retries: int = 3,
 	db_path: Path | str | None = None,
 	max_entries: int = 9000,
-	max_mb: float | None = 64.0,
+	max_mb: float | None = 333.0,
 	require_unmetered_wifi: bool = False,
 	quiet: bool = False,
 ) -> dict[str, int]:
