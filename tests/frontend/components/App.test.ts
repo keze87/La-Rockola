@@ -597,4 +597,31 @@ Dialogue: 0,0:00:20.00,0:00:24.00,Default,,0,0,0,,{\\kf100}Verso {\\kf100}tres
 			volume.value = prevVol;
 		}
 	});
+
+	it('renders semantic navigation role=tablist with role=tab buttons and remote mode indicator', async () => {
+		const androidHost = await import('@/composables/useAndroidHost');
+		const store = await import('@/stores/useServerConnectionStore');
+		const isNativeSpy = vi.spyOn(androidHost, 'isNativeAndroidHost').mockReturnValue(true);
+		const initSpy = vi.spyOn(androidHost, 'initAndroidServer').mockResolvedValue(true);
+		store.resetServerConnectionStore();
+
+		try {
+			store.setRemoteMode('http://192.168.0.55:1729');
+			const wrapper = mount(App);
+			await wrapper.vm.$nextTick();
+
+			const tablist = wrapper.find('nav [role="tablist"]');
+			expect(tablist.exists()).toBe(true);
+			const tabs = tablist.findAll('button[role="tab"]');
+			expect(tabs.length).toBeGreaterThanOrEqual(4);
+			expect(tabs[0].attributes('aria-selected')).toBe('true');
+			expect(wrapper.text()).toContain('Remoto: http://192.168.0.55:1729');
+
+			wrapper.unmount();
+		} finally {
+			store.resetServerConnectionStore();
+			isNativeSpy.mockRestore();
+			initSpy.mockRestore();
+		}
+	});
 });

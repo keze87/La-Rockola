@@ -245,4 +245,34 @@ describe('LibraryTab.vue', () => {
 
 		expect(fetchMock).toHaveBeenCalledWith('/scan');
 	});
+
+	it('shows actionable folder error/unconfigured state on Android Host and semantic clear-search button', async () => {
+		const androidHost = await import('@/composables/useAndroidHost');
+		const store = await import('@/stores/useServerConnectionStore');
+		const isNativeSpy = vi.spyOn(androidHost, 'isNativeAndroidHost').mockReturnValue(true);
+		const pickSpy = vi.spyOn(androidHost, 'pickAndApplyMusicFolder').mockResolvedValue('content://tree/abc');
+
+		store.resetServerConnectionStore();
+		store.setHostMode();
+		store.libraryFolderStatus.value = 'permission_denied';
+		store.libraryFolderError.value = 'El permiso sobre la carpeta fue revocado';
+		currentTracks.value = [];
+		isScanning.value = false;
+
+		try {
+			const wrapper = mount(LibraryTab);
+			expect(wrapper.find('button[aria-label="Limpiar búsqueda"]').exists()).toBe(true);
+			expect(wrapper.text()).toContain('El permiso sobre la carpeta fue revocado');
+			expect(wrapper.text()).not.toContain('No hay nada por acá con ese nombre, fiera.');
+
+			const pickBtn = wrapper.findAll('button').find((b) => b.text().includes('Elegir carpeta'));
+			expect(pickBtn).toBeDefined();
+			await pickBtn!.trigger('click');
+			expect(pickSpy).toHaveBeenCalledTimes(1);
+		} finally {
+			store.resetServerConnectionStore();
+			isNativeSpy.mockRestore();
+			pickSpy.mockRestore();
+		}
+	});
 });

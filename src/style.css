@@ -30,10 +30,25 @@
 }
 
 :root {
+	--target-size: 24px;
 	--rockola-safe-top: max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px));
 	--rockola-safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px));
 	--rockola-safe-left: max(env(safe-area-inset-left, 0px), var(--safe-area-inset-left, 0px));
 	--rockola-safe-right: max(env(safe-area-inset-right, 0px), var(--safe-area-inset-right, 0px));
+}
+
+.touch-target {
+	min-height: var(--target-size);
+	min-width: var(--target-size);
+}
+
+dialog:modal {
+	overscroll-behavior: contain;
+}
+
+dialog::backdrop {
+	overflow: hidden;
+	overscroll-behavior: contain;
 }
 
 @keyframes ctx-appear {
@@ -60,6 +75,7 @@
 	overflow-y: auto;
 	overscroll-behavior-y: contain;
 	padding-bottom: calc(100px + var(--rockola-safe-bottom)) !important;
+	scroll-padding-bottom: calc(108px + var(--rockola-safe-bottom));
 	--scrollbar-thumb: var(--color-carpincho-border);
 	--scrollbar-track: var(--color-carpincho-panel);
 	scrollbar-width: thin;
@@ -201,8 +217,12 @@ textarea,
 	}
 }
 
-/* En pantallas táctiles ocultamos las barras de scroll de escritorio */
+/* En pantallas táctiles ampliamos el mínimo táctil y ocultamos scrollbars de escritorio */
 @media (pointer: coarse) {
+	:root {
+		--target-size: 44px;
+	}
+
 	.tab-content {
 		scrollbar-width: none;
 	}

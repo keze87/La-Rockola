@@ -214,12 +214,18 @@
 								</div>
 								<button
 									type="button"
+									:aria-label="
+										pauseAfterPath === currentTrackPath
+											? 'Cancelar pausa al terminar'
+											: 'Frenar tras este tema'
+									"
 									:title="
 										pauseAfterPath === currentTrackPath
 											? 'Cancelar pausa al terminar'
 											: 'Frenar tras este tema'
 									"
 									:class="[
+										'touch-target',
 										btnBaseClass,
 										'active:scale-90',
 										pauseAfterPath === currentTrackPath
@@ -231,7 +237,7 @@
 										haptic();
 									"
 								>
-									<i class="material-icons text-lg">timer</i>
+									<i class="material-icons text-lg" aria-hidden="true">timer</i>
 								</button>
 							</div>
 						</template>
@@ -240,35 +246,47 @@
 							<div class="flex items-center justify-center gap-1" @click.stop>
 								<button
 									type="button"
-									:class="[btnBaseClass, btnHoverClass]"
+									aria-label="Subir a próximo"
+									:class="['touch-target', btnBaseClass, btnHoverClass]"
 									title="Subir a próximo"
 									@click="moveQueueItem(item.queueIndex, 'first')"
 								>
 									<i
 										class="material-icons text-carpincho-primary hover:text-carpincho-secondary transition"
+										aria-hidden="true"
 									>
 										vertical_align_top
 									</i>
 								</button>
 								<button
 									type="button"
-									:class="[btnBaseClass, btnHoverClass]"
+									aria-label="Mover al final"
+									:class="['touch-target', btnBaseClass, btnHoverClass]"
 									title="Mover al final"
 									@click="moveQueueItem(item.queueIndex, 'last')"
 								>
 									<i
 										class="material-icons text-carpincho-primary hover:text-carpincho-secondary transition"
+										aria-hidden="true"
 									>
 										vertical_align_bottom
 									</i>
 								</button>
 								<button
 									type="button"
-									:class="[btnBaseClass, 'hidden hover:bg-red-500/20 active:bg-red-500/30 sm:flex']"
+									aria-label="Sacar de la fila"
+									:class="[
+										'touch-target',
+										btnBaseClass,
+										'hidden hover:bg-red-500/20 active:bg-red-500/30 sm:flex',
+									]"
 									title="Sacar de la fila"
 									@click="onRemoveClick(item.queueIndex, $event)"
 								>
-									<i class="material-icons text-carpincho-secondary transition hover:text-red-400">
+									<i
+										class="material-icons text-carpincho-secondary transition hover:text-red-400"
+										aria-hidden="true"
+									>
 										delete
 									</i>
 								</button>

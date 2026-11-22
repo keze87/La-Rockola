@@ -1,7 +1,14 @@
 <script setup lang="ts">
 	import { computed, ref, watch } from 'vue';
 	import { useVirtualList } from '@vueuse/core';
+	import { isNativeAndroidHost, pickAndApplyMusicFolder } from '../composables/useAndroidHost';
 	import { usePlayer } from '../composables/usePlayer';
+	import {
+		isHostMode,
+		libraryFolderError,
+		libraryFolderStatus,
+		localMusicDir,
+	} from '../stores/useServerConnectionStore';
 	import LibraryRow from './ui/LibraryRow.vue';
 
 	// Traemos los datos del store global
@@ -194,16 +201,19 @@
 				<input
 					v-model="searchQuery"
 					type="text"
+					aria-label="Buscar canciones o artistas"
 					placeholder="Buscá un buen tema pa' acompañar los mates..."
-					class="border-carpincho-primary focus:border-carpincho-secondary text-carpincho-text w-full border-b bg-transparent py-2 pr-8 placeholder-gray-500 transition-colors outline-none"
+					class="border-carpincho-primary focus:border-carpincho-secondary text-carpincho-text w-full border-b bg-transparent py-2 pr-10 placeholder-gray-500 transition-colors outline-none"
 				/>
-				<i
+				<button
 					v-show="searchQuery"
-					class="material-icons text-carpincho-secondary absolute top-2 right-2 cursor-pointer"
+					type="button"
+					aria-label="Limpiar búsqueda"
+					class="touch-target absolute top-1/2 right-1 inline-flex -translate-y-1/2 cursor-pointer items-center justify-center rounded-full p-1"
 					@click="clearSearch"
 				>
-					close
-				</i>
+					<i class="material-icons text-carpincho-secondary" aria-hidden="true">close</i>
+				</button>
 			</div>
 		</div>
 
@@ -256,12 +266,38 @@
 				@click="handleLibraryClick(item.data)"
 			/>
 
-			<!-- Estado vacío cuando no hay resultados -->
-			<div v-if="filteredTracks.length === 0" class="text-carpincho-primary p-8 text-center italic">
+			<!-- Estado vacío cuando no hay resultados o falta permiso/carpeta en Android Host -->
+			<div v-if="filteredTracks.length === 0" class="text-carpincho-primary p-8 text-center">
 				<template v-if="isScanning">
-					🧉 Chusmeando la biblioteca por primera vez... Aguantá que ya asoman los temazos.
+					<p class="italic">
+						🧉 Chusmeando la biblioteca por primera vez... Aguantá que ya asoman los temazos.
+					</p>
 				</template>
-				<template v-else>No hay nada por acá con ese nombre, fiera.</template>
+				<template
+					v-else-if="isNativeAndroidHost() && isHostMode && (!localMusicDir || libraryFolderStatus !== 'ok')"
+				>
+					<p class="text-carpincho-warning mb-3 font-semibold">
+						{{
+							libraryFolderError ||
+							(libraryFolderStatus === 'permission_denied'
+								? 'Se revocó el permiso sobre tu carpeta de música.'
+								: libraryFolderStatus === 'storage_unavailable'
+									? 'La carpeta o tarjeta SD no está disponible.'
+									: 'Todavía no elegiste una carpeta de música en este teléfono.')
+						}}
+					</p>
+					<button
+						type="button"
+						class="touch-target bg-carpincho-warning text-carpincho-panel inline-flex cursor-pointer items-center gap-2 rounded-full px-4 py-2 text-sm font-bold shadow transition hover:brightness-110"
+						@click="pickAndApplyMusicFolder"
+					>
+						<i class="material-icons text-base" aria-hidden="true">sd_card</i>
+						<span>Elegir carpeta de música</span>
+					</button>
+				</template>
+				<template v-else>
+					<p class="italic">No hay nada por acá con ese nombre, fiera.</p>
+				</template>
 			</div>
 		</div>
 	</section>

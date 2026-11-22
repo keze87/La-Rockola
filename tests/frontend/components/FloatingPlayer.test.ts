@@ -138,4 +138,18 @@ describe('FloatingPlayer.vue', () => {
 		expect(fetchMock).not.toHaveBeenCalled();
 		expect(isFogonMode.value).toBe(false);
 	});
+
+	it('exposes accessible button roles, aria-labels, and decorative icons marked aria-hidden', () => {
+		currentTrackPath.value = '/music/song.mp3';
+		isPaused.value = false;
+		const wrapper = mount(FloatingPlayer);
+
+		expect(wrapper.find('button[aria-label="Abrir fila de reproducción"]').exists()).toBe(true);
+		expect(wrapper.find('button[aria-label="Frenar tras este tema"]').exists()).toBe(true);
+		expect(wrapper.find('button[aria-label="Pausar"]').exists()).toBe(true);
+		expect(wrapper.find('button[aria-label="Siguiente tema"]').exists()).toBe(true);
+		for (const icon of wrapper.findAll('i.material-icons')) {
+			expect(icon.attributes('aria-hidden')).toBe('true');
+		}
+	});
 });

@@ -11,7 +11,13 @@
 		isNativeAndroidHost,
 		pickAndApplyMusicFolder,
 	} from './composables/useAndroidHost';
-	import { isHostMode, isRemoteMode } from './stores/useServerConnectionStore';
+	import {
+		activeRemoteServerUrl,
+		isHostMode,
+		isRemoteMode,
+		libraryFolderError,
+		libraryFolderStatus,
+	} from './stores/useServerConnectionStore';
 	import { useCover } from './composables/useCover';
 	import { buildSpaPath, extractSpaRoute, useAppRouter } from './composables/useAppRouter';
 	import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts';
@@ -521,25 +527,39 @@
 		</nav>
 
 		<!-- AVISO RÁPIDO ANDROID / HEADLESS -->
+		<div
+			v-if="isNativeAndroidHost() && isRemoteMode"
+			class="bg-carpincho-panel border-carpincho-border text-carpincho-secondary flex w-full shrink-0 items-center justify-center gap-2 border-b px-4 py-1.5 text-xs font-semibold"
+		>
+			<i class="material-icons text-sm" aria-hidden="true">dns</i>
+			<span class="truncate">Remoto: {{ activeRemoteServerUrl }}</span>
+		</div>
 		<button
 			v-if="showAndroidFolderBanner"
 			type="button"
-			class="bg-carpincho-warning text-carpincho-panel flex w-full shrink-0 cursor-pointer items-center justify-center gap-2 px-4 py-2 text-xs font-bold shadow-sm"
+			class="touch-target bg-carpincho-warning text-carpincho-panel flex w-full shrink-0 cursor-pointer items-center justify-center gap-2 px-4 py-2 text-xs font-bold shadow-sm"
 			@click="pickAndApplyMusicFolder"
 		>
-			<i class="material-icons text-base">sd_card</i>
-			<span>Elegir la carpeta de música para arrancar la ronda</span>
+			<i class="material-icons text-base" aria-hidden="true">sd_card</i>
+			<span>
+				{{
+					libraryFolderError ||
+					(libraryFolderStatus === 'permission_denied' || libraryFolderStatus === 'storage_unavailable'
+						? 'Carpeta sin acceso · Tocá acá para volver a elegirla'
+						: 'Elegir la carpeta de música para arrancar la ronda')
+				}}
+			</span>
 		</button>
 		<button
 			v-else-if="!hasMpv && !listenLocally && !hasLocalPlayer && (!isNativeAndroidHost() || isRemoteMode)"
 			type="button"
-			class="bg-carpincho-success flex w-full shrink-0 cursor-pointer items-center justify-center gap-2 px-4 py-2 text-xs font-bold text-white shadow-sm"
+			class="touch-target bg-carpincho-success flex w-full shrink-0 cursor-pointer items-center justify-center gap-2 px-4 py-2 text-xs font-bold text-white shadow-sm"
 			@click="
 				listenLocally = true;
 				haptic();
 			"
 		>
-			<i class="material-icons text-base">headphones</i>
+			<i class="material-icons text-base" aria-hidden="true">headphones</i>
 			<span>El servidor corre sin MPV · Tocá acá para escuchar en este teléfono</span>
 		</button>
 
@@ -570,7 +590,8 @@
 		</div>
 
 		<!-- PESTAÑAS -->
-		<div
+		<nav
+			aria-label="Secciones principales"
 			class="bg-carpincho-panel border-carpincho-border relative z-10 flex shrink-0 overflow-hidden border-b shadow-md transition-all duration-300 ease-in-out"
 			:class="[
 				isTabsBarHidden && isShortScreen
@@ -578,29 +599,35 @@
 					: 'max-h-16 translate-y-0 opacity-100',
 			]"
 		>
-			<div
-				v-for="tab in tabs"
-				:key="tab.id"
-				:class="[
-					'flex flex-1 cursor-pointer touch-manipulation items-center justify-center gap-1 py-3 text-center text-sm font-medium tracking-wide uppercase transition-colors active:scale-95',
-					activeTab === tab.id
-						? 'text-carpincho-primary border-carpincho-primary border-b-2'
-						: 'hover:bg-carpincho-border/50 text-carpincho-muted border-b-2 border-transparent',
-				]"
-				@click="switchTab(tab.id)"
-			>
-				<div class="relative">
-					<i class="material-icons">{{ tab.icon }}</i>
-					<span
-						v-if="tab.id === 'queue' && queueState.length > 0"
-						class="bg-carpincho-primary absolute -top-1.5 -right-3 flex h-[14px] min-w-[14px] items-center justify-center rounded-full px-[3px] text-[0.55rem] leading-none font-bold text-white"
-					>
-						{{ queueState.length > 99 ? '99+' : queueState.length }}
-					</span>
-				</div>
-				<span class="hidden sm:inline">{{ tab.name }}</span>
+			<div role="tablist" class="flex w-full">
+				<button
+					v-for="tab in tabs"
+					:key="tab.id"
+					type="button"
+					role="tab"
+					:aria-selected="activeTab === tab.id"
+					:aria-label="tab.name"
+					:class="[
+						'touch-target flex flex-1 cursor-pointer touch-manipulation items-center justify-center gap-1 py-3 text-center text-sm font-medium tracking-wide uppercase transition-colors active:scale-95',
+						activeTab === tab.id
+							? 'text-carpincho-primary border-carpincho-primary border-b-2'
+							: 'hover:bg-carpincho-border/50 text-carpincho-muted border-b-2 border-transparent',
+					]"
+					@click="switchTab(tab.id)"
+				>
+					<div class="relative">
+						<i class="material-icons" aria-hidden="true">{{ tab.icon }}</i>
+						<span
+							v-if="tab.id === 'queue' && queueState.length > 0"
+							class="bg-carpincho-primary absolute -top-1.5 -right-3 flex h-[14px] min-w-[14px] items-center justify-center rounded-full px-[3px] text-[0.55rem] leading-none font-bold text-white"
+						>
+							{{ queueState.length > 99 ? '99+' : queueState.length }}
+						</span>
+					</div>
+					<span class="hidden sm:inline">{{ tab.name }}</span>
+				</button>
 			</div>
-		</div>
+		</nav>
 
 		<!-- CONTENIDO DE PESTAÑAS -->
 		<!-- Ojo: Usamos v-show para mantener los componentes vivos en el DOM y no perder la posición de scroll ni el estado local al cambiar de pestaña -->

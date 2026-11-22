@@ -627,24 +627,25 @@
 				class="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,_rgba(43,38,34,0.35)_0%,_rgba(31,26,23,0.92)_100%)]"
 			/>
 
-			<!-- Botón discreto para abrir Modo Fogón en ventana flotante PiP (solo Android nativo) -->
 			<button
 				v-if="canEnterAndroidPip"
+				type="button"
 				aria-label="Abrir en ventana flotante"
 				title="Abrir en ventana flotante (PiP)"
-				class="fogon-pip-btn text-carpincho-text/70 hover:text-carpincho-warning absolute top-[calc(1rem+var(--rockola-safe-top))] left-4 z-40 p-2 transition hover:scale-110 active:scale-95 md:top-[calc(2rem+var(--rockola-safe-top))] md:left-8"
+				class="fogon-pip-btn touch-target text-carpincho-text/70 hover:text-carpincho-warning absolute top-[calc(1rem+var(--rockola-safe-top))] left-4 z-40 p-2 transition hover:scale-110 active:scale-95 md:top-[calc(2rem+var(--rockola-safe-top))] md:left-8"
 				@click="openAndroidPip"
 			>
-				<i class="material-icons text-2xl sm:text-3xl">picture_in_picture_alt</i>
+				<i class="material-icons text-2xl sm:text-3xl" aria-hidden="true">picture_in_picture_alt</i>
 			</button>
 
 			<!-- Botón flotante para cerrar el fogón (arriba a la derecha) -->
 			<button
+				type="button"
 				aria-label="Cerrar vista de fogón"
-				class="fogon-close-btn text-carpincho-text/70 hover:text-carpincho-warning absolute top-[calc(1rem+var(--rockola-safe-top))] right-4 z-40 p-2 transition hover:scale-110 active:scale-95 md:top-[calc(2rem+var(--rockola-safe-top))] md:right-8"
+				class="fogon-close-btn touch-target text-carpincho-text/70 hover:text-carpincho-warning absolute top-[calc(1rem+var(--rockola-safe-top))] right-4 z-40 p-2 transition hover:scale-110 active:scale-95 md:top-[calc(2rem+var(--rockola-safe-top))] md:right-8"
 				@click="closeFogon"
 			>
-				<i class="material-icons text-4xl">keyboard_arrow_down</i>
+				<i class="material-icons text-4xl" aria-hidden="true">keyboard_arrow_down</i>
 			</button>
 
 			<!-- Capa para cerrar el popup de volumen al tocar afuera -->
@@ -832,8 +833,16 @@
 									v-if="showFogonVolume"
 									class="fogon-volume-bar bg-carpincho-bg/95 border-carpincho-border text-carpincho-text absolute bottom-full left-1/2 z-50 mb-3 flex w-[90%] max-w-xs -translate-x-1/2 items-center gap-4 rounded-full border px-4 py-2 opacity-95 shadow-2xl backdrop-blur-md transition select-none hover:opacity-100 sm:max-w-sm"
 								>
-									<button aria-label="Silenciar" @click="toggleMute">
-										<i class="material-icons cursor-pointer text-sm hover:text-white">
+									<button
+										type="button"
+										aria-label="Silenciar"
+										class="touch-target"
+										@click="toggleMute"
+									>
+										<i
+											class="material-icons cursor-pointer text-sm hover:text-white"
+											aria-hidden="true"
+										>
 											{{ muteIcon }}
 										</i>
 									</button>
@@ -848,47 +857,52 @@
 								</div>
 
 								<button
+									type="button"
 									aria-label="Ajustar volumen"
-									class="fogon-volume-btn hover:text-carpincho-warning z-20 p-2 text-white transition active:scale-90"
+									class="fogon-volume-btn touch-target hover:text-carpincho-warning z-20 p-2 text-white transition active:scale-90"
 									@click="toggleVolumePopup"
 								>
-									<i class="material-icons text-2xl sm:text-3xl">{{ volIcon }}</i>
+									<i class="material-icons text-2xl sm:text-3xl" aria-hidden="true">{{ volIcon }}</i>
 								</button>
 
 								<button
+									type="button"
 									aria-label="Pista anterior"
-									class="fogon-prev-btn hover:text-carpincho-warning z-20 p-1 text-white transition active:scale-90"
+									class="fogon-prev-btn touch-target hover:text-carpincho-warning z-20 p-1 text-white transition active:scale-90"
 									@click="skipPrev"
 								>
-									<i class="material-icons text-3xl sm:text-4xl">skip_previous</i>
+									<i class="material-icons text-3xl sm:text-4xl" aria-hidden="true">skip_previous</i>
 								</button>
 
 								<button
+									type="button"
 									:aria-label="isPlaying ? 'Pausar' : 'Reproducir'"
 									class="fogon-play-btn bg-carpincho-primary hover:bg-carpincho-secondary z-20 flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-white shadow-[0_0_30px_rgba(166,124,82,0.4)] transition active:scale-90 sm:h-16 sm:w-16 md:h-20 md:w-20"
 									@click="togglePlay"
 								>
-									<i class="material-icons text-3xl sm:text-4xl md:text-5xl">
+									<i class="material-icons text-3xl sm:text-4xl md:text-5xl" aria-hidden="true">
 										{{ playPauseIcon }}
 									</i>
 								</button>
 
 								<button
+									type="button"
 									aria-label="Pista siguiente"
-									class="fogon-next-btn hover:text-carpincho-warning z-20 p-1 text-white transition active:scale-90"
+									class="fogon-next-btn touch-target hover:text-carpincho-warning z-20 p-1 text-white transition active:scale-90"
 									@click="skipNext"
 								>
-									<i class="material-icons text-3xl sm:text-4xl">skip_next</i>
+									<i class="material-icons text-3xl sm:text-4xl" aria-hidden="true">skip_next</i>
 								</button>
 
 								<!-- Botón para frenar después de este tema -->
 								<button
-									:class="timerClass"
+									type="button"
+									:class="[timerClass, 'touch-target']"
 									:title="timerTitle"
 									:aria-label="timerTitle"
 									@click="handleTimerToggle"
 								>
-									<i class="material-icons text-2xl sm:text-3xl">timer</i>
+									<i class="material-icons text-2xl sm:text-3xl" aria-hidden="true">timer</i>
 								</button>
 							</div>
 

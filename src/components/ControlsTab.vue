@@ -1,19 +1,31 @@
 <script setup lang="ts">
-	import { computed, ref, watch } from 'vue';
+	import { computed, nextTick, ref, watch } from 'vue';
 	import { apiUrl } from '../composables/useApi';
 	import {
 		activeRemoteServerUrl,
 		androidServerStatus,
 		connectToRemoteServer,
 		disconnectFromRemoteServer,
+		initAndroidServer,
 		isAndroidFullscreen,
 		isNativeAndroidHost,
 		lastRemoteServerUrl,
 		pickAndApplyMusicFolder,
 		shareAndroidUrl,
+		stopAndroidServer,
 		toggleAndroidFullscreen,
 	} from '../composables/useAndroidHost';
-	import { isHostMode, isRemoteMode } from '../stores/useServerConnectionStore';
+	import {
+		clearServerError,
+		isHostMode,
+		isRemoteMode,
+		lastServerError,
+		libraryFolderError,
+		libraryFolderStatus,
+		localMusicDisplayName,
+		localServerLanUrl,
+		localServerState,
+	} from '../stores/useServerConnectionStore';
 	import { serverUrl, weatherLocation } from '../composables/player/state';
 	import { useDragSlider } from '../composables/useDragSlider';
 	import { useFullscreen } from '@vueuse/core';
@@ -163,10 +175,86 @@
 	});
 
 	const showAndroidFolderPicker = computed(() => isNativeAndroidHost() && isHostMode.value);
-	const showRemoteServerSelector = isNativeAndroidHost();
+	const showRemoteServerSelector = computed(() => isNativeAndroidHost());
 	const isRemoteServerModalOpen = ref(false);
+	const remoteDialogRef = ref<HTMLDialogElement | null>(null);
+	let pointerStartedOutsideDialog = false;
 	const remoteServerInput = ref(lastRemoteServerUrl.value ?? '');
 	const isConnectingRemote = ref(false);
+
+	const hostStateLabel = computed(() => {
+		switch (localServerState.value) {
+			case 'ready':
+				return 'Encendido';
+			case 'starting':
+				return 'Arrancando...';
+			case 'recovering':
+				return 'Reconectando...';
+			case 'stopping':
+				return 'Apagando...';
+			case 'unavailable':
+				return 'Con error';
+			default:
+				return 'Detenido';
+		}
+	});
+
+	watch(isRemoteServerModalOpen, async (open) => {
+		await nextTick();
+		const dlg = remoteDialogRef.value;
+		if (!dlg) return;
+		if (!dlg.hasAttribute('closedby')) {
+			dlg.setAttribute('closedby', 'any');
+		}
+		if (open) {
+			if (typeof dlg.showModal === 'function') {
+				if (!dlg.open) dlg.showModal();
+			} else {
+				dlg.setAttribute('open', '');
+			}
+		} else if (typeof dlg.close === 'function') {
+			if (dlg.open) dlg.close();
+		} else {
+			dlg.removeAttribute('open');
+		}
+	});
+
+	function isPointerOutsideDialog(e: PointerEvent, dlg: HTMLDialogElement): boolean {
+		const rect = dlg.getBoundingClientRect();
+		return e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom;
+	}
+
+	function onRemoteDialogPointerDown(e: PointerEvent) {
+		const dlg = remoteDialogRef.value;
+		pointerStartedOutsideDialog = Boolean(dlg && e.target === dlg && isPointerOutsideDialog(e, dlg));
+	}
+
+	function onRemoteDialogPointerUp(e: PointerEvent) {
+		const dlg = remoteDialogRef.value;
+		if (pointerStartedOutsideDialog && dlg && e.target === dlg && isPointerOutsideDialog(e, dlg)) {
+			isRemoteServerModalOpen.value = false;
+		}
+		pointerStartedOutsideDialog = false;
+	}
+
+	async function handleStartLocalHost() {
+		haptic();
+		const ok = await initAndroidServer();
+		if (ok) {
+			showToast('Servidor local encendido', 'success');
+			void loadLibrary(false);
+		}
+	}
+
+	async function handleStopLocalHost() {
+		haptic();
+		try {
+			await stopAndroidServer();
+			showToast('Servidor local apagado', 'info');
+		} catch (err) {
+			showToast(err instanceof Error ? err.message : 'No se pudo apagar el servidor', 'error');
+		}
+	}
 
 	function handleToggleRemoteServerSwitch(next: boolean) {
 		haptic();
@@ -344,16 +432,20 @@
 	>
 		<!-- Control deslizante de volumen -->
 		<div class="text-carpincho-warning bg-carpincho-panel mb-8 flex items-center rounded-xl p-4 shadow">
-			<i
-				class="material-icons mr-3 cursor-pointer transition-colors hover:text-white"
+			<button
+				type="button"
+				:aria-label="serverMuted ? 'Desmutear audio' : 'Mutear audio'"
 				:title="serverMuted ? 'Desmutear' : 'Mutear'"
+				class="touch-target inline-flex cursor-pointer items-center justify-center rounded-full"
 				@click="
 					setMute(!serverMuted);
 					haptic();
 				"
 			>
-				{{ volIcon }}
-			</i>
+				<i class="material-icons mr-3 cursor-pointer transition-colors hover:text-white" aria-hidden="true">
+					{{ volIcon }}
+				</i>
+			</button>
 			<div
 				class="no-tab-swipe group flex h-8 w-full cursor-pointer touch-none items-center"
 				:class="{ 'opacity-50': serverMuted }"
@@ -435,6 +527,84 @@
 			active-class="bg-carpincho-success"
 			@update:model-value="toggleRadioMode"
 		/>
+
+		<div
+			v-if="showRemoteServerSelector"
+			class="border-carpincho-border bg-carpincho-panel mx-auto mb-6 max-w-md rounded-xl border p-4 shadow"
+		>
+			<div class="mb-2 flex items-center justify-between gap-2">
+				<span class="text-carpincho-secondary text-xs font-bold tracking-wider uppercase">
+					{{ isRemoteMode ? 'Modo Cliente remoto' : 'Modo Host local' }}
+				</span>
+				<span
+					class="rounded-full px-2.5 py-0.5 text-xs font-bold"
+					:class="
+						isRemoteMode || localServerState === 'ready'
+							? 'bg-carpincho-success/25 text-carpincho-warning'
+							: 'text-carpincho-muted bg-neutral-800'
+					"
+				>
+					{{ isRemoteMode ? 'Conectado' : hostStateLabel }}
+				</span>
+			</div>
+
+			<div v-if="isHostMode" class="text-carpincho-muted space-y-1 text-xs">
+				<p v-if="localServerState === 'ready'">
+					Dirección en tu Wi-Fi:
+					<span class="text-carpincho-text font-mono">{{ localServerLanUrl }}</span>
+				</p>
+				<p v-if="androidServerStatus.musicDir || libraryFolderStatus !== 'ok'">
+					Carpeta:
+					<span class="text-carpincho-text">
+						{{ localMusicDisplayName || androidServerStatus.musicDir || 'Sin elegir' }}
+					</span>
+					<span v-if="libraryFolderError" class="text-red-400">· {{ libraryFolderError }}</span>
+				</p>
+				<p class="leading-relaxed">
+					El servidor embebido se mantiene activo mientras suena música o la app está abierta; Android puede
+					detenerlo si la cerrás en reposo.
+				</p>
+				<div class="flex flex-wrap gap-2 pt-2">
+					<button
+						v-if="localServerState === 'stopped' || localServerState === 'unavailable'"
+						type="button"
+						class="touch-target bg-carpincho-success cursor-pointer rounded-full px-3.5 py-1.5 text-xs font-bold text-white shadow transition hover:brightness-110"
+						@click="handleStartLocalHost"
+					>
+						Prender servidor
+					</button>
+					<button
+						v-else
+						type="button"
+						class="touch-target cursor-pointer rounded-full bg-red-800 px-3.5 py-1.5 text-xs font-bold text-white shadow transition hover:bg-red-700"
+						:disabled="localServerState === 'stopping'"
+						@click="handleStopLocalHost"
+					>
+						Apagar servidor
+					</button>
+				</div>
+			</div>
+			<p v-else class="text-carpincho-muted text-xs">
+				Controlando el servidor remoto
+				<span class="text-carpincho-text font-mono">{{ activeRemoteServerUrl }}</span>
+			</p>
+
+			<div
+				v-if="lastServerError"
+				role="alert"
+				class="mt-3 flex items-start justify-between gap-2 rounded-lg border border-red-500/40 bg-red-950/50 px-3 py-2 text-xs text-red-200"
+			>
+				<span>{{ lastServerError.message }}</span>
+				<button
+					type="button"
+					aria-label="Descartar aviso"
+					class="touch-target shrink-0 cursor-pointer rounded px-1.5 font-bold text-red-300 hover:text-white"
+					@click="clearServerError()"
+				>
+					✕
+				</button>
+			</div>
+		</div>
 
 		<div v-if="showRemoteServerSelector" class="mx-auto mb-6 max-w-md">
 			<ToggleRow
@@ -546,62 +716,69 @@
 			</p>
 		</div>
 
-		<div
-			v-if="isRemoteServerModalOpen"
-			class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
-			@click.self="isRemoteServerModalOpen = false"
+		<dialog
+			ref="remoteDialogRef"
+			aria-labelledby="remote-dialog-title"
+			class="border-carpincho-border bg-carpincho-panel text-carpincho-text m-auto w-[min(92vw,28rem)] rounded-2xl border p-5 shadow-2xl backdrop:bg-black/75 backdrop:backdrop-blur-sm"
+			@cancel.prevent="isRemoteServerModalOpen = false"
+			@close="isRemoteServerModalOpen = false"
+			@pointerdown="onRemoteDialogPointerDown"
+			@pointerup="onRemoteDialogPointerUp"
 		>
-			<div class="border-carpincho-border bg-carpincho-panel w-full max-w-md rounded-2xl border p-5 shadow-2xl">
-				<div class="mb-3 flex items-center justify-between">
-					<h3 class="text-carpincho-secondary flex items-center gap-2 text-base font-bold">
-						<i class="material-icons !text-lg">dns</i>
-						<span>Conectar a otro servidor</span>
-					</h3>
-					<button
-						type="button"
-						class="text-carpincho-muted hover:text-carpincho-text rounded-full p-1"
-						@click="isRemoteServerModalOpen = false"
-					>
-						<i class="material-icons !text-lg">close</i>
-					</button>
-				</div>
-				<p class="text-carpincho-muted mb-3 text-xs">
-					Ingresá la IP o URL de tu PC (ej: 192.168.0.55). Se guarda el último servidor para volver fácil.
-				</p>
-				<input
-					v-model="remoteServerInput"
-					type="text"
-					placeholder="IP de tu PC (ej: 192.168.0.55)"
-					class="border-carpincho-border bg-carpincho-bg text-carpincho-text placeholder:text-carpincho-muted/60 focus:border-carpincho-warning mb-4 w-full rounded-lg border px-3 py-2 text-sm outline-none"
-					@keyup.enter="handleConnectRemoteServer"
-				/>
-				<div class="flex flex-wrap justify-end gap-2">
-					<PillButton
-						v-if="isRemoteMode"
-						icon="smartphone"
-						color-class="bg-neutral-700 hover:bg-neutral-600"
-						@click="handleUseLocalServer"
-					>
-						Usar este teléfono
-					</PillButton>
-					<PillButton
-						icon="close"
-						color-class="bg-neutral-800 hover:bg-neutral-700"
-						@click="isRemoteServerModalOpen = false"
-					>
-						Cancelar
-					</PillButton>
-					<PillButton
-						icon="link"
-						color-class="bg-amber-700 hover:bg-amber-600"
-						:disabled="isConnectingRemote || !remoteServerInput.trim()"
-						@click="handleConnectRemoteServer"
-					>
-						{{ isConnectingRemote ? 'Conectando...' : 'Conectar' }}
-					</PillButton>
-				</div>
+			<div class="mb-3 flex items-center justify-between gap-2">
+				<h3
+					id="remote-dialog-title"
+					class="text-carpincho-secondary flex items-center gap-2 text-base font-bold"
+				>
+					<i class="material-icons !text-lg" aria-hidden="true">dns</i>
+					<span>Conectar a otro servidor</span>
+				</h3>
+				<button
+					type="button"
+					aria-label="Cerrar diálogo"
+					class="touch-target text-carpincho-muted hover:text-carpincho-text inline-flex cursor-pointer items-center justify-center rounded-full p-1"
+					@click="isRemoteServerModalOpen = false"
+				>
+					<i class="material-icons !text-lg" aria-hidden="true">close</i>
+				</button>
 			</div>
-		</div>
+			<label for="remote-server-input" class="text-carpincho-muted mb-3 block text-xs">
+				Ingresá la IP o URL de tu PC (ej: 192.168.0.55). Se guarda el último servidor para volver fácil.
+			</label>
+			<input
+				id="remote-server-input"
+				v-model="remoteServerInput"
+				type="text"
+				placeholder="IP de tu PC (ej: 192.168.0.55)"
+				class="border-carpincho-border bg-carpincho-bg text-carpincho-text placeholder:text-carpincho-muted/60 focus:border-carpincho-warning mb-4 w-full rounded-lg border px-3 py-2 text-sm outline-none"
+				@keyup.enter="handleConnectRemoteServer"
+			/>
+			<div class="flex flex-wrap justify-end gap-2">
+				<PillButton
+					v-if="isRemoteMode"
+					icon="smartphone"
+					color-class="bg-neutral-700 hover:bg-neutral-600"
+					@click="handleUseLocalServer"
+				>
+					Usar este teléfono
+				</PillButton>
+				<PillButton
+					icon="close"
+					color-class="bg-neutral-800 hover:bg-neutral-700"
+					@click="isRemoteServerModalOpen = false"
+				>
+					Cancelar
+				</PillButton>
+				<PillButton
+					icon="link"
+					color-class="bg-amber-700 hover:bg-amber-600"
+					:disabled="isConnectingRemote || !remoteServerInput.trim()"
+					@click="handleConnectRemoteServer"
+				>
+					{{ isConnectingRemote ? 'Conectando...' : 'Conectar' }}
+				</PillButton>
+			</div>
+		</dialog>
 
 		<div class="mb-4 flex flex-wrap justify-center gap-3">
 			<PillButton icon="stop" color-class="bg-red-700 hover:bg-red-600" @click="stop">Cortala de una</PillButton>

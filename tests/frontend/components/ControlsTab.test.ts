@@ -623,4 +623,63 @@ describe('ControlsTab.vue', () => {
 			isNativeSpy.mockRestore();
 		}
 	});
+
+	it('renders native accessible <dialog> for remote server and Android host status panel with start/stop/error banner', async () => {
+		const androidHost = await import('@/composables/useAndroidHost');
+		const store = await import('@/stores/useServerConnectionStore');
+		const isNativeSpy = vi.spyOn(androidHost, 'isNativeAndroidHost').mockReturnValue(true);
+		const stopSpy = vi.spyOn(androidHost, 'stopAndroidServer').mockResolvedValue(undefined);
+		const startSpy = vi.spyOn(androidHost, 'initAndroidServer').mockResolvedValue(true);
+
+		store.resetServerConnectionStore();
+		store.setHostMode();
+		store.localServerState.value = 'ready';
+		store.localServerLanUrl.value = 'http://192.168.0.77:1729';
+		store.localMusicDir.value = 'content://com.android.externalstorage.documents/tree/primary%3AMusic';
+		store.localMusicDisplayName.value = 'Music';
+		store.libraryFolderStatus.value = 'ok';
+		store.setServerError('HOST_FAILED', 'No se pudo abrir el puerto 1729');
+
+		try {
+			const wrapper = mount(ControlsTab);
+
+			// Banner de error accionable y tarjeta de estado Host/Remoto
+			expect(wrapper.text()).toContain('Modo Host local');
+			expect(wrapper.text()).toContain('Encendido');
+			expect(wrapper.text()).toContain('http://192.168.0.77:1729');
+			expect(wrapper.text()).toContain('No se pudo abrir el puerto 1729');
+
+			const stopHostBtn = wrapper.findAll('button').find((b) => b.text().includes('Apagar servidor'));
+			expect(stopHostBtn).toBeDefined();
+			await stopHostBtn!.trigger('click');
+			expect(stopSpy).toHaveBeenCalledTimes(1);
+
+			store.localServerState.value = 'stopped';
+			await wrapper.vm.$nextTick();
+			const startHostBtn = wrapper.findAll('button').find((b) => b.text().includes('Prender servidor'));
+			expect(startHostBtn).toBeDefined();
+			await startHostBtn!.trigger('click');
+			expect(startSpy).toHaveBeenCalledTimes(1);
+
+			// Volumen usa botón semántico con aria-label
+			const volBtn = wrapper.find(
+				'button[aria-label*="Silenciar"], button[aria-label*="Mutear"], button[aria-label*="Desmutear"]'
+			);
+			expect(volBtn.exists()).toBe(true);
+
+			// Diálogo remoto usa <dialog> nativo sin role="dialog" redundante y con <label for>
+			const dialogEl = wrapper.find('dialog');
+			expect(dialogEl.exists()).toBe(true);
+			expect(dialogEl.attributes('role')).toBeUndefined();
+			expect(dialogEl.attributes('aria-modal')).toBeUndefined();
+			expect(dialogEl.attributes('aria-labelledby')).toBe('remote-dialog-title');
+			expect(dialogEl.find('label[for="remote-server-input"]').exists()).toBe(true);
+			expect(dialogEl.find('input#remote-server-input').exists()).toBe(true);
+		} finally {
+			store.resetServerConnectionStore();
+			isNativeSpy.mockRestore();
+			stopSpy.mockRestore();
+			startSpy.mockRestore();
+		}
+	});
 });

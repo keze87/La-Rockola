@@ -157,23 +157,30 @@
 		@touchend="onTouchEnd"
 		@touchcancel="resetSwipe"
 	>
-		<div class="flex grow cursor-pointer items-center overflow-hidden" @click="goToQueue">
+		<button
+			type="button"
+			aria-label="Abrir fila de reproducción"
+			class="flex grow cursor-pointer items-center overflow-hidden text-left"
+			@click="goToQueue"
+		>
 			<div
 				class="bg-carpincho-bg relative mr-3 flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg"
 			>
 				<img
 					v-if="coverUrl"
 					:src="coverUrl"
+					alt=""
 					class="absolute h-full w-full object-cover"
 					@error="onCoverError"
 				/>
 				<i
 					v-else-if="djBaraEnabled && queueState.length === 0"
 					class="material-icons text-carpincho-warning animate-pulse !text-[2rem]"
+					aria-hidden="true"
 				>
 					auto_awesome
 				</i>
-				<i v-else class="material-icons text-carpincho-warning !text-[2rem]">album</i>
+				<i v-else class="material-icons text-carpincho-warning !text-[2rem]" aria-hidden="true">album</i>
 			</div>
 
 			<div class="flex grow flex-col justify-center overflow-hidden">
@@ -192,16 +199,22 @@
 					{{ upNextTitle }}
 				</div>
 			</div>
-		</div>
+		</button>
 
 		<div class="ml-2 flex shrink-0 items-center gap-3">
 			<button
+				type="button"
 				:class="[
-					'hidden h-10 w-10 items-center justify-center rounded-full transition active:scale-90 sm:flex',
+					'touch-target hidden h-10 w-10 items-center justify-center rounded-full transition active:scale-90 sm:flex',
 					pauseAfterPath === currentTrackPath && currentTrackPath
 						? 'text-carpincho-warning'
 						: 'text-gray-400 hover:text-white',
 				]"
+				:aria-label="
+					pauseAfterPath === currentTrackPath && currentTrackPath
+						? 'Cancelar pausa al terminar'
+						: 'Frenar tras este tema'
+				"
 				:title="
 					pauseAfterPath === currentTrackPath && currentTrackPath
 						? 'Cancelar pausa al terminar'
@@ -212,9 +225,11 @@
 					haptic();
 				"
 			>
-				<i class="material-icons !text-2xl">timer</i>
+				<i class="material-icons !text-2xl" aria-hidden="true">timer</i>
 			</button>
 			<button
+				type="button"
+				:aria-label="isPlaying ? 'Pausar' : 'Reproducir'"
 				:class="[
 					'flex h-14 w-14 items-center justify-center rounded-full text-white shadow-lg transition active:scale-90',
 					isPlaying ? 'bg-orange-600 hover:bg-orange-500' : 'bg-green-600 hover:bg-green-500',
@@ -224,16 +239,18 @@
 					haptic(true);
 				"
 			>
-				<i class="material-icons !text-4xl">{{ isPlaying ? 'pause' : 'play_arrow' }}</i>
+				<i class="material-icons !text-4xl" aria-hidden="true">{{ isPlaying ? 'pause' : 'play_arrow' }}</i>
 			</button>
 			<button
-				class="flex h-10 w-10 items-center justify-center rounded-full bg-gray-700 text-white shadow transition hover:bg-gray-600 active:scale-90"
+				type="button"
+				aria-label="Siguiente tema"
+				class="touch-target flex h-10 w-10 items-center justify-center rounded-full bg-gray-700 text-white shadow transition hover:bg-gray-600 active:scale-90"
 				@click="
 					skip();
 					haptic();
 				"
 			>
-				<i class="material-icons !text-2xl">skip_next</i>
+				<i class="material-icons !text-2xl" aria-hidden="true">skip_next</i>
 			</button>
 		</div>
 	</section>
