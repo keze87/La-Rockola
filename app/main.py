@@ -64,6 +64,7 @@ async def lifespan(app: FastAPI):
 		logger.error(f"Error preparando base de datos en arranque: {e}")
 
 	state = container.ensure_orchestrator()
+	restored_session = bool(state and hasattr(state, "restore_playback_session") and state.restore_playback_session())
 	if state and hasattr(state, "mpv") and state.mpv and hasattr(state.mpv, "start"):
 		try:
 			res = state.mpv.start(state_ref=state)
@@ -71,6 +72,19 @@ async def lifespan(app: FastAPI):
 				await res
 		except Exception as e:
 			logger.warning(f"No se pudo arrancar MPV en el inicio: {e}")
+
+	if restored_session and state and getattr(state.mpv, "is_running", False):
+		try:
+			await state.mpv.set_volume(state.volume)
+			await state.mpv.set_mute(True if state._has_local_player() else state.server_muted)
+			if state.current_track:
+				await state.mpv.set_pause(True)
+				await state.mpv.load_file(str(state.current_track))
+				await state.mpv.set_pause(True)
+				if state.time_pos > 0:
+					await state.mpv.seek_absolute(state.time_pos)
+		except Exception as e:
+			logger.debug(f"No se pudo precargar pista restaurada en el reproductor: {e}")
 
 	asyncio.create_task(scan_library())
 
@@ -136,6 +150,8 @@ async def lifespan(app: FastAPI):
 
 	flush_pending_volume_persist()
 	if state:
+		if hasattr(state, "save_playback_session"):
+			state.save_playback_session(force=True)
 		if hasattr(state, "mpris_service") and state.mpris_service:
 			state.mpris_service.disconnect()
 		if hasattr(state, "mpv") and state.mpv:

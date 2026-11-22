@@ -8,6 +8,7 @@ bajo el principio de responsabilidad única.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import random
@@ -40,6 +41,20 @@ from app.infrastructure.mpv.null_controller import NullMpvController
 
 logger = logging.getLogger("RockolaCarpincho")
 
+SESSION_RESTORE_MAX_AGE_SEC = 4 * 3600
+
+
+def _resolve_session_max_age_sec(override: float | None = None) -> float:
+	if override is not None:
+		return max(0.0, float(override))
+	raw = os.environ.get("ROCKOLA_SESSION_RESTORE_MAX_AGE_SEC", "").strip()
+	if raw:
+		try:
+			return max(0.0, float(raw))
+		except ValueError:
+			pass
+	return float(SESSION_RESTORE_MAX_AGE_SEC)
+
 
 async def broadcast_state(include_library: bool = False) -> None:
 	"""Envía por WebSocket el diff de estado a todos los clientes conectados."""
@@ -59,6 +74,8 @@ async def broadcast_state(include_library: bool = False) -> None:
 		state.notify_mpris()
 		if hasattr(state.mpv, "sync_notification_from_state"):
 			state.mpv.sync_notification_from_state(state)
+		if hasattr(state, "save_playback_session"):
+			state.save_playback_session(force=False)
 
 
 class PlaybackOrchestrator:
@@ -143,6 +160,8 @@ class PlaybackOrchestrator:
 		self.last_broadcast: dict[str, Any] = {}
 		self.volume: int = max(0, min(110, int(volume)))
 		self.server_muted: bool = False
+		self._last_session_save_at: float = 0.0
+		self._last_session_sig: tuple[Any, ...] | None = None
 
 		# Modo Radio
 		self.radio_mode_enabled: bool = radio_mode_enabled
@@ -469,6 +488,120 @@ class PlaybackOrchestrator:
 
 	def notify_mpris(self) -> None:
 		self.mpris_service.notify()
+
+	def _get_playback_session_path(self) -> Path:
+		from app.core.config import get_carpincho_data_dir
+
+		return get_carpincho_data_dir() / "playback_session.json"
+
+	def _build_session_signature(self) -> tuple[Any, ...]:
+		return (
+			self.current_track,
+			tuple(self.queue),
+			tuple(self.history),
+			self.pause_after_path,
+			bool(self.dj_carpincho_enabled),
+			bool(self.dj_safe_mode),
+			str(self.dj_mode),
+			bool(self.radio_mode_enabled),
+			str(getattr(self, "default_sort", "time")),
+			int(self.volume),
+			bool(self.server_muted),
+			tuple(sorted(self.url_metadata.keys())),
+		)
+
+	def save_playback_session(self, force: bool = False) -> None:
+		"""Persiste cola, orden, historial, pista actual y configuraciones de forma atómica."""
+		sig = self._build_session_signature()
+		now = time.time()
+		if not force and sig == self._last_session_sig and (now - self._last_session_save_at) < 5.0:
+			return
+		payload = {
+			"saved_at": now,
+			"current_track": self.current_track,
+			"time_pos": float(self.time_pos or 0.0),
+			"paused": bool(self.mpv_paused),
+			"queue": list(self.queue),
+			"history": list(self.history),
+			"pause_after_path": self.pause_after_path,
+			"url_metadata": dict(self.url_metadata),
+			"dj_carpincho_enabled": bool(self.dj_carpincho_enabled),
+			"dj_safe_mode": bool(self.dj_safe_mode),
+			"dj_mode": str(self.dj_mode),
+			"radio_mode_enabled": bool(self.radio_mode_enabled),
+			"default_sort": str(getattr(self, "default_sort", "time")),
+			"volume": int(self.volume),
+			"server_muted": bool(self.server_muted),
+		}
+		try:
+			session_path = self._get_playback_session_path()
+			session_path.parent.mkdir(parents=True, exist_ok=True)
+			tmp_path = session_path.with_suffix(".tmp")
+			tmp_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+			tmp_path.replace(session_path)
+			self._last_session_sig = sig
+			self._last_session_save_at = now
+		except Exception as exc:
+			logger.debug(f"No se pudo persistir playback_session.json: {exc}")
+
+	def restore_playback_session(self, max_age_sec: float | None = None) -> bool:
+		"""Restaura cola, orden, historial y configuraciones si la sesión está dentro del TTL."""
+		session_path = self._get_playback_session_path()
+		if not session_path.is_file():
+			return False
+		ttl = _resolve_session_max_age_sec(max_age_sec)
+		try:
+			data = json.loads(session_path.read_text(encoding="utf-8"))
+			if not isinstance(data, dict):
+				return False
+			saved_at = float(data.get("saved_at", 0.0))
+			age = time.time() - saved_at
+			if age < 0 or age > ttl:
+				session_path.unlink(missing_ok=True)
+				return False
+
+			if isinstance(data.get("queue"), list):
+				self.queue = [str(p) for p in data["queue"] if isinstance(p, str)]
+			if isinstance(data.get("history"), list):
+				self.history = [str(p) for p in data["history"] if isinstance(p, str)]
+			raw_current = data.get("current_track")
+			self.current_track = str(raw_current) if isinstance(raw_current, str) and raw_current else None
+			self.time_pos = max(0.0, float(data.get("time_pos", 0.0) or 0.0))
+			if self.current_track:
+				# Restauramos en pausa para evitar reproducir audio inesperado tras reiniciar el backend
+				self.mpv_paused = True
+			raw_pause_after = data.get("pause_after_path")
+			self.pause_after_path = (
+				str(raw_pause_after) if isinstance(raw_pause_after, str) and raw_pause_after else None
+			)
+			if isinstance(data.get("url_metadata"), dict):
+				self.url_metadata = dict(data["url_metadata"])
+			if "dj_carpincho_enabled" in data:
+				self.dj_carpincho_enabled = bool(data["dj_carpincho_enabled"])
+			if "dj_safe_mode" in data:
+				self.dj_safe_mode = bool(data["dj_safe_mode"])
+			if isinstance(data.get("dj_mode"), str) and data["dj_mode"] in ("shuffle", "favorites", "library"):
+				self.dj_mode = data["dj_mode"]
+			if "radio_mode_enabled" in data:
+				self.radio_mode_enabled = bool(data["radio_mode_enabled"])
+			if isinstance(data.get("default_sort"), str) and data["default_sort"] in (
+				"time",
+				"artist",
+				"mood",
+				"shuffle",
+			):
+				self.default_sort = data["default_sort"]
+			if "volume" in data:
+				self.volume = max(0, min(110, int(data["volume"])))
+			if "server_muted" in data:
+				self.server_muted = bool(data["server_muted"])
+
+			self._last_session_sig = self._build_session_signature()
+			self._last_session_save_at = time.time()
+			return True
+		except Exception as exc:
+			logger.debug(f"No se pudo restaurar playback_session.json: {exc}")
+			return False
 
 	async def ensure_mpris(self) -> None:
 		await self.mpris_service.ensure_registered()

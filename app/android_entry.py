@@ -336,6 +336,9 @@ def stop_embedded_server() -> None:
 	from app.api.commands import flush_pending_volume_persist
 
 	flush_pending_volume_persist()
+	orch = get_container().orchestrator
+	if orch is not None and hasattr(orch, "save_playback_session"):
+		orch.save_playback_session(force=True)
 	with _server_lock:
 		_stop_requested = True
 		if _active_server is not None:
