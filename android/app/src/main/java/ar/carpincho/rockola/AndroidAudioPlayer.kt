@@ -88,6 +88,10 @@ class AndroidAudioPlayer(
                 .build()
                 .apply {
                     addListener(object : Player.Listener {
+                        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                            dispatchToPython("on_pause_changed", !playWhenReady)
+                        }
+
                         override fun onIsPlayingChanged(isPlaying: Boolean) {
                             onPlaybackActiveChanged(isPlaying)
                             dispatchToPython("on_pause_changed", !isPlaying)

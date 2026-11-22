@@ -32,8 +32,10 @@ async def _cmd_play(state: PlaybackOrchestrator, req: CommandRequest, _mgr: Any)
 		await state.play_track(req.path)
 
 
-async def _cmd_pause(state: PlaybackOrchestrator, _req: CommandRequest, _mgr: Any) -> None:
-	if not state.current_track and state.queue:
+async def _cmd_pause(state: PlaybackOrchestrator, req: CommandRequest, _mgr: Any) -> None:
+	if req.state is not None:
+		await state.set_pause(bool(req.state))
+	elif not state.current_track and state.queue:
 		await state.play_next(skipped_by_user=True)
 	else:
 		await state.set_pause(not state.mpv_paused)

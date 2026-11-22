@@ -110,8 +110,11 @@ class RockolaForegroundService : Service() {
 
     private val noisyReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY && !notificationManager.isPaused) {
-                commandClient.sendCommand("pause")
+            if (intent?.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY) {
+                audioPlayer.setPause(true)
+                if (!notificationManager.isPaused || isActivelyPlaying) {
+                    commandClient.sendCommand("pause", mapOf("state" to true))
+                }
             }
         }
     }
@@ -169,7 +172,7 @@ class RockolaForegroundService : Service() {
             this,
             noisyReceiver,
             IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY),
-            ContextCompat.RECEIVER_NOT_EXPORTED,
+            ContextCompat.RECEIVER_EXPORTED,
         )
     }
 

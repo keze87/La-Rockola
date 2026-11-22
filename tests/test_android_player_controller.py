@@ -174,3 +174,25 @@ async def test_android_player_controller_syncs_notification_position_on_progress
 	handler.on_position(45.0, 180.0)
 	assert kotlin_player.updateNotificationPosition.call_count == 2
 	kotlin_player.updateNotificationPosition.assert_called_with(180000, 45000, False)
+
+
+@pytest.mark.asyncio
+async def test_cmd_pause_with_explicit_state_never_unpauses() -> None:
+	"""_cmd_pause con state=True debe pausar explícitamente sin togglear si ya estaba pausado (ej. AUDIO_BECOMING_NOISY)."""
+	from app.api.commands import _cmd_pause
+	from app.api.schemas import CommandRequest
+
+	state = MagicMock()
+	state.current_track = "/music/zamba.mp3"
+	state.queue = []
+	state.mpv_paused = True
+	state.set_pause = AsyncMock()
+
+	# Caso explícito state=True cuando ya estaba pausado -> sigue pausado (NO despausa)
+	await _cmd_pause(state, CommandRequest(cmd="pause", state=True), MagicMock())
+	state.set_pause.assert_awaited_once_with(True)
+
+	# Caso toggle sin state -> alterna normalmente
+	state.set_pause.reset_mock()
+	await _cmd_pause(state, CommandRequest(cmd="pause"), MagicMock())
+	state.set_pause.assert_awaited_once_with(False)
