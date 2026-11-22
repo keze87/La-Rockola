@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const SW_PATH = resolve(process.cwd(), 'public/sw.js');
 
-function loadServiceWorkerEnv(fetchMock: ReturnType<typeof vi.fn>) {
+function loadServiceWorkerEnv(fetchMock: ReturnType<typeof vi.fn>, scopeUrl = 'http://localhost:1729/') {
 	const listeners = new Map<string, (event: unknown) => void>();
 	const store = new Map<string, Map<string, Response>>();
 
@@ -50,7 +50,8 @@ function loadServiceWorkerEnv(fetchMock: ReturnType<typeof vi.fn>) {
 	};
 
 	const selfObj = {
-		location: { origin: 'http://localhost:1729', href: 'http://localhost:1729/sw.js' },
+		location: { origin: 'http://localhost:1729', href: new URL('sw.js', scopeUrl).href },
+		registration: { scope: scopeUrl },
 		skipWaiting: vi.fn().mockResolvedValue(undefined),
 		clients: { claim: vi.fn().mockResolvedValue(undefined) },
 		addEventListener: vi.fn((type: string, cb: (e: unknown) => void) => {
@@ -230,5 +231,63 @@ describe('public/sw.js lifecycle & offline resilience', () => {
 		});
 		expect(respondPost).not.toHaveBeenCalled();
 		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it('respects subpath scope from self.registration.scope and avoids greedy /test prefix matching', async () => {
+		const fetchMock = vi.fn().mockResolvedValue(new Response('ok', { status: 200 }));
+		const { listeners } = loadServiceWorkerEnv(fetchMock, 'http://localhost:1729/rockola/');
+
+		// Bajo /rockola/, los endpoints relativos hacen bypass
+		for (const url of [
+			'http://localhost:1729/rockola/api/v1/library',
+			'http://localhost:1729/rockola/test/ping',
+			'http://localhost:1729/rockola/test',
+		]) {
+			const respondWith = vi.fn();
+			listeners.get('fetch')!({
+				request: { method: 'GET', url, mode: 'cors' } as Request,
+				waitUntil: vi.fn(),
+				respondWith,
+			});
+			expect(respondWith).not.toHaveBeenCalled();
+		}
+
+		// /rockola/assets/main.js y /rockola/ son shell requests bajo el scope
+		for (const url of ['http://localhost:1729/rockola/', 'http://localhost:1729/rockola/assets/main.js']) {
+			const respondWith = vi.fn();
+			listeners.get('fetch')!({
+				request: {
+					method: 'GET',
+					url,
+					mode: url.endsWith('/rockola/') ? 'navigate' : 'cors',
+				} as Request,
+				waitUntil: vi.fn(),
+				respondWith,
+			});
+			expect(respondWith).toHaveBeenCalledTimes(1);
+		}
+
+		// /rockola/test-page.html en navegación no debe ser capturado por /test
+		const navRespond = vi.fn();
+		listeners.get('fetch')!({
+			request: {
+				method: 'GET',
+				url: 'http://localhost:1729/rockola/test-page.html',
+				mode: 'navigate',
+			} as Request,
+			waitUntil: vi.fn(),
+			respondWith: navRespond,
+		});
+		expect(navRespond).toHaveBeenCalledTimes(1);
+	});
+
+	it('manifest.webmanifest separates any/maskable icons and aligns theme_color with index.html', () => {
+		const manifest = JSON.parse(readFileSync(resolve(process.cwd(), 'public/manifest.webmanifest'), 'utf-8'));
+		expect(manifest.theme_color).toBe('#1f1a17');
+		expect(Array.isArray(manifest.icons)).toBe(true);
+		const purposes = manifest.icons.map((i: { purpose?: string }) => i.purpose);
+		expect(purposes).not.toContain('any maskable');
+		expect(purposes).toContain('any');
+		expect(purposes).toContain('maskable');
 	});
 });

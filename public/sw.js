@@ -1,21 +1,31 @@
 const CACHE_NAME = 'rockola-shell-v2';
 const SHELL_ASSETS = ['./', './index.html', './manifest.webmanifest', './favicon.png', './icon-192.png'];
-const BYPASS_PREFIXES = [
-	'/api',
-	'/stream',
-	'/ws',
-	'/cover',
-	'/lrc',
-	'/lyrics',
-	'/command',
-	'/scan',
-	'/library',
-	'/system',
-	'/mpv',
-	'/weather',
-	'/health',
-	'/test',
+const BYPASS_SEGMENTS = [
+	'api',
+	'stream',
+	'ws',
+	'cover',
+	'lrc',
+	'lyrics',
+	'command',
+	'scan',
+	'library',
+	'system',
+	'mpv',
+	'weather',
+	'health',
+	'test',
 ];
+
+function getScopeBasePath() {
+	try {
+		const scopeUrl = new URL((self.registration && self.registration.scope) || './', self.location.href);
+		const p = scopeUrl.pathname || '/';
+		return p.endsWith('/') ? p : `${p}/`;
+	} catch {
+		return '/';
+	}
+}
 
 const OFFLINE_HTML = `<!doctype html>
 <html lang="es-AR">
@@ -70,14 +80,17 @@ self.addEventListener('fetch', (event) => {
 	}
 
 	if (url.origin !== self.location.origin) return;
-	if (BYPASS_PREFIXES.some((prefix) => url.pathname.startsWith(prefix))) return;
+	const basePath = getScopeBasePath();
+	if (!url.pathname.startsWith(basePath)) return;
+	const relPath = '/' + url.pathname.slice(basePath.length);
+	if (BYPASS_SEGMENTS.some((seg) => relPath === `/${seg}` || relPath.startsWith(`/${seg}/`))) return;
 
 	const isShellRequest =
 		req.mode === 'navigate' ||
-		url.pathname === '/' ||
-		url.pathname === '/index.html' ||
-		url.pathname.startsWith('/assets/') ||
-		url.pathname.endsWith('.webmanifest');
+		relPath === '/' ||
+		relPath === '/index.html' ||
+		relPath.startsWith('/assets/') ||
+		relPath.endsWith('.webmanifest');
 
 	if (!isShellRequest) return;
 
