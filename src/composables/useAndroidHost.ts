@@ -88,8 +88,6 @@ export interface RockolaServerPlugin {
 		displayName?: string | null;
 		error?: string | null;
 	}>;
-	hasStoragePermission(): Promise<{ granted: boolean }>;
-	requestStoragePermission(): Promise<{ granted: boolean }>;
 	updateMediaNotification(options: MediaNotificationPayload): Promise<{ updated: boolean }>;
 	updateMediaPosition(options: MediaPositionPayload): Promise<{ updated: boolean }>;
 	setMediaTarget?(options: MediaTargetPayload): Promise<{ updated: boolean }>;

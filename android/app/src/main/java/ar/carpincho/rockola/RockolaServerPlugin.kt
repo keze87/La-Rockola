@@ -37,19 +37,7 @@ import kotlin.math.roundToInt
  * Plugin nativo de Capacitor para controlar el servidor embebido, enrutar eventos
  * multimedia hacia host/remoto y gestionar permisos y ventana PiP.
  */
-@CapacitorPlugin(
-    name = "RockolaServer",
-    permissions = [
-        Permission(
-            alias = "storageLegacy",
-            strings = [Manifest.permission.READ_EXTERNAL_STORAGE]
-        ),
-        Permission(
-            alias = "audioMedia",
-            strings = [Manifest.permission.READ_MEDIA_AUDIO]
-        )
-    ]
-)
+@CapacitorPlugin(name = "RockolaServer")
 class RockolaServerPlugin : Plugin() {
 
     private var volumeObserver: ContentObserver? = null
@@ -165,17 +153,7 @@ class RockolaServerPlugin : Plugin() {
         if (!configured.isNullOrEmpty() && configured.startsWith("content://")) {
             return AndroidStorageBridge.validateTreeUri(context, configured).status == SafFolderStatus.OK
         }
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.READ_MEDIA_AUDIO,
-            ) == PackageManager.PERMISSION_GRANTED
-        } else {
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.READ_EXTERNAL_STORAGE,
-            ) == PackageManager.PERMISSION_GRANTED
-        }
+        return false
     }
 
     private fun buildStatusObject(): JSObject {
@@ -326,11 +304,6 @@ class RockolaServerPlugin : Plugin() {
             mainActivity.refreshPipParams()
         }
         call.resolve(JSObject().apply { put("updated", true) })
-    }
-
-    @PluginMethod
-    fun hasStoragePermission(call: PluginCall) {
-        call.resolve(JSObject().apply { put("granted", hasStorageAccess()) })
     }
 
     @PluginMethod
@@ -488,32 +461,6 @@ class RockolaServerPlugin : Plugin() {
                 put("reason", reason ?: JSONObject.NULL)
             })
         }
-    }
-
-    @PluginMethod
-    fun requestStoragePermission(call: PluginCall) {
-        if (hasStorageAccess()) {
-            call.resolve(JSObject().apply { put("granted", true) })
-            return
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            requestPermissionForAlias("audioMedia", call, "onAudioMediaPermResult")
-        } else {
-            requestPermissionForAlias("storageLegacy", call, "onLegacyStoragePermResult")
-        }
-    }
-
-    @PermissionCallback
-    private fun onAudioMediaPermResult(call: PluginCall?) {
-        val granted = getPermissionState("audioMedia") == PermissionState.GRANTED || hasStorageAccess()
-        call?.resolve(JSObject().apply { put("granted", granted) })
-    }
-
-    @PermissionCallback
-    private fun onLegacyStoragePermResult(call: PluginCall?) {
-        val granted = getPermissionState("storageLegacy") == PermissionState.GRANTED || hasStorageAccess()
-        call?.resolve(JSObject().apply { put("granted", granted) })
     }
 
     @PluginMethod
