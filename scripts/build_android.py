@@ -1,117 +1,43 @@
 #!/usr/bin/env python3
 """
-Script de empaquetado para Android (Capacitor + Chaquopy).
+Script de empaquetado para Android (Capacitor + Chaquopy 17.2 / Python 3.13).
 Prepara el frontend compilado (`dist/`), copia el backend Python (`app/`)
-al source set de Chaquopy, sincroniza Capacitor y opcionalmente compila el APK con Gradle.
+al source set de Chaquopy, sincroniza Capacitor, compila APK/AAB con Gradle,
+verifica alineamiento ELF 16 KB (0x4000) y genera checksums `.sha256`.
 
 Uso:
-    python3 scripts/build_android.py [--skip-frontend] [--sync-only] [--release]
+    python3 scripts/build_android.py [--skip-frontend] [--sync-only] [--release] [--bundle] [--flavor arm64|x86_64]
 """
 
 from __future__ import annotations
 
 import argparse
-import base64
 import hashlib
 import os
 import shutil
 import subprocess
 import sys
-import tempfile
-import urllib.request
-import zipfile
 from pathlib import Path
 
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+	sys.path.insert(0, str(_REPO_ROOT))
+
+from scripts.verify_android_apk import verify_android_archive
+
 IGNORE_PATTERNS = shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo", ".DS_Store")
-
-ARCH_TO_ANDROID_TAG: dict[str, str] = {
-	"linux_aarch64": "android_24_arm64_v8a",
-	"linux_armv7l": "android_24_armeabi_v7a",
-	"linux_x86_64": "android_24_x86_64",
-}
-PYDANTIC_CORE_VERSION = "2.46.3"
-PYDANTIC_CORE_RELEASE_BASE = (
-	f"https://github.com/Eutalix/android-pydantic-core/releases/download/v{PYDANTIC_CORE_VERSION}"
-)
+SUPPORTED_FLAVORS = ("arm64", "x86_64")
 
 
-def _compute_record_digest(data: bytes) -> str:
-	digest = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=").decode("ascii")
-	return f"sha256={digest},{len(data)}"
-
-
-def retag_wheel_for_android(src_wheel: Path, dest_dir: Path) -> Path:
-	"""Reetiqueta un wheel cp311 linux_* de Chaquopy/android-pydantic-core a android_24_*."""
-	matched_pair = next(
-		((src_tag, dst_tag) for src_tag, dst_tag in ARCH_TO_ANDROID_TAG.items() if src_tag in src_wheel.name),
-		None,
-	)
-	if not matched_pair:
-		raise ValueError(f"Wheel sin arquitectura soportada para Android: {src_wheel.name}")
-
-	src_tag, dst_tag = matched_pair
-	dest_dir.mkdir(parents=True, exist_ok=True)
-	dest_wheel = dest_dir / src_wheel.name.replace(src_tag, dst_tag)
-
-	new_wheel_bytes: bytes | None = None
-	wheel_entry_name: str | None = None
-
-	with (
-		zipfile.ZipFile(src_wheel, "r") as zin,
-		zipfile.ZipFile(dest_wheel, "w", compression=zipfile.ZIP_DEFLATED) as zout,
-	):
-		entries = zin.infolist()
-		for info in entries:
-			raw = zin.read(info.filename)
-			if info.filename.endswith(".dist-info/WHEEL"):
-				wheel_entry_name = info.filename
-				text = raw.decode("utf-8").replace(src_tag, dst_tag)
-				new_wheel_bytes = text.encode("utf-8")
-				raw = new_wheel_bytes
-			elif info.filename.endswith(".dist-info/RECORD"):
-				continue
-			zout.writestr(info, raw)
-
-		# Recalculamos RECORD con el nuevo hash de WHEEL
-		record_entry = next((i for i in entries if i.filename.endswith(".dist-info/RECORD")), None)
-		if record_entry is not None and wheel_entry_name is not None and new_wheel_bytes is not None:
-			new_digest = _compute_record_digest(new_wheel_bytes)
-			lines = []
-			for line in zin.read(record_entry.filename).decode("utf-8").splitlines():
-				if line.startswith(f"{wheel_entry_name},"):
-					lines.append(f"{wheel_entry_name},{new_digest}")
-				else:
-					lines.append(line)
-			zout.writestr(record_entry, ("\n".join(lines) + "\n").encode("utf-8"))
-
-	return dest_wheel
-
-
-def ensure_android_pydantic_wheels(android_dir: Path) -> Path:
-	"""Descarga y reetiqueta los wheels cp311 de pydantic_core si faltan en android/app/wheels/."""
-	wheels_dir = android_dir / "app" / "wheels"
-	wheels_dir.mkdir(parents=True, exist_ok=True)
-
-	missing = [
-		(src_tag, dst_tag)
-		for src_tag, dst_tag in ARCH_TO_ANDROID_TAG.items()
-		if not (wheels_dir / f"pydantic_core-{PYDANTIC_CORE_VERSION}-cp311-cp311-{dst_tag}.whl").is_file()
-	]
-	if not missing:
-		return wheels_dir
-
-	with tempfile.TemporaryDirectory(prefix="rockola_wheels_") as tmp_dir:
-		tmp_path = Path(tmp_dir)
-		for src_tag, _dst_tag in missing:
-			whl_name = f"pydantic_core-{PYDANTIC_CORE_VERSION}-cp311-cp311-{src_tag}.whl"
-			url = f"{PYDANTIC_CORE_RELEASE_BASE}/{whl_name}"
-			downloaded = tmp_path / whl_name
-			print(f"⬇️ Descargando wheel Android: {whl_name}...")
-			urllib.request.urlretrieve(url, downloaded)
-			out = retag_wheel_for_android(downloaded, wheels_dir)
-			print(f"   • Reetiquetado -> {out.name}")
-
-	return wheels_dir
+def write_sha256_file(artifact_path: Path) -> Path:
+	"""Genera archivo `<artefacto>.sha256` con digest SHA-256 estándar."""
+	hasher = hashlib.sha256()
+	with artifact_path.open("rb") as f:
+		for chunk in iter(lambda: f.read(65536), b""):
+			hasher.update(chunk)
+	sha_path = Path(f"{artifact_path}.sha256")
+	sha_path.write_text(f"{hasher.hexdigest()}  {artifact_path.name}\n", encoding="utf-8")
+	return sha_path
 
 
 def stage_android_assets(root_dir: Path) -> Path:
@@ -143,6 +69,11 @@ def stage_android_assets(root_dir: Path) -> Path:
 	if stale_dist.exists():
 		shutil.rmtree(stale_dist)
 
+	# Eliminamos carpeta wheels/ heredada del reetiquetado manual anterior
+	legacy_wheels = android_dir / "app" / "wheels"
+	if legacy_wheels.exists():
+		shutil.rmtree(legacy_wheels)
+
 	return py_dest
 
 
@@ -164,7 +95,12 @@ def has_android_sdk(android_dir: Path) -> bool:
 
 
 def ensure_jdk_env() -> None:
-	"""Asegura que JAVA_HOME apunte a un JDK con javac (Java 21/17) si el predeterminado carece de compilador."""
+	"""Asegura que JAVA_HOME apunte a un JDK con javac (Java 21/17) y agrega ~/.local/bin al PATH."""
+	local_bin = Path.home() / ".local" / "bin"
+	if local_bin.is_dir():
+		path_parts = os.environ.get("PATH", "").split(os.pathsep)
+		if str(local_bin) not in path_parts:
+			os.environ["PATH"] = f"{local_bin}{os.pathsep}{os.environ.get('PATH', '')}"
 	if "JAVA_HOME" in os.environ and Path(os.environ["JAVA_HOME"], "bin", "javac").is_file():
 		return
 	for candidate in [Path("/usr/lib/jvm/java-21-openjdk"), Path("/usr/lib/jvm/java-17-openjdk")]:
@@ -174,14 +110,35 @@ def ensure_jdk_env() -> None:
 			return
 
 
+def find_built_artifacts(android_dir: Path, release: bool, flavor: str | None, bundle: bool) -> list[Path]:
+	"""Localiza los APK o AAB recién generados por Gradle para la variante solicitada."""
+	variant_dir = "release" if release else "debug"
+	base_dir = android_dir / "app" / "build" / "outputs" / ("bundle" if bundle else "apk")
+	ext = ".aab" if bundle else ".apk"
+	flavors = [flavor] if flavor else list(SUPPORTED_FLAVORS)
+
+	found: list[Path] = []
+	for flv in flavors:
+		candidate_root = (
+			base_dir / (f"{flv}Release" if release else f"{flv}Debug") if bundle else base_dir / flv / variant_dir
+		)
+		if not candidate_root.is_dir():
+			continue
+		for item in sorted(candidate_root.rglob(f"*{ext}")):
+			if item.is_file() and not item.name.endswith("-androidTest.apk"):
+				found.append(item)
+	return found
+
+
 def build_android(
 	root_dir: Path | None = None,
 	skip_frontend: bool = False,
 	sync_only: bool = False,
 	release: bool = False,
 	flavor: str | None = None,
+	bundle: bool = False,
 ) -> int:
-	"""Orquesta compilación de frontend, staging de assets, cap sync y Gradle."""
+	"""Orquesta compilación de frontend, staging de assets, cap sync, Gradle y verificación 16 KB."""
 	base_dir = (root_dir or Path(__file__).resolve().parents[1]).resolve()
 	npm_cmd = "npm.cmd" if os.name == "nt" else "npm"
 	npx_cmd = "npx.cmd" if os.name == "nt" else "npx"
@@ -202,37 +159,52 @@ def build_android(
 		return 0
 
 	android_dir = base_dir / "android"
-	ensure_android_pydantic_wheels(android_dir)
-
 	if not has_android_sdk(android_dir):
 		print(
 			"⚠️ Ojo al piojo: no detecté ANDROID_HOME / ANDROID_SDK_ROOT ni android/local.properties.\n"
 			"   Los assets de Python y Vue ya quedaron sincronizados en android/.\n"
 			"   Para generar el APK, abrí la carpeta 'android/' en Android Studio o exportá ANDROID_HOME y corré:\n"
-			"   cd android && ./gradlew assembleDebug"
+			"   cd android && ./gradlew assembleArm64Debug"
 		)
 		return 0
 
 	ensure_jdk_env()
 	gradlew = android_dir / ("gradlew.bat" if os.name == "nt" else "gradlew")
+	prefix = "bundle" if bundle else "assemble"
 	variant = "Release" if release else "Debug"
-	task = f"assemble{flavor.capitalize()}{variant}" if flavor else f"assemble{variant}"
-	print(f"🤖 Compilando APK con Gradle ({task})...")
+	flavor_cap = f"{flavor[0].upper()}{flavor[1:]}" if flavor else ""
+	task = f"{prefix}{flavor_cap}{variant}" if flavor_cap else f"{prefix}{variant}"
+	print(f"🤖 Compilando artefacto Android con Gradle ({task})...")
 	subprocess.run([str(gradlew), task], cwd=str(android_dir), check=True)
-	print("✅ ¡APK compilado con éxito! Revisá android/app/build/outputs/apk/")
+
+	artifacts = find_built_artifacts(android_dir, release=release, flavor=flavor, bundle=bundle)
+	if not artifacts:
+		raise RuntimeError(f"Gradle terminó {task} pero no encontré artefactos generados en build/outputs/.")
+
+	for artifact in artifacts:
+		res = verify_android_archive(artifact)
+		if not res.ok:
+			detail = "\n".join(f"  - {err}" for err in res.errors)
+			raise RuntimeError(f"Falló la verificación ELF/16 KB en {artifact}:\n{detail}")
+		sha_file = write_sha256_file(artifact)
+		print(f"✅ {artifact.name}: {res.inspected_so_count} binarios .so OK (16 KB) · SHA-256 -> {sha_file.name}")
+
 	return 0
 
 
 def main() -> int:
-	parser = argparse.ArgumentParser(description="Prepara y compila el APK Android de La Rockola del Carpincho.")
+	parser = argparse.ArgumentParser(
+		description="Prepara, compila y verifica el APK/AAB Android de La Rockola del Carpincho."
+	)
 	parser.add_argument("--skip-frontend", action="store_true", help="Omite 'npm run build' y usa dist/ actual.")
 	parser.add_argument("--sync-only", action="store_true", help="Solo sincroniza Python/dist/Capacitor sin Gradle.")
-	parser.add_argument("--release", action="store_true", help="Compila assembleRelease en vez de assembleDebug.")
+	parser.add_argument("--release", action="store_true", help="Compila variante Release firmada obligatoriamente.")
+	parser.add_argument("--bundle", action="store_true", help="Genera AAB (Android App Bundle) en vez de APK.")
 	parser.add_argument(
 		"--flavor",
-		choices=["arm64", "armv7", "x86_64"],
+		choices=list(SUPPORTED_FLAVORS),
 		default=None,
-		help="Flavour de arquitectura específica (ej. arm64).",
+		help="Flavour de arquitectura específica (ej. arm64 o x86_64).",
 	)
 	args = parser.parse_args()
 
@@ -242,6 +214,7 @@ def main() -> int:
 			sync_only=args.sync_only,
 			release=args.release,
 			flavor=args.flavor,
+			bundle=args.bundle,
 		)
 	except Exception as exc:
 		print(f"❌ Error preparando build Android: {exc}", file=sys.stderr)

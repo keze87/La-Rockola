@@ -345,31 +345,195 @@ def test_build_android_stage_assets(tmp_path: Path) -> None:
 	assert not stale_dist.exists()
 
 
-def test_retag_wheel_for_android(tmp_path: Path) -> None:
-	"""retag_wheel_for_android reescribe nombre, WHEEL y RECORD a etiqueta android_24_*."""
+def _build_synthetic_elf64(p_align: int = 0x4000, runpath: bytes | None = None) -> bytes:
+	"""Construye un ELF64 minimalista con segmentos PT_LOAD y opcional PT_DYNAMIC (DT_RUNPATH)."""
+	import struct
+
+	ehdr_size = 64
+	phdr_size = 56
+	num_phdrs = 2 if runpath is not None else 1
+	header_end = ehdr_size + phdr_size * num_phdrs
+
+	dynstr = b"\x00" + (runpath + b"\x00" if runpath is not None else b"")
+	# DT_RUNPATH = 29, DT_STRTAB = 5, DT_STRSZ = 10, DT_NULL = 0
+	strtab_vaddr = 0x2000
+	dyn_offset = 0x1000
+	strtab_offset = 0x2000
+
+	dyn_entries = b""
+	if runpath is not None:
+		dyn_entries = (
+			struct.pack("<qQ", 5, strtab_vaddr)
+			+ struct.pack("<qQ", 10, len(dynstr))
+			+ struct.pack("<qQ", 29, 1)
+			+ struct.pack("<qQ", 0, 0)
+		)
+
+	total_size = 0x2100 if runpath is not None else 0x1000
+	buf = bytearray(total_size)
+
+	# Elf64_Ehdr: e_ident(16), e_type(H=3 ET_DYN), e_machine(H=183 aarch64), e_version(I=1),
+	# e_entry(Q), e_phoff(Q=64), e_shoff(Q=0), e_flags(I=0), e_ehsize(H=64),
+	# e_phentsize(H=56), e_phnum(H), e_shentsize(H=64), e_shnum(H=0), e_shstrndx(H=0)
+	e_ident = b"\x7fELF\x02\x01\x01" + (b"\x00" * 9)
+	struct.pack_into(
+		"<16sHHIQQQIHHHHHH",
+		buf,
+		0,
+		e_ident,
+		3,
+		183,
+		1,
+		0,
+		ehdr_size,
+		0,
+		0,
+		ehdr_size,
+		phdr_size,
+		num_phdrs,
+		64,
+		0,
+		0,
+	)
+
+	# PT_LOAD (1): flags=5 (R|X)
+	struct.pack_into(
+		"<IIQQQQQQ",
+		buf,
+		ehdr_size,
+		1,
+		5,
+		0,
+		0,
+		0,
+		total_size,
+		total_size,
+		p_align,
+	)
+
+	if runpath is not None:
+		# PT_DYNAMIC (2)
+		struct.pack_into(
+			"<IIQQQQQQ",
+			buf,
+			ehdr_size + phdr_size,
+			2,
+			6,
+			dyn_offset,
+			dyn_offset,
+			dyn_offset,
+			len(dyn_entries),
+			len(dyn_entries),
+			8,
+		)
+		buf[dyn_offset : dyn_offset + len(dyn_entries)] = dyn_entries
+		buf[strtab_offset : strtab_offset + len(dynstr)] = dynstr
+
+	assert len(buf) >= header_end
+	return bytes(buf)
+
+
+def test_verify_android_apk_elf_page_alignment_and_termux_runpath(tmp_path: Path) -> None:
+	"""verify_android_apk detecta segmentos 4KB y RUNPATH de Termux incluso dentro de .imy."""
 	import zipfile
 
-	from scripts.build_android import retag_wheel_for_android
+	from scripts.verify_android_apk import inspect_elf_bytes, verify_android_archive
 
-	src_whl = tmp_path / "pydantic_core-2.46.3-cp311-cp311-linux_aarch64.whl"
-	wheel_meta = "Wheel-Version: 1.0\nGenerator: maturin\nRoot-Is-Purelib: false\nTag: cp311-cp311-linux_aarch64\n"
-	record_meta = "pydantic_core-2.46.3.dist-info/WHEEL,sha256=old,1\npydantic_core-2.46.3.dist-info/RECORD,,\n"
-	with zipfile.ZipFile(src_whl, "w") as zf:
-		zf.writestr("pydantic_core/__init__.py", "# ok\n")
-		zf.writestr("pydantic_core-2.46.3.dist-info/WHEEL", wheel_meta)
-		zf.writestr("pydantic_core-2.46.3.dist-info/RECORD", record_meta)
+	good_elf = _build_synthetic_elf64(p_align=0x4000, runpath=None)
+	assert inspect_elf_bytes("libgood.so", good_elf) == []
 
-	out_dir = tmp_path / "wheels"
-	out_whl = retag_wheel_for_android(src_whl, out_dir)
-	assert out_whl.name == "pydantic_core-2.46.3-cp311-cp311-android_24_arm64_v8a.whl"
-	assert out_whl.is_file()
-	with zipfile.ZipFile(out_whl, "r") as zf:
-		rewritten = zf.read("pydantic_core-2.46.3.dist-info/WHEEL").decode("utf-8")
-		assert "Tag: cp311-cp311-android_24_arm64_v8a" in rewritten
-		assert "linux_aarch64" not in rewritten
-		rec = zf.read("pydantic_core-2.46.3.dist-info/RECORD").decode("utf-8")
-		assert "pydantic_core-2.46.3.dist-info/WHEEL,sha256=" in rec
-		assert "sha256=old" not in rec
+	bad_align_elf = _build_synthetic_elf64(p_align=0x1000, runpath=None)
+	align_issues = inspect_elf_bytes("libbad_align.so", bad_align_elf)
+	assert any("0x4000" in issue or "16 KB" in issue for issue in align_issues)
+
+	termux_elf = _build_synthetic_elf64(p_align=0x4000, runpath=b"/data/data/com.termux/files/usr/lib")
+	runpath_issues = inspect_elf_bytes("libtermux.so", termux_elf)
+	assert any("com.termux" in issue for issue in runpath_issues)
+
+	# Empaquetamos un APK con un .so 4KB escondido dentro del archivo .imy de Chaquopy
+	imy_bad = tmp_path / "req.imy"
+	with zipfile.ZipFile(imy_bad, "w") as zf:
+		zf.writestr("_bad.so", bad_align_elf)
+
+	apk_bad = tmp_path / "bad.apk"
+	with zipfile.ZipFile(apk_bad, "w") as zf:
+		zf.writestr("lib/arm64-v8a/libok.so", good_elf)
+		zf.writestr("assets/chaquopy/requirements-arm64-v8a.imy", imy_bad.read_bytes())
+
+	res_bad = verify_android_archive(apk_bad)
+	assert res_bad.ok is False
+	assert any("_bad.so" in msg for msg in res_bad.errors)
+
+	imy_good = tmp_path / "req_ok.imy"
+	with zipfile.ZipFile(imy_good, "w") as zf:
+		zf.writestr("_ok.so", good_elf)
+
+	apk_good = tmp_path / "good.apk"
+	with zipfile.ZipFile(apk_good, "w") as zf:
+		zf.writestr("lib/arm64-v8a/libok.so", good_elf)
+		zf.writestr("assets/chaquopy/requirements-arm64-v8a.imy", imy_good.read_bytes())
+
+	res_good = verify_android_archive(apk_good)
+	assert res_good.ok is True
+	assert res_good.errors == []
+	assert res_good.inspected_so_count >= 2
+
+
+def test_android_smoke_check_runs_fastapi_endpoints(tmp_path: Path) -> None:
+	"""android_smoke valida imports críticos y endpoints /api/v1/health y /api/v1/system/info."""
+	from app.android_smoke import run_embedded_smoke_check
+
+	result = run_embedded_smoke_check(work_dir=tmp_path)
+	assert result["ok"] is True
+	assert result["health_status"] == 200
+	assert result["system_info_status"] == 200
+	assert "fastapi" in result["checked_modules"]
+	assert "pydantic_core" in result["checked_modules"]
+
+
+def test_resize_cover_uses_android_image_resizer_when_pillow_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+	"""Si no existe Pillow en Android, _resize_cover delega al helper Kotlin AndroidImageResizer."""
+	from app.api import media as media_mod
+
+	class _FakeResizer:
+		@staticmethod
+		def resizeJpeg(data: bytes, max_size: int) -> bytes:
+			assert data == b"ORIG_COVER"
+			assert max_size == 128
+			return b"KOTLIN_RESIZED"
+
+	monkeypatch.setattr(media_mod, "HAS_PIL", False)
+	monkeypatch.setattr("app.infrastructure.binaries.manager.is_android", lambda: True)
+	monkeypatch.setattr(media_mod, "_get_android_image_resizer", lambda: _FakeResizer)
+
+	resized, mime = media_mod._resize_cover(b"ORIG_COVER", 128)
+	assert resized == b"KOTLIN_RESIZED"
+	assert mime == "image/jpeg"
+
+	# Si el helper nativo falla o devuelve None, degrada devolviendo los bytes originales
+	class _NullResizer:
+		@staticmethod
+		def resizeJpeg(_data: bytes, _max_size: int) -> None:
+			return None
+
+	monkeypatch.setattr(media_mod, "_get_android_image_resizer", lambda: _NullResizer)
+	fallback, mime_fb = media_mod._resize_cover(b"ORIG_COVER", 128)
+	assert fallback == b"ORIG_COVER"
+	assert mime_fb == "image/jpeg"
+
+
+def test_build_android_no_retagging_and_writes_sha256(tmp_path: Path) -> None:
+	"""build_android elimina el reetiquetado de wheels Linux y genera .sha256 para artefactos."""
+	from scripts import build_android as build_mod
+
+	assert not hasattr(build_mod, "retag_wheel_for_android")
+	assert not hasattr(build_mod, "ensure_android_pydantic_wheels")
+
+	artifact = tmp_path / "app-arm64-release.apk"
+	artifact.write_bytes(b"apk-content-123")
+	sha_path = build_mod.write_sha256_file(artifact)
+	assert sha_path == tmp_path / "app-arm64-release.apk.sha256"
+	assert sha_path.read_text(encoding="utf-8").strip().endswith("app-arm64-release.apk")
 
 
 def test_start_embedded_server_prevents_duplicate_instances_and_reports_state(

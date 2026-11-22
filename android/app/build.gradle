@@ -2,6 +2,11 @@ apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 apply plugin: 'com.chaquo.python'
 
+def baseVersionCode = (project.findProperty('ROCKOLA_VERSION_CODE')?.toString()?.toInteger()) ?: 1
+def baseVersionName = project.findProperty('ROCKOLA_VERSION_NAME')?.toString() ?: "0.1.0"
+def ignoreKeystoreProps = project.hasProperty('ROCKOLA_IGNORE_KEYSTORE_PROPS') &&
+    project.property('ROCKOLA_IGNORE_KEYSTORE_PROPS').toString().toBoolean()
+
 android {
     namespace = "ar.carpincho.rockola"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -9,8 +14,8 @@ android {
         applicationId "ar.carpincho.rockola"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "0.1.0"
+        versionCode baseVersionCode
+        versionName baseVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -22,18 +27,14 @@ android {
     productFlavors {
         arm64 {
             dimension "abi"
+            versionCode baseVersionCode * 10 + 1
             ndk {
                 abiFilters "arm64-v8a"
             }
         }
-        armv7 {
-            dimension "abi"
-            ndk {
-                abiFilters "armeabi-v7a"
-            }
-        }
         x86_64 {
             dimension "abi"
+            versionCode baseVersionCode * 10 + 2
             ndk {
                 abiFilters "x86_64"
             }
@@ -49,24 +50,32 @@ android {
     signingConfigs {
         release {
             def ksPropsFile = rootProject.file('keystore.properties')
-            if (ksPropsFile.exists()) {
+            if (!ignoreKeystoreProps && ksPropsFile.exists()) {
                 def props = new Properties()
                 ksPropsFile.withInputStream { props.load(it) }
-                storeFile file(props['storeFile'])
-                storePassword props['storePassword']
-                keyAlias props['keyAlias']
-                keyPassword props['keyPassword']
+                def rawStore = props['storeFile']?.toString()?.trim()
+                if (rawStore) {
+                    storeFile file(rawStore)
+                }
+                storePassword props['storePassword']?.toString()
+                keyAlias props['keyAlias']?.toString()
+                keyPassword props['keyPassword']?.toString()
             } else if (System.getenv('ROCKOLA_KEYSTORE_PATH')) {
                 storeFile file(System.getenv('ROCKOLA_KEYSTORE_PATH'))
-                storePassword System.getenv('ROCKOLA_KEYSTORE_PASS')
-                keyAlias System.getenv('ROCKOLA_KEY_ALIAS') ?: 'rockola'
-                keyPassword System.getenv('ROCKOLA_KEY_PASS') ?: System.getenv('ROCKOLA_KEYSTORE_PASS')
+                storePassword(System.getenv('ROCKOLA_KEYSTORE_PASSWORD') ?: System.getenv('ROCKOLA_KEYSTORE_PASS'))
+                keyAlias(System.getenv('ROCKOLA_KEY_ALIAS') ?: 'rockola')
+                keyPassword(
+                    System.getenv('ROCKOLA_KEY_PASSWORD')
+                        ?: System.getenv('ROCKOLA_KEY_PASS')
+                        ?: System.getenv('ROCKOLA_KEYSTORE_PASSWORD')
+                        ?: System.getenv('ROCKOLA_KEYSTORE_PASS')
+                )
             }
         }
     }
     buildTypes {
         release {
-            signingConfig signingConfigs.release.storeFile != null ? signingConfigs.release : signingConfigs.debug
+            signingConfig signingConfigs.release
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
@@ -74,20 +83,42 @@ android {
     }
 }
 
+gradle.taskGraph.whenReady { taskGraph ->
+    def needsReleaseSigning = taskGraph.allTasks.any {
+        it.project == project && it.name.toLowerCase().contains("release")
+    }
+    if (needsReleaseSigning) {
+        def rc = android.signingConfigs.release
+        if (rc.storeFile == null || !rc.storeFile.exists() || !rc.storePassword || !rc.keyAlias || !rc.keyPassword) {
+            throw new GradleException(
+                "Firma release obligatoria faltante: configurá android/keystore.properties o ROCKOLA_KEYSTORE_PATH / ROCKOLA_KEYSTORE_PASSWORD / ROCKOLA_KEY_ALIAS / ROCKOLA_KEY_PASSWORD."
+            )
+        }
+    }
+}
+
 chaquopy {
     defaultConfig {
-        version = "3.11"
+        version = "3.13"
+        def localPy313 = new File(System.getProperty("user.home"), ".local/bin/python3.13")
+        if (localPy313.isFile()) {
+            buildPython localPy313.absolutePath
+        }
         pip {
-            options "--find-links", "${projectDir}/wheels"
+            options "--extra-index-url", "https://pypi.flet.dev"
             install "fastapi"
             install "httpx"
             install "uvicorn"
             install "mutagen"
-            install "pydantic==2.13.3"
+            install "pydantic==2.14.3"
+            install "pydantic-core==2.50.4"
             install "pydantic-settings"
             install "websockets"
             install "edge-tts"
-            install "pillow"
+            install "aiohttp==3.10.10"
+            install "frozenlist==1.4.1"
+            install "multidict==6.1.0"
+            install "yarl==1.16.0"
         }
     }
 }

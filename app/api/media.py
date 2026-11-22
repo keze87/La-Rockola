@@ -63,8 +63,30 @@ def _set_cover_cache(key: str, value: tuple[int, int, bytes | None, str, str]) -
 	_COVER_MEM_CACHE[key] = value
 
 
+def _get_android_image_resizer():
+	try:
+		import java
+
+		return java.jclass("ar.carpincho.rockola.AndroidImageResizer")
+	except Exception:
+		return None
+
+
 def _resize_cover(cover_bytes: bytes, max_size: int) -> tuple[bytes, str]:
-	if not HAS_PIL or not cover_bytes or max_size <= 0:
+	if not cover_bytes or max_size <= 0:
+		return cover_bytes, "image/jpeg"
+	if not HAS_PIL:
+		from app.infrastructure.binaries.manager import is_android
+
+		if is_android():
+			resizer = _get_android_image_resizer()
+			if resizer is not None:
+				try:
+					resized = resizer.resizeJpeg(cover_bytes, int(max_size))
+					if resized:
+						return bytes(resized), "image/jpeg"
+				except Exception:
+					pass
 		return cover_bytes, "image/jpeg"
 	try:
 		with Image.open(io.BytesIO(cover_bytes)) as img:
@@ -121,7 +143,7 @@ async def serve_cover(
 					if if_none_match and etag in if_none_match:
 						return Response(status_code=304, headers=cache_headers)
 
-				if size and size > 0 and HAS_PIL:
+				if size and size > 0:
 					c_data, c_mime = _resize_cover(carpincho_img.read_bytes(), size)
 					return Response(content=c_data, media_type=c_mime, headers=cache_headers)
 				mime = "image/png" if carpincho_img.suffix.lower() == ".png" else "image/jpeg"
