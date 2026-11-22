@@ -665,4 +665,24 @@ describe('useAndroidHost.ts', () => {
 		expect(store.libraryFolderStatus.value).toBe('permission_denied');
 		expect(store.libraryFolderError.value).toContain('revocado');
 	});
+
+	it('initAndroidServer exposes actionable error when startServer rejects with SERVICE_START_NOT_ALLOWED', async () => {
+		const mod = await import('@/composables/useAndroidHost');
+		const store = await import('@/stores/useServerConnectionStore');
+
+		state.isNative = true;
+		state.platform = 'android';
+		store.resetServerConnectionStore();
+
+		pluginMock.startServer.mockRejectedValueOnce(
+			Object.assign(new Error('Android bloqueó el inicio del servicio en segundo plano.'), {
+				code: 'SERVICE_START_NOT_ALLOWED',
+			})
+		);
+
+		const ok = await mod.initAndroidServer();
+		expect(ok).toBe(false);
+		expect(store.localServerState.value).toBe('unavailable');
+		expect(store.lastServerError.value?.message).toContain('segundo plano');
+	});
 });

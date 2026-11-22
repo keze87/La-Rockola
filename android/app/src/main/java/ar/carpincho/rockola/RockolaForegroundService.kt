@@ -127,7 +127,11 @@ class RockolaForegroundService : Service() {
                 val intent = Intent(context, RockolaForegroundService::class.java).apply {
                     action = ACTION_STOP
                 }
-                context.startService(intent)
+                try {
+                    context.startService(intent)
+                } catch (_: Exception) {
+                    // Si Android bloquea startService en segundo plano al pedir stop, respetamos !isRunning
+                }
             }
             return !isRunning
         }

@@ -172,6 +172,23 @@ class RockolaServerPlugin : Plugin() {
         }
     }
 
+    private fun safeStartService(intent: Intent, foreground: Boolean = false): String? {
+        return try {
+            if (foreground) {
+                ContextCompat.startForegroundService(context, intent)
+            } else {
+                context.startService(intent)
+            }
+            null
+        } catch (e: IllegalStateException) {
+            // Incluye ForegroundServiceStartNotAllowedException en Android 12+ cuando la app está en segundo plano
+            e.message?.takeIf { it.isNotBlank() }
+                ?: "Android bloqueó el inicio del servicio en segundo plano. Volvé a abrir la app."
+        } catch (e: SecurityException) {
+            e.message?.takeIf { it.isNotBlank() } ?: "Sin permiso para iniciar el servicio."
+        }
+    }
+
     @PluginMethod
     fun startServer(call: PluginCall) {
         val port = call.getInt("port") ?: RockolaForegroundService.currentPort
@@ -184,7 +201,11 @@ class RockolaServerPlugin : Plugin() {
                 putExtra(RockolaForegroundService.EXTRA_MUSIC_DIR, musicDir)
             }
         }
-        context.startService(intent)
+        val err = safeStartService(intent)
+        if (err != null) {
+            call.reject(err, "SERVICE_START_NOT_ALLOWED")
+            return
+        }
         call.resolve(buildStatusObject())
     }
 
@@ -231,7 +252,11 @@ class RockolaServerPlugin : Plugin() {
                 putExtra(RockolaForegroundService.EXTRA_TARGET_AUTH, authHeader)
             }
         }
-        context.startService(intent)
+        val err = safeStartService(intent)
+        if (err != null) {
+            call.reject(err, "SERVICE_START_NOT_ALLOWED")
+            return
+        }
         call.resolve(JSObject().apply { put("updated", true) })
     }
 
@@ -268,11 +293,15 @@ class RockolaServerPlugin : Plugin() {
                 putExtra(RockolaForegroundService.EXTRA_TRACK_PATH, trackPath)
             }
         }
-        if (!paused && !trackPath.isNullOrBlank()) {
+        val startErr = if (!paused && !trackPath.isNullOrBlank()) {
             intent.putExtra(RockolaForegroundService.EXTRA_STARTED_AS_FOREGROUND, true)
-            ContextCompat.startForegroundService(context, intent)
+            safeStartService(intent, foreground = true)
         } else {
-            context.startService(intent)
+            safeStartService(intent, foreground = false)
+        }
+        if (startErr != null) {
+            call.reject(startErr, "SERVICE_START_NOT_ALLOWED")
+            return
         }
         val mainActivity = activity as? MainActivity
         if (mainActivity?.isFogonActive == true) {
@@ -298,7 +327,11 @@ class RockolaServerPlugin : Plugin() {
             putExtra(RockolaForegroundService.EXTRA_POSITION_MS, (positionSec * 1000.0).toLong().coerceAtLeast(0L))
             putExtra(RockolaForegroundService.EXTRA_PAUSED, paused)
         }
-        context.startService(intent)
+        val posErr = safeStartService(intent)
+        if (posErr != null) {
+            call.reject(posErr, "SERVICE_START_NOT_ALLOWED")
+            return
+        }
         val mainActivity = activity as? MainActivity
         if (mainActivity?.isFogonActive == true) {
             mainActivity.refreshPipParams()
