@@ -132,3 +132,62 @@ async def test_run_tts_preload_handles_cancellation(tmp_path: Path) -> None:
 		task.cancel()
 		with pytest.raises(asyncio.CancelledError):
 			await task
+
+
+@pytest.mark.asyncio
+async def test_run_tts_preload_skips_when_metered_or_non_wifi(tmp_path: Path) -> None:
+	"""En modo Wi-Fi no medido obligatorio, omite precarga si la red es móvil o medida."""
+	from app.domain.radio.preload import run_tts_preload
+
+	db_path = tmp_path / "tts_cache.db"
+	synth_mock = AsyncMock()
+
+	with (
+		patch("app.domain.radio.preload.HAS_EDGE_TTS", True),
+		patch("app.domain.radio.preload.is_unmetered_wifi_available", return_value=False),
+		patch("app.domain.radio.preload.synthesize_segment", synth_mock),
+	):
+		stats = await run_tts_preload(
+			voices=["es-AR-TomasNeural"],
+			delay=0.0,
+			db_path=db_path,
+			require_unmetered_wifi=True,
+		)
+
+	assert stats["synthesized"] == 0
+	assert stats["metered"] == 1
+	synth_mock.assert_not_awaited()
+
+
+def test_prune_tts_cache_db_enforces_max_mb_cap(tmp_path: Path) -> None:
+	"""prune_tts_cache_db poda los audios más viejos cuando los blobs superan max_mb."""
+	import time
+
+	from app.infrastructure.media.tts_cache import prune_tts_cache_db
+
+	db_path = tmp_path / "tts_cache.db"
+	init_tts_cache_db(db_path)
+
+	now = time.time()
+	blob_600 = b"A" * 600
+	with sqlite3.connect(db_path) as conn:
+		for idx, ts in enumerate((now - 300.0, now - 200.0, now - 100.0)):
+			key = get_cache_key("intro", "v1", f"frase {idx}")
+			conn.execute(
+				"""
+				INSERT INTO tts_cache (cache_key, category, voice, text, audio_blob, duration, created_at, last_used, use_count)
+				VALUES (?, 'intro', 'v1', ?, ?, 1.0, ?, ?, 1)
+				""",
+				(key, f"frase {idx}", blob_600, ts, ts),
+			)
+		conn.commit()
+
+	# 3 * 600 = 1800 bytes; con tope ~0.001 MB (~1048 bytes) debe borrar los 2 más viejos o al menos 2 para quedar <= 1048
+	deleted = prune_tts_cache_db(max_entries=9000, max_mb=0.001, db_path=db_path)
+	assert deleted >= 2
+
+	with sqlite3.connect(db_path) as conn:
+		rows = conn.execute("SELECT text, LENGTH(audio_blob) FROM tts_cache ORDER BY last_used ASC").fetchall()
+		total_bytes = sum(r[1] for r in rows)
+		assert total_bytes <= int(0.001 * 1024 * 1024)
+		assert rows[-1][0] == "frase 2"

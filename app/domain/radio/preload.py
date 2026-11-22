@@ -31,7 +31,7 @@ from app.domain.radio.linguistics import (
 from app.domain.radio.segments import RADIO_LEAD_INS
 from app.domain.radio.templates import expand_phrase_variants
 from app.domain.radio.voices import DEFAULT_TTS_TIMEOUT, VOICE_NAMES, VOICES
-from app.infrastructure.binaries.manager import is_internet_available
+from app.infrastructure.binaries.manager import is_android, is_internet_available
 from app.infrastructure.media.tts_cache import (
 	HAS_EDGE_TTS,
 	get_cache_key,
@@ -159,6 +159,28 @@ async def _synthesize_one(
 			await asyncio.sleep(delay)
 
 
+def is_unmetered_wifi_available() -> bool:
+	"""En Android verifica Wi-Fi/Ethernet no medido; en escritorio permite precarga si hay red."""
+	if not is_android():
+		return True
+	try:
+		from java import jclass
+
+		bridge = jclass("ar.carpincho.rockola.AndroidStorageBridge")
+		return bool(bridge.isUnmeteredWifiAvailable())
+	except Exception:
+		return False
+
+
+def _get_cache_size_bytes(db_path: Path) -> int:
+	"""Devuelve el tamaño acumulado en bytes de los blobs cacheados en tts_cache."""
+	if not db_path.exists():
+		return 0
+	with contextlib.closing(sqlite3.connect(db_path, timeout=5.0)) as conn:
+		row = conn.execute("SELECT COALESCE(SUM(LENGTH(audio_blob)), 0) FROM tts_cache").fetchone()
+		return int((row or (0,))[0] or 0)
+
+
 async def run_tts_preload(
 	voices: Sequence[str] | None = None,
 	concurrency: int = 2,
@@ -166,18 +188,28 @@ async def run_tts_preload(
 	max_retries: int = 3,
 	db_path: Path | str | None = None,
 	max_entries: int = 9000,
+	max_mb: float | None = 64.0,
+	require_unmetered_wifi: bool = False,
 	quiet: bool = False,
 ) -> dict[str, int]:
 	"""
 	Orquesta la precarga de todos los segmentos activos en segundo plano.
 	Salta en una única consulta los elementos ya cacheados para minimizar E/S.
 	"""
-	stats: dict[str, int] = {"skipped": 0, "synthesized": 0, "failed": 0, "offline": 0}
+	stats: dict[str, int] = {"skipped": 0, "synthesized": 0, "failed": 0, "offline": 0, "metered": 0}
 
 	if not HAS_EDGE_TTS:
 		if not quiet:
 			logger.warning("⚠️ 'edge-tts' no está instalado; omitiendo precarga de caché TTS.")
 		return stats
+
+	if require_unmetered_wifi:
+		has_wifi = await asyncio.to_thread(is_unmetered_wifi_available)
+		if not has_wifi:
+			stats["metered"] = 1
+			if not quiet:
+				logger.info("📶 Red móvil o medida detectada; omitiendo precarga TTS automática.")
+			return stats
 
 	has_net = await asyncio.to_thread(is_internet_available)
 	if not has_net:
@@ -188,6 +220,14 @@ async def run_tts_preload(
 
 	target_voices = list(voices) if voices else list(VOICES)
 	target_db = init_tts_cache_db(db_path)
+
+	if max_mb is not None and max_mb > 0:
+		current_bytes = await asyncio.to_thread(_get_cache_size_bytes, target_db)
+		if current_bytes >= int(max_mb * 1024 * 1024):
+			if not quiet:
+				logger.info("🎙️ Caché TTS alcanzó el tope de %.1f MB; omitiendo nuevas descargas.", max_mb)
+			return stats
+
 	phrases = collect_preload_phrases()
 	existing_keys = await asyncio.to_thread(_load_existing_cache_keys, target_db)
 
@@ -236,7 +276,7 @@ async def run_tts_preload(
 		raise
 
 	if stats["synthesized"] > 0:
-		await asyncio.to_thread(prune_tts_cache_db, max_entries=max_entries, db_path=target_db)
+		await asyncio.to_thread(prune_tts_cache_db, max_entries=max_entries, max_mb=max_mb, db_path=target_db)
 
 	logger.info(
 		f"🎙️ Precarga TTS finalizada -> nuevos: {stats['synthesized']}, en caché: {stats['skipped']}, fallidos: {stats['failed']}."

@@ -108,7 +108,18 @@ async def lifespan(app: FastAPI):
 
 	preload_task: asyncio.Task[dict[str, int]] | None = None
 	if "PYTEST_CURRENT_TEST" not in os.environ:
-		preload_task = asyncio.create_task(run_tts_preload(concurrency=1, delay=0.5, quiet=True))
+		from app.infrastructure.binaries.manager import is_android
+
+		android_mode = is_android()
+		preload_task = asyncio.create_task(
+			run_tts_preload(
+				concurrency=1,
+				delay=0.5,
+				max_mb=64.0 if android_mode else 256.0,
+				require_unmetered_wifi=android_mode,
+				quiet=True,
+			)
+		)
 
 	yield
 

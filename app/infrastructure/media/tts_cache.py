@@ -207,9 +207,10 @@ def save_cached_audio(
 def prune_tts_cache_db(
 	max_entries: int = 9000,
 	max_age_days: float = 1800.0,
+	max_mb: float | None = None,
 	db_path: Path | str | None = None,
 ) -> int:
-	"""Poda entradas obsoletas o excedentes de la caché SQLite de TTS (ampliada para soportar precarga profunda)."""
+	"""Poda entradas obsoletas o excedentes (por cantidad y tamaño en MB) de la caché SQLite de TTS."""
 	target_path = Path(db_path) if db_path else (get_carpincho_data_dir() / "tts_cache.db")
 	if not target_path.exists():
 		return 0
@@ -239,6 +240,25 @@ def prune_tts_cache_db(
 					(excess,),
 				)
 				deleted_count += cur.rowcount
+
+			if max_mb is not None and max_mb > 0:
+				max_bytes = int(max_mb * 1024 * 1024)
+				cur.execute("SELECT COALESCE(SUM(LENGTH(audio_blob)), 0) FROM tts_cache")
+				total_bytes = int((cur.fetchone() or (0,))[0] or 0)
+				if total_bytes > max_bytes:
+					rows = cur.execute(
+						"SELECT cache_key, LENGTH(audio_blob) FROM tts_cache ORDER BY last_used ASC"
+					).fetchall()
+					keys_to_delete: list[str] = []
+					remaining_bytes = total_bytes
+					for cache_key, blob_len in rows:
+						if remaining_bytes <= max_bytes:
+							break
+						keys_to_delete.append(cache_key)
+						remaining_bytes -= int(blob_len or 0)
+					if keys_to_delete:
+						cur.executemany("DELETE FROM tts_cache WHERE cache_key = ?", [(k,) for k in keys_to_delete])
+						deleted_count += cur.rowcount
 
 			conn.commit()
 			if deleted_count > 0:

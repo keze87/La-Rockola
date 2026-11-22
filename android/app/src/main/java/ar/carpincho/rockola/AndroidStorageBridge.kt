@@ -2,6 +2,8 @@ package ar.carpincho.rockola
 
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Build
 import android.provider.DocumentsContract
@@ -430,5 +432,24 @@ object AndroidStorageBridge {
     @JvmStatic
     fun isDocumentReadable(docUriString: String): Boolean {
         return statDocumentJson(docUriString) != null
+    }
+
+    @JvmStatic
+    fun isUnmeteredWifiAvailable(): Boolean {
+        val ctx = appContext ?: return false
+        return try {
+            val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
+            if (cm.isActiveNetworkMetered) return false
+            val network = cm.activeNetwork ?: return false
+            val caps = cm.getNetworkCapabilities(network) ?: return false
+            val hasInternet = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            val isNotMetered = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+            val isWifiOrEthernet =
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+            hasInternet && isNotMetered && isWifiOrEthernet
+        } catch (_: Exception) {
+            false
+        }
     }
 }
