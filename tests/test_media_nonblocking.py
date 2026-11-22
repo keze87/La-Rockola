@@ -16,6 +16,9 @@ from app.main import app
 
 @pytest.mark.anyio
 async def test_serve_cover_does_not_block_event_loop(tmp_path: Path) -> None:
+	from app.core import config as config_mod
+
+	config_mod.set_settings(config_mod.Settings(music_dir=str(tmp_path), music_dir_configured=True))
 	audio_file = tmp_path / "lento.mp3"
 	audio_file.write_bytes(b"fake-audio")
 	media_mod._COVER_MEM_CACHE.clear()
@@ -39,7 +42,12 @@ async def test_serve_cover_does_not_block_event_loop(tmp_path: Path) -> None:
 
 @pytest.mark.anyio
 async def test_serve_lrc_does_not_block_event_loop() -> None:
-	saf_uri = "content://com.android.externalstorage.documents/tree/primary%3AMusic/document/primary%3AMusic%2Ftema.mp3"
+	from app.core import config as config_mod
+	from app.core.container import get_container
+
+	tree_uri = "content://com.android.externalstorage.documents/tree/primary%3AMusic"
+	saf_uri = f"{tree_uri}/document/primary%3AMusic%2Ftema.mp3"
+	config_mod.set_settings(config_mod.Settings(music_dir=tree_uri, music_dir_configured=True))
 	loop = asyncio.get_running_loop()
 	callback_delays: list[float] = []
 
@@ -51,6 +59,8 @@ async def test_serve_lrc_does_not_block_event_loop() -> None:
 
 	class _FakeState:
 		def __init__(self) -> None:
+			self.initial_dir = tree_uri
+			self.secondary_dir = None
 			self.path_to_id = {saf_uri: "id-1"}
 			self.tracks_cache: list = []
 
@@ -58,13 +68,12 @@ async def test_serve_lrc_does_not_block_event_loop() -> None:
 		def is_radio_announcement(_path: str) -> bool:
 			return False
 
+	get_container().orchestrator = _FakeState()
 	transport = httpx.ASGITransport(app=app)
 	with (
-		patch.object(media_mod, "get_container") as mock_container,
 		patch.object(media_mod, "is_saf_uri", return_value=True),
 		patch.object(media_mod, "get_storage_backend", return_value=_SlowBackend()),
 	):
-		mock_container.return_value.ensure_orchestrator.return_value = _FakeState()
 		async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
 			res = await client.get("/lrc", params={"path": saf_uri})
 

@@ -29,6 +29,97 @@ def is_saf_uri(raw: str | Path | None) -> bool:
 	return str(raw).strip().startswith("content://")
 
 
+def get_authorized_media_roots() -> list[str]:
+	"""Obtiene las raíces de biblioteca autorizadas (music_dir / music_dir2) del contenedor activo."""
+	from app.core.config import get_settings
+	from app.core.container import get_container
+
+	container = get_container()
+	state = getattr(container, "orchestrator", None)
+	settings = get_settings()
+	candidates = [
+		getattr(state, "initial_dir", None) if state else None,
+		getattr(state, "secondary_dir", None) if state else None,
+		getattr(settings, "music_dir", None) if settings else None,
+		getattr(settings, "music_dir2", None) if settings else None,
+	]
+	roots: list[str] = []
+	for raw in candidates:
+		val = str(raw or "").strip()
+		if val and val not in roots:
+			roots.append(val)
+	return roots
+
+
+def is_authorized_media_path(
+	raw_path: str,
+	*,
+	require_known_track: bool = False,
+	require_audio_extension: bool = False,
+) -> bool:
+	"""
+	Valida de forma centralizada que una ruta POSIX o URI SAF pertenezca a la biblioteca autorizada.
+	En SAF exige pertenencia a un árbol autorizado (y validación nativa por DocumentsContract cuando está disponible).
+	"""
+	cleaned = (raw_path or "").strip()
+	if not cleaned or cleaned.startswith(("http://", "https://")):
+		return False
+
+	from app.core.container import get_container
+
+	container = get_container()
+	state = getattr(container, "orchestrator", None)
+	tracks_cache = getattr(state, "tracks_cache", None) or []
+	path_to_id = getattr(state, "path_to_id", None) or {}
+	queue = getattr(state, "queue", None) or []
+	current_track = getattr(state, "current_track", None)
+	roots = get_authorized_media_roots()
+
+	if is_saf_uri(cleaned):
+		in_inventory = (
+			cleaned == current_track
+			or cleaned in queue
+			or cleaned in path_to_id
+			or any(t.get("path") == cleaned for t in tracks_cache)
+		)
+		if require_known_track and not in_inventory:
+			return False
+		if (tracks_cache or path_to_id) and not in_inventory:
+			return False
+
+		saf_roots = [r for r in roots if is_saf_uri(r)]
+		if not saf_roots:
+			return False
+
+		bridge = get_android_storage_bridge()
+		if bridge is not None and hasattr(bridge, "isAuthorizedDocumentUri"):
+			try:
+				return bool(bridge.isAuthorizedDocumentUri(cleaned, json.dumps(saf_roots), require_audio_extension))
+			except Exception:
+				return False
+
+		return any(cleaned.startswith(f"{r}/document/") for r in saf_roots)
+
+	resolved = Path(cleaned).expanduser().resolve()
+	for root in roots:
+		if not is_saf_uri(root) and resolved.is_relative_to(Path(root).expanduser().resolve()):
+			return True
+
+	for track in tracks_cache:
+		track_path = track.get("path")
+		is_local = (
+			bool(track_path) and not str(track_path).startswith(("http://", "https://")) and not is_saf_uri(track_path)
+		)
+		if is_local and Path(track_path).expanduser().resolve() == resolved:
+			return True
+	return bool(
+		current_track
+		and not is_saf_uri(current_track)
+		and not str(current_track).startswith(("http://", "https://"))
+		and Path(current_track).expanduser().resolve() == resolved
+	)
+
+
 def _remember_saf_name(uri: str, name: str | None) -> None:
 	if uri and name:
 		if len(_SAF_NAME_CACHE) > 20000:
@@ -310,9 +401,24 @@ class AndroidSafStorageBackend:
 			)
 		return found
 
+	def _is_saf_ref_authorized(self, track_ref: str | Path) -> bool:
+		uri = str(track_ref)
+		if not is_saf_uri(uri):
+			return False
+		saf_roots = [r for r in get_authorized_media_roots() if is_saf_uri(r)]
+		if not saf_roots:
+			return True
+		bridge = get_android_storage_bridge()
+		if bridge is not None and hasattr(bridge, "isAuthorizedDocumentUri"):
+			try:
+				return bool(bridge.isAuthorizedDocumentUri(uri, json.dumps(saf_roots), False))
+			except Exception:
+				return False
+		return any(uri.startswith(f"{r}/document/") for r in saf_roots)
+
 	def stat_file(self, track_ref: str | Path) -> tuple[float, int] | None:
 		bridge = get_android_storage_bridge()
-		if bridge is None:
+		if bridge is None or not self._is_saf_ref_authorized(track_ref):
 			return None
 		try:
 			raw = bridge.statDocumentJson(str(track_ref))
@@ -331,6 +437,8 @@ class AndroidSafStorageBackend:
 		bridge = get_android_storage_bridge()
 		if bridge is None:
 			raise FileNotFoundError(f"Puente Android SAF no disponible para {track_ref}")
+		if not self._is_saf_ref_authorized(track_ref):
+			raise PermissionError(f"URI SAF fuera de la biblioteca autorizada: {track_ref}")
 		fd = int(bridge.openFileDescriptorForRead(str(track_ref)))
 		if fd < 0:
 			raise FileNotFoundError(f"No se pudo abrir descriptor SAF para {track_ref}")

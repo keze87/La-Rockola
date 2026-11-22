@@ -22,7 +22,14 @@ from mutagen import File as MutagenFile
 from app.core.container import get_container
 from app.infrastructure.db.repositories import CoverThumbRepository
 from app.infrastructure.media.mixer import get_carpincho_cover_path
-from app.infrastructure.storage import get_saf_name, get_storage_backend, is_saf_uri, open_mutagen_file
+from app.infrastructure.storage import (
+	get_authorized_media_roots,
+	get_saf_name,
+	get_storage_backend,
+	is_authorized_media_path,
+	is_saf_uri,
+	open_mutagen_file,
+)
 
 logger = logging.getLogger("RockolaCarpincho")
 router = APIRouter(tags=["Media"])
@@ -300,6 +307,11 @@ async def serve_cover(
 	elif path and get_saf_name(path) in ("radio_announcement.mp3", "radio_pregenerated.mp3"):
 		is_announcement = True
 
+	if not is_announcement and (is_saf_uri(path) or get_authorized_media_roots()):
+		allowed = await asyncio.to_thread(is_authorized_media_path, path, require_known_track=False)
+		if not allowed:
+			return Response(status_code=403)
+
 	if_none_match = request.headers.get("if-none-match") if request else None
 	db_path = getattr(container, "db_path", None)
 	return await asyncio.to_thread(_serve_cover_sync, path, size, if_none_match, is_announcement, db_path)
@@ -387,6 +399,11 @@ async def stream_audio(
 	queue = getattr(state, "queue", []) if state else []
 	current_track = getattr(state, "current_track", None) if state else None
 
+	if is_saf_uri(path) and not is_radio:
+		allowed = await asyncio.to_thread(is_authorized_media_path, path, require_known_track=True)
+		if not allowed:
+			return Response(status_code=403)
+
 	is_known = (
 		is_radio
 		or path in path_to_id
@@ -441,6 +458,11 @@ async def serve_lrc(
 	is_radio = state.is_radio_announcement(path) if (state and hasattr(state, "is_radio_announcement")) else False
 	path_to_id = getattr(state, "path_to_id", {}) if state else {}
 	tracks_cache = getattr(state, "tracks_cache", []) if state else []
+
+	if is_saf_uri(path) and not is_radio:
+		allowed = await asyncio.to_thread(is_authorized_media_path, path, require_known_track=True)
+		if not allowed:
+			return Response(status_code=403)
 
 	if not is_radio and path not in path_to_id and not any(t.get("path") == path for t in tracks_cache):
 		return Response(status_code=404)

@@ -9,6 +9,7 @@ private class FakeSafProvider(
     private val persistedTrees: Set<String> = emptySet(),
     private val validTreeUris: Set<String> = emptySet(),
     private val roots: Map<String, SafDocumentEntry?> = emptyMap(),
+    private val documents: Map<String, SafDocumentEntry?> = emptyMap(),
     private val throwSecurityOnTree: Set<String> = emptySet(),
     private val treeChildren: Map<Pair<String, String>, List<SafDocumentEntry>> = emptyMap(),
     private val textFiles: Map<String, String> = emptyMap(),
@@ -23,6 +24,8 @@ private class FakeSafProvider(
         }
         return roots[treeUri]
     }
+
+    override fun queryDocumentInfo(treeUri: String, docUri: String): SafDocumentEntry? = documents[docUri]
 
     override fun listChildren(treeUri: String, parentDocumentId: String): List<SafDocumentEntry> =
         treeChildren[Pair(treeUri, parentDocumentId)].orEmpty()
@@ -146,5 +149,47 @@ class AndroidStorageBridgeTest {
         assertEquals(".ass", lyrics?.first)
         assertEquals("[Script Info]\nTitle: Zamba", lyrics?.second)
         assertNull(browser.readSiblingText(rootTrackUri, listOf(".ass", ".lrc")))
+    }
+
+    @Test
+    fun `isAuthorizedDocumentUri restringe acceso al arbol permitido y rechaza carpetas u otros proveedores`() {
+        val treeOk = "content://com.android.externalstorage.documents/tree/ABCD-1234%3AMusic"
+        val treeOtherSameProvider = "content://com.android.externalstorage.documents/tree/ABCD-1234%3ADocuments"
+        val validSong = "$treeOk/document/ABCD-1234%3AMusic%2Fzamba.mp3"
+        val folderDoc = "$treeOk/document/ABCD-1234%3AMusic"
+        val outsideDoc = "$treeOtherSameProvider/document/ABCD-1234%3ADocuments%2Fprivado.txt"
+        val otherProvider = "content://com.android.providers.downloads.documents/document/99"
+        val missingDoc = "$treeOk/document/ABCD-1234%3AMusic%2Fno_existe.mp3"
+
+        val browser = SafTreeBrowser(
+            FakeSafProvider(
+                validTreeUris = setOf(treeOk, treeOtherSameProvider),
+                persistedTrees = setOf(treeOk, treeOtherSameProvider),
+                documents = mapOf(
+                    validSong to SafDocumentEntry("id1", "zamba.mp3", "audio/mpeg", 1024L, 100L, validSong),
+                    folderDoc to SafDocumentEntry("id2", "Music", SafTreeBrowser.MIME_TYPE_DIR, 0L, 100L, folderDoc),
+                    outsideDoc to SafDocumentEntry("id3", "privado.txt", "text/plain", 50L, 100L, outsideDoc),
+                    otherProvider to SafDocumentEntry("99", "otro.mp3", "audio/mpeg", 500L, 100L, otherProvider),
+                ),
+            ),
+        )
+
+        assertTrue(browser.isAuthorizedDocumentUri(validSong, listOf(treeOk), requireAudioExtension = true))
+        org.junit.Assert.assertFalse(browser.isAuthorizedDocumentUri(outsideDoc, listOf(treeOk)))
+        org.junit.Assert.assertFalse(browser.isAuthorizedDocumentUri(folderDoc, listOf(treeOk)))
+        org.junit.Assert.assertFalse(browser.isAuthorizedDocumentUri(otherProvider, listOf(treeOk)))
+        org.junit.Assert.assertFalse(browser.isAuthorizedDocumentUri(missingDoc, listOf(treeOk)))
+
+        // Si se revoca el permiso persistente del árbol, rechaza también la canción válida
+        val revokedBrowser = SafTreeBrowser(
+            FakeSafProvider(
+                validTreeUris = setOf(treeOk),
+                persistedTrees = emptySet(),
+                documents = mapOf(
+                    validSong to SafDocumentEntry("id1", "zamba.mp3", "audio/mpeg", 1024L, 100L, validSong),
+                ),
+            ),
+        )
+        org.junit.Assert.assertFalse(revokedBrowser.isAuthorizedDocumentUri(validSong, listOf(treeOk)))
     }
 }

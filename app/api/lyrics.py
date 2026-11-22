@@ -12,10 +12,9 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from app.core.container import get_container
 from app.domain.lyrics.converter import LyricsAssConverter
 from app.domain.lyrics.service import get_lyrics_service
-from app.infrastructure.storage import get_storage_backend, is_saf_uri
+from app.infrastructure.storage import get_storage_backend, is_authorized_media_path, is_saf_uri
 
 logger = logging.getLogger("RockolaCarpincho")
 
@@ -33,34 +32,8 @@ class SaveLyricsRequest(BaseModel):
 
 
 def _is_allowed_track_path(raw_path: str) -> bool:
-	"""
-	Un path es válido si, ya resuelto (symlinks y '..' incluidos), cae dentro de alguna carpeta
-	de música configurada o coincide con una pista conocida de la biblioteca.
-	"""
-	if not raw_path or raw_path.startswith(("http://", "https://")):
-		return False
-	container = get_container()
-	state = container.orchestrator
-	tracks_cache = getattr(state, "tracks_cache", None) or []
-
-	if is_saf_uri(raw_path):
-		return any(t.get("path") == raw_path for t in tracks_cache) or raw_path == getattr(state, "current_track", None)
-
-	resolved = Path(raw_path).expanduser().resolve()
-
-	roots = [container.settings.music_dir, container.settings.music_dir2]
-	for root in roots:
-		if root and not is_saf_uri(root) and resolved.is_relative_to(Path(root).expanduser().resolve()):
-			return True
-
-	for track in tracks_cache:
-		track_path = track.get("path")
-		is_local = (
-			bool(track_path) and not str(track_path).startswith(("http://", "https://")) and not is_saf_uri(track_path)
-		)
-		if is_local and Path(track_path).expanduser().resolve() == resolved:
-			return True
-	return False
+	"""Delega la validación de rutas POSIX y URIs SAF en la política centralizada de almacenamiento."""
+	return is_authorized_media_path(raw_path, require_known_track=False)
 
 
 def _require_track_path(raw_path: str) -> Path:

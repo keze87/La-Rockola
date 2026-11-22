@@ -49,6 +49,9 @@ def test_cover_endpoint_persists_and_serves_128px_thumb_from_sqlite(tmp_path: Pa
 	mock_audio.pictures = [mock_pic]
 	mock_audio.tags = None
 
+	from app.core import config as config_mod
+
+	config_mod.set_settings(config_mod.Settings(music_dir=str(tmp_path), music_dir_configured=True))
 	container = get_container()
 	prev_db = container.db_path
 	container.db_path = db_path

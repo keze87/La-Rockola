@@ -55,8 +55,11 @@ data class SafAudioTrackEntry(
 
 interface SafTreeProvider {
     fun isTreeUri(raw: String): Boolean
+    fun isDocumentUri(raw: String): Boolean = raw.startsWith("content://") && raw.contains("/document/")
     fun hasPersistedReadPermission(treeUri: String): Boolean
     fun queryRootInfo(treeUri: String): SafDocumentEntry?
+    fun queryDocumentInfo(treeUri: String, docUri: String): SafDocumentEntry? = null
+    fun belongsToTree(treeUri: String, docUri: String): Boolean = docUri.startsWith("$treeUri/document/")
     fun listChildren(treeUri: String, parentDocumentId: String): List<SafDocumentEntry>
     fun readDocumentText(docUri: String): String?
 }
@@ -176,6 +179,44 @@ class SafTreeBrowser(
         return collected
     }
 
+    fun isAuthorizedDocumentUri(
+        docUriString: String,
+        allowedTreeUris: List<String>,
+        requireAudioExtension: Boolean = false,
+    ): Boolean {
+        val cleanedDoc = docUriString.trim()
+        if (!cleanedDoc.startsWith("content://") || !provider.isDocumentUri(cleanedDoc)) {
+            return false
+        }
+        for (rawTree in allowedTreeUris) {
+            val treeUri = rawTree.trim()
+            if (treeUri.isEmpty()) continue
+            if (!provider.isTreeUri(treeUri) || !provider.hasPersistedReadPermission(treeUri)) {
+                continue
+            }
+            if (!provider.belongsToTree(treeUri, cleanedDoc)) {
+                continue
+            }
+            val entry = try {
+                provider.queryDocumentInfo(treeUri, cleanedDoc)
+            } catch (_: Exception) {
+                null
+            } ?: continue
+            if (entry.mimeType == MIME_TYPE_DIR) {
+                continue
+            }
+            if (requireAudioExtension) {
+                val dotIdx = entry.name.lastIndexOf('.')
+                val ext = if (dotIdx >= 0) entry.name.substring(dotIdx).lowercase() else ""
+                if (ext !in audioExtensions && !entry.mimeType.startsWith("audio/")) {
+                    continue
+                }
+            }
+            return true
+        }
+        return false
+    }
+
     fun readSiblingText(docUriString: String, extensions: List<String>): Pair<String, String>? {
         val cached = parentCache[docUriString]
         val (treeUri, parentDocId, fileName) = cached ?: parseLocationFromDocUri(docUriString) ?: return null
@@ -244,6 +285,45 @@ private class AndroidSafTreeProvider(private val context: Context) : SafTreeProv
             }
         } catch (_: Exception) {
             false
+        }
+    }
+
+    override fun isDocumentUri(raw: String): Boolean {
+        return try {
+            DocumentsContract.isDocumentUri(context, Uri.parse(raw))
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    override fun belongsToTree(treeUri: String, docUri: String): Boolean {
+        return try {
+            val parsedTree = Uri.parse(treeUri)
+            val parsedDoc = Uri.parse(docUri)
+            if (parsedTree.authority != parsedDoc.authority) return false
+            val treeId = DocumentsContract.getTreeDocumentId(parsedTree)
+            val docTreeId = DocumentsContract.getTreeDocumentId(parsedDoc)
+            treeId == docTreeId
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    override fun queryDocumentInfo(treeUri: String, docUri: String): SafDocumentEntry? {
+        return try {
+            resolver.query(Uri.parse(docUri), projection, null, null, null)?.use { cursor ->
+                if (!cursor.moveToFirst()) return null
+                SafDocumentEntry(
+                    documentId = cursor.getString(0) ?: "",
+                    name = cursor.getString(1) ?: "",
+                    mimeType = cursor.getString(2) ?: "application/octet-stream",
+                    size = if (cursor.isNull(3)) -1L else cursor.getLong(3),
+                    lastModifiedMs = if (cursor.isNull(4)) 0L else cursor.getLong(4),
+                    uri = docUri,
+                )
+            }
+        } catch (_: Exception) {
+            null
         }
     }
 
@@ -432,6 +512,30 @@ object AndroidStorageBridge {
     @JvmStatic
     fun isDocumentReadable(docUriString: String): Boolean {
         return statDocumentJson(docUriString) != null
+    }
+
+    @JvmStatic
+    fun isAuthorizedDocumentUri(
+        docUriString: String?,
+        allowedTreesJson: String?,
+        requireAudioExtension: Boolean = false,
+    ): Boolean {
+        val activeBrowser = browser ?: return false
+        val docUri = docUriString?.trim().orEmpty()
+        if (docUri.isEmpty()) return false
+        val allowedTrees = try {
+            val arr = JSONArray(allowedTreesJson ?: "[]")
+            buildList {
+                for (i in 0 until arr.length()) {
+                    val item = arr.optString(i, "").trim()
+                    if (item.isNotEmpty()) add(item)
+                }
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+        if (allowedTrees.isEmpty()) return false
+        return activeBrowser.isAuthorizedDocumentUri(docUri, allowedTrees, requireAudioExtension)
     }
 
     @JvmStatic
