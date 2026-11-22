@@ -95,6 +95,14 @@ async def get_system_info() -> dict[str, Any]:
 		if state and hasattr(state, "refresh_folder_status")
 		else get_storage_backend(initial_dir).validate_root(initial_dir)
 	)
+	audio_ready = True
+	audio_error: str | None = None
+	mpv_ctrl = getattr(state, "mpv", None) if state else None
+	if mpv_ctrl is not None and hasattr(mpv_ctrl, "_ensure_native"):
+		native = mpv_ctrl._ensure_native()
+		audio_ready = native is not None
+		if not audio_ready:
+			audio_error = getattr(mpv_ctrl, "native_error", None) or "Reproductor nativo Android no disponible."
 	return {
 		"music_dir": initial_dir,
 		"music_dir2": secondary_dir,
@@ -102,6 +110,8 @@ async def get_system_info() -> dict[str, Any]:
 		"folder_status": validation.status,
 		"folder_display_name": validation.display_name,
 		"folder_error": validation.error,
+		"audio_ready": audio_ready,
+		"audio_error": audio_error,
 		"port": getattr(state, "server_port", getattr(settings, "port", 1729))
 		if state
 		else getattr(settings, "port", 1729),

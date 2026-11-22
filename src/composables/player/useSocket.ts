@@ -5,12 +5,15 @@ import { ensureLocalAndroidServerAlive, isNativeAndroidHost } from '../useAndroi
 import { getWsUrl } from '../useApi';
 import {
 	type LibraryFolderStatus,
+	clearServerError,
 	connectionState,
 	isHostMode,
+	lastServerError,
 	libraryFolderError,
 	libraryFolderStatus,
 	localMusicDir,
 	localMusicDisplayName,
+	setServerError,
 } from '../../stores/useServerConnectionStore';
 import { useWebSocket } from '@vueuse/core';
 import {
@@ -207,6 +210,13 @@ export function useSocket() {
 							}
 							if (state.folder_error !== undefined) {
 								libraryFolderError.value = state.folder_error;
+							}
+						}
+						if (isHostMode.value && state.audio_error !== undefined) {
+							if (state.audio_error) {
+								setServerError('AUDIO_UNAVAILABLE', state.audio_error);
+							} else if (lastServerError.value?.code === 'AUDIO_UNAVAILABLE') {
+								clearServerError();
 							}
 						}
 						if (state.top_played) topPlayedState.value = state.top_played;

@@ -123,16 +123,21 @@ def configure_android_environment(
 				orch.volume = int(native_player.getSystemVolumePercent())
 		except Exception:
 			pass
-		orch.mpv = AndroidPlayerController(
-			callbacks={
-				"duration_update": orch.handle_duration_update,
-				"pause_update": orch.handle_pause_update,
-				"song_ended": orch.handle_song_ended,
-				"time_update": orch.handle_time_update,
-			},
-			state_ref=orch,
-			native_player=native_player,
+	else:
+		logger.warning(
+			"⚠️ AndroidAudioPlayer no disponible en configure_android_environment; "
+			"se usará AndroidPlayerController con reintento automático."
 		)
+	orch.mpv = AndroidPlayerController(
+		callbacks={
+			"duration_update": orch.handle_duration_update,
+			"pause_update": orch.handle_pause_update,
+			"song_ended": orch.handle_song_ended,
+			"time_update": orch.handle_time_update,
+		},
+		state_ref=orch,
+		native_player=native_player,
+	)
 	orch.server_host = host
 	orch.server_port = port
 	orch.local_ip = urls["local_ip"]

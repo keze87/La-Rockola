@@ -196,3 +196,78 @@ async def test_cmd_pause_with_explicit_state_never_unpauses() -> None:
 	state.set_pause.reset_mock()
 	await _cmd_pause(state, CommandRequest(cmd="pause"), MagicMock())
 	state.set_pause.assert_awaited_once_with(False)
+
+
+@pytest.mark.asyncio
+async def test_android_player_controller_re_resolves_when_active_instance_changes(
+	monkeypatch: pytest.MonkeyPatch,
+) -> None:
+	"""_ensure_native debe re-enlazar si AndroidAudioPlayer fue recreado por el servicio."""
+	from app.infrastructure.mpv import android_controller
+
+	player_v1 = MagicMock(name="player_v1")
+	player_v2 = MagicMock(name="player_v2")
+	active_ref: list[object | None] = [player_v1]
+	monkeypatch.setattr(android_controller, "resolve_native_android_player", lambda: active_ref[0])
+
+	ctrl = android_controller.AndroidPlayerController(native_player=player_v1)
+	await ctrl.start()
+	assert ctrl._ensure_native() is player_v1
+
+	# Simula recreación del servicio con nueva instancia de AndroidAudioPlayer
+	active_ref[0] = player_v2
+	resolved = ctrl._ensure_native()
+	assert resolved is player_v2
+	player_v2.setPythonCallbackHandler.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_android_player_controller_reports_error_when_unavailable_and_recovers(
+	monkeypatch: pytest.MonkeyPatch,
+) -> None:
+	"""Si no hay player nativo expone native_error y lo limpia al reintentar y resolver."""
+	from app.infrastructure.mpv import android_controller
+
+	active_ref: list[object | None] = [None]
+	monkeypatch.setattr(android_controller, "resolve_native_android_player", lambda: active_ref[0])
+
+	ctrl = android_controller.AndroidPlayerController(native_player=None)
+	assert ctrl._ensure_native() is None
+	assert ctrl.native_error
+
+	player_v1 = MagicMock(name="player_v1")
+	active_ref[0] = player_v1
+	assert ctrl._ensure_native() is player_v1
+	assert ctrl.native_error is None
+
+
+@pytest.mark.asyncio
+async def test_system_info_exposes_audio_error_when_android_player_missing(
+	monkeypatch: pytest.MonkeyPatch,
+) -> None:
+	"""GET /system/info debe reportar audio_ready=False y audio_error si falta AndroidAudioPlayer."""
+	from types import SimpleNamespace
+
+	from app.api import system as system_api
+	from app.infrastructure.mpv import android_controller
+
+	monkeypatch.setattr(android_controller, "resolve_native_android_player", lambda: None)
+	ctrl = android_controller.AndroidPlayerController(native_player=None)
+
+	fake_orch = SimpleNamespace(
+		initial_dir="",
+		secondary_dir=None,
+		music_dir_configured=False,
+		server_port=1729,
+		local_ip="127.0.0.1",
+		server_url="http://127.0.0.1:1729",
+		mpv=ctrl,
+		refresh_folder_status=lambda: SimpleNamespace(status="unconfigured", display_name=None, error=None),
+	)
+	fake_settings = SimpleNamespace(music_dir="", music_dir2=None, music_dir_configured=False, port=1729)
+	fake_container = SimpleNamespace(ensure_orchestrator=lambda: fake_orch, settings=fake_settings)
+	monkeypatch.setattr(system_api, "get_container", lambda: fake_container)
+
+	info = await system_api.get_system_info()
+	assert info["audio_ready"] is False
+	assert isinstance(info["audio_error"], str) and info["audio_error"]

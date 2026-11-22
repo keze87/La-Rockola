@@ -62,6 +62,7 @@ export interface PlayerState {
 		'ok' | 'unconfigured' | 'missing' | 'permission_denied' | 'storage_unavailable' | 'unsupported_provider';
 	folder_display_name?: string | null;
 	folder_error?: string | null;
+	audio_error?: string | null;
 }
 
 export interface ApiResponse<T = unknown> {

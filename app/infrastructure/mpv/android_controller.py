@@ -69,6 +69,7 @@ class AndroidPlayerController:
 		self.callbacks = callbacks or {}
 		self.state_ref = state_ref
 		self._native = native_player
+		self.native_error: str | None = None
 		self._loop: asyncio.AbstractEventLoop | None = None
 		self._bridge = _KotlinCallbackBridge(self)
 		self.socket_path: str | None = None
@@ -190,10 +191,30 @@ class AndroidPlayerController:
 		return None
 
 	def _ensure_native(self) -> Any | None:
+		active = resolve_native_android_player()
+		if active is not None:
+			if active is not self._native:
+				self._native = active
+				try:
+					self._native.setPythonCallbackHandler(self._bridge)
+				except Exception as exc:
+					logger.warning("No se pudo enlazar callback handler al AndroidAudioPlayer: %s", exc)
+			self.native_error = None
+			self.is_running = True
+			return self._native
+
 		if self._native is None:
-			self._native = resolve_native_android_player()
-			if self._native is not None:
-				self._native.setPythonCallbackHandler(self._bridge)
+			self.native_error = "Reproductor nativo Android (ExoPlayer) no disponible."
+			return None
+
+		from app.infrastructure.binaries.manager import is_android
+
+		if is_android():
+			self._native = None
+			self.is_running = False
+			self.native_error = "Reproductor nativo Android (ExoPlayer) no disponible."
+			return None
+
 		return self._native
 
 	def _emit(self, event_name: str, *args: Any) -> None:
