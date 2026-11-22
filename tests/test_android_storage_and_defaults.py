@@ -137,7 +137,6 @@ def test_fresh_android_install_leaves_music_dir_unconfigured(tmp_path: Path, mon
 
 	monkeypatch.setenv("ANDROID_ROOT", "/system")
 	monkeypatch.setattr(sys, "platform", "linux")
-	monkeypatch.setattr(config_mod, "_ANDROID_MUSIC_CANDIDATES", (str(tmp_path / "missing_music"),))
 
 	assert config_mod.get_default_music_dir() == ""
 

@@ -24,26 +24,13 @@ DEFAULT_WEATHER_LOCATION = "San Miguel de Tucumán"
 type SortMode = Literal["time", "artist", "mood", "shuffle"]
 type DjModeConfig = Literal["shuffle", "favorites", "library"]
 
-_ANDROID_MUSIC_CANDIDATES = (
-	"~/storage/music",
-	"/storage/emulated/0/Music",
-	"/sdcard/Music",
-)
-
 
 def get_default_music_dir() -> str:
 	"""Devuelve la carpeta de música por defecto según la plataforma (Desktop o Android)."""
 	from app.infrastructure.binaries.manager import is_android
 
 	if is_android():
-		for cand in _ANDROID_MUSIC_CANDIDATES:
-			resolved = Path(cand).expanduser()
-			try:
-				if resolved.is_dir() and os.access(resolved, os.R_OK):
-					return str(resolved)
-			except OSError:
-				continue
-		# No asumimos rutas inexistentes en Android: se deja sin configurar hasta que elija SAF
+		# En Android nunca asumimos carpetas del sistema: el usuario elige su carpeta por SAF
 		return ""
 	return "~/Music"
 
