@@ -26,8 +26,9 @@ El servidor HTTP embebido y el servicio en primer plano **no** abusan de `FOREGR
 - **Reproducción activa**: El servicio se promueve a foreground (`mediaPlayback`) junto con la notificación MediaStyle, carátula, barra de progreso y candados `PARTIAL_WAKE_LOCK` + `WifiManager.WIFI_MODE_FULL_LOW_LATENCY` (o `WIFI_MODE_FULL_HIGH_PERF` en API < 29).
 - **En pausa**: Soltamos inmediatamente `WakeLock`/`WifiLock` y ejecutamos `STOP_FOREGROUND_DETACH`, dejando la notificación descartable para poder reanudar sin consumir batería en primer plano.
 - **Detenido / cambio de destino**: Desmontamos el modo foreground con `STOP_FOREGROUND_REMOVE` antes de cancelar la notificación para evitar inconsistencias de ciclo de vida.
-- **Cierre desde Recientes (`onTaskRemoved`) y apagado**: Si no hay reproducción activa, el servicio detiene Uvicorn de forma ordenada (`should_exit = True` + join acotado de hasta 4 segundos en `HostLifecycleCoordinator`) y se cierra limpio sin hilos Python huérfanos. Si cerrás la app desde Recientes mientras está en reposo, Android también detendrá el servidor embebido.
-- **Limitaciones en segundo plano (Android 12+)**: Si no hay audio reproduciéndose, el SO puede frenar el proceso en segundo plano o bloquear `startService` desde el plugin (`SERVICE_START_NOT_ALLOWED`); la app captura estas excepciones sin crashear y muestra un aviso accionable para reabrir/reiniciar desde primer plano.
+- **Cierre desde Recientes (`onTaskRemoved`) y apagado**: Si no hay reproducción activa ni clientes WebSocket remotos conectados, el servicio detiene Uvicorn de forma ordenada (`should_exit = True` + join acotado de hasta 4 segundos en `HostLifecycleCoordinator`) y se cierra limpio sin hilos Python huérfanos. Si un cliente remoto está conectado en la LAN, el servicio permanece en primer plano para seguir atendiéndolo; si el apagado supera el timeout (`STOP_TIMED_OUT`), el coordinador bloquea nuevos arranques hasta que el worker anterior libere el puerto.
+- **Limitaciones en segundo plano y ahorro de batería**: Si no hay audio reproduciéndose ni clientes remotos conectados, el SO puede frenar el proceso o bloquear `startService` (`SERVICE_START_NOT_ALLOWED`). El `WakeLock` tiene tope acotado (4 h renovables durante reproducción) y el `WifiLock` solo se adquiere en modo remoto o cuando hay clientes conectados.
+- **Permisos mínimos y contextuales**: Se eliminaron `READ_MEDIA_AUDIO`, `READ_EXTERNAL_STORAGE` y `FileProvider` (acceso 100% SAF), se desactivó `allowBackup` (`false`), se habilitó gesto atrás predictivo (`enableOnBackInvokedCallback="true"`), y `POST_NOTIFICATIONS` se solicita de forma contextual al iniciar el servidor local (no en el arranque en frío).
 
 ---
 
@@ -46,10 +47,10 @@ La aplicación **no solicita** `MANAGE_EXTERNAL_STORAGE` y **no copia** tu bibli
 
 - **Selector nativo (`ACTION_OPEN_DOCUMENT_TREE`)**: Persistimos permisos de lectura sobre el árbol SAF elegido (`takePersistableUriPermission`).
 - **Instalación limpia**: En instalaciones nuevas donde ninguna carpeta estándar de Android sea legible, `music_dir` inicia vacío (`""`, `music_dir_configured = false`) y se pide elegir carpeta explícitamente.
-- **Acceso directo por file descriptor**: `AndroidStorageBridge.kt` enumera pistas recursivamente vía `DocumentsContract` y entrega descriptores nativos (`detachFd`) a `app/infrastructure/storage/backend.py` (`AndroidSafStorageBackend` + `os.fdopen(fd, "rb")`) para leer tags ID3/FLAC/MP4 con Mutagen, calcular hashes, transmitir con soporte HTTP `206 Partial Content` (`Range` en `/api/v1/stream`), extraer portadas (`/cover`) y leer letras hermanas `.ass` / `.lrc` (`/lrc`, `/api/v1/lyrics/content`).
+- **Acceso directo por file descriptor y escaneo paginado**: `AndroidStorageBridge.kt` enumera pistas en tandas paginadas vía `DocumentsContract` con caché acotada de padres y entrega descriptores nativos (`detachFd`) a `app/infrastructure/storage/backend.py` (`AndroidSafStorageBackend` + `os.fdopen(fd, "rb")`) para leer tags ID3/FLAC/MP4 con Mutagen, calcular hashes, transmitir con soporte HTTP `206 Partial Content` (`Range` en `/api/v1/stream`), extraer portadas (`/cover`) y leer letras hermanas `.ass` / `.lrc` (`/lrc`, `/api/v1/lyrics/content`).
 - **Limitaciones conocidas**:
     - Si revocás permisos o expulsás la tarjeta MicroSD, el sistema reporta estados explícitos (`permission_denied`, `storage_unavailable`, `unsupported_provider`) con acción directa para reelegir carpeta.
-    - Al montarse árboles SAF de solo lectura desde Android, guardar letras nuevas (`POST /api/v1/lyrics/save`) devuelve HTTP 400 explicando la restricción.
+    - Al ser la biblioteca SAF de solo lectura en Android, la edición de letras se deshabilita en la interfaz y `POST /api/v1/lyrics/save` devuelve HTTP 400 explicando la restricción.
 
 ---
 
