@@ -2,13 +2,18 @@ package ar.carpincho.rockola
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.SocketTimeoutException
 import java.net.URL
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 
 enum class MediaTargetMode {
     HOST,
@@ -65,7 +70,9 @@ class MediaCommandClient(
     private val timeoutMs: Int = 4_000,
     private val artworkTimeoutMs: Int = 12_000,
     private val artworkMaxBytes: Int = 6 * 1024 * 1024,
-    private val bitmapDecoder: (InputStream) -> Bitmap? = { stream -> BitmapFactory.decodeStream(stream) },
+    private val artworkMaxDownloadBytes: Int = 2 * 1024 * 1024,
+    private val bitmapDecoder: (InputStream) -> Bitmap? = { stream -> decodeSampledBitmap(stream.readBytes(), 512, 512) },
+    private val callbackDispatcher: (() -> Unit) -> Unit = { action -> dispatchToMainThread(action) },
     private val logWarn: (String) -> Unit = { msg ->
         try {
             Log.w("RockolaCmdClient", msg)
@@ -87,6 +94,7 @@ class MediaCommandClient(
 
     private val cacheLock = Any()
     private var artworkCacheBytes = 0
+    private val inFlightArtwork = mutableMapOf<String, MutableList<(Bitmap) -> Unit>>()
     private val artworkCache = object : LinkedHashMap<String, Bitmap>(32, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Bitmap>?): Boolean {
             if (artworkCacheBytes > artworkMaxBytes && eldest != null) {
@@ -107,6 +115,7 @@ class MediaCommandClient(
             synchronized(cacheLock) {
                 artworkCache.clear()
                 artworkCacheBytes = 0
+                inFlightArtwork.clear()
             }
         }
     }
@@ -119,36 +128,45 @@ class MediaCommandClient(
     ) {
         val scheduledTarget = currentTarget
         if (expectedGeneration != null && expectedGeneration != scheduledTarget.generation) {
-            onResult?.invoke(CommandResult.StaleTarget(expectedGeneration, scheduledTarget.generation))
+            dispatchResult(onResult, CommandResult.StaleTarget(expectedGeneration, scheduledTarget.generation))
             return
         }
         if (commandExecutor.isShutdown) {
-            onResult?.invoke(CommandResult.Disconnected("Cliente de comandos detenido"))
+            dispatchResult(onResult, CommandResult.Disconnected("Cliente de comandos detenido"))
             return
         }
 
         val enqueuedAtMs = System.currentTimeMillis()
-        commandExecutor.execute {
-            val activeNow = currentTarget
-            if (expectedGeneration != null && expectedGeneration != activeNow.generation) {
-                onResult?.invoke(CommandResult.StaleTarget(expectedGeneration, activeNow.generation))
-                return@execute
-            }
-            if (System.currentTimeMillis() - enqueuedAtMs >= timeoutMs) {
-                onResult?.invoke(CommandResult.Timeout("El comando expiró en la cola antes de enviarse."))
-                return@execute
-            }
-            if (activeNow.generation != scheduledTarget.generation || activeNow.origin != scheduledTarget.origin) {
-                onResult?.invoke(CommandResult.StaleTarget(scheduledTarget.generation, activeNow.generation))
-                return@execute
-            }
+        try {
+            commandExecutor.execute {
+                val activeNow = currentTarget
+                if (expectedGeneration != null && expectedGeneration != activeNow.generation) {
+                    dispatchResult(onResult, CommandResult.StaleTarget(expectedGeneration, activeNow.generation))
+                    return@execute
+                }
+                if (System.currentTimeMillis() - enqueuedAtMs >= timeoutMs) {
+                    dispatchResult(onResult, CommandResult.Timeout("El comando expiró en la cola antes de enviarse."))
+                    return@execute
+                }
+                if (activeNow.generation != scheduledTarget.generation || activeNow.origin != scheduledTarget.origin) {
+                    dispatchResult(onResult, CommandResult.StaleTarget(scheduledTarget.generation, activeNow.generation))
+                    return@execute
+                }
 
-            val result = executeCommandPost(activeNow, cmd, extraFields)
-            if (!result.isSuccess()) {
-                logWarn("Fallo enviando '$cmd' a ${activeNow.origin}: ${result.errorCode()} ${result.userMessage()}")
+                val result = executeCommandPost(activeNow, cmd, extraFields)
+                if (!result.isSuccess()) {
+                    logWarn("Fallo enviando '$cmd' a ${activeNow.origin}: ${result.errorCode()} ${result.userMessage()}")
+                }
+                dispatchResult(onResult, result)
             }
-            onResult?.invoke(result)
+        } catch (_: RejectedExecutionException) {
+            dispatchResult(onResult, CommandResult.Disconnected("Cliente de comandos detenido"))
         }
+    }
+
+    private fun dispatchResult(onResult: ((CommandResult) -> Unit)?, result: CommandResult) {
+        if (onResult == null) return
+        callbackDispatcher { onResult(result) }
     }
 
     private fun executeCommandPost(
@@ -211,59 +229,93 @@ class MediaCommandClient(
         if (expectedGeneration != null && expectedGeneration != target.generation) return
 
         val cacheKey = "${target.generation}|${target.normalizedOrigin()}|$coverUrl"
-        val cached = synchronized(cacheLock) { artworkCache[cacheKey] }
-        if (cached != null && !cached.isRecycled) {
-            onLoaded(cached)
+        val shouldStartDownload = synchronized(cacheLock) {
+            val cached = artworkCache[cacheKey]
+            if (cached != null && !cached.isRecycled) {
+                callbackDispatcher { onLoaded(cached) }
+                return
+            }
+            val existingWaiters = inFlightArtwork[cacheKey]
+            if (existingWaiters != null) {
+                existingWaiters.add(onLoaded)
+                false
+            } else {
+                inFlightArtwork[cacheKey] = mutableListOf(onLoaded)
+                true
+            }
+        }
+        if (!shouldStartDownload) return
+        if (artworkExecutor.isShutdown) {
+            synchronized(cacheLock) { inFlightArtwork.remove(cacheKey) }
             return
         }
-        if (artworkExecutor.isShutdown) return
 
-        artworkExecutor.execute {
-            val activeNow = currentTarget
-            if (activeNow.generation != target.generation) return@execute
-
-            for (attempt in 0..1) {
-                var conn: HttpURLConnection? = null
+        try {
+            artworkExecutor.execute {
+                var loadedBmp: Bitmap? = null
                 try {
-                    conn = (URL(coverUrl).openConnection() as HttpURLConnection).apply {
-                        connectTimeout = artworkTimeoutMs
-                        readTimeout = artworkTimeoutMs
-                        val origin = target.normalizedOrigin()
-                        if (origin.isNotEmpty() && coverUrl.startsWith(origin)) {
-                            target.authHeader?.takeIf { it.isNotBlank() }?.let {
-                                setRequestProperty("Authorization", it)
-                            }
-                        }
-                    }
-                    val code = conn.responseCode
-                    if (code !in 200..299) {
-                        if (code >= 500 && attempt == 0) {
-                            Thread.sleep(250)
-                            continue
-                        }
-                        return@execute
-                    }
-                    val bmp = conn.inputStream.use { bitmapDecoder(it) } ?: return@execute
-                    if (currentTarget.generation != target.generation) return@execute
+                    val activeNow = currentTarget
+                    if (activeNow.generation != target.generation) return@execute
 
-                    synchronized(cacheLock) {
-                        artworkCache[cacheKey] = bmp
-                        artworkCacheBytes += bitmapSize(bmp)
-                    }
-                    onLoaded(bmp)
-                    return@execute
-                } catch (_: Exception) {
-                    if (attempt == 0) {
+                    for (attempt in 0..1) {
+                        var conn: HttpURLConnection? = null
                         try {
-                            Thread.sleep(250)
-                        } catch (_: InterruptedException) {
+                            conn = (URL(coverUrl).openConnection() as HttpURLConnection).apply {
+                                connectTimeout = artworkTimeoutMs
+                                readTimeout = artworkTimeoutMs
+                                val origin = target.normalizedOrigin()
+                                if (origin.isNotEmpty() && coverUrl.startsWith(origin)) {
+                                    target.authHeader?.takeIf { it.isNotBlank() }?.let {
+                                        setRequestProperty("Authorization", it)
+                                    }
+                                }
+                            }
+                            val code = conn.responseCode
+                            if (code !in 200..299) {
+                                if (code >= 500 && attempt == 0) {
+                                    Thread.sleep(250)
+                                    continue
+                                }
+                                return@execute
+                            }
+                            val payload = conn.inputStream.use { readBoundedBytes(it, artworkMaxDownloadBytes) }
+                                ?: return@execute
+                            val bmp = ByteArrayInputStream(payload).use { bitmapDecoder(it) } ?: return@execute
+                            if (currentTarget.generation != target.generation) return@execute
+
+                            synchronized(cacheLock) {
+                                val previous = artworkCache.put(cacheKey, bmp)
+                                if (previous != null) {
+                                    artworkCacheBytes = (artworkCacheBytes - bitmapSize(previous)).coerceAtLeast(0)
+                                }
+                                artworkCacheBytes += bitmapSize(bmp)
+                            }
+                            loadedBmp = bmp
                             return@execute
+                        } catch (_: Exception) {
+                            if (attempt == 0) {
+                                try {
+                                    Thread.sleep(250)
+                                } catch (_: InterruptedException) {
+                                    return@execute
+                                }
+                            }
+                        } finally {
+                            conn?.disconnect()
                         }
                     }
                 } finally {
-                    conn?.disconnect()
+                    val waiters = synchronized(cacheLock) { inFlightArtwork.remove(cacheKey) } ?: emptyList()
+                    val bmp = loadedBmp
+                    if (bmp != null && currentTarget.generation == target.generation) {
+                        for (waiter in waiters) {
+                            callbackDispatcher { waiter(bmp) }
+                        }
+                    }
                 }
             }
+        } catch (_: RejectedExecutionException) {
+            synchronized(cacheLock) { inFlightArtwork.remove(cacheKey) }
         }
     }
 
@@ -283,6 +335,54 @@ class MediaCommandClient(
     }
 
     companion object {
+        private fun dispatchToMainThread(action: () -> Unit) {
+            try {
+                val mainLooper = Looper.getMainLooper()
+                if (mainLooper != null && Looper.myLooper() != mainLooper) {
+                    Handler(mainLooper).post(action)
+                    return
+                }
+            } catch (_: Throwable) {
+                // En pruebas unitarias JVM sin Android Looper, ejecutamos inline.
+            }
+            action()
+        }
+
+        internal fun readBoundedBytes(stream: InputStream, maxBytes: Int): ByteArray? {
+            if (maxBytes <= 0) return null
+            val out = ByteArrayOutputStream(minOf(maxBytes, 32 * 1024))
+            val buffer = ByteArray(8 * 1024)
+            var total = 0
+            while (true) {
+                val read = stream.read(buffer)
+                if (read <= 0) break
+                total += read
+                if (total > maxBytes) return null
+                out.write(buffer, 0, read)
+            }
+            return out.toByteArray()
+        }
+
+        internal fun decodeSampledBitmap(bytes: ByteArray, reqWidth: Int, reqHeight: Int): Bitmap? {
+            if (bytes.isEmpty()) return null
+            val boundsOpts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, boundsOpts)
+            var inSampleSize = 1
+            val height = boundsOpts.outHeight
+            val width = boundsOpts.outWidth
+            if (height > reqHeight || width > reqWidth) {
+                val halfHeight = height / 2
+                val halfWidth = width / 2
+                while ((halfHeight / inSampleSize) >= reqHeight && (halfWidth / inSampleSize) >= reqWidth) {
+                    inSampleSize *= 2
+                }
+            }
+            val decodeOpts = BitmapFactory.Options().apply {
+                this.inSampleSize = inSampleSize
+            }
+            return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOpts)
+        }
+
         internal fun serializeCommandJson(cmd: String, extraFields: Map<String, Any>): String {
             val sb = StringBuilder(64)
             sb.append('{')

@@ -310,4 +310,79 @@ class MediaCommandClientTest {
 
         client.shutdown()
     }
+
+    @Test
+    fun fetchArtworkRejectsOversizedStreamWithoutDecoding() {
+        val oversizedPayload = "X".repeat(2048)
+        val artServer = MiniHttpServer { _, _, _, _ -> 200 to oversizedPayload }
+        val decoderCalled = AtomicInteger(0)
+        val latch = CountDownLatch(1)
+        val client = MediaCommandClient(
+            initialTarget = MediaTarget(MediaTargetMode.HOST, "http://127.0.0.1:${artServer.port}", null, 1L),
+            artworkMaxDownloadBytes = 512,
+            bitmapDecoder = { _ ->
+                decoderCalled.incrementAndGet()
+                null
+            },
+        )
+        client.fetchArtwork("http://127.0.0.1:${artServer.port}/cover?path=big.mp3", expectedGeneration = 1L) {}
+        Thread.sleep(250)
+        assertEquals(0, decoderCalled.get())
+        artServer.stop()
+        client.shutdown()
+    }
+
+    @Test
+    fun fetchArtworkCoalescesConcurrentRequestsForSameUrl() {
+        val requests = AtomicInteger(0)
+        val gate = CountDownLatch(1)
+        val artServer = MiniHttpServer { _, _, _, _ ->
+            requests.incrementAndGet()
+            gate.await(2, TimeUnit.SECONDS)
+            200 to "IMG_OK"
+        }
+        val decodedCount = AtomicInteger(0)
+        val latch = CountDownLatch(1)
+        val dispatched = AtomicInteger(0)
+        val client = MediaCommandClient(
+            initialTarget = MediaTarget(MediaTargetMode.HOST, "http://127.0.0.1:${artServer.port}", null, 1L),
+            callbackDispatcher = { action ->
+                dispatched.incrementAndGet()
+                action()
+            },
+            bitmapDecoder = { stream ->
+                stream.readBytes()
+                decodedCount.incrementAndGet()
+                latch.countDown()
+                null
+            },
+        )
+        val url = "http://127.0.0.1:${artServer.port}/cover?path=same.mp3"
+        client.fetchArtwork(url, expectedGeneration = 1L) {}
+        client.fetchArtwork(url, expectedGeneration = 1L) {}
+        gate.countDown()
+        assertTrue(latch.await(3, TimeUnit.SECONDS))
+        Thread.sleep(150)
+        assertEquals(1, requests.get())
+        assertEquals(1, decodedCount.get())
+        artServer.stop()
+        client.shutdown()
+    }
+
+    @Test
+    fun sendCommandAfterShutdownHandlesRejectionGracefullyAndUsesDispatcher() {
+        val dispatched = AtomicInteger(0)
+        val client = MediaCommandClient(
+            initialTarget = MediaTarget(MediaTargetMode.HOST, "http://127.0.0.1:${remoteServer.port}", null, 1L),
+            callbackDispatcher = { action ->
+                dispatched.incrementAndGet()
+                action()
+            },
+        )
+        client.shutdown()
+        val result = AtomicReference<CommandResult>()
+        client.sendCommand("pause") { result.set(it) }
+        assertTrue(result.get() is CommandResult.Disconnected)
+        assertEquals(1, dispatched.get())
+    }
 }
