@@ -62,7 +62,9 @@ class AndroidAudioPlayer(
         ): Boolean {
             if (isPlaying) return true
             if (!playWhenReady) return false
-            return isLoadingMedia || playbackState == Player.STATE_BUFFERING
+            return isLoadingMedia ||
+                playbackState == Player.STATE_BUFFERING ||
+                playbackState == Player.STATE_ENDED
         }
     }
 

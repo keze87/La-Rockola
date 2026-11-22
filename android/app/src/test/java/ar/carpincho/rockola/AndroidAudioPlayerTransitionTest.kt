@@ -33,6 +33,14 @@ class AndroidAudioPlayerTransitionTest {
                 isLoadingMedia = true,
             ),
         )
+        assertTrue(
+            AndroidAudioPlayer.shouldKeepPlaybackActive(
+                isPlaying = false,
+                playWhenReady = true,
+                playbackState = Player.STATE_ENDED,
+                isLoadingMedia = false,
+            ),
+        )
     }
 
     @Test
@@ -64,7 +72,7 @@ class AndroidAudioPlayerTransitionTest {
         assertFalse(
             AndroidAudioPlayer.shouldKeepPlaybackActive(
                 isPlaying = false,
-                playWhenReady = true,
+                playWhenReady = false,
                 playbackState = Player.STATE_ENDED,
                 isLoadingMedia = false,
             ),
