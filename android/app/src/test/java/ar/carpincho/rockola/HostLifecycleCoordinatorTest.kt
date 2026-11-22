@@ -84,11 +84,7 @@ class HostLifecycleCoordinatorTest {
                 musicDir = null,
                 onRequestStop = {
                     stopRequested.set(true)
-                    // Simula apagado ordenado que tarda unos milisegundos tras recibir señal
-                    Thread {
-                        Thread.sleep(60)
-                        allowExit.countDown()
-                    }.start()
+                    Thread { allowExit.countDown() }.start()
                 },
             ) { onReady ->
                 onReady()
@@ -115,6 +111,7 @@ class HostLifecycleCoordinatorTest {
         val coordinator = HostLifecycleCoordinator()
         val readyLatch = CountDownLatch(1)
         val releaseZombie = CountDownLatch(1)
+        val zombieExited = CountDownLatch(1)
 
         assertTrue(
             coordinator.start(
@@ -125,6 +122,7 @@ class HostLifecycleCoordinatorTest {
                 onReady()
                 readyLatch.countDown()
                 releaseZombie.await(5, TimeUnit.SECONDS)
+                zombieExited.countDown()
             },
         )
         assertTrue(readyLatch.await(2, TimeUnit.SECONDS))
@@ -150,7 +148,7 @@ class HostLifecycleCoordinatorTest {
         )
         assertTrue(restartedLatch.await(2, TimeUnit.SECONDS))
         releaseZombie.countDown()
-        Thread.sleep(40)
+        assertTrue(zombieExited.await(2, TimeUnit.SECONDS))
         assertEquals(HostServerState.READY, coordinator.state)
 
         assertTrue(coordinator.stop(1000L))
@@ -194,7 +192,12 @@ class HostLifecycleCoordinatorTest {
 
     @Test
     fun `permanece en STARTING hasta que onReady es invocado y pasa a FAILED si runner rechaza el arranque`() {
-        val coord = HostLifecycleCoordinator()
+        val becameReady = CountDownLatch(1)
+        val coord = HostLifecycleCoordinator(
+            onStateChanged = { st, _ ->
+                if (st == HostServerState.READY) becameReady.countDown()
+            },
+        )
         val runnerEntered = CountDownLatch(1)
         val allowReady = CountDownLatch(1)
         val allowExit = CountDownLatch(1)
@@ -212,10 +215,7 @@ class HostLifecycleCoordinatorTest {
         assertEquals(HostServerState.STARTING, coord.state)
 
         allowReady.countDown()
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
-        while (coord.state != HostServerState.READY && System.nanoTime() < deadline) {
-            Thread.sleep(5)
-        }
+        assertTrue(becameReady.await(2, TimeUnit.SECONDS))
         assertEquals(HostServerState.READY, coord.state)
 
         assertTrue(coord.stop(1000L))

@@ -4,6 +4,7 @@ Configuración compartida de Pytest y fixtures aislados para la arquitectura lim
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
@@ -16,12 +17,17 @@ if str(root_dir) not in sys.path:
 
 sys.modules["tests.conftest"] = sys.modules[__name__]
 
+_ISOLATED_ENV_KEYS = ("ROCKOLA_DATA_DIR", "ROCKOLA_DIST_DIR", "ROCKOLA_SKIP_FRONTEND_BUILD")
+
 
 @pytest.fixture(autouse=True)
 def isolate_container():
-	"""Aísla el singleton de AppContainer por cada test para evitar fuga de estado global."""
+	"""Aísla AppContainer, Settings globales y variables ROCKOLA_* por cada test."""
+	from app.core import config as config_mod
 	from app.core.container import AppContainer, get_container, set_container
 
+	prev_env = {k: os.environ.get(k) for k in _ISOLATED_ENV_KEYS}
+	prev_settings = getattr(config_mod, "_settings", None)
 	previous_container = get_container()
 	fresh_container = AppContainer()
 	set_container(fresh_container)
@@ -29,6 +35,12 @@ def isolate_container():
 		yield fresh_container
 	finally:
 		set_container(previous_container)
+		config_mod.set_settings(prev_settings)  # type: ignore[arg-type]
+		for k, v in prev_env.items():
+			if v is None:
+				os.environ.pop(k, None)
+			else:
+				os.environ[k] = v
 
 
 @pytest.fixture

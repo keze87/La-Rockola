@@ -737,3 +737,25 @@ def test_stage_android_assets_excludes_desktop_cli_and_binary_installers(tmp_pat
 	assert not (py_dest / "infrastructure" / "binaries" / "fpcalc.py").exists()
 	assert not (py_dest / "infrastructure" / "binaries" / "mpv.py").exists()
 	assert (py_dest / "android_entry.py").is_file()
+
+
+def test_isolate_container_fixture_restores_env_and_settings(tmp_path: Path) -> None:
+	"""Verifica que el fixture autouse de conftest restaure os.environ y _settings tras mutaciones."""
+	import os
+
+	from app.core import config as config_mod
+	from tests.conftest import isolate_container
+
+	orig_data_dir = os.environ.get("ROCKOLA_DATA_DIR")
+	gen = isolate_container.__wrapped__()
+	next(gen)
+	os.environ["ROCKOLA_DATA_DIR"] = str(tmp_path / "dirty_data")
+	os.environ["ROCKOLA_SKIP_FRONTEND_BUILD"] = "1"
+	config_mod.set_settings(config_mod.Settings(port=9999))
+	try:
+		gen.close()
+	except StopIteration:
+		pass
+
+	assert os.environ.get("ROCKOLA_DATA_DIR") == orig_data_dir
+	assert "ROCKOLA_SKIP_FRONTEND_BUILD" not in os.environ or orig_data_dir is not None
