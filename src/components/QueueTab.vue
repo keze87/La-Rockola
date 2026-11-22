@@ -1,6 +1,7 @@
 <script setup lang="ts">
 	import { ref } from 'vue';
-	import { activeRemoteServerUrl, isNativeAndroidHost } from '../composables/useAndroidHost';
+	import { isNativeAndroidHost } from '../composables/useAndroidHost';
+	import { isRemoteMode } from '../stores/useServerConnectionStore';
 	import { useQueueDragDrop, type UnifiedTrackItem } from '../composables/player/useQueueDragDrop';
 	import { useContextMenu } from '../composables/useContextMenu';
 	import { usePlaybackControls } from '../composables/usePlaybackControls';
@@ -119,7 +120,7 @@
 	<section class="tab-content bg-carpincho-bg h-full overflow-y-auto" @scroll.passive="onTabScroll">
 		<!-- Agregador de URLs -->
 		<div
-			v-if="!isNativeAndroidHost() || activeRemoteServerUrl"
+			v-if="!isNativeAndroidHost() || isRemoteMode"
 			class="bg-carpincho-bg sticky top-0 z-10 flex items-center gap-2 px-4 py-3 shadow-md"
 		>
 			<i class="material-icons text-carpincho-success shrink-0">link</i>

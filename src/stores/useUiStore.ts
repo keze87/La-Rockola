@@ -13,9 +13,24 @@ export const serverUrl = ref<string | null>(null);
 export const localIp = ref<string | null>(null);
 
 let wsSend: ((data: string) => void) | null = null;
+let wsClose: (() => void) | null = null;
 
-export function setWsSend(sendFn: (data: string) => void) {
+export function setWsSend(sendFn: ((data: string) => void) | null, closeFn: (() => void) | null = null) {
 	wsSend = sendFn;
+	wsClose = closeFn;
+}
+
+export function closeSocketHandle(): void {
+	const closeFn = wsClose;
+	wsSend = null;
+	wsClose = null;
+	if (closeFn) {
+		try {
+			closeFn();
+		} catch {
+			// Ignoramos errores al cerrar un socket ya cerrado
+		}
+	}
 }
 
 export function isSocketConnected(): boolean {
@@ -37,6 +52,7 @@ export function useUiStore() {
 		serverUrl,
 		localIp,
 		setWsSend,
+		closeSocketHandle,
 		isSocketConnected,
 		sendRaw,
 	};

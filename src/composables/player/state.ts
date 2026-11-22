@@ -58,6 +58,7 @@ export {
 
 export {
 	activeTab,
+	closeSocketHandle,
 	isTabsBarHidden,
 	isFogonMode,
 	isSocketConnected,

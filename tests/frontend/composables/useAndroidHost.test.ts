@@ -10,6 +10,7 @@ const { pluginMock, systemBarsMock, state } = vi.hoisted(() => ({
 		requestStoragePermission: vi.fn(),
 		updateMediaNotification: vi.fn(),
 		updateMediaPosition: vi.fn(),
+		setMediaTarget: vi.fn(),
 		hapticFeedback: vi.fn(),
 		setKeepScreenOn: vi.fn(),
 		shareUrl: vi.fn(),
@@ -489,5 +490,103 @@ describe('useAndroidHost.ts', () => {
 		await expect(ensureLocalAndroidServerAlive({ retryDelayMs: 5, cooldownMs: 0 })).resolves.toBe(true);
 		expect(pluginMock.stopServer).toHaveBeenCalledTimes(1);
 		expect(pluginMock.startServer).toHaveBeenCalledTimes(1);
+	});
+
+	it('initAndroidServer returns false and sets localServerState=unavailable when /health fails or returns invalid body', async () => {
+		const mod = await import('@/composables/useAndroidHost');
+		const store = await import('@/stores/useServerConnectionStore');
+		state.isNative = true;
+		state.platform = 'android';
+		store.resetServerConnectionStore();
+
+		pluginMock.startServer.mockResolvedValue({
+			running: true,
+			port: 1729,
+			localIp: '127.0.0.1',
+			serverUrl: 'http://127.0.0.1:1729',
+			musicDir: '/storage/emulated/0/Music',
+		});
+
+		global.fetch = vi.fn().mockResolvedValue({
+			ok: true,
+			json: () => Promise.resolve({ status: 'broken' }),
+		});
+
+		const ready = await mod.initAndroidServer({ pollIntervalMs: 5, timeoutMs: 30 });
+		expect(ready).toBe(false);
+		expect(store.localServerState.value).toBe('unavailable');
+		expect(store.lastServerError.value?.code).toBe('HEALTH_CHECK_TIMEOUT');
+		expect(mod.androidServerStatus.value.running).toBe(false);
+	});
+
+	it('ensureLocalAndroidServerAlive returns false when restart fails and deduplicates concurrent calls', async () => {
+		const mod = await import('@/composables/useAndroidHost');
+		const store = await import('@/stores/useServerConnectionStore');
+		state.isNative = true;
+		state.platform = 'android';
+		store.resetServerConnectionStore();
+
+		pluginMock.getStatus.mockResolvedValue({
+			running: false,
+			port: 1729,
+			localIp: '127.0.0.1',
+			serverUrl: 'http://127.0.0.1:1729',
+			musicDir: null,
+		});
+		pluginMock.startServer.mockResolvedValue({
+			running: true,
+			port: 1729,
+			localIp: '127.0.0.1',
+			serverUrl: 'http://127.0.0.1:1729',
+			musicDir: null,
+		});
+		global.fetch = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'));
+
+		const p1 = mod.ensureLocalAndroidServerAlive({ retryDelayMs: 5, cooldownMs: 0, initTimeoutMs: 25 });
+		const p2 = mod.ensureLocalAndroidServerAlive({ retryDelayMs: 5, cooldownMs: 0, initTimeoutMs: 25 });
+		expect(p1).toBe(p2);
+
+		const res = await p1;
+		expect(res).toBe(false);
+		expect(store.localServerState.value).toBe('unavailable');
+		expect(pluginMock.startServer).toHaveBeenCalledTimes(1);
+	});
+
+	it('connectToRemoteServer and disconnectFromRemoteServer clear stale state and update mode explicitly', async () => {
+		const mod = await import('@/composables/useAndroidHost');
+		const store = await import('@/stores/useServerConnectionStore');
+		const playback = await import('@/stores/usePlaybackStore');
+		const queue = await import('@/stores/useQueueStore');
+
+		state.isNative = true;
+		state.platform = 'android';
+		store.resetServerConnectionStore();
+		playback.currentTrackPath.value = '/local/track.mp3';
+		queue.queueState.value = ['/local/next.mp3'];
+
+		global.fetch = vi.fn().mockResolvedValue({
+			ok: true,
+			json: () => Promise.resolve({ status: 'ok' }),
+		});
+
+		const onModeSwitch = vi.fn();
+		const target = await mod.connectToRemoteServer('192.168.0.88', { onServerChanged: onModeSwitch });
+		expect(target).toBe('http://192.168.0.88:1729');
+		expect(store.serverMode.value).toBe('remote');
+		expect(playback.currentTrackPath.value).toBeNull();
+		expect(queue.queueState.value).toEqual([]);
+		expect(onModeSwitch).toHaveBeenCalledTimes(1);
+
+		// Error 401/403 preserva mensaje accionable sin cambiar modo
+		global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 401 });
+		await expect(mod.connectToRemoteServer('192.168.0.99')).rejects.toThrow(/autenticación|401/i);
+		expect(store.serverMode.value).toBe('remote');
+		expect(store.activeRemoteServerUrl.value).toBe('http://192.168.0.88:1729');
+
+		playback.currentTrackPath.value = '/remote/track.mp3';
+		mod.disconnectFromRemoteServer({ onServerChanged: onModeSwitch });
+		expect(store.serverMode.value).toBe('host');
+		expect(playback.currentTrackPath.value).toBeNull();
+		expect(onModeSwitch).toHaveBeenCalledTimes(2);
 	});
 });

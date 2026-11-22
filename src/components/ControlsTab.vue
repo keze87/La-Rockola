@@ -5,14 +5,15 @@
 		activeRemoteServerUrl,
 		androidServerStatus,
 		connectToRemoteServer,
+		disconnectFromRemoteServer,
 		isAndroidFullscreen,
 		isNativeAndroidHost,
 		lastRemoteServerUrl,
 		pickAndApplyMusicFolder,
-		resetToLocalServer,
 		shareAndroidUrl,
 		toggleAndroidFullscreen,
 	} from '../composables/useAndroidHost';
+	import { isHostMode, isRemoteMode } from '../stores/useServerConnectionStore';
 	import { serverUrl, weatherLocation } from '../composables/player/state';
 	import { useDragSlider } from '../composables/useDragSlider';
 	import { useFullscreen } from '@vueuse/core';
@@ -161,7 +162,7 @@
 		return window.location.href;
 	});
 
-	const showAndroidFolderPicker = isNativeAndroidHost() && !activeRemoteServerUrl.value;
+	const showAndroidFolderPicker = computed(() => isNativeAndroidHost() && isHostMode.value);
 	const showRemoteServerSelector = isNativeAndroidHost();
 	const isRemoteServerModalOpen = ref(false);
 	const remoteServerInput = ref(lastRemoteServerUrl.value ?? '');
@@ -174,8 +175,8 @@
 			isRemoteServerModalOpen.value = true;
 		} else {
 			isRemoteServerModalOpen.value = false;
-			if (activeRemoteServerUrl.value) {
-				resetToLocalServer();
+			if (isRemoteMode.value) {
+				disconnectFromRemoteServer();
 				void loadLibrary(false);
 				showToast('Volviste al servidor de este teléfono', 'info');
 			}
@@ -200,7 +201,7 @@
 	}
 
 	function handleUseLocalServer() {
-		resetToLocalServer();
+		disconnectFromRemoteServer();
 		isRemoteServerModalOpen.value = false;
 		haptic();
 		void loadLibrary(false);
@@ -418,7 +419,7 @@
 
 		<!-- Interruptor para escuchar en el cliente -->
 		<ToggleRow
-			v-if="!isNativeAndroidHost() || activeRemoteServerUrl"
+			v-if="!isNativeAndroidHost() || isRemoteMode"
 			v-model="listenLocally"
 			icon="headphones"
 			title="Escuchar acá"
@@ -437,12 +438,10 @@
 
 		<div v-if="showRemoteServerSelector" class="mx-auto mb-6 max-w-md">
 			<ToggleRow
-				:model-value="Boolean(activeRemoteServerUrl) || isRemoteServerModalOpen"
+				:model-value="isRemoteMode || isRemoteServerModalOpen"
 				title="Conectar a otro servidor"
 				:description="
-					activeRemoteServerUrl
-						? `Conectado a ${activeRemoteServerUrl}`
-						: 'Usando este teléfono (servidor local)'
+					isRemoteMode ? `Conectado a ${activeRemoteServerUrl}` : 'Usando este teléfono (servidor local)'
 				"
 				icon="dns"
 				@update:model-value="handleToggleRemoteServerSwitch"
@@ -523,7 +522,7 @@
 		</div>
 
 		<div
-			v-if="!hasMpv && !listenLocally && !hasLocalPlayer && (!isNativeAndroidHost() || activeRemoteServerUrl)"
+			v-if="!hasMpv && !listenLocally && !hasLocalPlayer && (!isNativeAndroidHost() || isRemoteMode)"
 			class="mb-4 flex flex-wrap justify-center gap-3"
 		>
 			<PillButton
@@ -578,7 +577,7 @@
 				/>
 				<div class="flex flex-wrap justify-end gap-2">
 					<PillButton
-						v-if="activeRemoteServerUrl"
+						v-if="isRemoteMode"
 						icon="smartphone"
 						color-class="bg-neutral-700 hover:bg-neutral-600"
 						@click="handleUseLocalServer"

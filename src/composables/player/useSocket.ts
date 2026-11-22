@@ -1,11 +1,13 @@
 import { _startLocalPlayer, _stopLocalPlayer, applyRemoteSeek } from './useLocalPlayback';
 import { applyLibrarySort } from './useLibrary';
 import { useToasts } from './useToasts';
-import { activeRemoteServerUrl, ensureLocalAndroidServerAlive, isNativeAndroidHost } from '../useAndroidHost';
+import { ensureLocalAndroidServerAlive, isNativeAndroidHost } from '../useAndroidHost';
 import { getWsUrl } from '../useApi';
+import { connectionState, isHostMode } from '../../stores/useServerConnectionStore';
 import { useWebSocket } from '@vueuse/core';
 import {
 	activeSort,
+	closeSocketHandle,
 	currentTrackPath,
 	defaultSort,
 	djBaraEnabled,
@@ -49,39 +51,62 @@ import {
 } from './state';
 import type { PlayerState, Track } from '../../types';
 
+let socketGeneration = 0;
+
 export function useSocket() {
 	const { showToast } = useToasts();
-	let consecutiveDisconnects = 0;
 
-	function connectWebSocket() {
+	function disconnectWebSocket(): void {
+		socketGeneration += 1;
+		closeSocketHandle();
+		connectionState.value = 'disconnected';
+	}
+
+	function reconnectWebSocket(opts?: { onlyIfActive?: boolean }): void {
+		const wasConnected = isSocketConnected();
+		if (opts?.onlyIfActive && !wasConnected) return;
+		disconnectWebSocket();
+		connectWebSocket();
+	}
+
+	function connectWebSocket(): void {
 		// Evitamos abrir múltiples conexiones si ya está instanciado
 		if (isSocketConnected()) return;
 
+		const gen = ++socketGeneration;
+		let intentionallyClosed = false;
+		let consecutiveDisconnects = 0;
 		const wsUrl = getWsUrl('/ws');
+		connectionState.value = 'connecting';
 
 		// VueUse se encarga del auto-reconnect, backoff exponencial y limpieza
-		const { send } = useWebSocket(wsUrl, {
+		const { send, close } = useWebSocket(wsUrl, {
 			autoReconnect: {
-				retries: () => true, // Infinitos reintentos
-				delay: (retryCount) => Math.min(1000 * Math.pow(2, retryCount), 30000), // Backoff exponencial hasta 30s
+				retries: () => !intentionallyClosed && gen === socketGeneration,
+				delay: (retryCount) => Math.min(1000 * Math.pow(2, retryCount), 30000),
 			},
 
 			onConnected() {
+				if (intentionallyClosed || gen !== socketGeneration) return;
 				consecutiveDisconnects = 0;
+				connectionState.value = 'connected';
 				if (listenLocally.value) {
 					send(JSON.stringify({ type: 'local_player_claim' }));
 				}
 			},
 
 			onDisconnected() {
+				if (intentionallyClosed || gen !== socketGeneration) return;
 				consecutiveDisconnects += 1;
+				connectionState.value = 'reconnecting';
 				showToast('Se cortó la señal. Reconectando...', 'warning');
-				if (isNativeAndroidHost() && !activeRemoteServerUrl.value && consecutiveDisconnects >= 2) {
+				if (isNativeAndroidHost() && isHostMode.value && consecutiveDisconnects >= 2) {
 					void ensureLocalAndroidServerAlive();
 				}
 			},
 
-			onMessage(ws, event) {
+			onMessage(_ws, event) {
+				if (intentionallyClosed || gen !== socketGeneration) return;
 				try {
 					const data = JSON.parse(event.data);
 
@@ -214,8 +239,11 @@ export function useSocket() {
 			},
 		});
 
-		setWsSend(send);
+		setWsSend(send, () => {
+			intentionallyClosed = true;
+			close(1000, 'server_switch');
+		});
 	}
 
-	return { connectWebSocket };
+	return { connectWebSocket, disconnectWebSocket, reconnectWebSocket };
 }

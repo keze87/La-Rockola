@@ -3,7 +3,6 @@
 	import { Toaster } from 'vue-sonner';
 	import { apiUrl } from './composables/useApi';
 	import {
-		activeRemoteServerUrl,
 		androidServerStatus,
 		consumeAndroidPendingShortcut,
 		ensureLocalAndroidServerAlive,
@@ -12,6 +11,7 @@
 		isNativeAndroidHost,
 		pickAndApplyMusicFolder,
 	} from './composables/useAndroidHost';
+	import { isHostMode, isRemoteMode } from './stores/useServerConnectionStore';
 	import { useCover } from './composables/useCover';
 	import { buildSpaPath, extractSpaRoute, useAppRouter } from './composables/useAppRouter';
 	import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts';
@@ -215,7 +215,9 @@
 		}
 	});
 
-	const showAndroidFolderBanner = computed(() => isNativeAndroidHost() && androidServerStatus.value.needsFolder);
+	const showAndroidFolderBanner = computed(
+		() => isNativeAndroidHost() && isHostMode.value && androidServerStatus.value.needsFolder
+	);
 	const { ctxMenu, closeCtxMenu } = useContextMenu();
 
 	function handleAndroidBack(): boolean {
@@ -335,7 +337,7 @@
 	}
 
 	function handleAndroidMediaVolumeChanged(level: number): void {
-		if ((listenLocally.value || !activeRemoteServerUrl.value) && Number.isFinite(level)) {
+		if ((listenLocally.value || isHostMode.value) && Number.isFinite(level)) {
 			volume.value = Math.max(0, Math.min(100, Math.round(level)));
 		}
 	}
@@ -519,9 +521,7 @@
 			<span>Elegir la carpeta de música para arrancar la ronda</span>
 		</button>
 		<button
-			v-else-if="
-				!hasMpv && !listenLocally && !hasLocalPlayer && (!isNativeAndroidHost() || activeRemoteServerUrl)
-			"
+			v-else-if="!hasMpv && !listenLocally && !hasLocalPlayer && (!isNativeAndroidHost() || isRemoteMode)"
 			type="button"
 			class="bg-carpincho-success flex w-full shrink-0 cursor-pointer items-center justify-center gap-2 px-4 py-2 text-xs font-bold text-white shadow-sm"
 			@click="

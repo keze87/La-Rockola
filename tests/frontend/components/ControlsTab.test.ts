@@ -617,6 +617,7 @@ describe('ControlsTab.vue', () => {
 			await wrapper.vm.$nextTick();
 
 			expect(wrapper.text()).toContain('Escuchar acá');
+			expect(wrapper.text()).not.toContain('Elegir carpeta de música');
 		} finally {
 			androidHost.activeRemoteServerUrl.value = prevRemoteUrl;
 			isNativeSpy.mockRestore();

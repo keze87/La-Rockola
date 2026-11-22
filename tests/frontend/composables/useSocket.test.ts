@@ -331,6 +331,35 @@ describe('useSocket.ts', () => {
 		expect(scanStatus.value.phase).toBe('metadata');
 	});
 
+	it('disconnectWebSocket and reconnectWebSocket close prior socket, update connectionState, and connect to new origin', async () => {
+		const { setApiOrigin, clearApiOrigin } = await import('@/composables/useApi');
+		const { connectionState, resetServerConnectionStore, setRemoteMode } =
+			await import('@/stores/useServerConnectionStore');
+		resetServerConnectionStore();
+
+		const { connectWebSocket, disconnectWebSocket, reconnectWebSocket } = useSocket();
+		setApiOrigin('http://127.0.0.1:1729');
+		connectWebSocket();
+		capturedOptions.onConnected();
+		expect(connectionState.value).toBe('connected');
+
+		const staleCallbacks = capturedOptions;
+		setRemoteMode('http://192.168.0.55:1729');
+		setApiOrigin('http://192.168.0.55:1729');
+		reconnectWebSocket();
+
+		expect(capturedOptions).not.toBe(staleCallbacks);
+		// Callbacks tardíos de la generación anterior no deben contaminar el estado nuevo
+		staleCallbacks.onMessage(null, {
+			data: JSON.stringify({ type: 'state_update', current_track: '/stale/track.mp3' }),
+		});
+		expect(currentTrackPath.value).toBeNull();
+
+		disconnectWebSocket();
+		expect(connectionState.value).toBe('disconnected');
+		clearApiOrigin();
+	});
+
 	it('applies default_sort when state_update delivers library tracks and no manual sort override is active', async () => {
 		const { activeSort, defaultSort } = await import('@/composables/player/state');
 		activeSort.value = 'time';

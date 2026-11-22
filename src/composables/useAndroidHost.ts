@@ -1,14 +1,35 @@
 // Puente tipado hacia el plugin nativo Kotlin RockolaServer en Capacitor Android.
-// Permite arrancar/detener el servidor embebido (Chaquopy + ForegroundService)
-// y elegir carpetas de la MicroSD resolviendo su ruta real en Android 11+.
+// Permite arrancar/detener el servidor embebido (Chaquopy + ForegroundService),
+// alternar explícitamente entre modo host local y cliente remoto, y elegir carpetas de música.
 
 import { Capacitor, SystemBars, registerPlugin } from '@capacitor/core';
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import { listenLocally, volume } from '../stores/usePlaybackStore';
+import {
+	STORAGE_KEY_REMOTE_SERVER,
+	activeMediaTarget,
+	activeRemoteServerUrl,
+	clearServerError,
+	isHostMode,
+	lastRemoteServerUrl,
+	libraryFolderStatus,
+	localMusicDir,
+	localServerIp,
+	localServerLanUrl,
+	localServerPort,
+	localServerState,
+	resetPlaybackAndLibraryState,
+	setHostMode,
+	setRemoteMode,
+	setServerError,
+} from '../stores/useServerConnectionStore';
+import { useSocket } from './player/useSocket';
 import { setApiOrigin, useApi } from './useApi';
 
 export interface AndroidServerInfo {
 	running: boolean;
+	hostState?: string;
+	lastError?: string | null;
 	port: number;
 	localIp: string;
 	serverUrl: string;
@@ -22,6 +43,9 @@ export interface AndroidServerStatus extends AndroidServerInfo {
 export interface PickMusicFolderResult {
 	path: string | null;
 	uri?: string | null;
+	displayName?: string | null;
+	status?: string | null;
+	error?: string | null;
 }
 
 export interface MediaNotificationPayload {
@@ -42,6 +66,13 @@ export interface MediaPositionPayload {
 	paused: boolean;
 }
 
+export interface MediaTargetPayload {
+	mode: 'host' | 'remote';
+	origin: string;
+	authHeader?: string | null;
+	generation: number;
+}
+
 export interface RockolaServerPlugin {
 	startServer(options?: { port?: number; musicDir?: string }): Promise<AndroidServerInfo>;
 	stopServer(): Promise<{ stopped: boolean }>;
@@ -51,17 +82,20 @@ export interface RockolaServerPlugin {
 	requestStoragePermission(): Promise<{ granted: boolean }>;
 	updateMediaNotification(options: MediaNotificationPayload): Promise<{ updated: boolean }>;
 	updateMediaPosition(options: MediaPositionPayload): Promise<{ updated: boolean }>;
+	setMediaTarget?(options: MediaTargetPayload): Promise<{ updated: boolean }>;
 	hapticFeedback(options?: { heavy?: boolean }): Promise<{ performed: boolean }>;
 	setKeepScreenOn(options: { enabled: boolean }): Promise<{ enabled: boolean }>;
 	shareUrl(options: { url: string; title?: string; text?: string }): Promise<{ shared: boolean }>;
 	consumePendingShortcut(): Promise<{ action: string | null }>;
 	setFogonState(options: { active: boolean }): Promise<{ active: boolean }>;
-	enterPipMode(): Promise<{ entered: boolean }>;
+	enterPipMode(): Promise<{ entered: boolean; reason?: string | null }>;
 	getMediaVolume(): Promise<{ level: number; muted: boolean }>;
 	setMediaVolume(options: { level: number }): Promise<{ level: number; muted: boolean }>;
 }
 
 const RockolaServer = registerPlugin<RockolaServerPlugin>('RockolaServer');
+
+export { activeRemoteServerUrl, lastRemoteServerUrl };
 
 export const androidServerStatus = ref<AndroidServerStatus>({
 	running: false,
@@ -71,6 +105,23 @@ export const androidServerStatus = ref<AndroidServerStatus>({
 	musicDir: null,
 	needsFolder: false,
 });
+
+// Sincroniza androidServerStatus desde el store único de verdad para mantener compatibilidad con vistas y tests
+watch(
+	[localServerState, localServerPort, localServerIp, localServerLanUrl, localMusicDir, libraryFolderStatus],
+	([srvState, port, ip, lanUrl, musicDir, folderStatus]) => {
+		const normalizedDir = musicDir ? musicDir.trim() || null : null;
+		androidServerStatus.value = {
+			running: srvState === 'ready',
+			port,
+			localIp: ip,
+			serverUrl: lanUrl,
+			musicDir: normalizedDir,
+			needsFolder: !normalizedDir || folderStatus !== 'ok',
+		};
+	},
+	{ flush: 'sync' }
+);
 
 export const isAndroidFullscreen = ref<boolean>(false);
 export const isAndroidPipMode = ref<boolean>(false);
@@ -170,20 +221,21 @@ export async function toggleAndroidFullscreen(): Promise<boolean> {
 	return next;
 }
 
-const STORAGE_KEY_REMOTE_SERVER = 'rockola_remote_server_url';
-
-function readSavedRemoteServer(): string | null {
+export async function syncAndroidMediaTarget(): Promise<void> {
+	if (!isNativeAndroidHost()) return;
+	if (typeof RockolaServer.setMediaTarget !== 'function') return;
 	try {
-		if (typeof localStorage === 'undefined') return null;
-		const saved = localStorage.getItem(STORAGE_KEY_REMOTE_SERVER);
-		return saved ? saved.trim() || null : null;
+		const target = activeMediaTarget.value;
+		await RockolaServer.setMediaTarget({
+			mode: target.mode,
+			origin: target.origin,
+			authHeader: target.authHeader,
+			generation: target.generation,
+		});
 	} catch {
-		return null;
+		// Ignoramos si la versión del plugin nativo no expone setMediaTarget durante tests aislados
 	}
 }
-
-export const lastRemoteServerUrl = ref<string | null>(readSavedRemoteServer());
-export const activeRemoteServerUrl = ref<string | null>(null);
 
 export function normalizeServerOrigin(raw: string | null | undefined): string | null {
 	const cleaned = (raw ?? '').trim().replace(/\/+$/, '');
@@ -200,21 +252,73 @@ export function normalizeServerOrigin(raw: string | null | undefined): string | 
 	}
 }
 
-export async function connectToRemoteServer(rawUrl: string): Promise<string> {
+interface HealthProbeResult {
+	ok: boolean;
+	code: 'OK' | 'AUTH_FAILED' | 'HTTP_ERROR' | 'INVALID_RESPONSE' | 'TIMEOUT' | 'NETWORK_ERROR';
+	status?: number;
+	message?: string;
+}
+
+async function probeServerHealth(origin: string, timeoutMs = 2000): Promise<HealthProbeResult> {
+	const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+	const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+	try {
+		const res = await fetch(`${origin}/health`, controller ? { signal: controller.signal } : undefined);
+		if (res.status === 401 || res.status === 403) {
+			return {
+				ok: false,
+				code: 'AUTH_FAILED',
+				status: res.status,
+				message: `Error de autenticación en el servidor (${res.status})`,
+			};
+		}
+		if (!res.ok) {
+			return {
+				ok: false,
+				code: 'HTTP_ERROR',
+				status: res.status,
+				message: `El servidor respondió con estado ${res.status}`,
+			};
+		}
+		if (typeof res.json === 'function') {
+			const payload = (await res.json()) as { status?: string } | null;
+			if (!payload || payload.status !== 'ok') {
+				return {
+					ok: false,
+					code: 'INVALID_RESPONSE',
+					message: 'El endpoint /health respondió sin estado válido',
+				};
+			}
+		}
+		return { ok: true, code: 'OK' };
+	} catch (err) {
+		const isAbort = err instanceof Error && err.name === 'AbortError';
+		return {
+			ok: false,
+			code: isAbort ? 'TIMEOUT' : 'NETWORK_ERROR',
+			message: isAbort
+				? 'Tiempo de espera agotado al verificar salud del servidor'
+				: err instanceof Error
+					? err.message
+					: 'Error de conectividad HTTP',
+		};
+	} finally {
+		if (timer) clearTimeout(timer);
+	}
+}
+
+export async function connectToRemoteServer(
+	rawUrl: string,
+	opts?: { timeoutMs?: number; onServerChanged?: () => void }
+): Promise<string> {
 	const normalized = normalizeServerOrigin(rawUrl);
 	if (!normalized) {
 		throw new Error('Dirección de servidor inválida (ej: 192.168.0.55 o http://192.168.0.55:1729)');
 	}
 
-	const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-	const timer = controller ? setTimeout(() => controller.abort(), 4000) : null;
-	try {
-		const res = await fetch(`${normalized}/health`, controller ? { signal: controller.signal } : undefined);
-		if (!res.ok) {
-			throw new Error(`El servidor respondió con estado ${res.status}`);
-		}
-	} finally {
-		if (timer) clearTimeout(timer);
+	const probe = await probeServerHealth(normalized, opts?.timeoutMs ?? 4000);
+	if (!probe.ok) {
+		throw new Error(probe.message || 'No se pudo conectar al servidor remoto');
 	}
 
 	try {
@@ -222,66 +326,167 @@ export async function connectToRemoteServer(rawUrl: string): Promise<string> {
 	} catch {
 		// Sin acceso a localStorage en modo restringido
 	}
+
 	lastRemoteServerUrl.value = normalized;
-	activeRemoteServerUrl.value = normalized;
+	setRemoteMode(normalized);
+	clearServerError();
+	resetPlaybackAndLibraryState();
 	setApiOrigin(normalized);
+	await syncAndroidMediaTarget();
+
+	if (opts?.onServerChanged) {
+		opts.onServerChanged();
+	} else {
+		useSocket().reconnectWebSocket({ onlyIfActive: true });
+	}
 	return normalized;
 }
 
-export function resetToLocalServer(): void {
-	activeRemoteServerUrl.value = null;
-	setApiOrigin(`http://127.0.0.1:${androidServerStatus.value.port || 1729}`);
+export function disconnectFromRemoteServer(opts?: { onServerChanged?: () => void }): void {
+	setHostMode();
+	clearServerError();
+	resetPlaybackAndLibraryState();
+	setApiOrigin(`http://127.0.0.1:${localServerPort.value || 1729}`);
+	void syncAndroidMediaTarget();
+
+	if (opts?.onServerChanged) {
+		opts.onServerChanged();
+	} else {
+		useSocket().reconnectWebSocket({ onlyIfActive: true });
+	}
 }
 
+export const resetToLocalServer = disconnectFromRemoteServer;
+
+let initInFlight: Promise<boolean> | null = null;
+let stopInFlight: Promise<void> | null = null;
 let recoveryInFlight: Promise<boolean> | null = null;
 let lastRecoveryAttemptAt = 0;
 
-async function probeLocalHealth(port: number, timeoutMs = 2000): Promise<boolean> {
-	const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-	const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
-	try {
-		const res = await fetch(
-			`http://127.0.0.1:${port}/health`,
-			controller ? { signal: controller.signal } : undefined
-		);
-		return res.ok;
-	} catch {
-		return false;
-	} finally {
-		if (timer) clearTimeout(timer);
+function applyLocalServerInfo(info: AndroidServerInfo): number {
+	const port = info.port || 1729;
+	const musicDir = info.musicDir ? info.musicDir.trim() : '';
+	localServerPort.value = port;
+	localServerIp.value = info.localIp || '127.0.0.1';
+	localServerLanUrl.value = info.serverUrl || `http://127.0.0.1:${port}`;
+	localMusicDir.value = musicDir || null;
+	if (!musicDir) {
+		libraryFolderStatus.value = 'unconfigured';
+	} else if (libraryFolderStatus.value === 'unconfigured') {
+		libraryFolderStatus.value = 'ok';
 	}
+	return port;
+}
+
+export function initAndroidServer(opts?: { pollIntervalMs?: number; timeoutMs?: number }): Promise<boolean> {
+	if (!isNativeAndroidHost()) return Promise.resolve(false);
+	if (initInFlight) return initInFlight;
+
+	initInFlight = (async () => {
+		if (stopInFlight) {
+			await stopInFlight;
+		}
+
+		setHostMode();
+		clearServerError();
+		localServerState.value = 'starting';
+
+		// En Android el backend nativo (ExoPlayer) reproduce el audio fuera del WebView
+		listenLocally.value = false;
+		void getAndroidMediaVolume().then((mediaVol) => {
+			if (mediaVol) {
+				volume.value = mediaVol.level;
+			}
+		});
+
+		const pollIntervalMs = opts?.pollIntervalMs ?? 250;
+		const timeoutMs = opts?.timeoutMs ?? 15000;
+
+		let info: AndroidServerInfo;
+		try {
+			info = await RockolaServer.startServer();
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : 'No se pudo iniciar el servicio nativo';
+			localServerState.value = 'unavailable';
+			setServerError('SERVER_START_FAILED', msg);
+			return false;
+		}
+
+		const port = applyLocalServerInfo(info);
+		if (isHostMode.value) {
+			setApiOrigin(`http://127.0.0.1:${port}`);
+			await syncAndroidMediaTarget();
+		}
+
+		const localOrigin = `http://127.0.0.1:${port}`;
+		const deadline = Date.now() + timeoutMs;
+		let lastFailure = 'El servidor embebido no respondió a tiempo';
+
+		while (Date.now() <= deadline) {
+			if (!isHostMode.value) {
+				// El usuario cambió explícitamente a servidor remoto durante el arranque
+				return false;
+			}
+			const probe = await probeServerHealth(localOrigin, 1500);
+			if (probe.ok) {
+				localServerState.value = 'ready';
+				clearServerError();
+				return true;
+			}
+			if (probe.message) {
+				lastFailure = probe.message;
+			}
+			await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+		}
+
+		localServerState.value = 'unavailable';
+		setServerError('HEALTH_CHECK_TIMEOUT', lastFailure);
+		return false;
+	})().finally(() => {
+		initInFlight = null;
+	});
+
+	return initInFlight;
 }
 
 /**
  * Verifica si el servidor local embebido en Android murió y lo reinicia solo tras confirmar
  * (servicio detenido por el SO o dos chequeos /health consecutivos fallidos).
- * Nunca se ejecuta en web ni cuando está conectado a un servidor remoto.
+ * Nunca se ejecuta en web ni cuando está en modo cliente remoto.
  */
-export async function ensureLocalAndroidServerAlive(opts?: {
+export function ensureLocalAndroidServerAlive(opts?: {
 	retryDelayMs?: number;
 	cooldownMs?: number;
+	initTimeoutMs?: number;
 }): Promise<boolean> {
-	if (!isNativeAndroidHost() || activeRemoteServerUrl.value) return false;
+	if (!isNativeAndroidHost() || !isHostMode.value) return Promise.resolve(false);
 	if (recoveryInFlight) return recoveryInFlight;
+	if (initInFlight) return initInFlight;
 
 	const cooldownMs = opts?.cooldownMs ?? 10000;
 	const now = Date.now();
 	if (cooldownMs > 0 && now - lastRecoveryAttemptAt < cooldownMs) {
-		return false;
+		return Promise.resolve(false);
 	}
 
 	recoveryInFlight = (async () => {
 		try {
 			const status = await RockolaServer.getStatus();
-			const port = status.port || 1729;
+			const port = status.port || localServerPort.value || 1729;
+			const localOrigin = `http://127.0.0.1:${port}`;
 
 			if (!status.running) {
 				lastRecoveryAttemptAt = Date.now();
-				await initAndroidServer();
-				return true;
+				localServerState.value = 'recovering';
+				const restarted = await initAndroidServer({
+					pollIntervalMs: 100,
+					timeoutMs: opts?.initTimeoutMs ?? 15000,
+				});
+				return restarted;
 			}
 
-			if (await probeLocalHealth(port)) {
+			if ((await probeServerHealth(localOrigin, 2000)).ok) {
+				localServerState.value = 'ready';
 				return false;
 			}
 
@@ -289,19 +494,29 @@ export async function ensureLocalAndroidServerAlive(opts?: {
 			const retryDelayMs = opts?.retryDelayMs ?? 1200;
 			await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
 
-			if (await probeLocalHealth(port)) {
+			if ((await probeServerHealth(localOrigin, 2000)).ok) {
+				localServerState.value = 'ready';
 				return false;
 			}
 
 			lastRecoveryAttemptAt = Date.now();
+			localServerState.value = 'recovering';
 			try {
 				await RockolaServer.stopServer();
 			} catch {
 				// Ignoramos error si el proceso Python ya estaba caído
 			}
-			await initAndroidServer();
-			return true;
-		} catch {
+			const restarted = await initAndroidServer({
+				pollIntervalMs: 100,
+				timeoutMs: opts?.initTimeoutMs ?? 15000,
+			});
+			return restarted;
+		} catch (err) {
+			localServerState.value = 'unavailable';
+			setServerError(
+				'RECOVERY_FAILED',
+				err instanceof Error ? err.message : 'Fallo verificando salud del servidor local'
+			);
 			return false;
 		} finally {
 			recoveryInFlight = null;
@@ -309,53 +524,6 @@ export async function ensureLocalAndroidServerAlive(opts?: {
 	})();
 
 	return recoveryInFlight;
-}
-
-export async function initAndroidServer(opts?: { pollIntervalMs?: number; timeoutMs?: number }): Promise<boolean> {
-	if (!isNativeAndroidHost()) return false;
-
-	activeRemoteServerUrl.value = null;
-
-	// En Android el backend nativo (ExoPlayer) reproduce el audio fuera del WebView
-	listenLocally.value = false;
-	void getAndroidMediaVolume().then((mediaVol) => {
-		if (mediaVol) {
-			volume.value = mediaVol.level;
-		}
-	});
-
-	const pollIntervalMs = opts?.pollIntervalMs ?? 250;
-	const timeoutMs = opts?.timeoutMs ?? 15000;
-
-	const info = await RockolaServer.startServer();
-	const port = info.port || 1729;
-	setApiOrigin(`http://127.0.0.1:${port}`);
-
-	const musicDir = info.musicDir ? info.musicDir.trim() : '';
-	androidServerStatus.value = {
-		running: Boolean(info.running),
-		port,
-		localIp: info.localIp || '127.0.0.1',
-		serverUrl: info.serverUrl || `http://127.0.0.1:${port}`,
-		musicDir: musicDir || null,
-		needsFolder: !musicDir,
-	};
-
-	const healthUrl = `http://127.0.0.1:${port}/health`;
-	const deadline = Date.now() + timeoutMs;
-	while (Date.now() <= deadline) {
-		try {
-			const res = await fetch(healthUrl);
-			if (res.ok) {
-				androidServerStatus.value.running = true;
-				return true;
-			}
-		} catch {
-			// El hilo Python de Uvicorn todavía está levantando
-		}
-		await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
-	}
-	return false;
 }
 
 export async function pickAndApplyMusicFolder(): Promise<string | null> {
@@ -366,18 +534,33 @@ export async function pickAndApplyMusicFolder(): Promise<string | null> {
 	if (!selectedPath) return null;
 
 	await useApi().setMusicDir(selectedPath);
-	androidServerStatus.value = {
-		...androidServerStatus.value,
-		musicDir: selectedPath,
-		needsFolder: false,
-	};
+	localMusicDir.value = selectedPath;
+	libraryFolderStatus.value = 'ok';
 	return selectedPath;
 }
 
-export async function stopAndroidServer(): Promise<void> {
-	if (!isNativeAndroidHost()) return;
-	await RockolaServer.stopServer();
-	androidServerStatus.value.running = false;
+export function stopAndroidServer(): Promise<void> {
+	if (!isNativeAndroidHost()) return Promise.resolve();
+	if (stopInFlight) return stopInFlight;
+
+	stopInFlight = (async () => {
+		localServerState.value = 'stopping';
+		try {
+			await RockolaServer.stopServer();
+			localServerState.value = 'stopped';
+		} catch (err) {
+			localServerState.value = 'unavailable';
+			setServerError(
+				'SERVER_STOP_FAILED',
+				err instanceof Error ? err.message : 'No se pudo detener el servidor local'
+			);
+			throw err;
+		} finally {
+			stopInFlight = null;
+		}
+	})();
+
+	return stopInFlight;
 }
 
 let lastPosSentAt = 0;
