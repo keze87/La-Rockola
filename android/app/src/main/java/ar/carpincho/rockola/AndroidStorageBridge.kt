@@ -10,6 +10,8 @@ import android.provider.DocumentsContract
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLDecoder
+import java.util.Collections
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 enum class SafFolderStatus {
@@ -72,6 +74,14 @@ data class SafScanResult(
     val error: String? = null,
 )
 
+data class SafScanBatch(
+    val status: SafScanStatus,
+    val files: List<SafAudioTrackEntry>,
+    val hasMore: Boolean,
+    val failedDirs: List<String> = emptyList(),
+    val error: String? = null,
+)
+
 interface SafTreeProvider {
     fun isTreeUri(raw: String): Boolean
     fun isDocumentUri(raw: String): Boolean = raw.startsWith("content://") && raw.contains("/document/")
@@ -89,15 +99,199 @@ interface SafTreeProvider {
 class SafTreeBrowser(
     private val provider: SafTreeProvider,
     private val audioExtensions: Set<String> = DEFAULT_AUDIO_EXTENSIONS,
+    private val maxParentCacheSize: Int = MAX_PARENT_CACHE_ENTRIES,
 ) {
     companion object {
         const val MIME_TYPE_DIR = "vnd.android.document/directory"
+        const val MAX_PARENT_CACHE_ENTRIES = 2048
         val DEFAULT_AUDIO_EXTENSIONS = setOf(
             ".flac", ".m4a", ".mp3", ".ogg", ".wav", ".mp4", ".mkv", ".avi", ".webm",
         )
     }
 
-    private val parentCache = ConcurrentHashMap<String, Triple<String, String, String>>()
+    private data class ScanSession(
+        val treeUri: String,
+        val queue: ArrayDeque<Pair<String, String>>,
+        val visitedDirs: HashSet<String>,
+        val seenFiles: HashSet<String> = HashSet(),
+        val pendingBuffer: ArrayDeque<SafAudioTrackEntry> = ArrayDeque(),
+        val failedDirs: ArrayList<String> = ArrayList(),
+        var firstError: String? = null,
+        var terminalStatus: SafScanStatus? = null,
+        @Volatile var cancelled: Boolean = false,
+    )
+
+    private val cacheLock = Any()
+    private var activeTreeForCache: String? = null
+    private val parentCache = object : LinkedHashMap<String, Triple<String, String, String>>(128, 0.75f, true) {
+        override fun removeEldestEntry(
+            eldest: MutableMap.MutableEntry<String, Triple<String, String, String>>?,
+        ): Boolean = size > maxParentCacheSize.coerceAtLeast(16)
+    }
+    private val scanSessions = ConcurrentHashMap<String, ScanSession>()
+
+    fun parentCacheSize(): Int = synchronized(cacheLock) { parentCache.size }
+
+    private fun putParentCache(docUri: String, treeUri: String, dirDocId: String, name: String) {
+        synchronized(cacheLock) {
+            if (activeTreeForCache != null && activeTreeForCache != treeUri) {
+                parentCache.clear()
+            }
+            activeTreeForCache = treeUri
+            parentCache[docUri] = Triple(treeUri, dirDocId, name)
+        }
+    }
+
+    private fun getParentCache(docUri: String): Triple<String, String, String>? =
+        synchronized(cacheLock) { parentCache[docUri] }
+
+    fun startScanSession(treeUriString: String): String {
+        val sessionId = UUID.randomUUID().toString()
+        synchronized(cacheLock) {
+            if (activeTreeForCache != null && activeTreeForCache != treeUriString) {
+                parentCache.clear()
+            }
+            activeTreeForCache = treeUriString
+        }
+        val validation = validateTreeUri(treeUriString)
+        val terminal = when (validation.status) {
+            SafFolderStatus.OK -> null
+            SafFolderStatus.PERMISSION_REVOKED -> SafScanStatus.PERMISSION_DENIED
+            SafFolderStatus.UNSUPPORTED_PROVIDER -> SafScanStatus.UNSUPPORTED_PROVIDER
+            SafFolderStatus.UNCONFIGURED, SafFolderStatus.UNAVAILABLE -> SafScanStatus.STORAGE_UNAVAILABLE
+        }
+        if (terminal != null) {
+            scanSessions[sessionId] = ScanSession(
+                treeUri = treeUriString,
+                queue = ArrayDeque(),
+                visitedDirs = HashSet(),
+                firstError = validation.error,
+                terminalStatus = terminal,
+            )
+            return sessionId
+        }
+
+        val root = try {
+            provider.queryRootInfo(treeUriString)
+        } catch (sec: SecurityException) {
+            scanSessions[sessionId] = ScanSession(
+                treeUri = treeUriString,
+                queue = ArrayDeque(),
+                visitedDirs = HashSet(),
+                firstError = sec.message ?: "Permiso SAF revocado.",
+                terminalStatus = SafScanStatus.PERMISSION_DENIED,
+            )
+            return sessionId
+        } catch (e: Exception) {
+            scanSessions[sessionId] = ScanSession(
+                treeUri = treeUriString,
+                queue = ArrayDeque(),
+                visitedDirs = HashSet(),
+                firstError = e.message ?: "Error consultando raíz SAF.",
+                terminalStatus = SafScanStatus.PROVIDER_ERROR,
+            )
+            return sessionId
+        }
+
+        if (root == null) {
+            scanSessions[sessionId] = ScanSession(
+                treeUri = treeUriString,
+                queue = ArrayDeque(),
+                visitedDirs = HashSet(),
+                firstError = "La carpeta seleccionada no está disponible.",
+                terminalStatus = SafScanStatus.STORAGE_UNAVAILABLE,
+            )
+            return sessionId
+        }
+
+        val queue = ArrayDeque<Pair<String, String>>()
+        val visited = HashSet<String>()
+        queue.add(Pair(root.documentId, ""))
+        visited.add(root.documentId)
+        scanSessions[sessionId] = ScanSession(treeUri = treeUriString, queue = queue, visitedDirs = visited)
+        return sessionId
+    }
+
+    fun nextScanBatch(sessionId: String, batchSize: Int = 250): SafScanBatch {
+        val session = scanSessions[sessionId]
+            ?: return SafScanBatch(SafScanStatus.STORAGE_UNAVAILABLE, emptyList(), hasMore = false, error = "Sesión inexistente")
+        if (session.cancelled) {
+            scanSessions.remove(sessionId)
+            return SafScanBatch(SafScanStatus.SUCCESS_EMPTY, emptyList(), hasMore = false)
+        }
+        session.terminalStatus?.let { term ->
+            scanSessions.remove(sessionId)
+            return SafScanBatch(term, emptyList(), hasMore = false, session.failedDirs, session.firstError)
+        }
+
+        val limit = batchSize.coerceAtLeast(1)
+        val out = ArrayList<SafAudioTrackEntry>(limit)
+        while (out.size < limit && session.pendingBuffer.isNotEmpty()) {
+            out.add(session.pendingBuffer.removeFirst())
+        }
+
+        while (out.size < limit && session.queue.isNotEmpty() && !session.cancelled) {
+            val (dirDocId, prefix) = session.queue.removeFirst()
+            val children = try {
+                provider.listChildren(session.treeUri, dirDocId)
+            } catch (e: Exception) {
+                session.failedDirs.add(dirDocId)
+                if (session.firstError == null) {
+                    session.firstError = e.message ?: e.javaClass.simpleName
+                }
+                continue
+            }
+            for (child in children) {
+                if (child.mimeType == MIME_TYPE_DIR) {
+                    if (session.visitedDirs.add(child.documentId)) {
+                        val nextPrefix = if (prefix.isEmpty()) child.name else "$prefix/${child.name}"
+                        session.queue.add(Pair(child.documentId, nextPrefix))
+                    }
+                    continue
+                }
+                putParentCache(child.uri, session.treeUri, dirDocId, child.name)
+                val dotIdx = child.name.lastIndexOf('.')
+                val ext = if (dotIdx >= 0) child.name.substring(dotIdx).lowercase() else ""
+                if (ext !in audioExtensions) continue
+                if (!session.seenFiles.add(child.uri)) continue
+
+                val relPath = if (prefix.isEmpty()) child.name else "$prefix/${child.name}"
+                val entry = SafAudioTrackEntry(
+                    uri = child.uri,
+                    name = child.name,
+                    relativePath = relPath,
+                    size = child.size,
+                    mtimeSec = if (child.lastModifiedMs >= 0L) child.lastModifiedMs / 1000.0 else -1.0,
+                    mimeType = child.mimeType,
+                )
+                if (out.size < limit) {
+                    out.add(entry)
+                } else {
+                    session.pendingBuffer.addLast(entry)
+                }
+            }
+        }
+
+        if (session.cancelled) {
+            scanSessions.remove(sessionId)
+            return SafScanBatch(SafScanStatus.SUCCESS_EMPTY, emptyList(), hasMore = false)
+        }
+
+        val hasMore = session.pendingBuffer.isNotEmpty() || session.queue.isNotEmpty()
+        val status = when {
+            session.failedDirs.isNotEmpty() -> SafScanStatus.PARTIAL_FAILURE
+            out.isNotEmpty() || session.seenFiles.isNotEmpty() -> SafScanStatus.SUCCESS_WITH_FILES
+            else -> SafScanStatus.SUCCESS_EMPTY
+        }
+        if (!hasMore) {
+            scanSessions.remove(sessionId)
+        }
+        return SafScanBatch(status, out, hasMore, session.failedDirs.toList(), session.firstError)
+    }
+
+    fun cancelScanSession(sessionId: String) {
+        scanSessions[sessionId]?.cancelled = true
+    }
 
     fun validateTreeUri(uriString: String?): SafValidationResult {
         val cleaned = uriString?.trim().orEmpty()
@@ -208,7 +402,7 @@ class SafTreeBrowser(
                     }
                     continue
                 }
-                parentCache[child.uri] = Triple(treeUriString, dirDocId, child.name)
+                putParentCache(child.uri, treeUriString, dirDocId, child.name)
                 val dotIdx = child.name.lastIndexOf('.')
                 val ext = if (dotIdx >= 0) child.name.substring(dotIdx).lowercase() else ""
                 if (ext !in audioExtensions) continue
@@ -275,7 +469,7 @@ class SafTreeBrowser(
     }
 
     fun readSiblingText(docUriString: String, extensions: List<String>): Pair<String, String>? {
-        val cached = parentCache[docUriString]
+        val cached = getParentCache(docUriString)
         val (treeUri, parentDocId, fileName) = cached ?: parseLocationFromDocUri(docUriString) ?: return null
         val dotIdx = fileName.lastIndexOf('.')
         val stem = if (dotIdx > 0) fileName.substring(0, dotIdx) else fileName
@@ -494,6 +688,51 @@ object AndroidStorageBridge {
             put("display_name", res.displayName ?: JSONObject.NULL)
             put("error", res.error ?: JSONObject.NULL)
         }.toString()
+    }
+
+    @JvmStatic
+    fun startSafScanJson(treeUriString: String): String {
+        val activeBrowser = browser ?: return ""
+        return activeBrowser.startScanSession(treeUriString)
+    }
+
+    @JvmStatic
+    fun nextSafScanBatchJson(sessionId: String, batchSize: Int = 250): String {
+        val activeBrowser = browser ?: return JSONObject().apply {
+            put("status", SafScanStatus.STORAGE_UNAVAILABLE.wireName())
+            put("files", JSONArray())
+            put("has_more", false)
+            put("failed_dirs", JSONArray())
+            put("error", "AndroidStorageBridge no inicializado")
+        }.toString()
+        val batch = activeBrowser.nextScanBatch(sessionId, batchSize)
+        val arr = JSONArray()
+        for (entry in batch.files) {
+            arr.put(
+                JSONObject().apply {
+                    put("uri", entry.uri)
+                    put("name", entry.name)
+                    put("relative_path", entry.relativePath)
+                    put("size", if (entry.size >= 0L) entry.size else JSONObject.NULL)
+                    put("mtime", if (entry.mtimeSec >= 0.0) entry.mtimeSec else JSONObject.NULL)
+                    put("mime_type", entry.mimeType)
+                },
+            )
+        }
+        val failedArr = JSONArray()
+        for (d in batch.failedDirs) failedArr.put(d)
+        return JSONObject().apply {
+            put("status", batch.status.wireName())
+            put("files", arr)
+            put("has_more", batch.hasMore)
+            put("failed_dirs", failedArr)
+            put("error", batch.error ?: JSONObject.NULL)
+        }.toString()
+    }
+
+    @JvmStatic
+    fun cancelSafScan(sessionId: String) {
+        browser?.cancelScanSession(sessionId)
     }
 
     @JvmStatic

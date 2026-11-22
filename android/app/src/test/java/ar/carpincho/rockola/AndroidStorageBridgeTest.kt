@@ -260,4 +260,73 @@ class AndroidStorageBridgeTest {
         assertEquals(-1L, partialRes.files[0].size)
         assertTrue(partialRes.files[0].mtimeSec < 0.0)
     }
+
+    @Test
+    fun `escaneo paginado soporta 10000 archivos, cancelacion y acota parentCache`() {
+        val treeOk = "content://com.android.externalstorage.documents/tree/BIG-SD%3AMusic"
+        val rootDocId = "BIG-SD:Music"
+        val dirCount = 20
+        val perDir = 500 // 20 * 500 = 10.000 archivos
+        val rootChildren = ArrayList<SafDocumentEntry>(dirCount)
+        val childrenMap = HashMap<Pair<String, String>, List<SafDocumentEntry>>()
+
+        for (d in 0 until dirCount) {
+            val dirId = "$rootDocId/dir_$d"
+            rootChildren.add(
+                SafDocumentEntry(dirId, "dir_$d", SafTreeBrowser.MIME_TYPE_DIR, -1L, 100L, "$treeOk/dir_$d"),
+            )
+            val tracks = ArrayList<SafDocumentEntry>(perDir)
+            for (i in 0 until perDir) {
+                val docId = "$dirId/track_${d}_$i.mp3"
+                tracks.add(
+                    SafDocumentEntry(
+                        docId,
+                        "track_${d}_$i.mp3",
+                        "audio/mpeg",
+                        1024L,
+                        1000L,
+                        "$treeOk/document/$docId",
+                    ),
+                )
+            }
+            childrenMap[Pair(treeOk, dirId)] = tracks
+        }
+        childrenMap[Pair(treeOk, rootDocId)] = rootChildren
+
+        val browser = SafTreeBrowser(
+            FakeSafProvider(
+                validTreeUris = setOf(treeOk),
+                persistedTrees = setOf(treeOk),
+                roots = mapOf(
+                    treeOk to SafDocumentEntry(rootDocId, "Music", SafTreeBrowser.MIME_TYPE_DIR, -1L, 100L, treeOk),
+                ),
+                treeChildren = childrenMap,
+            ),
+            maxParentCacheSize = 256,
+        )
+
+        val sessionId = browser.startScanSession(treeOk)
+        val seenUris = HashSet<String>()
+        var batches = 0
+        while (true) {
+            val batch = browser.nextScanBatch(sessionId, batchSize = 500)
+            batches += 1
+            for (f in batch.files) {
+                assertTrue("Entrada duplicada: ${f.uri}", seenUris.add(f.uri))
+            }
+            if (!batch.hasMore) break
+        }
+        assertEquals(10_000, seenUris.size)
+        assertTrue(batches >= 20)
+        assertTrue(browser.parentCacheSize() <= 256)
+
+        // Cancelación temprana corta el recorrido sin procesar los 10.000
+        val cancelSessionId = browser.startScanSession(treeOk)
+        val firstBatch = browser.nextScanBatch(cancelSessionId, batchSize = 250)
+        assertTrue(firstBatch.files.isNotEmpty())
+        browser.cancelScanSession(cancelSessionId)
+        val afterCancel = browser.nextScanBatch(cancelSessionId, batchSize = 250)
+        assertTrue(afterCancel.files.isEmpty())
+        assertEquals(false, afterCancel.hasMore)
+    }
 }

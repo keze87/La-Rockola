@@ -411,7 +411,30 @@ class AndroidSafStorageBackend:
 		failed_dirs: list[str] = []
 		error: str | None = None
 		try:
-			if hasattr(bridge, "scanAudioFilesJson"):
+			if hasattr(bridge, "startSafScanJson") and hasattr(bridge, "nextSafScanBatchJson"):
+				session_id = str(bridge.startSafScanJson(str(root)) or "")
+				if not session_id:
+					return SafScanOutcome(
+						status="storage_unavailable",
+						files=[],
+						failed_dirs=[],
+						error="No se pudo iniciar sesión de escaneo SAF.",
+					)
+				items = []
+				try:
+					while True:
+						payload = json.loads(str(bridge.nextSafScanBatchJson(session_id, 250)))
+						status = str(payload.get("status") or "provider_error")
+						items.extend(payload.get("files") or [])
+						failed_dirs = [str(d) for d in (payload.get("failed_dirs") or [])]
+						error = payload.get("error")
+						if not payload.get("has_more"):
+							break
+				except Exception:
+					if hasattr(bridge, "cancelSafScan"):
+						bridge.cancelSafScan(session_id)
+					raise
+			elif hasattr(bridge, "scanAudioFilesJson"):
 				payload = json.loads(str(bridge.scanAudioFilesJson(str(root))))
 				status = str(payload.get("status") or "provider_error")
 				items = payload.get("files") or []
