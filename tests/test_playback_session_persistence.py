@@ -147,3 +147,47 @@ def test_lifespan_restores_session_on_startup(tmp_path: Path, monkeypatch: pytes
 		assert orch.dj_carpincho_enabled is True
 		assert orch.dj_safe_mode is True
 		assert orch.volume == 65
+
+
+def test_save_playback_session_only_writes_when_state_changes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+	"""save_playback_session(force=False) no debe reescribir el JSON si la firma del estado no cambió."""
+	monkeypatch.setenv("ROCKOLA_DATA_DIR", str(tmp_path))
+	db_path = tmp_path / "rockola.db"
+
+	orch = PlaybackOrchestrator(initial_dir=str(tmp_path), db_path=db_path, use_mpv=False)
+	orch.queue = ["/music/uno.mp3"]
+	orch.save_playback_session(force=False)
+
+	session_file = tmp_path / "playback_session.json"
+	assert session_file.is_file()
+	first_content = session_file.read_text(encoding="utf-8")
+
+	# Simulamos que pasaron > 20s pero el estado sigue idéntico
+	orch._last_session_save_at -= 120.0
+	session_file.unlink()
+	orch.save_playback_session(force=False)
+	assert not session_file.exists(), "No debe escribir playback_session.json si el estado no cambió"
+
+	# Cuando cambia el estado, vuelve a guardar al instante
+	orch.volume = 42
+	orch.save_playback_session(force=False)
+	assert session_file.is_file()
+	assert json.loads(session_file.read_text(encoding="utf-8"))["volume"] == 42
+	assert first_content != session_file.read_text(encoding="utf-8")
+
+
+def test_get_top_played_includes_saf_uris_in_library(tmp_path: Path) -> None:
+	"""Los temas SAF (content://...) presentes en la biblioteca no deben filtrarse por os.path.exists."""
+	db_path = tmp_path / "rockola.db"
+
+	saf_uri = (
+		"content://com.android.externalstorage.documents/tree/primary%3AMusic/document/primary%3AMusic%2Fzamba.mp3"
+	)
+	orch = PlaybackOrchestrator(initial_dir=str(tmp_path), db_path=db_path, use_mpv=False)
+	orch.id_to_current_path = {"track-saf-1": saf_uri}
+	orch.path_to_id = {saf_uri: "track-saf-1"}
+	orch.history_repo = MagicMock()
+	orch.history_repo.get_top_played.return_value = [{"track_id": "track-saf-1", "count": 7}]
+
+	top = orch.get_top_played()
+	assert top == [{"path": saf_uri, "count": 7}]

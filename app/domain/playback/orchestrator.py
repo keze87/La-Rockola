@@ -513,9 +513,9 @@ class PlaybackOrchestrator:
 	def save_playback_session(self, force: bool = False) -> None:
 		"""Persiste cola, orden, historial, pista actual y configuraciones de forma atómica."""
 		sig = self._build_session_signature()
-		now = time.time()
-		if not force and sig == self._last_session_sig and (now - self._last_session_save_at) < 20.0:
+		if not force and sig == self._last_session_sig:
 			return
+		now = time.time()
 		payload = {
 			"saved_at": now,
 			"current_track": self.current_track,
@@ -1126,6 +1126,8 @@ class PlaybackOrchestrator:
 			logger.error(f"Error calculando el top played: {e}")
 			return []
 
+		from app.infrastructure.storage import is_saf_uri
+
 		top_played: list[dict[str, Any]] = []
 		for track_id, count in results:
 			if "\\" in track_id or "/" in track_id or track_id.startswith("http"):
@@ -1136,7 +1138,12 @@ class PlaybackOrchestrator:
 			if current_path and self.is_radio_announcement(current_path):
 				continue
 
-			if current_path and os.path.exists(current_path):
+			exists = (
+				(current_path in self.path_to_id)
+				if (current_path and is_saf_uri(current_path))
+				else bool(current_path and os.path.exists(current_path))
+			)
+			if current_path and exists:
 				top_played.append({"path": current_path, "count": count})
 
 		return top_played
