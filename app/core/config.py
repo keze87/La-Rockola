@@ -61,7 +61,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
 	"better_lyrics_token": None,
 	"default_sort": "time",
 	"radio_mode_enabled": True,
-	"dj_carpincho_enabled": False,
 	"dj_mode": "shuffle",
 	"volume": 100,
 	"mpv_visible": True,
@@ -234,7 +233,6 @@ class Settings(BaseSettings):
 	better_lyrics_token: str | None = Field(default=None, description="Token JWT para la API de BetterLyrics")
 	default_sort: SortMode = Field(default="time", description="Modo de ordenamiento por defecto de la biblioteca")
 	radio_mode_enabled: bool = Field(default=True, description="Locutor de radio habilitado por defecto")
-	dj_carpincho_enabled: bool = Field(default=False, description="DJ Bara activado al iniciar")
 	dj_mode: DjModeConfig = Field(default="shuffle", description="Modo de selección automática de DJ Bara")
 	volume: int = Field(default=100, ge=0, le=110, description="Volumen de reproducción (0-110)")
 	mpv_visible: bool = Field(default=True, description="Mostrar ventana de MPV por defecto")

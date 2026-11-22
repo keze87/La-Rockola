@@ -23,6 +23,36 @@ router = APIRouter(tags=["Playback"])
 
 CommandHandlerFn = Callable[[PlaybackOrchestrator, CommandRequest, Any], Awaitable[None]]
 
+_VOLUME_PERSIST_DEBOUNCE_SEC = 0.5
+_volume_persist_handle: asyncio.TimerHandle | None = None
+_pending_volume_value: int | None = None
+
+
+def flush_pending_volume_persist() -> None:
+	"""Persiste inmediatamente el volumen pendiente en disco (cancela debounce activo)."""
+	global _volume_persist_handle, _pending_volume_value
+	if _volume_persist_handle is not None:
+		_volume_persist_handle.cancel()
+		_volume_persist_handle = None
+	if _pending_volume_value is not None:
+		val = _pending_volume_value
+		_pending_volume_value = None
+		config_mod.update_config({"volume": val})
+
+
+def _schedule_volume_persist(volume: int) -> None:
+	"""Programa persistencia de volumen con debounce de 500 ms para evitar escrituras por cada paso del slider."""
+	global _volume_persist_handle, _pending_volume_value
+	_pending_volume_value = int(volume)
+	if _volume_persist_handle is not None:
+		_volume_persist_handle.cancel()
+		_volume_persist_handle = None
+	try:
+		loop = asyncio.get_running_loop()
+		_volume_persist_handle = loop.call_later(_VOLUME_PERSIST_DEBOUNCE_SEC, flush_pending_volume_persist)
+	except RuntimeError:
+		flush_pending_volume_persist()
+
 
 async def _cmd_play(state: PlaybackOrchestrator, req: CommandRequest, _mgr: Any) -> None:
 	if state.current_track:
@@ -61,18 +91,18 @@ async def _cmd_clear_queue(state: PlaybackOrchestrator, _req: CommandRequest, _m
 
 async def _cmd_vol_up(state: PlaybackOrchestrator, _req: CommandRequest, _mgr: Any) -> None:
 	await state.set_volume(state.volume + 5)
-	config_mod.update_config({"volume": state.volume})
+	_schedule_volume_persist(state.volume)
 
 
 async def _cmd_vol_down(state: PlaybackOrchestrator, _req: CommandRequest, _mgr: Any) -> None:
 	await state.set_volume(state.volume - 5)
-	config_mod.update_config({"volume": state.volume})
+	_schedule_volume_persist(state.volume)
 
 
 async def _cmd_set_volume(state: PlaybackOrchestrator, req: CommandRequest, _mgr: Any) -> None:
 	if req.vollevel is not None:
 		await state.set_volume(req.vollevel)
-		config_mod.update_config({"volume": state.volume})
+		_schedule_volume_persist(state.volume)
 
 
 async def _cmd_set_mute(state: PlaybackOrchestrator, req: CommandRequest, mgr: Any) -> None:
@@ -172,7 +202,6 @@ async def _cmd_toggle_dj_carpincho(state: PlaybackOrchestrator, req: CommandRequ
 async def _cmd_toggle_dj_safe_mode(state: PlaybackOrchestrator, req: CommandRequest, _mgr: Any) -> None:
 	if req.state is not None:
 		state.dj_safe_mode = req.state
-		config_mod.update_config({"dj_mode": state.dj_mode})
 		state._pick_dj_next()
 
 

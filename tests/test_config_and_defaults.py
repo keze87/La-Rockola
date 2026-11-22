@@ -24,7 +24,6 @@ def test_default_config_values():
 	assert DEFAULT_CONFIG["default_sort"] == "time"
 	assert DEFAULT_CONFIG["radio_mode_enabled"] is True
 	assert DEFAULT_CONFIG["mpv_visible"] is True
-	assert DEFAULT_CONFIG["dj_carpincho_enabled"] is False
 	assert DEFAULT_CONFIG["dj_mode"] == "shuffle"
 	assert DEFAULT_CONFIG["volume"] == 100
 
@@ -32,7 +31,6 @@ def test_default_config_values():
 	assert settings.default_sort == "time"
 	assert settings.radio_mode_enabled is True
 	assert settings.mpv_visible is True
-	assert settings.dj_carpincho_enabled is False
 	assert settings.dj_mode == "shuffle"
 	assert settings.volume == 100
 
@@ -227,12 +225,68 @@ async def test_dj_volume_and_weather_commands_persist_to_config(tmp_path: Path):
 		await COMMAND_HANDLERS["set_weather_location"](
 			orchestrator, CommandRequest(cmd="set_weather_location", location="Tafí del Valle"), None
 		)
+		from app.api.commands import flush_pending_volume_persist
+
+		flush_pending_volume_persist()
 
 	saved = json.loads(config_file.read_text(encoding="utf-8"))
-	assert saved["dj_carpincho_enabled"] is False
+	assert "dj_carpincho_enabled" not in saved
 	assert saved["dj_mode"] == "library"
 	assert saved["volume"] == 67
 	assert saved["weather_location"] == "Tafí del Valle"
+
+
+@pytest.mark.asyncio
+async def test_toggle_dj_safe_mode_does_not_mutate_dj_mode_config(tmp_path: Path):
+	"""_cmd_toggle_dj_safe_mode no debe pisar dj_mode en rockola_config.json."""
+	from app.api.commands import COMMAND_HANDLERS
+	from app.api.schemas import CommandRequest
+	from app.domain.playback.orchestrator import PlaybackOrchestrator
+
+	config_file = tmp_path / "rockola_config.json"
+	config_file.write_text(json.dumps({"dj_mode": "shuffle"}), encoding="utf-8")
+	orch = PlaybackOrchestrator(initial_dir=str(tmp_path), db_path=tmp_path / "rockola.db", use_mpv=False)
+	orch.dj_mode = "library"  # distinto al guardado en disco
+
+	with patch("app.core.config.get_config_path", return_value=config_file):
+		await COMMAND_HANDLERS["toggle_dj_safe_mode"](orch, CommandRequest(cmd="toggle_dj_safe_mode", state=True), None)
+
+	saved = json.loads(config_file.read_text(encoding="utf-8"))
+	assert saved["dj_mode"] == "shuffle"
+
+
+@pytest.mark.asyncio
+async def test_volume_commands_debounce_config_writes(tmp_path: Path):
+	"""Arrastrar el volumen no debe escribir el JSON a disco en cada evento (debounce 500 ms)."""
+	import asyncio
+
+	from app.api import commands as commands_mod
+	from app.api.schemas import CommandRequest
+	from app.domain.playback.orchestrator import PlaybackOrchestrator
+
+	config_file = tmp_path / "rockola_config.json"
+	orch = PlaybackOrchestrator(initial_dir=str(tmp_path), db_path=tmp_path / "rockola.db", use_mpv=False)
+
+	write_calls = 0
+	orig_update = commands_mod.config_mod.update_config
+
+	def counted_update(updates: dict):
+		nonlocal write_calls
+		write_calls += 1
+		return orig_update(updates)
+
+	with (
+		patch("app.core.config.get_config_path", return_value=config_file),
+		patch.object(commands_mod.config_mod, "update_config", side_effect=counted_update),
+	):
+		for v in (20, 35, 50, 65, 80):
+			await commands_mod.COMMAND_HANDLERS["set_volume"](orch, CommandRequest(cmd="set_volume", vollevel=v), None)
+		# Todavía no debió escribir 5 veces
+		assert write_calls == 0
+		await asyncio.sleep(0.6)
+		assert write_calls == 1
+		saved = json.loads(config_file.read_text(encoding="utf-8"))
+		assert saved["volume"] == 80
 
 
 def test_settings_from_config_sanitizes_invalid_dj_mode_and_volume(tmp_path: Path):

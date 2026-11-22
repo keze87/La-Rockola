@@ -313,3 +313,21 @@ async def test_system_info_runs_validation_off_event_loop_and_caches_folder_stat
 	await system_api.get_system_info()
 	assert len(call_threads) == 2
 	assert call_threads[-1] != loop_tid
+
+
+@pytest.mark.asyncio
+async def test_scan_library_on_android_returns_unconfigured_when_no_music_dir(
+	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+	"""En Android sin carpeta elegida, scan_library no debe caer en ~/Music y debe devolver unconfigured."""
+	from types import SimpleNamespace
+
+	from app.api import library as library_api
+
+	orch = SimpleNamespace(initial_dir="", secondary_dir=None, is_scanning=False)
+	monkeypatch.setattr(library_api, "get_container", lambda: SimpleNamespace(ensure_orchestrator=lambda: orch))
+	monkeypatch.setattr("app.infrastructure.binaries.manager.is_android", lambda: True)
+
+	res = await library_api.scan_library()
+	assert res["status"] == "unconfigured"
+	assert res["folder_status"] == "unconfigured"

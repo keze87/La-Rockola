@@ -45,7 +45,19 @@ async def scan_library(dir: str | None = None, dir2: str | None = None) -> dict[
 	while getattr(state, "is_scanning", False):
 		await asyncio.sleep(0.5)
 
-	target1 = dir or getattr(state, "initial_dir", None) or "~/Music"
+	raw_target = dir or getattr(state, "initial_dir", None)
+	if not raw_target:
+		from app.infrastructure.binaries.manager import is_android
+
+		if is_android():
+			return {
+				"status": "unconfigured",
+				"folder_status": "unconfigured",
+				"data": [],
+				"message": "Elegí una carpeta de música antes de escanear.",
+			}
+		raw_target = "~/Music"
+	target1 = raw_target
 	target2 = dir2 or getattr(state, "secondary_dir", None)
 
 	target_dirs = [normalize_music_root(target1)] if target1 else []
