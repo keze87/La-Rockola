@@ -289,5 +289,9 @@ describe('public/sw.js lifecycle & offline resilience', () => {
 		expect(purposes).not.toContain('any maskable');
 		expect(purposes).toContain('any');
 		expect(purposes).toContain('maskable');
+		for (const icon of manifest.icons as Array<{ src: string }>) {
+			const iconFile = resolve(process.cwd(), 'public', icon.src.replace(/^\.\//, ''));
+			expect(readFileSync(iconFile).byteLength).toBeGreaterThan(0);
+		}
 	});
 });
