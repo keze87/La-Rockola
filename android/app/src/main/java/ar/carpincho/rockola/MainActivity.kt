@@ -22,6 +22,19 @@ import androidx.core.view.WindowInsetsControllerCompat
 import com.getcapacitor.BridgeActivity
 
 /**
+ * Reglas puras de ciclo de vida y accesos directos de MainActivity (testeables en JVM).
+ */
+internal object MainActivityPolicy {
+    fun isSupportedShortcutAction(action: String?): Boolean {
+        return action == MainActivity.ACTION_OPEN_FOGON || action == MainActivity.ACTION_OPEN_QUEUE
+    }
+
+    fun shouldHandleShortcutOnCreate(hasSavedInstanceState: Boolean, action: String?): Boolean {
+        return !hasSavedInstanceState && isSupportedShortcutAction(action)
+    }
+}
+
+/**
  * Actividad principal de Capacitor. Registra el plugin RockolaServer,
  * configura barras edge-to-edge transparentes con íconos claros,
  * gestiona PiP con confirmación real del sistema operativo y delega navegación atrás y shortcuts a Vue.
@@ -30,6 +43,7 @@ class MainActivity : BridgeActivity() {
 
     companion object {
         private const val REQ_POST_NOTIFICATIONS = 1001
+        private const val STATE_PENDING_SHORTCUT = "rockola_pending_shortcut"
         private const val REQ_PIP_PREV = 201
         private const val REQ_PIP_PLAY_PAUSE = 202
         private const val REQ_PIP_NEXT = 203
@@ -167,10 +181,15 @@ class MainActivity : BridgeActivity() {
         return RemoteAction(Icon.createWithResource(this, iconRes), title, title, pendingIntent)
     }
 
+    private var notificationPermissionRequested = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         registerPlugin(RockolaServerPlugin::class.java)
         isFogonActive = savedInstanceState?.getBoolean(STATE_FOGON_ACTIVE, false) ?: false
+        if (savedInstanceState != null) {
+            pendingShortcutAction = savedInstanceState.getString(STATE_PENDING_SHORTCUT)
+        }
         super.onCreate(savedInstanceState)
 
         applyHeadbarSystemBars()
@@ -179,12 +198,14 @@ class MainActivity : BridgeActivity() {
             setBackgroundColor(0xFF1F1A17.toInt())
             settings.mediaPlaybackRequiresUserGesture = false
         }
-        requestNotificationPermissionIfNeeded()
-        handleShortcutIntent(intent)
+        if (MainActivityPolicy.shouldHandleShortcutOnCreate(savedInstanceState != null, intent?.action)) {
+            handleShortcutIntent(intent)
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putBoolean(STATE_FOGON_ACTIVE, isFogonActive)
+        outState.putString(STATE_PENDING_SHORTCUT, pendingShortcutAction)
         super.onSaveInstanceState(outState)
     }
 
@@ -199,12 +220,7 @@ class MainActivity : BridgeActivity() {
         applyHeadbarSystemBars()
         bridge?.webView?.settings?.mediaPlaybackRequiresUserGesture = false
         val inPip = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode
-        bridge?.webView?.post {
-            bridge?.webView?.evaluateJavascript(
-                "window.__rockolaSetPipMode && window.__rockolaSetPipMode($inPip)",
-                null,
-            )
-        }
+        evaluateJsSafely("window.__rockolaSetPipMode && window.__rockolaSetPipMode($inPip)")
     }
 
     override fun onPause() {
@@ -230,12 +246,7 @@ class MainActivity : BridgeActivity() {
         newConfig: Configuration,
     ) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
-        bridge?.webView?.post {
-            bridge?.webView?.evaluateJavascript(
-                "window.__rockolaSetPipMode && window.__rockolaSetPipMode($isInPictureInPictureMode)",
-                null,
-            )
-        }
+        evaluateJsSafely("window.__rockolaSetPipMode && window.__rockolaSetPipMode($isInPictureInPictureMode)")
     }
 
     private fun registerBackNavigationHandler() {
@@ -273,19 +284,30 @@ class MainActivity : BridgeActivity() {
         }
     }
 
-    private fun requestNotificationPermissionIfNeeded() {
+    internal fun requestNotificationPermissionIfNeeded() {
+        if (notificationPermissionRequested || isFinishing || isDestroyed) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val granted = ContextCompat.checkSelfPermission(
                 this,
                 Manifest.permission.POST_NOTIFICATIONS
             ) == PackageManager.PERMISSION_GRANTED
             if (!granted) {
+                notificationPermissionRequested = true
                 ActivityCompat.requestPermissions(
                     this,
                     arrayOf(Manifest.permission.POST_NOTIFICATIONS),
                     REQ_POST_NOTIFICATIONS
                 )
             }
+        }
+    }
+
+    private fun evaluateJsSafely(script: String, callback: ((String?) -> Unit)? = null) {
+        if (isFinishing || isDestroyed) return
+        val webView = bridge?.webView ?: return
+        webView.post {
+            if (isFinishing || isDestroyed) return@post
+            bridge?.webView?.evaluateJavascript(script, callback)
         }
     }
 
@@ -297,14 +319,11 @@ class MainActivity : BridgeActivity() {
             else -> return
         }
         pendingShortcutAction = action
-        val webView = bridge?.webView ?: return
-        webView.post {
-            webView.evaluateJavascript(
-                "(function(){ if (typeof window.$jsHook === 'function') { window.$jsHook(); return 'ok'; } return 'pending'; })()",
-            ) { result ->
-                if (result == "\"ok\"") {
-                    pendingShortcutAction = null
-                }
+        evaluateJsSafely(
+            "(function(){ if (typeof window.$jsHook === 'function') { window.$jsHook(); return 'ok'; } return 'pending'; })()",
+        ) { result ->
+            if (result == "\"ok\"") {
+                pendingShortcutAction = null
             }
         }
     }

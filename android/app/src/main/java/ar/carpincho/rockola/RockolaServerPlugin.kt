@@ -213,6 +213,7 @@ class RockolaServerPlugin : Plugin() {
             call.reject(err, "SERVICE_START_NOT_ALLOWED")
             return
         }
+        (activity as? MainActivity)?.requestNotificationPermissionIfNeeded()
         call.resolve(buildStatusObject())
     }
 
