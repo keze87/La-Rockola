@@ -190,8 +190,8 @@ def _serve_cover_sync(
 			st_info = get_storage_backend(path).stat_file(path)
 			if st_info is None:
 				return Response(status_code=404)
-			mtime = int(st_info[0])
-			file_size = st_info[1]
+			mtime = int(st_info[0] or 0)
+			file_size = int(st_info[1] or 0)
 		else:
 			if not os.path.exists(path):
 				return Response(status_code=404)
@@ -319,34 +319,83 @@ async def serve_cover(
 
 def _build_saf_stream_response(
 	path: str,
-	file_size: int,
+	file_size: int | None,
 	media_type: str,
 	cache_control: str,
 	range_header: str | None,
 ) -> Response:
 	backend = get_storage_backend(path)
+	if file_size == 0 and not range_header:
+		return Response(
+			content=b"",
+			status_code=200,
+			media_type=media_type,
+			headers={"Accept-Ranges": "bytes", "Cache-Control": cache_control, "Content-Length": "0"},
+		)
+
+	try:
+		stream = backend.open_binary(path)
+	except PermissionError:
+		return Response(status_code=403)
+	except FileNotFoundError:
+		return Response(status_code=404)
+
+	is_seekable = bool(stream.seekable())
+	if file_size is None and is_seekable:
+		try:
+			stream.seek(0, os.SEEK_END)
+			file_size = int(stream.tell())
+			stream.seek(0, os.SEEK_SET)
+		except Exception:
+			file_size = None
+
+	accept_ranges = "bytes" if is_seekable else "none"
 	base_headers = {
-		"Accept-Ranges": "bytes",
+		"Accept-Ranges": accept_ranges,
 		"Cache-Control": cache_control,
 	}
-	if file_size <= 0 and not range_header:
+
+	if file_size is None or file_size < 0:
+		if range_header:
+			stream.close()
+			return Response(status_code=416, headers={**base_headers, "Content-Range": "bytes */*"})
+
+		def _iter_unknown():
+			try:
+				while True:
+					chunk = stream.read(65536)
+					if not chunk:
+						break
+					yield chunk
+			finally:
+				stream.close()
+
+		return StreamingResponse(_iter_unknown(), status_code=200, media_type=media_type, headers=base_headers)
+
+	if file_size == 0:
+		stream.close()
+		if range_header:
+			return Response(status_code=416, headers={**base_headers, "Content-Range": "bytes */0"})
 		return Response(
 			content=b"", status_code=200, media_type=media_type, headers={**base_headers, "Content-Length": "0"}
 		)
 
 	start = 0
-	end = max(0, file_size - 1)
+	end = file_size - 1
 	status_code = 200
 	if range_header:
 		match = re.match(r"^\s*bytes=(\d*)-(\d*)\s*$", range_header.split(",", 1)[0])
-		if not match or file_size <= 0:
+		if not match:
+			stream.close()
 			return Response(status_code=416, headers={**base_headers, "Content-Range": f"bytes */{file_size}"})
 		raw_start, raw_end = match.group(1), match.group(2)
 		if raw_start == "" and raw_end == "":
+			stream.close()
 			return Response(status_code=416, headers={**base_headers, "Content-Range": f"bytes */{file_size}"})
 		if raw_start == "":
 			suffix_len = int(raw_end)
 			if suffix_len <= 0:
+				stream.close()
 				return Response(status_code=416, headers={**base_headers, "Content-Range": f"bytes */{file_size}"})
 			start = max(0, file_size - suffix_len)
 			end = file_size - 1
@@ -354,9 +403,28 @@ def _build_saf_stream_response(
 			start = int(raw_start)
 			end = int(raw_end) if raw_end else file_size - 1
 			if start >= file_size or end < start:
+				stream.close()
 				return Response(status_code=416, headers={**base_headers, "Content-Range": f"bytes */{file_size}"})
 			end = min(end, file_size - 1)
 		status_code = 206
+
+	if start > 0:
+		try:
+			if is_seekable:
+				stream.seek(start)
+			else:
+				to_skip = start
+				while to_skip > 0:
+					discarded = stream.read(min(65536, to_skip))
+					if not discarded:
+						stream.close()
+						return Response(
+							status_code=416, headers={**base_headers, "Content-Range": f"bytes */{file_size}"}
+						)
+					to_skip -= len(discarded)
+		except Exception:
+			stream.close()
+			return Response(status_code=416, headers={**base_headers, "Content-Range": f"bytes */{file_size}"})
 
 	content_length = end - start + 1
 	headers = {
@@ -367,16 +435,16 @@ def _build_saf_stream_response(
 		headers["Content-Range"] = f"bytes {start}-{end}/{file_size}"
 
 	def _iter_chunks():
-		with backend.open_binary(path) as f:
-			if start > 0:
-				f.seek(start)
+		try:
 			remaining = content_length
 			while remaining > 0:
-				chunk = f.read(min(65536, remaining))
+				chunk = stream.read(min(65536, remaining))
 				if not chunk:
 					break
 				remaining -= len(chunk)
 				yield chunk
+		finally:
+			stream.close()
 
 	return StreamingResponse(
 		_iter_chunks(),

@@ -227,7 +227,10 @@ class _NamedBinaryStream:
 		return True
 
 	def seekable(self) -> bool:
-		return True
+		try:
+			return bool(self._stream.seekable())
+		except Exception:
+			return False
 
 	def close(self) -> None:
 		self._stream.close()
@@ -458,7 +461,7 @@ class AndroidSafStorageBackend:
 				return False
 		return any(uri.startswith(f"{r}/document/") for r in saf_roots)
 
-	def stat_file(self, track_ref: str | Path) -> tuple[float, int] | None:
+	def stat_file(self, track_ref: str | Path) -> tuple[float | None, int | None] | None:
 		bridge = get_android_storage_bridge()
 		if bridge is None or not self._is_saf_ref_authorized(track_ref):
 			return None
@@ -468,7 +471,7 @@ class AndroidSafStorageBackend:
 				return None
 			payload = json.loads(str(raw))
 			_remember_saf_name(str(track_ref), payload.get("name"))
-			return self._norm_mtime(payload.get("mtime")), int(payload.get("size") or 0)
+			return self._norm_mtime(payload.get("mtime")), self._norm_size(payload.get("size"))
 		except Exception:
 			return None
 
