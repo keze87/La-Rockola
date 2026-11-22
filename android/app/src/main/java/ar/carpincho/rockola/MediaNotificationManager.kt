@@ -367,9 +367,35 @@ class MediaNotificationManager(
             .build()
     }
 
+    @Volatile
+    private var warnedNotificationsDenied: Boolean = false
+
+    fun hasNotificationPermission(): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+                service,
+                android.Manifest.permission.POST_NOTIFICATIONS,
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (!granted) return false
+        }
+        return androidx.core.app.NotificationManagerCompat.from(service).areNotificationsEnabled()
+    }
+
     fun notify(text: String) {
+        if (!hasNotificationPermission() && !warnedNotificationsDenied) {
+            warnedNotificationsDenied = true
+            RockolaForegroundService.onNativeCommandError?.invoke(
+                "notification",
+                "NOTIFICATIONS_PERMISSION_DENIED",
+                "Habilitá el permiso de notificaciones en Ajustes para ver los controles multimedia.",
+            )
+        }
         val manager = service.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.notify(notificationId, buildNotification(text))
+        try {
+            manager.notify(notificationId, buildNotification(text))
+        } catch (_: SecurityException) {
+            // En Android 13+ puede lanzar SecurityException si el usuario revocó POST_NOTIFICATIONS en caliente
+        }
     }
 
     fun release() {

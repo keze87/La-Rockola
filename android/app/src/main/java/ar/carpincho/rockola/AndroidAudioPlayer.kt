@@ -60,10 +60,12 @@ class AndroidAudioPlayer(
         Thread(runnable, "RockolaPyCallback").apply { isDaemon = true }
     }
     private var player: ExoPlayer? = null
-    private var lastVolume: Float = 1.0f
     private var isMuted: Boolean = false
     private var consecutiveErrors: Int = 0
     private var lastReportedPaused: Boolean? = null
+
+    @Volatile
+    private var pendingPauseState: Boolean? = null
 
     @Volatile
     private var pyCallbackHandler: PyObject? = null
@@ -134,7 +136,7 @@ class AndroidAudioPlayer(
                             mainHandler.removeCallbacks(positionTicker)
                             consecutiveErrors += 1
                             if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-                                p_stopInternal()
+                                stopInternal()
                                 emitPauseIfChanged(true)
                                 dispatchToPython("on_playback_error", error.message ?: "Error en ExoPlayer")
                             } else {
@@ -146,7 +148,7 @@ class AndroidAudioPlayer(
         }
     }
 
-    private fun p_stopInternal() {
+    private fun stopInternal() {
         val p = player ?: return
         p.stop()
         p.clearMediaItems()
@@ -171,9 +173,11 @@ class AndroidAudioPlayer(
                     Uri.fromFile(File(pathOrUrl))
                 }
                 lastReportedPaused = null
+                val shouldStartPaused = pendingPauseState == true
+                pendingPauseState = null
                 p.setMediaItem(MediaItem.fromUri(uri))
                 p.prepare()
-                p.playWhenReady = true
+                p.playWhenReady = !shouldStartPaused
             } catch (e: Exception) {
                 Log.e(TAG, "No pude cargar audio en ExoPlayer: $pathOrUrl", e)
                 dispatchToPython("on_eof")
@@ -182,8 +186,10 @@ class AndroidAudioPlayer(
     }
 
     fun setPause(paused: Boolean) {
+        pendingPauseState = paused
         mainHandler.post {
             val p = player ?: return@post
+            pendingPauseState = null
             p.playWhenReady = !paused
             emitPauseIfChanged(paused)
         }
@@ -219,7 +225,6 @@ class AndroidAudioPlayer(
         am.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
         mainHandler.post {
             val p = player ?: return@post
-            lastVolume = 1.0f
             p.volume = if (isMuted) 0f else 1.0f
         }
     }
@@ -267,16 +272,17 @@ class AndroidAudioPlayer(
         mainHandler.post {
             val p = player ?: return@post
             isMuted = muted
-            p.volume = if (muted) 0f else lastVolume
+            p.volume = if (muted) 0f else 1.0f
         }
     }
 
     fun stopPlayback() {
+        pendingPauseState = null
         mainHandler.post {
             mainHandler.removeCallbacks(positionTicker)
             consecutiveErrors = 0
             lastReportedPaused = null
-            p_stopInternal()
+            stopInternal()
         }
     }
 
