@@ -75,3 +75,26 @@ def test_lifespan_serves_cached_library_before_background_scan_finishes(tmp_path
 		assert len(orch.tracks_cache) == 1
 		assert orch.tracks_cache[0]["path"] == str(song)
 		assert orch.path_to_id.get(str(song)) == "id-cached"
+
+
+def test_get_library_returns_cached_tracks_immediately_while_scanning(tmp_path: Path) -> None:
+	"""GET /library no debe bloquearse esperando a is_scanning cuando ya hay caché disponible."""
+	db_path = tmp_path / "rockola.db"
+	apply_migrations(db_path)
+	orch = PlaybackOrchestrator(initial_dir=str(tmp_path), db_path=db_path, use_mpv=False)
+	orch.tracks_cache = [{"path": "/music/cached.mp3", "title": "Cacheado"}]
+	orch.is_scanning = True
+
+	container = get_container()
+	container.db_path = db_path
+	container.orchestrator = orch
+
+	app = create_app()
+	with TestClient(app) as client:
+		orch.is_scanning = True
+		orch.tracks_cache = [{"path": "/music/cached.mp3", "title": "Cacheado"}]
+		res = client.get("/library")
+		assert res.status_code == 200
+		data = res.json()
+		assert len(data["data"]) == 1
+		assert data["data"][0]["path"] == "/music/cached.mp3"
