@@ -675,6 +675,11 @@ describe('ControlsTab.vue', () => {
 			expect(dialogEl.attributes('aria-labelledby')).toBe('remote-dialog-title');
 			expect(dialogEl.find('label[for="remote-server-input"]').exists()).toBe(true);
 			expect(dialogEl.find('input#remote-server-input').exists()).toBe(true);
+
+			// La cara del carpincho en el QR debe usar el asset local del bundle y no apiUrl()
+			const qrLogo = wrapper.find('img[alt="Logo Carpincho"]');
+			expect(qrLogo.exists()).toBe(true);
+			expect(qrLogo.attributes('src')).toBe('/favicon.png');
 		} finally {
 			store.resetServerConnectionStore();
 			isNativeSpy.mockRestore();

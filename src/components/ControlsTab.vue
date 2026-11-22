@@ -528,96 +528,6 @@
 			@update:model-value="toggleRadioMode"
 		/>
 
-		<div
-			v-if="showRemoteServerSelector"
-			class="border-carpincho-border bg-carpincho-panel mx-auto mb-6 max-w-md rounded-xl border p-4 shadow"
-		>
-			<div class="mb-2 flex items-center justify-between gap-2">
-				<span class="text-carpincho-secondary text-xs font-bold tracking-wider uppercase">
-					{{ isRemoteMode ? 'Modo Cliente remoto' : 'Modo Host local' }}
-				</span>
-				<span
-					class="rounded-full px-2.5 py-0.5 text-xs font-bold"
-					:class="
-						isRemoteMode || localServerState === 'ready'
-							? 'bg-carpincho-success/25 text-carpincho-warning'
-							: 'text-carpincho-muted bg-neutral-800'
-					"
-				>
-					{{ isRemoteMode ? 'Conectado' : hostStateLabel }}
-				</span>
-			</div>
-
-			<div v-if="isHostMode" class="text-carpincho-muted space-y-1 text-xs">
-				<p v-if="localServerState === 'ready'">
-					Dirección en tu Wi-Fi:
-					<span class="text-carpincho-text font-mono">{{ localServerLanUrl }}</span>
-				</p>
-				<p v-if="androidServerStatus.musicDir || libraryFolderStatus !== 'ok'">
-					Carpeta:
-					<span class="text-carpincho-text">
-						{{ localMusicDisplayName || androidServerStatus.musicDir || 'Sin elegir' }}
-					</span>
-					<span v-if="libraryFolderError" class="text-red-400">· {{ libraryFolderError }}</span>
-				</p>
-				<p class="leading-relaxed">
-					El servidor embebido se mantiene activo mientras suena música o la app está abierta; Android puede
-					detenerlo si la cerrás en reposo.
-				</p>
-				<div class="flex flex-wrap gap-2 pt-2">
-					<button
-						v-if="localServerState === 'stopped' || localServerState === 'unavailable'"
-						type="button"
-						class="touch-target bg-carpincho-success cursor-pointer rounded-full px-3.5 py-1.5 text-xs font-bold text-white shadow transition hover:brightness-110"
-						@click="handleStartLocalHost"
-					>
-						Prender servidor
-					</button>
-					<button
-						v-else
-						type="button"
-						class="touch-target cursor-pointer rounded-full bg-red-800 px-3.5 py-1.5 text-xs font-bold text-white shadow transition hover:bg-red-700"
-						:disabled="localServerState === 'stopping'"
-						@click="handleStopLocalHost"
-					>
-						Apagar servidor
-					</button>
-				</div>
-			</div>
-			<p v-else class="text-carpincho-muted text-xs">
-				Controlando el servidor remoto
-				<span class="text-carpincho-text font-mono">{{ activeRemoteServerUrl }}</span>
-			</p>
-
-			<div
-				v-if="lastServerError"
-				role="alert"
-				class="mt-3 flex items-start justify-between gap-2 rounded-lg border border-red-500/40 bg-red-950/50 px-3 py-2 text-xs text-red-200"
-			>
-				<span>{{ lastServerError.message }}</span>
-				<button
-					type="button"
-					aria-label="Descartar aviso"
-					class="touch-target shrink-0 cursor-pointer rounded px-1.5 font-bold text-red-300 hover:text-white"
-					@click="clearServerError()"
-				>
-					✕
-				</button>
-			</div>
-		</div>
-
-		<div v-if="showRemoteServerSelector" class="mx-auto mb-6 max-w-md">
-			<ToggleRow
-				:model-value="isRemoteMode || isRemoteServerModalOpen"
-				title="Conectar a otro servidor"
-				:description="
-					isRemoteMode ? `Conectado a ${activeRemoteServerUrl}` : 'Usando este teléfono (servidor local)'
-				"
-				icon="dns"
-				@update:model-value="handleToggleRemoteServerSwitch"
-			/>
-		</div>
-
 		<ToggleRow
 			:model-value="djBaraEnabled"
 			icon="shuffle"
@@ -671,6 +581,18 @@
 					Lista de librería
 				</PillButton>
 			</div>
+		</div>
+
+		<div v-if="showRemoteServerSelector" class="mx-auto mb-6 max-w-md">
+			<ToggleRow
+				:model-value="isRemoteMode || isRemoteServerModalOpen"
+				title="Conectar a otro servidor"
+				:description="
+					isRemoteMode ? `Conectado a ${activeRemoteServerUrl}` : 'Usando este teléfono (servidor local)'
+				"
+				icon="dns"
+				@update:model-value="handleToggleRemoteServerSwitch"
+			/>
 		</div>
 
 		<!-- Botones de acción -->
@@ -849,7 +771,7 @@
 
 				<!-- La impronta del carpincho -->
 				<img
-					:src="apiUrl('/favicon.png')"
+					src="/favicon.png"
 					alt="Logo Carpincho"
 					class="absolute top-1/2 left-1/2 h-[88px] w-[88px] -translate-x-1/2 -translate-y-1/2 rounded-lg p-1"
 				/>
@@ -858,6 +780,84 @@
 			<PillButton icon="share" color-class="bg-amber-700 hover:bg-amber-600 mt-4" @click="handleShareUrl">
 				Compartir link
 			</PillButton>
+		</div>
+
+		<div
+			v-if="showRemoteServerSelector"
+			class="border-carpincho-border bg-carpincho-panel mx-auto mb-6 max-w-md rounded-xl border p-4 shadow"
+		>
+			<div class="mb-2 flex items-center justify-between gap-2">
+				<span class="text-carpincho-secondary text-xs font-bold tracking-wider uppercase">
+					{{ isRemoteMode ? 'Modo Cliente remoto' : 'Modo Host local' }}
+				</span>
+				<span
+					class="rounded-full px-2.5 py-0.5 text-xs font-bold"
+					:class="
+						isRemoteMode || localServerState === 'ready'
+							? 'bg-carpincho-success/25 text-carpincho-warning'
+							: 'text-carpincho-muted bg-neutral-800'
+					"
+				>
+					{{ isRemoteMode ? 'Conectado' : hostStateLabel }}
+				</span>
+			</div>
+
+			<div v-if="isHostMode" class="text-carpincho-muted space-y-1 text-xs">
+				<p v-if="localServerState === 'ready'">
+					Dirección en tu Wi-Fi:
+					<span class="text-carpincho-text font-mono">{{ localServerLanUrl }}</span>
+				</p>
+				<p v-if="androidServerStatus.musicDir || libraryFolderStatus !== 'ok'">
+					Carpeta:
+					<span class="text-carpincho-text">
+						{{ localMusicDisplayName || androidServerStatus.musicDir || 'Sin elegir' }}
+					</span>
+					<span v-if="libraryFolderError" class="text-red-400">· {{ libraryFolderError }}</span>
+				</p>
+				<p class="leading-relaxed">
+					El servidor embebido se mantiene activo mientras suena música o la app está abierta; Android puede
+					detenerlo si la cerrás en reposo.
+				</p>
+				<div class="flex flex-wrap gap-2 pt-2">
+					<button
+						v-if="localServerState === 'stopped' || localServerState === 'unavailable'"
+						type="button"
+						class="touch-target bg-carpincho-success cursor-pointer rounded-full px-3.5 py-1.5 text-xs font-bold text-white shadow transition hover:brightness-110"
+						@click="handleStartLocalHost"
+					>
+						Prender servidor
+					</button>
+					<button
+						v-else
+						type="button"
+						class="touch-target cursor-pointer rounded-full bg-red-800 px-3.5 py-1.5 text-xs font-bold text-white shadow transition hover:bg-red-700"
+						:disabled="localServerState === 'stopping'"
+						@click="handleStopLocalHost"
+					>
+						Apagar servidor
+					</button>
+				</div>
+			</div>
+			<p v-else class="text-carpincho-muted text-xs">
+				Controlando el servidor remoto
+				<span class="text-carpincho-text font-mono">{{ activeRemoteServerUrl }}</span>
+			</p>
+
+			<div
+				v-if="lastServerError"
+				role="alert"
+				class="mt-3 flex items-start justify-between gap-2 rounded-lg border border-red-500/40 bg-red-950/50 px-3 py-2 text-xs text-red-200"
+			>
+				<span>{{ lastServerError.message }}</span>
+				<button
+					type="button"
+					aria-label="Descartar aviso"
+					class="touch-target shrink-0 cursor-pointer rounded px-1.5 font-bold text-red-300 hover:text-white"
+					@click="clearServerError()"
+				>
+					✕
+				</button>
+			</div>
 		</div>
 
 		<WeatherLocationModal :is-open="isWeatherModalOpen" @close="isWeatherModalOpen = false" />
