@@ -717,3 +717,23 @@ def test_start_embedded_server_marks_ready_only_after_uvicorn_startup_and_reject
 	t1.join(timeout=2.0)
 	assert not t1.is_alive()
 	assert android_entry.get_server_info()["host_state"] == "stopped"
+
+
+def test_stage_android_assets_excludes_desktop_cli_and_binary_installers(tmp_path: Path) -> None:
+	"""stage_android_assets no debe empaquetar app/cli ni instaladores CLI de escritorio en el APK."""
+	import shutil
+
+	from scripts.build_android import stage_android_assets
+
+	root = tmp_path / "repo"
+	(root / "android").mkdir(parents=True)
+	(root / "dist").mkdir(parents=True)
+	(root / "dist" / "index.html").write_text("<html></html>", encoding="utf-8")
+	shutil.copytree(Path("app"), root / "app", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+
+	py_dest = stage_android_assets(root)
+	assert not (py_dest / "cli").exists()
+	assert not (py_dest / "infrastructure" / "binaries" / "ffmpeg.py").exists()
+	assert not (py_dest / "infrastructure" / "binaries" / "fpcalc.py").exists()
+	assert not (py_dest / "infrastructure" / "binaries" / "mpv.py").exists()
+	assert (py_dest / "android_entry.py").is_file()

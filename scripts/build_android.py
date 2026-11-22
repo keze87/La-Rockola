@@ -59,6 +59,19 @@ def stage_android_assets(root_dir: Path) -> Path:
 	py_dest.parent.mkdir(parents=True, exist_ok=True)
 	shutil.copytree(app_src, py_dest, ignore=IGNORE_PATTERNS)
 
+	# Excluir módulos exclusivos de escritorio (CLI e instaladores de binarios) para achicar el APK
+	for unused_rel in (
+		"cli",
+		"infrastructure/binaries/ffmpeg.py",
+		"infrastructure/binaries/fpcalc.py",
+		"infrastructure/binaries/mpv.py",
+	):
+		unused_path = py_dest / unused_rel
+		if unused_path.is_dir():
+			shutil.rmtree(unused_path)
+		elif unused_path.is_file():
+			unused_path.unlink()
+
 	fortunes_src = root_dir / "scripts" / "fortune-es"
 	if fortunes_src.is_dir():
 		fortunes_dest = py_dest / "domain" / "radio" / "fortune-es"

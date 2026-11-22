@@ -44,9 +44,6 @@ android {
         sourceCompatibility JavaVersion.VERSION_21
         targetCompatibility JavaVersion.VERSION_21
     }
-    kotlinOptions {
-        jvmTarget = "21"
-    }
     signingConfigs {
         release {
             def ksPropsFile = rootProject.file('keystore.properties')
@@ -83,9 +80,16 @@ android {
     }
 }
 
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21
+    }
+}
+
 gradle.taskGraph.whenReady { taskGraph ->
+    def releasePackagePattern = ~/^(assemble|bundle|package|sign).*Release$/
     def needsReleaseSigning = taskGraph.allTasks.any {
-        it.project == project && it.name.toLowerCase().contains("release")
+        it.project == project && (it.name ==~ releasePackagePattern)
     }
     if (needsReleaseSigning) {
         def rc = android.signingConfigs.release
@@ -100,25 +104,27 @@ gradle.taskGraph.whenReady { taskGraph ->
 chaquopy {
     defaultConfig {
         version = "3.14"
-        def localPy314 = new File(System.getProperty("user.home"), ".local/bin/python3.14")
-        if (localPy314.isFile()) {
-            buildPython localPy314.absolutePath
+        def customBuildPython = project.findProperty('ROCKOLA_BUILD_PYTHON')?.toString()?.trim()
+        if (customBuildPython) {
+            buildPython customBuildPython
+        } else {
+            buildPython "python3.14"
         }
         pip {
             options "--extra-index-url", "https://pypi.flet.dev"
-            install "fastapi"
-            install "httpx"
-            install "uvicorn"
-            install "mutagen"
+            install "fastapi==0.165.0"
+            install "httpx==0.28.1"
+            install "uvicorn==0.54.0"
+            install "mutagen==1.48.1"
             install "pydantic==2.14.3"
             install "pydantic-core==2.50.4"
-            install "pydantic-settings"
-            install "websockets"
-            install "edge-tts"
-            install "aiohttp"
-            install "frozenlist"
-            install "multidict"
-            install "yarl"
+            install "pydantic-settings==2.16.3"
+            install "websockets==17.4"
+            install "edge-tts==7.3.1"
+            install "aiohttp==3.14.5"
+            install "frozenlist==1.8.0"
+            install "multidict==7.2.1"
+            install "yarl==1.25.1"
         }
     }
 }
