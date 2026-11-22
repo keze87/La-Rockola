@@ -339,6 +339,40 @@ def test_build_android_stage_assets(tmp_path: Path) -> None:
 	assert not stale_dist.exists()
 
 
+def test_staged_android_python_imports_app_main_without_cli_or_installers(tmp_path: Path) -> None:
+	"""El paquete Python staged para Android (sin cli/ ni instaladores) debe importar app.main y android_entry."""
+	import os
+	import shutil
+	import subprocess
+	import sys
+
+	from scripts.build_android import stage_android_assets
+
+	repo_root = Path(__file__).resolve().parent.parent
+	shutil.copytree(repo_root / "app", tmp_path / "app")
+	(tmp_path / "android").mkdir()
+	(tmp_path / "dist").mkdir()
+	(tmp_path / "dist" / "index.html").write_text("<html></html>", encoding="utf-8")
+
+	py_dest = stage_android_assets(tmp_path)
+	assert not (py_dest / "cli").exists()
+	assert not (py_dest / "infrastructure" / "binaries" / "ffmpeg.py").exists()
+	assert not (py_dest / "infrastructure" / "binaries" / "fpcalc.py").exists()
+	assert not (py_dest / "infrastructure" / "binaries" / "mpv.py").exists()
+
+	env = dict(os.environ)
+	env["PYTHONPATH"] = str(py_dest.parent)
+	proc = subprocess.run(
+		[sys.executable, "-c", "import app.main, app.android_entry"],
+		cwd=tmp_path,
+		env=env,
+		capture_output=True,
+		text=True,
+		check=False,
+	)
+	assert proc.returncode == 0, f"Falló import en staging Android: {proc.stderr}"
+
+
 def _build_synthetic_elf64(p_align: int = 0x4000, runpath: bytes | None = None) -> bytes:
 	"""Construye un ELF64 minimalista con segmentos PT_LOAD y opcional PT_DYNAMIC (DT_RUNPATH)."""
 	import struct
