@@ -25,6 +25,10 @@ internal object ServicePowerPolicy {
     fun shouldStopOnTaskRemoved(isMediaPlaying: Boolean, hasRemoteClients: Boolean): Boolean {
         return !isMediaPlaying && !hasRemoteClients
     }
+
+    fun shouldStopForeground(keepDismissibleNotification: Boolean, isHostRunning: Boolean): Boolean {
+        return !keepDismissibleNotification || !isHostRunning
+    }
 }
 
 /**
@@ -564,18 +568,29 @@ class RockolaForegroundService : Service() {
     }
 
     private fun promoteToForeground(text: String) {
-        val notification = notificationManager.buildNotification(text)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        if (isInForeground) {
+            notificationManager.notifyCurrentState()
+            return
         }
-        isInForeground = true
+        val notification = notificationManager.buildNotification(text)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+            isInForeground = true
+        } catch (e: Exception) {
+            isInForeground = false
+            Log.w("RockolaService", "No se pudo promover a foreground: ${e.message}")
+            notificationManager.notifyCurrentState()
+        }
     }
 
     private fun demoteFromForeground(keepDismissibleNotification: Boolean) {
         releaseLocks()
-        if (isInForeground) {
+        val shouldStopFg = ServicePowerPolicy.shouldStopForeground(keepDismissibleNotification, isRunning)
+        if (isInForeground && shouldStopFg) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                 val mode = if (keepDismissibleNotification) STOP_FOREGROUND_DETACH else STOP_FOREGROUND_REMOVE
                 stopForeground(mode)
