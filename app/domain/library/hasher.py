@@ -110,6 +110,26 @@ def _compute_audio_hash_from_stream(f: BinaryIO, suffix: str, file_size: int, ch
 	return _hash_byte_range(f, start, end, chunk_size)
 
 
+def _compute_smart_hash_from_stream(f: BinaryIO, file_size: int, chunk_size: int) -> str:
+	"""Calcula el smart-hash (15% y 85% del archivo) sobre un stream binario ya abierto."""
+	if file_size < chunk_size * 3:
+		f.seek(file_size // 2)
+		data = f.read(file_size // 4)
+		return hashlib.md5(data).hexdigest()
+
+	f.seek(int(file_size * 0.15))
+	chunk1 = f.read(chunk_size)
+
+	f.seek(int(file_size * 0.85))
+	chunk2 = f.read(chunk_size)
+
+	hasher = hashlib.md5()
+	hasher.update(chunk1)
+	hasher.update(chunk2)
+	hasher.update(str(file_size).encode("utf-8"))
+	return hasher.hexdigest()
+
+
 def generate_track_hashes(
 	filepath: str | Path,
 	file_size: int | None = None,
@@ -131,8 +151,9 @@ def generate_track_hashes(
 				raise FileNotFoundError(ref)
 			resolved_size = st[1]
 		with backend.open_binary(ref) as f:
+			track_hash = _compute_smart_hash_from_stream(f, resolved_size, chunk_size)
 			audio_hash = _compute_audio_hash_from_stream(f, suffix, resolved_size, chunk_size)
-			return audio_hash, audio_hash
+			return track_hash, audio_hash
 	except Exception as e:
 		logger.debug(f"Pifió el cálculo unificado de hashes para {filepath}: {e}")
 		fallback = hashlib.md5(str(ref).encode("utf-8")).hexdigest()
@@ -161,24 +182,8 @@ def generate_smart_hash(filepath: str | Path, chunk_size: int = 1024 * 1024) -> 
 		if st is None:
 			raise FileNotFoundError(ref)
 		file_size = st[1]
-		if file_size < chunk_size * 3:
-			with backend.open_binary(ref) as f:
-				f.seek(file_size // 2)
-				data = f.read(file_size // 4)
-				return hashlib.md5(data).hexdigest()
-
 		with backend.open_binary(ref) as f:
-			f.seek(int(file_size * 0.15))
-			chunk1 = f.read(chunk_size)
-
-			f.seek(int(file_size * 0.85))
-			chunk2 = f.read(chunk_size)
-
-			hasher = hashlib.md5()
-			hasher.update(chunk1)
-			hasher.update(chunk2)
-			hasher.update(str(file_size).encode("utf-8"))
-			return hasher.hexdigest()
+			return _compute_smart_hash_from_stream(f, file_size, chunk_size)
 	except Exception as e:
 		logger.debug(f"Pifió el hash inteligente para {filepath}: {e}")
 		return hashlib.md5(str(ref).encode("utf-8")).hexdigest()

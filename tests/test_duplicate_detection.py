@@ -237,3 +237,93 @@ def test_scan_directory_persists_audio_hash_and_skips_rehash_on_cache_hit(tmp_pa
 	assert len(second) == 1
 	assert second[0]["audio_hash"] == first[0]["audio_hash"]
 	assert h_mock.call_count == 0
+
+
+def test_duplicate_mp3s_keep_distinct_track_ids_and_same_audio_hash(tmp_path: Path) -> None:
+	"""Dos MP3 con mismo audio y distinto ID3 tienen track_hash distintos, mismo audio_hash y sobreviven ambos en DB."""
+	from app.domain.library.hasher import generate_smart_hash, generate_track_hashes
+	from app.infrastructure.db.repositories import TrackRepository
+
+	db_path = tmp_path / "rockola.db"
+	apply_migrations(db_path)
+
+	music_dir = tmp_path / "music"
+	music_dir.mkdir()
+	audio_stream = b"\xff\xfb\x90\x64" + (b"\x22\x44\x66\x88" * 30000)
+	f1 = music_dir / "original.mp3"
+	f2 = music_dir / "copia_tag.mp3"
+	_write_synthetic_mp3(f1, audio_stream, id3v2_payload=b"TIT2\x00\x00\x00\x05\x00\x00Uno")
+	_write_synthetic_mp3(f2, audio_stream, id3v2_payload=b"APIC" + (b"\xcc" * 6000), with_id3v1=True)
+
+	th1, ah1 = generate_track_hashes(f1)
+	th2, ah2 = generate_track_hashes(f2)
+	assert th1 != th2
+	assert th1 == generate_smart_hash(f1)
+	assert th2 == generate_smart_hash(f2)
+	assert ah1 == ah2
+
+	service = LibraryService(db_path=db_path)
+	with (
+		patch("app.domain.library.service.is_mood_available", return_value=False),
+		patch("app.domain.library.service.find_binary", return_value=None),
+	):
+		tracks = service.scan_directory([music_dir], extract_mood=False, extract_fingerprint=False)
+
+	assert len(tracks) == 2
+	all_rows = TrackRepository(db_path).list_all()
+	assert len(all_rows) == 2
+	assert {r["track_id"] for r in all_rows} == {th1, th2}
+
+
+def test_duplicate_flacs_with_same_md5_signature_keep_distinct_track_ids(tmp_path: Path) -> None:
+	"""Dos FLAC con igual md5_signature y distinta metadata tienen track_hash distintos y mismo audio_hash."""
+	from types import SimpleNamespace
+
+	from app.domain.library.hasher import generate_track_hashes
+
+	f1 = tmp_path / "uno.flac"
+	f2 = tmp_path / "dos.flac"
+	f1.write_bytes(b"fLaC" + (b"\x11" * 16384))
+	f2.write_bytes(b"fLaC" + (b"\x22" * 24576))
+
+	fake_flac = SimpleNamespace(info=SimpleNamespace(md5_signature=0x0123456789ABCDEF0123456789ABCDEF))
+	with patch("mutagen.flac.FLAC", return_value=fake_flac):
+		th1, ah1 = generate_track_hashes(f1)
+		th2, ah2 = generate_track_hashes(f2)
+
+	assert ah1 == ah2 == "flac:0123456789abcdef0123456789abcdef"
+	assert th1 != th2
+
+
+def test_rescan_existing_library_preserves_smart_hash_track_ids(tmp_path: Path) -> None:
+	"""Reescanear una biblioteca existente no cambia ningún track_id basado en smart_hash."""
+	import os
+
+	from app.domain.library.hasher import generate_smart_hash
+	from app.infrastructure.db.repositories import TrackRepository
+
+	db_path = tmp_path / "rockola.db"
+	apply_migrations(db_path)
+	music_dir = tmp_path / "music"
+	music_dir.mkdir()
+
+	f1 = music_dir / "clasico.mp3"
+	_write_synthetic_mp3(f1, b"\xff\xfb\x90\x64" + (b"\x77" * 20000), id3v2_payload=b"TIT2\x00\x00\x00\x04\x00\x00Ok")
+	expected_id = generate_smart_hash(f1)
+
+	service = LibraryService(db_path=db_path)
+	repo = TrackRepository(db_path)
+	with (
+		patch("app.domain.library.service.is_mood_available", return_value=False),
+		patch("app.domain.library.service.find_binary", return_value=None),
+	):
+		service.scan_directory([music_dir], extract_mood=False, extract_fingerprint=False)
+		rows_first = repo.list_all()
+		# Forzamos un cambio de mtime para que se re-procese el archivo como en una migración
+		st = f1.stat()
+		os.utime(f1, (st.st_atime, st.st_mtime + 10))
+		service.scan_directory([music_dir], extract_mood=False, extract_fingerprint=False)
+		rows_second = repo.list_all()
+
+	assert rows_first[0]["track_id"] == expected_id
+	assert rows_second[0]["track_id"] == expected_id
