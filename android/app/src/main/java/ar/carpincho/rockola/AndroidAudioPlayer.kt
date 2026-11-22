@@ -53,6 +53,17 @@ class AndroidAudioPlayer(
 
         @JvmStatic
         fun getActiveInstance(): AndroidAudioPlayer? = activeInstance
+
+        fun shouldKeepPlaybackActive(
+            isPlaying: Boolean,
+            playWhenReady: Boolean,
+            playbackState: Int,
+            isLoadingMedia: Boolean,
+        ): Boolean {
+            if (isPlaying) return true
+            if (!playWhenReady) return false
+            return isLoadingMedia || playbackState == Player.STATE_BUFFERING
+        }
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -63,6 +74,7 @@ class AndroidAudioPlayer(
     private var isMuted: Boolean = false
     private var consecutiveErrors: Int = 0
     private var lastReportedPaused: Boolean? = null
+    private var isLoadingMedia: Boolean = false
 
     @Volatile
     private var pendingPauseState: Boolean? = null
@@ -109,7 +121,14 @@ class AndroidAudioPlayer(
                         }
 
                         override fun onIsPlayingChanged(isPlaying: Boolean) {
-                            onPlaybackActiveChanged(isPlaying)
+                            val p = player
+                            val active = p != null && shouldKeepPlaybackActive(
+                                isPlaying = isPlaying,
+                                playWhenReady = p.playWhenReady,
+                                playbackState = p.playbackState,
+                                isLoadingMedia = isLoadingMedia,
+                            )
+                            onPlaybackActiveChanged(active)
                             mainHandler.removeCallbacks(positionTicker)
                             if (isPlaying) {
                                 mainHandler.post(positionTicker)
@@ -119,12 +138,14 @@ class AndroidAudioPlayer(
                         override fun onPlaybackStateChanged(playbackState: Int) {
                             val p = player ?: return
                             if (playbackState == Player.STATE_READY) {
+                                isLoadingMedia = false
                                 consecutiveErrors = 0
                                 val durMs = p.duration
                                 if (durMs > 0L && durMs != C.TIME_UNSET) {
                                     dispatchToPython("on_duration", durMs / 1000.0)
                                 }
                             } else if (playbackState == Player.STATE_ENDED) {
+                                isLoadingMedia = false
                                 consecutiveErrors = 0
                                 mainHandler.removeCallbacks(positionTicker)
                                 dispatchToPython("on_eof")
@@ -133,6 +154,7 @@ class AndroidAudioPlayer(
 
                         override fun onPlayerError(error: PlaybackException) {
                             Log.e(TAG, "Error de reproducción en ExoPlayer: ${error.message}", error)
+                            isLoadingMedia = false
                             mainHandler.removeCallbacks(positionTicker)
                             consecutiveErrors += 1
                             if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
@@ -150,6 +172,7 @@ class AndroidAudioPlayer(
 
     private fun stopInternal() {
         val p = player ?: return
+        isLoadingMedia = false
         p.stop()
         p.clearMediaItems()
         onPlaybackActiveChanged(false)
@@ -175,10 +198,12 @@ class AndroidAudioPlayer(
                 lastReportedPaused = null
                 val shouldStartPaused = pendingPauseState == true
                 pendingPauseState = null
+                isLoadingMedia = true
                 p.setMediaItem(MediaItem.fromUri(uri))
                 p.prepare()
                 p.playWhenReady = !shouldStartPaused
             } catch (e: Exception) {
+                isLoadingMedia = false
                 Log.e(TAG, "No pude cargar audio en ExoPlayer: $pathOrUrl", e)
                 dispatchToPython("on_eof")
             }
