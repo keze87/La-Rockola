@@ -25,6 +25,7 @@ class EmbeddedPythonHost(
         port: Int,
         musicDir: String?,
         onConfigured: (ServerEndpointInfo) -> Unit,
+        onReady: () -> Unit,
     ) {
         if (!Python.isStarted()) {
             Python.start(AndroidPlatform(context.applicationContext))
@@ -53,8 +54,9 @@ class EmbeddedPythonHost(
         onConfigured(ServerEndpointInfo(localIp = localIp, serverUrl = serverUrl))
 
         Log.i("RockolaPythonHost", "Arrancando Uvicorn embebido en $serverUrl...")
+        val readyHook = Runnable { onReady() }
         // already_configured = true evita correr migraciones e init dos veces en el arranque
-        entry.callAttr(
+        val started = entry.callAttr(
             "start_embedded_server",
             dataDir.absolutePath,
             distDir.absolutePath,
@@ -62,7 +64,13 @@ class EmbeddedPythonHost(
             port,
             "0.0.0.0",
             true,
-        )
+            readyHook,
+        ).toBoolean()
+        if (!started) {
+            val statusObj = entry.callAttr("get_server_info").asMap()
+            val currentState = statusObj[py.builtins.callAttr("str", "host_state")]?.toString() ?: "desconocido"
+            throw IllegalStateException("El servidor embebido rechazó el arranque (estado: $currentState)")
+        }
     }
 
     fun stop() {

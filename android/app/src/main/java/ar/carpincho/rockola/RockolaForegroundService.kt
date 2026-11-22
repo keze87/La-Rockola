@@ -413,15 +413,24 @@ class RockolaForegroundService : Service() {
             musicDir = musicDir,
             onRequestStop = { pythonHost.stop() },
         ) { onReady ->
-            pythonHost.startBlocking(port = port, musicDir = musicDir) { endpoint ->
-                currentLocalIp = endpoint.localIp
-                currentServerUrl = endpoint.serverUrl
-                notificationManager.updateServerEndpoint(
-                    serverUrl = endpoint.serverUrl,
-                    statusText = "Sonando en ${endpoint.serverUrl}",
-                )
-                onReady()
-            }
+            pythonHost.startBlocking(
+                port = port,
+                musicDir = musicDir,
+                onConfigured = { endpoint ->
+                    currentLocalIp = endpoint.localIp
+                    currentServerUrl = endpoint.serverUrl
+                },
+                onReady = {
+                    val endpointUrl = currentServerUrl
+                    if (endpointUrl.isNotBlank()) {
+                        notificationManager.updateServerEndpoint(
+                            serverUrl = endpointUrl,
+                            statusText = "Sonando en $endpointUrl",
+                        )
+                    }
+                    onReady()
+                },
+            )
         }
     }
 

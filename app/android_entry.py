@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -27,9 +28,23 @@ logger = logging.getLogger("RockolaCarpincho")
 
 _server_lock = threading.Lock()
 _active_server: Any = None
+_active_thread: threading.Thread | None = None
 _host_state: str = "stopped"
 _last_error: str | None = None
 _stop_requested: bool = False
+
+
+def _invoke_ready_callback(callback: Any) -> None:
+	"""Invoca callback Python o Runnable Java sin propagar errores al ciclo de Uvicorn."""
+	if callback is None:
+		return
+	try:
+		if hasattr(callback, "run") and callable(callback.run):
+			callback.run()
+		elif callable(callback):
+			callback()
+	except Exception:
+		logger.exception("Error ejecutando callback on_ready del servidor embebido")
 
 
 def configure_android_environment(
@@ -146,20 +161,29 @@ def start_embedded_server(
 	port: int = 1729,
 	host: str = "0.0.0.0",
 	already_configured: bool = False,
+	on_ready: Callable[[], None] | Any = None,
 ) -> bool:
 	"""Arranca Uvicorn de forma bloqueante dentro de un hilo secundario del ForegroundService."""
-	global _active_server, _host_state, _last_error, _stop_requested
+	global _active_server, _active_thread, _host_state, _last_error, _stop_requested
 	import uvicorn
 
 	from app.main import create_app
 
 	with _server_lock:
+		if _active_thread is not None and not _active_thread.is_alive():
+			# Un hilo anterior murió o quedó huérfano sin limpiar estado: recuperamos para no bloquear reinicios
+			_active_server = None
+			_active_thread = None
+			if _host_state in ("starting", "ready", "stopping"):
+				_host_state = "stopped"
+
 		if _active_server is not None or _host_state in ("starting", "ready", "stopping"):
 			logger.warning("Se omitió arranque duplicado del servidor embebido (estado actual: %s)", _host_state)
 			return False
 		_host_state = "starting"
 		_last_error = None
 		_stop_requested = False
+		_active_thread = threading.current_thread()
 
 	server = None
 	try:
@@ -185,12 +209,33 @@ def start_embedded_server(
 		# En Android el servidor corre en un hilo worker y signal.signal() falla fuera del hilo principal
 		server.install_signal_handlers = lambda: None  # type: ignore[method-assign]
 
+		orig_startup = getattr(server, "startup", None)
+		has_async_startup = callable(orig_startup)
+
 		with _server_lock:
 			if _stop_requested:
 				_host_state = "stopped"
 				return True
 			_active_server = server
-			_host_state = "ready"
+			if not has_async_startup:
+				_host_state = "ready"
+
+		if has_async_startup:
+
+			async def _startup_and_mark_ready(sockets: Any = None) -> None:
+				global _host_state
+				await orig_startup(sockets=sockets)
+				should_notify = False
+				with _server_lock:
+					if _active_server is server and not _stop_requested:
+						_host_state = "ready"
+						should_notify = True
+				if should_notify:
+					_invoke_ready_callback(on_ready)
+
+			server.startup = _startup_and_mark_ready  # type: ignore[method-assign]
+		else:
+			_invoke_ready_callback(on_ready)
 
 		server.run()
 		return True
@@ -204,6 +249,7 @@ def start_embedded_server(
 		with _server_lock:
 			if server is None or _active_server is server:
 				_active_server = None
+				_active_thread = None
 				if _host_state != "failed":
 					_host_state = "stopped"
 
@@ -214,6 +260,9 @@ def stop_embedded_server() -> None:
 	with _server_lock:
 		_stop_requested = True
 		if _active_server is not None:
+			if _host_state == "stopping":
+				# Segundo pedido de apagado sobre un servidor trabado: forzamos salida de conexiones
+				_active_server.force_exit = True
 			_active_server.should_exit = True
 			_host_state = "stopping"
 		elif _host_state == "starting":

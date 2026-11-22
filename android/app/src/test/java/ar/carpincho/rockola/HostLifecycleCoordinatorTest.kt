@@ -191,4 +191,50 @@ class HostLifecycleCoordinatorTest {
         assertTrue(coord.stop(1000L))
         assertEquals(HostServerState.STOPPED, coord.state)
     }
+
+    @Test
+    fun `permanece en STARTING hasta que onReady es invocado y pasa a FAILED si runner rechaza el arranque`() {
+        val coord = HostLifecycleCoordinator()
+        val runnerEntered = CountDownLatch(1)
+        val allowReady = CountDownLatch(1)
+        val allowExit = CountDownLatch(1)
+
+        assertTrue(
+            coord.start(1729, null, { allowExit.countDown() }) { onReady ->
+                runnerEntered.countDown()
+                allowReady.await(2, TimeUnit.SECONDS)
+                onReady()
+                allowExit.await(2, TimeUnit.SECONDS)
+            },
+        )
+        assertTrue(runnerEntered.await(2, TimeUnit.SECONDS))
+        // Antes de que Uvicorn termine startup(), el estado debe seguir siendo STARTING (no READY)
+        assertEquals(HostServerState.STARTING, coord.state)
+
+        allowReady.countDown()
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
+        while (coord.state != HostServerState.READY && System.nanoTime() < deadline) {
+            Thread.sleep(5)
+        }
+        assertEquals(HostServerState.READY, coord.state)
+
+        assertTrue(coord.stop(1000L))
+        assertEquals(HostServerState.STOPPED, coord.state)
+
+        // Si el arranque es rechazado con excepción (por ej. hilo previo en stopping), queda en FAILED con lastError
+        val failedLatch = CountDownLatch(1)
+        val coord2 = HostLifecycleCoordinator(
+            onStateChanged = { st, _ ->
+                if (st == HostServerState.FAILED) failedLatch.countDown()
+            },
+        )
+        assertTrue(
+            coord2.start(1729, null, {}) {
+                throw IllegalStateException("El servidor embebido rechazó el arranque (estado: stopping)")
+            },
+        )
+        assertTrue(failedLatch.await(2, TimeUnit.SECONDS))
+        assertEquals(HostServerState.FAILED, coord2.state)
+        assertTrue(coord2.lastError?.contains("stopping") == true)
+    }
 }

@@ -618,3 +618,102 @@ def test_start_embedded_server_prevents_duplicate_instances_and_reports_state(
 	end_info = android_entry.get_server_info()
 	assert end_info["running"] is False
 	assert end_info["host_state"] == "stopped"
+
+
+def test_start_embedded_server_marks_ready_only_after_uvicorn_startup_and_rejects_while_stopping(
+	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+	"""host_state permanece en starting hasta completar startup() y rechaza un segundo start en stopping."""
+	import asyncio
+	import threading
+
+	from app import android_entry
+
+	android_entry.stop_embedded_server()
+
+	data_dir = tmp_path / "data"
+	dist_dir = tmp_path / "dist"
+	music_dir = tmp_path / "music"
+	data_dir.mkdir()
+	dist_dir.mkdir()
+	(dist_dir / "index.html").write_text("<html></html>", encoding="utf-8")
+	music_dir.mkdir()
+
+	startup_entered = threading.Event()
+	allow_startup_finish = threading.Event()
+	allow_exit = threading.Event()
+	on_ready_calls: list[bool] = []
+	constructed: list[object] = []
+
+	class StartupAwareServer:
+		def __init__(self, config: object) -> None:
+			self.config = config
+			self.should_exit = False
+			self.started = False
+			self.install_signal_handlers = lambda: None
+			constructed.append(self)
+
+		async def startup(self, sockets: object = None) -> None:
+			startup_entered.set()
+			while not allow_startup_finish.is_set() and not self.should_exit:
+				await asyncio.sleep(0.01)
+			self.started = True
+
+		def run(self) -> None:
+			asyncio.run(self.startup())
+			while not self.should_exit and not allow_exit.is_set():
+				allow_exit.wait(0.02)
+
+	monkeypatch.setattr("uvicorn.Server", StartupAwareServer)
+	android_entry.configure_android_environment(
+		data_dir=str(data_dir),
+		dist_dir=str(dist_dir),
+		music_dir=str(music_dir),
+		port=1830,
+		host="0.0.0.0",
+	)
+
+	t1 = threading.Thread(
+		target=lambda: android_entry.start_embedded_server(
+			data_dir=str(data_dir),
+			dist_dir=str(dist_dir),
+			music_dir=str(music_dir),
+			port=1830,
+			already_configured=True,
+			on_ready=lambda: on_ready_calls.append(True),
+		),
+		daemon=True,
+	)
+	t1.start()
+	assert startup_entered.wait(2.0)
+
+	# Mientras startup() no terminó, sigue en starting y on_ready todavía no se disparó
+	assert android_entry.get_server_info()["host_state"] == "starting"
+	assert on_ready_calls == []
+
+	allow_startup_finish.set()
+	import time
+
+	deadline = time.monotonic() + 2.0
+	while android_entry.get_server_info()["host_state"] != "ready" and time.monotonic() < deadline:
+		time.sleep(0.01)
+	assert android_entry.get_server_info()["host_state"] == "ready"
+	assert on_ready_calls == [True]
+
+	# Pasamos a stopping y probamos un segundo start mientras el primero aún no salió
+	android_entry.stop_embedded_server()
+	assert android_entry.get_server_info()["host_state"] == "stopping"
+	second_while_stopping = android_entry.start_embedded_server(
+		data_dir=str(data_dir),
+		dist_dir=str(dist_dir),
+		music_dir=str(music_dir),
+		port=1830,
+		already_configured=True,
+	)
+	assert second_while_stopping is False
+	assert len(constructed) == 1
+
+	allow_exit.set()
+	t1.join(timeout=2.0)
+	assert not t1.is_alive()
+	assert android_entry.get_server_info()["host_state"] == "stopped"
