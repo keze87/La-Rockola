@@ -449,8 +449,15 @@ class PlaybackOrchestrator:
 			"folder_display_name": getattr(self, "folder_display_name", None),
 			"folder_error": getattr(self, "folder_error", None),
 			"audio_error": (
-				getattr(self.mpv, "native_error", None)
-				if getattr(self, "mpv", None) is not None and hasattr(self.mpv, "_ensure_native")
+				err
+				if isinstance(
+					(
+						err := getattr(self.mpv, "native_error", None)
+						if getattr(self, "mpv", None) is not None
+						else None
+					),
+					str,
+				)
 				else None
 			),
 		}
