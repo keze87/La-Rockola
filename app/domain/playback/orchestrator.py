@@ -448,24 +448,24 @@ class PlaybackOrchestrator:
 			"folder_status": getattr(self, "folder_status", "unconfigured"),
 			"folder_display_name": getattr(self, "folder_display_name", None),
 			"folder_error": getattr(self, "folder_error", None),
-			"audio_error": (
-				err
-				if isinstance(
-					(
-						err := getattr(self.mpv, "native_error", None)
-						if getattr(self, "mpv", None) is not None
-						else None
-					),
-					str,
-				)
-				else None
-			),
+			"audio_error": self._resolve_audio_error(),
 		}
 
 		if include_library:
 			d["library"] = [{k: v for k, v in track.items() if k not in keys_to_exclude} for track in self.tracks_cache]
 
 		return d
+
+	def _resolve_audio_error(self) -> str | None:
+		mpv_ctrl = getattr(self, "mpv", None)
+		if mpv_ctrl is None:
+			return None
+		is_avail = getattr(mpv_ctrl, "is_native_available", None)
+		if callable(is_avail) and not is_avail():
+			err = getattr(mpv_ctrl, "native_error", None)
+			return err if isinstance(err, str) and err else "Reproductor nativo Android no disponible."
+		err = getattr(mpv_ctrl, "native_error", None)
+		return err if isinstance(err, str) and err else None
 
 	def notify_mpris(self) -> None:
 		self.mpris_service.notify()

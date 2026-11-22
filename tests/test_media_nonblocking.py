@@ -71,3 +71,15 @@ async def test_serve_lrc_does_not_block_event_loop() -> None:
 	assert res.status_code == 404
 	assert callback_delays, "No se ejecutó el callback del event loop"
 	assert callback_delays[0] < 0.08, f"serve_lrc bloqueó el event loop ({callback_delays[0]:.3f}s)"
+
+
+def test_cover_path_locks_reused_while_held_and_collected_when_released() -> None:
+	"""_COVER_PATH_LOCKS (WeakValueDictionary) conserva el lock en uso y libera entradas sin referencias."""
+	import gc
+
+	media_mod._COVER_PATH_LOCKS.clear()
+	lock_a = media_mod._get_cover_path_lock("/music/a.mp3")
+	assert media_mod._get_cover_path_lock("/music/a.mp3") is lock_a
+	del lock_a
+	gc.collect()
+	assert "/music/a.mp3" not in media_mod._COVER_PATH_LOCKS

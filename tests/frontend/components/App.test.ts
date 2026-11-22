@@ -661,4 +661,28 @@ Dialogue: 0,0:00:20.00,0:00:24.00,Default,,0,0,0,,{\\kf100}Verso {\\kf100}tres
 			pickSpy.mockRestore();
 		}
 	});
+
+	it('skips loadLibrary and connectWebSocket when initAndroidServer resolves false', async () => {
+		const androidHost = await import('@/composables/useAndroidHost');
+		const isNativeSpy = vi.spyOn(androidHost, 'isNativeAndroidHost').mockReturnValue(true);
+		const initSpy = vi.spyOn(androidHost, 'initAndroidServer').mockResolvedValue(false);
+		const wsCtorSpy = vi.fn();
+		const origWs = globalThis.WebSocket;
+		(globalThis as unknown as { WebSocket: unknown }).WebSocket = wsCtorSpy;
+
+		try {
+			const wrapper = mount(App);
+			await Promise.resolve();
+			await wrapper.vm.$nextTick();
+
+			expect(initSpy).toHaveBeenCalledTimes(1);
+			expect(global.fetch).not.toHaveBeenCalled();
+			expect(wsCtorSpy).not.toHaveBeenCalled();
+			wrapper.unmount();
+		} finally {
+			(globalThis as unknown as { WebSocket: unknown }).WebSocket = origWs;
+			isNativeSpy.mockRestore();
+			initSpy.mockRestore();
+		}
+	});
 });

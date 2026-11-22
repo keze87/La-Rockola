@@ -364,7 +364,8 @@
 		window.__rockolaOnNativeCommandError = handleNativeCommandError;
 		if (isNativeAndroidHost()) {
 			void consumeAndroidPendingShortcut().then(applyShortcutAction);
-			initAndroidServer().finally(() => {
+			initAndroidServer().then((ok) => {
+				if (!ok) return;
 				loadLibrary(false);
 				connectWebSocket();
 			});

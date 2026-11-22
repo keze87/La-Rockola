@@ -12,7 +12,8 @@ import mimetypes
 import os
 import re
 import threading
-from typing import Any
+import weakref
+from typing import Any, Self
 
 from fastapi import APIRouter, Query, Request, Response
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
@@ -54,10 +55,25 @@ try:
 except ImportError:
 	pass
 
+
+class _PathLock:
+	"""Envoltorio weak-referenceable para threading.Lock por ruta."""
+
+	def __init__(self) -> None:
+		self._lock = threading.Lock()
+
+	def __enter__(self) -> Self:
+		self._lock.acquire()
+		return self
+
+	def __exit__(self, *_args: object) -> None:
+		self._lock.release()
+
+
 _COVER_MEM_CACHE: dict[str, tuple[int, int, bytes | None, str, str]] = {}
 _MAX_COVER_MEM_CACHE = 1000
 _COVER_CACHE_LOCK = threading.Lock()
-_COVER_PATH_LOCKS: dict[str, threading.Lock] = {}
+_COVER_PATH_LOCKS: weakref.WeakValueDictionary[str, _PathLock] = weakref.WeakValueDictionary()
 
 
 def _get_cover_cache(key: str) -> tuple[int, int, bytes | None, str, str] | None:
@@ -78,13 +94,11 @@ def _set_cover_cache(key: str, value: tuple[int, int, bytes | None, str, str]) -
 		_COVER_MEM_CACHE[key] = value
 
 
-def _get_cover_path_lock(path: str) -> threading.Lock:
+def _get_cover_path_lock(path: str) -> _PathLock:
 	with _COVER_CACHE_LOCK:
 		lock = _COVER_PATH_LOCKS.get(path)
 		if lock is None:
-			if len(_COVER_PATH_LOCKS) >= 512:
-				_COVER_PATH_LOCKS.clear()
-			lock = threading.Lock()
+			lock = _PathLock()
 			_COVER_PATH_LOCKS[path] = lock
 		return lock
 
