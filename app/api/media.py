@@ -4,12 +4,15 @@ Enrutador de medios: streaming de audio (/stream), portadas (/cover) y subtítul
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import io
 import logging
 import mimetypes
 import os
 import re
+import threading
+from typing import Any
 
 from fastapi import APIRouter, Query, Request, Response
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
@@ -53,14 +56,37 @@ except ImportError:
 
 _COVER_MEM_CACHE: dict[str, tuple[int, int, bytes | None, str, str]] = {}
 _MAX_COVER_MEM_CACHE = 1000
+_COVER_CACHE_LOCK = threading.Lock()
+_COVER_PATH_LOCKS: dict[str, threading.Lock] = {}
+
+
+def _get_cover_cache(key: str) -> tuple[int, int, bytes | None, str, str] | None:
+	with _COVER_CACHE_LOCK:
+		if key not in _COVER_MEM_CACHE:
+			return None
+		val = _COVER_MEM_CACHE.pop(key)
+		_COVER_MEM_CACHE[key] = val
+		return val
 
 
 def _set_cover_cache(key: str, value: tuple[int, int, bytes | None, str, str]) -> None:
-	if key in _COVER_MEM_CACHE:
-		_COVER_MEM_CACHE.pop(key)
-	elif len(_COVER_MEM_CACHE) >= _MAX_COVER_MEM_CACHE:
-		_COVER_MEM_CACHE.pop(next(iter(_COVER_MEM_CACHE)))
-	_COVER_MEM_CACHE[key] = value
+	with _COVER_CACHE_LOCK:
+		if key in _COVER_MEM_CACHE:
+			_COVER_MEM_CACHE.pop(key)
+		elif len(_COVER_MEM_CACHE) >= _MAX_COVER_MEM_CACHE:
+			_COVER_MEM_CACHE.pop(next(iter(_COVER_MEM_CACHE)))
+		_COVER_MEM_CACHE[key] = value
+
+
+def _get_cover_path_lock(path: str) -> threading.Lock:
+	with _COVER_CACHE_LOCK:
+		lock = _COVER_PATH_LOCKS.get(path)
+		if lock is None:
+			if len(_COVER_PATH_LOCKS) >= 512:
+				_COVER_PATH_LOCKS.clear()
+			lock = threading.Lock()
+			_COVER_PATH_LOCKS[path] = lock
+		return lock
 
 
 def _get_android_image_resizer():
@@ -111,24 +137,15 @@ def _resize_cover(cover_bytes: bytes, max_size: int) -> tuple[bytes, str]:
 		return cover_bytes, "image/jpeg"
 
 
-@router.get("/cover", response_model=None)
-async def serve_cover(
-	path: str = Query(..., description="Ruta absoluta o relativa del archivo de audio"),
-	size: int | None = Query(default=None, description="Tamaño máximo de carátula en píxeles"),
-	request: Request = None,  # type: ignore[assignment]
+def _serve_cover_sync(
+	path: str,
+	size: int | None,
+	if_none_match: str | None,
+	is_announcement: bool,
+	db_path: Any,
 ) -> Response:
-	"""Extrae la portada incrustada del archivo de audio o devuelve la predeterminada."""
-	state = get_container().ensure_orchestrator()
-	if not isinstance(size, int) or size <= 0:
-		size = None
-
+	"""Resuelve la portada en hilo trabajador para no bloquear el event loop durante I/O SAF/Mutagen."""
 	try:
-		is_announcement = False
-		if state and hasattr(state, "is_radio_announcement"):
-			is_announcement = state.is_radio_announcement(path)
-		elif path and get_saf_name(path) in ("radio_announcement.mp3", "radio_pregenerated.mp3"):
-			is_announcement = True
-
 		if is_announcement:
 			carpincho_img = get_carpincho_cover_path()
 			if carpincho_img and carpincho_img.is_file():
@@ -138,10 +155,8 @@ async def serve_cover(
 					"ETag": etag,
 					"Cache-Control": "public, max-age=86400, stale-while-revalidate=3600",
 				}
-				if request:
-					if_none_match = request.headers.get("if-none-match")
-					if if_none_match and etag in if_none_match:
-						return Response(status_code=304, headers=cache_headers)
+				if if_none_match and etag in if_none_match:
+					return Response(status_code=304, headers=cache_headers)
 
 				if size and size > 0:
 					c_data, c_mime = _resize_cover(carpincho_img.read_bytes(), size)
@@ -169,80 +184,111 @@ async def serve_cover(
 			"Cache-Control": "public, max-age=2592000, stale-while-revalidate=86400",
 		}
 
-		if request:
-			if_none_match = request.headers.get("if-none-match")
-			if if_none_match and etag in if_none_match:
-				return Response(status_code=304, headers=cache_headers)
+		if if_none_match and etag in if_none_match:
+			return Response(status_code=304, headers=cache_headers)
 
 		cache_key = f"{path}:s={size}" if (size and size > 0) else path
-		if cache_key in _COVER_MEM_CACHE:
-			c_mtime, c_size, c_data, c_mime, _ = _COVER_MEM_CACHE[cache_key]
+		cached = _get_cover_cache(cache_key)
+		if cached is not None:
+			c_mtime, c_size, c_data, c_mime, _ = cached
 			if c_mtime == mtime and c_size == file_size:
-				_COVER_MEM_CACHE[cache_key] = _COVER_MEM_CACHE.pop(cache_key)
 				if c_data is None:
 					return Response(status_code=404, headers=cache_headers)
 				return Response(content=c_data, media_type=c_mime, headers=cache_headers)
 
-		db_path = getattr(get_container(), "db_path", None)
-		thumb_repo = CoverThumbRepository(db_path) if db_path else None
-		if size == 128 and thumb_repo is not None:
-			try:
-				cached_thumb = thumb_repo.get(path, mtime, file_size)
-				if cached_thumb is not None:
-					t_blob, t_mime = cached_thumb
-					_set_cover_cache(cache_key, (mtime, file_size, t_blob or None, t_mime, etag))
-					if not t_blob:
+		# Serializamos por archivo para que pedidos simultáneos (HeadBar + Notificación) no lean SAF dos veces
+		with _get_cover_path_lock(path):
+			cached_after_wait = _get_cover_cache(cache_key)
+			if cached_after_wait is not None:
+				c_mtime, c_size, c_data, c_mime, _ = cached_after_wait
+				if c_mtime == mtime and c_size == file_size:
+					if c_data is None:
 						return Response(status_code=404, headers=cache_headers)
-					return Response(content=t_blob, media_type=t_mime, headers=cache_headers)
-			except Exception as e:
-				logger.debug(f"No pude consultar miniatura 128px en SQLite para {path}: {e}")
+					return Response(content=c_data, media_type=c_mime, headers=cache_headers)
 
-		cover_data = None
-		mime_type = "image/jpeg"
-		if size and size > 0 and path in _COVER_MEM_CACHE:
-			c_mtime, c_size, c_data, c_mime, _ = _COVER_MEM_CACHE[path]
-			if c_mtime == mtime and c_size == file_size and c_data:
-				_COVER_MEM_CACHE[path] = _COVER_MEM_CACHE.pop(path)
-				cover_data = c_data
-				mime_type = c_mime
-
-		if not cover_data:
-			if saf:
-				with open_mutagen_file(path, easy=False) as audio:
-					cover_data, mime_type = _extract_mutagen_cover(audio)
-			else:
-				audio = MutagenFile(path)
-				cover_data, mime_type = _extract_mutagen_cover(audio)
-			if not cover_data:
-				_set_cover_cache(cache_key, (mtime, file_size, None, "image/jpeg", etag))
-				if size == 128 and thumb_repo is not None:
-					try:
-						thumb_repo.upsert(path, mtime, file_size, b"", "image/jpeg")
-					except Exception:
-						pass
-				return Response(status_code=404, headers=cache_headers)
-
-			_set_cover_cache(path, (mtime, file_size, cover_data, mime_type, etag))
-
-		if size and size > 0:
-			resized_data, r_mime = _resize_cover(cover_data, size)
-			_set_cover_cache(cache_key, (mtime, file_size, resized_data, r_mime, etag))
-			if thumb_repo is not None:
+			thumb_repo = CoverThumbRepository(db_path) if db_path else None
+			if size == 128 and thumb_repo is not None:
 				try:
-					if size == 128:
-						thumb_repo.upsert(path, mtime, file_size, resized_data, r_mime)
-					elif thumb_repo.get(path, mtime, file_size) is None:
-						thumb_128, thumb_mime = _resize_cover(cover_data, 128)
-						thumb_repo.upsert(path, mtime, file_size, thumb_128, thumb_mime)
+					cached_thumb = thumb_repo.get(path, mtime, file_size)
+					if cached_thumb is not None:
+						t_blob, t_mime = cached_thumb
+						_set_cover_cache(cache_key, (mtime, file_size, t_blob or None, t_mime, etag))
+						if not t_blob:
+							return Response(status_code=404, headers=cache_headers)
+						return Response(content=t_blob, media_type=t_mime, headers=cache_headers)
 				except Exception as e:
-					logger.debug(f"No pude guardar miniatura 128px en SQLite para {path}: {e}")
-			return Response(content=resized_data, media_type=r_mime, headers=cache_headers)
+					logger.debug(f"No pude consultar miniatura 128px en SQLite para {path}: {e}")
 
-		return Response(content=cover_data, media_type=mime_type, headers=cache_headers)
+			cover_data = None
+			mime_type = "image/jpeg"
+			if size and size > 0:
+				raw_cached = _get_cover_cache(path)
+				if raw_cached is not None:
+					c_mtime, c_size, c_data, c_mime, _ = raw_cached
+					if c_mtime == mtime and c_size == file_size and c_data:
+						cover_data = c_data
+						mime_type = c_mime
+
+			if not cover_data:
+				if saf:
+					with open_mutagen_file(path, easy=False) as audio:
+						cover_data, mime_type = _extract_mutagen_cover(audio)
+				else:
+					audio = MutagenFile(path)
+					cover_data, mime_type = _extract_mutagen_cover(audio)
+				if not cover_data:
+					_set_cover_cache(cache_key, (mtime, file_size, None, "image/jpeg", etag))
+					if size == 128 and thumb_repo is not None:
+						try:
+							thumb_repo.upsert(path, mtime, file_size, b"", "image/jpeg")
+						except Exception:
+							pass
+					return Response(status_code=404, headers=cache_headers)
+
+				_set_cover_cache(path, (mtime, file_size, cover_data, mime_type, etag))
+
+			if size and size > 0:
+				resized_data, r_mime = _resize_cover(cover_data, size)
+				_set_cover_cache(cache_key, (mtime, file_size, resized_data, r_mime, etag))
+				if thumb_repo is not None:
+					try:
+						if size == 128:
+							thumb_repo.upsert(path, mtime, file_size, resized_data, r_mime)
+						elif thumb_repo.get(path, mtime, file_size) is None:
+							thumb_128, thumb_mime = _resize_cover(cover_data, 128)
+							thumb_repo.upsert(path, mtime, file_size, thumb_128, thumb_mime)
+					except Exception as e:
+						logger.debug(f"No pude guardar miniatura 128px en SQLite para {path}: {e}")
+				return Response(content=resized_data, media_type=r_mime, headers=cache_headers)
+
+			return Response(content=cover_data, media_type=mime_type, headers=cache_headers)
 
 	except Exception as e:
 		logger.debug(f"Error procesando cover para {path}: {e}")
 		return Response(status_code=404)
+
+
+@router.get("/cover", response_model=None)
+async def serve_cover(
+	path: str = Query(..., description="Ruta absoluta o relativa del archivo de audio"),
+	size: int | None = Query(default=None, description="Tamaño máximo de carátula en píxeles"),
+	request: Request = None,  # type: ignore[assignment]
+) -> Response:
+	"""Extrae la portada incrustada del archivo de audio o devuelve la predeterminada."""
+	container = get_container()
+	state = container.ensure_orchestrator()
+	if not isinstance(size, int) or size <= 0:
+		size = None
+
+	is_announcement = False
+	if state and hasattr(state, "is_radio_announcement"):
+		is_announcement = state.is_radio_announcement(path)
+	elif path and get_saf_name(path) in ("radio_announcement.mp3", "radio_pregenerated.mp3"):
+		is_announcement = True
+
+	if_none_match = request.headers.get("if-none-match") if request else None
+	db_path = getattr(container, "db_path", None)
+	return await asyncio.to_thread(_serve_cover_sync, path, size, if_none_match, is_announcement, db_path)
 
 
 def _build_saf_stream_response(
@@ -351,12 +397,14 @@ async def stream_audio(
 	)
 
 	if is_saf_uri(path):
-		st_info = get_storage_backend(path).stat_file(path)
+		st_info = await asyncio.to_thread(get_storage_backend(path).stat_file, path)
 		if st_info is None:
 			return Response(status_code=404)
 		media_type = mimetypes.guess_type(get_saf_name(path))[0] or "application/octet-stream"
 		range_header = request.headers.get("range") if request else None
-		return _build_saf_stream_response(path, st_info[1], media_type, cache_control, range_header)
+		return await asyncio.to_thread(
+			_build_saf_stream_response, path, st_info[1], media_type, cache_control, range_header
+		)
 
 	if not os.path.exists(path):
 		return Response(status_code=404)
@@ -390,7 +438,9 @@ async def serve_lrc(
 	)
 
 	if is_saf_uri(path):
-		sibling = get_storage_backend(path).read_sibling_lyrics(path, extensions=(".ass", ".lrc"))
+		sibling = await asyncio.to_thread(
+			get_storage_backend(path).read_sibling_lyrics, path, extensions=(".ass", ".lrc")
+		)
 		if sibling is None:
 			return Response(status_code=404)
 		return Response(content=sibling[1], media_type="text/plain; charset=utf-8", headers=headers)
@@ -399,7 +449,9 @@ async def serve_lrc(
 	from app.infrastructure.media.mixer import resolve_subtitle_path
 
 	pre_path = getattr(state, "radio_pregenerated_path", None) if (state and is_radio) else None
-	target_path = resolve_subtitle_path(path, fallback_path=pre_path, extensions=(".ass", ".lrc"))
+	target_path = await asyncio.to_thread(
+		resolve_subtitle_path, path, fallback_path=pre_path, extensions=(".ass", ".lrc")
+	)
 
 	if not target_path or not target_path.exists():
 		return Response(status_code=404)
