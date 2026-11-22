@@ -327,3 +327,112 @@ def test_rescan_existing_library_preserves_smart_hash_track_ids(tmp_path: Path) 
 
 	assert rows_first[0]["track_id"] == expected_id
 	assert rows_second[0]["track_id"] == expected_id
+
+
+def test_audio_hash_returns_none_on_error_zero_bytes_non_seekable_or_short_read(tmp_path: Path, monkeypatch) -> None:
+	"""Fallos de lectura/tamaño/seek no deben devolver MD5 de la URI como audio_hash."""
+	import hashlib
+	import io
+
+	from app.domain.library.hasher import generate_audio_hash, generate_track_hashes
+
+	missing = tmp_path / "no_existe.mp3"
+	th, ah = generate_track_hashes(missing)
+	assert th == hashlib.md5(str(missing).encode("utf-8")).hexdigest()
+	assert ah is None
+	assert generate_audio_hash(missing) is None
+
+	empty = tmp_path / "vacio.wav"
+	empty.write_bytes(b"")
+	th_empty, ah_empty = generate_track_hashes(empty)
+	assert th_empty
+	assert ah_empty is None
+
+	class NonSeekableStream(io.RawIOBase):
+		def seekable(self) -> bool:
+			return False
+
+		def readable(self) -> bool:
+			return True
+
+		def read(self, size: int = -1) -> bytes:
+			return b"1234"
+
+	class FakeBackend:
+		def stat_file(self, ref):
+			return (1.0, 100)
+
+		def open_binary(self, ref):
+			return NonSeekableStream()
+
+	monkeypatch.setattr("app.domain.library.hasher.get_storage_backend", lambda _ref: FakeBackend())
+	uri = "content://com.android.externalstorage.documents/tree/primary%3AMusic/document/nonseek.mp3"
+	th_ns, ah_ns = generate_track_hashes(uri)
+	assert th_ns == hashlib.md5(uri.encode("utf-8")).hexdigest()
+	assert ah_ns is None
+
+	class TruncatedStream(io.BytesIO):
+		pass
+
+	class TruncatedBackend:
+		def stat_file(self, ref):
+			return (1.0, 5000)
+
+		def open_binary(self, ref):
+			return TruncatedStream(b"A" * 100)
+
+	monkeypatch.setattr("app.domain.library.hasher.get_storage_backend", lambda _ref: TruncatedBackend())
+	_, ah_sr = generate_track_hashes(uri, file_size=5000)
+	assert ah_sr is None
+
+
+def test_audio_hash_saf_two_uris_same_audio_and_same_uri_changed_audio(monkeypatch) -> None:
+	"""Dos URIs SAF con igual audio comparten audio_hash; misma URI con audio distinto cambia audio_hash."""
+	import io
+
+	from app.domain.library.hasher import generate_track_hashes
+
+	uri_a = "content://com.android.externalstorage.documents/tree/primary%3AMusic/document/a.wav"
+	uri_b = "content://com.android.externalstorage.documents/tree/primary%3AMusic/document/b.wav"
+	store = {
+		uri_a: b"RIFF" + (b"\x10" * 16384),
+		uri_b: b"RIFF" + (b"\x10" * 16384),
+	}
+
+	class MapBackend:
+		def stat_file(self, ref):
+			return (1.0, None)  # Tamaño desconocido desde SAF
+
+		def open_binary(self, ref):
+			return io.BytesIO(store[str(ref)])
+
+	monkeypatch.setattr("app.domain.library.hasher.get_storage_backend", lambda _ref: MapBackend())
+	th_a, ah_a = generate_track_hashes(uri_a)
+	th_b, ah_b = generate_track_hashes(uri_b)
+	assert ah_a is not None and ah_a == ah_b
+	assert th_a == th_b  # mismo contenido/tamaño en WAV sin metadata distinta
+
+	store[uri_a] = b"RIFF" + (b"\x99" * 16384)
+	_, ah_a_changed = generate_track_hashes(uri_a)
+	assert ah_a_changed is not None and ah_a_changed != ah_a
+
+
+def test_audio_hash_mp4_hashes_all_mdat_atoms(tmp_path: Path) -> None:
+	"""M4A/MP4 con múltiples átomos mdat debe incluir todos los mdat en el audio_hash."""
+	import struct
+
+	from app.domain.library.hasher import generate_audio_hash
+
+	def box(tag: bytes, payload: bytes) -> bytes:
+		return struct.pack(">I4s", 8 + len(payload), tag) + payload
+
+	f1 = tmp_path / "multi1.m4a"
+	f2 = tmp_path / "multi2.m4a"
+	moov = box(b"moov", b"meta-1")
+	mdat1 = box(b"mdat", b"\x01" * 4096)
+	mdat2_a = box(b"mdat", b"\x02" * 4096)
+	mdat2_b = box(b"mdat", b"\x03" * 4096)
+
+	f1.write_bytes(box(b"ftyp", b"M4A ") + moov + mdat1 + mdat2_a)
+	f2.write_bytes(box(b"ftyp", b"M4A ") + moov + mdat1 + mdat2_b)
+	assert generate_audio_hash(f1) != generate_audio_hash(f2)

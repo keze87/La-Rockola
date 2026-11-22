@@ -38,8 +38,24 @@ def _mp3_audio_bounds(f: BinaryIO, file_size: int) -> tuple[int, int]:
 	return (start, end) if end > start else (0, file_size)
 
 
-def _mp4_audio_bounds(f: BinaryIO, file_size: int) -> tuple[int, int]:
-	"""Ubica el átomo mdat dentro de contenedores MP4/M4A para ignorar átomos de metadata."""
+def _read_exact(f: BinaryIO, length: int) -> bytes:
+	"""Lee exactamente `length` bytes del stream o falla si ocurre una lectura corta."""
+	if length <= 0:
+		return b""
+	chunks: list[bytes] = []
+	remaining = length
+	while remaining > 0:
+		data = f.read(remaining)
+		if not data:
+			raise EOFError(f"Lectura corta: faltaron {remaining} de {length} bytes")
+		chunks.append(data)
+		remaining -= len(data)
+	return b"".join(chunks)
+
+
+def _mp4_audio_ranges(f: BinaryIO, file_size: int) -> list[tuple[int, int]]:
+	"""Ubica todos los átomos mdat dentro de contenedores MP4/M4A para ignorar átomos de metadata."""
+	ranges: list[tuple[int, int]] = []
 	offset = 0
 	while offset + 8 <= file_size:
 		f.seek(offset)
@@ -49,7 +65,10 @@ def _mp4_audio_bounds(f: BinaryIO, file_size: int) -> tuple[int, int]:
 		size, tag = struct.unpack(">I4s", box)
 		header_size = 8
 		if size == 1 and offset + 16 <= file_size:
-			size = struct.unpack(">Q", f.read(8))[0]
+			ext_box = f.read(8)
+			if len(ext_box) < 8:
+				break
+			size = struct.unpack(">Q", ext_box)[0]
 			header_size = 16
 		elif size == 0:
 			size = file_size - offset
@@ -59,36 +78,53 @@ def _mp4_audio_bounds(f: BinaryIO, file_size: int) -> tuple[int, int]:
 			end = min(file_size, offset + size)
 			start = offset + header_size
 			if end > start:
-				return start, end
+				ranges.append((start, end))
 		offset += size
-	return 0, file_size
+	return ranges or [(0, file_size)]
 
 
 def _hash_byte_range(f: BinaryIO, start: int, end: int, chunk_size: int) -> str:
 	"""Hashea primer, medio (si aplica) y último bloque del rango de audio [start, end) y su longitud."""
 	span = end - start
+	if span <= 0:
+		raise ValueError("Rango de audio vacío")
 	hasher = hashlib.md5()
 	if span <= chunk_size * 2:
 		f.seek(start)
-		hasher.update(f.read(span))
+		hasher.update(_read_exact(f, span))
 		hasher.update(str(span).encode("utf-8"))
 		return hasher.hexdigest()
 
 	f.seek(start)
-	hasher.update(f.read(chunk_size))
-	if span > chunk_size * 2:
-		mid_len = min(chunk_size, span - chunk_size * 2)
-		mid_start = start + chunk_size + ((span - chunk_size * 2 - mid_len) // 2)
-		f.seek(mid_start)
-		hasher.update(f.read(mid_len))
+	hasher.update(_read_exact(f, chunk_size))
+	mid_len = min(chunk_size, span - chunk_size * 2)
+	mid_start = start + chunk_size + ((span - chunk_size * 2 - mid_len) // 2)
+	f.seek(mid_start)
+	hasher.update(_read_exact(f, mid_len))
 	f.seek(end - chunk_size)
-	hasher.update(f.read(chunk_size))
+	hasher.update(_read_exact(f, chunk_size))
 	hasher.update(str(span).encode("utf-8"))
 	return hasher.hexdigest()
 
 
-def _compute_audio_hash_from_stream(f: BinaryIO, suffix: str, file_size: int, chunk_size: int) -> str:
+def _hash_byte_ranges(f: BinaryIO, ranges: list[tuple[int, int]], chunk_size: int) -> str:
+	"""Hashea uno o múltiples rangos de audio en el stream."""
+	if len(ranges) == 1:
+		return _hash_byte_range(f, ranges[0][0], ranges[0][1], chunk_size)
+	hasher = hashlib.md5()
+	total_span = 0
+	for start, end in ranges:
+		total_span += max(0, end - start)
+		hasher.update(_hash_byte_range(f, start, end, chunk_size).encode("utf-8"))
+	hasher.update(str(total_span).encode("utf-8"))
+	return hasher.hexdigest()
+
+
+def _compute_audio_hash_from_stream(f: BinaryIO, suffix: str, file_size: int, chunk_size: int) -> str | None:
 	"""Calcula audio_hash sobre un stream binario ya abierto, sin reabrir el archivo."""
+	if file_size <= 0 or not f.seekable():
+		return None
+
 	if suffix == ".flac":
 		try:
 			from mutagen.flac import FLAC
@@ -101,13 +137,16 @@ def _compute_audio_hash_from_stream(f: BinaryIO, suffix: str, file_size: int, ch
 		except Exception:
 			pass
 
-	if suffix == ".mp3":
-		start, end = _mp3_audio_bounds(f, file_size)
-	elif suffix in (".m4a", ".mp4"):
-		start, end = _mp4_audio_bounds(f, file_size)
-	else:
-		start, end = 0, file_size
-	return _hash_byte_range(f, start, end, chunk_size)
+	try:
+		if suffix == ".mp3":
+			ranges = [_mp3_audio_bounds(f, file_size)]
+		elif suffix in (".m4a", ".mp4"):
+			ranges = _mp4_audio_ranges(f, file_size)
+		else:
+			ranges = [(0, file_size)]
+		return _hash_byte_ranges(f, ranges, chunk_size)
+	except (EOFError, OSError, ValueError):
+		return None
 
 
 def _compute_smart_hash_from_stream(f: BinaryIO, file_size: int, chunk_size: int) -> str:
@@ -134,15 +173,17 @@ def generate_track_hashes(
 	filepath: str | Path,
 	file_size: int | None = None,
 	chunk_size: int = 1024 * 1024,
-) -> tuple[str, str]:
+) -> tuple[str, str | None]:
 	"""
 	Calcula (track_hash, audio_hash) en una única apertura y lectura sobre el almacenamiento
-	(evitando doble I/O en tarjetas microSD / SAF).
+	(evitando doble I/O en tarjetas microSD / SAF). Si no se puede calcular un hash de audio
+	confiable, devuelve `None` en lugar de fabricar un hash a partir de la ruta/URI.
 	"""
 	saf = is_saf_uri(filepath)
 	ref: str | Path = str(filepath) if saf else Path(filepath)
 	suffix = os.path.splitext(get_saf_name(ref))[1].lower()
 	backend = get_storage_backend(ref)
+	fallback = hashlib.md5(str(ref).encode("utf-8")).hexdigest()
 	try:
 		resolved_size = file_size
 		if resolved_size is None:
@@ -151,19 +192,25 @@ def generate_track_hashes(
 				raise FileNotFoundError(ref)
 			resolved_size = st[1]
 		with backend.open_binary(ref) as f:
+			if not f.seekable():
+				return fallback, None
+			if resolved_size is None:
+				resolved_size = f.seek(0, os.SEEK_END)
+			if resolved_size is None or resolved_size <= 0:
+				return fallback, None
 			track_hash = _compute_smart_hash_from_stream(f, resolved_size, chunk_size)
 			audio_hash = _compute_audio_hash_from_stream(f, suffix, resolved_size, chunk_size)
 			return track_hash, audio_hash
 	except Exception as e:
 		logger.debug(f"Pifió el cálculo unificado de hashes para {filepath}: {e}")
-		fallback = hashlib.md5(str(ref).encode("utf-8")).hexdigest()
-		return fallback, fallback
+		return fallback, None
 
 
-def generate_audio_hash(filepath: str | Path, chunk_size: int = 1024 * 1024) -> str:
+def generate_audio_hash(filepath: str | Path, chunk_size: int = 1024 * 1024) -> str | None:
 	"""
 	Genera un hash basado únicamente en el stream de audio, inmune a cambios de metadata.
-	Soporta MD5 nativo de FLAC, salto de ID3 en MP3 y átomo mdat en MP4/M4A.
+	Soporta MD5 nativo de FLAC, salto de ID3 en MP3 y átomos mdat en MP4/M4A.
+	Devuelve `None` si no se pudo calcular de forma confiable.
 	"""
 	_, audio_hash = generate_track_hashes(filepath, chunk_size=chunk_size)
 	return audio_hash
