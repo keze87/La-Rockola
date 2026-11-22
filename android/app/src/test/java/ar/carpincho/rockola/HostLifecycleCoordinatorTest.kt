@@ -303,4 +303,15 @@ class HostLifecycleCoordinatorTest {
         assertEquals(HostServerState.FAILED, coord2.state)
         assertTrue(coord2.lastError?.contains("stopping") == true)
     }
+
+    @Test
+    fun `politica de locks y onTaskRemoved solo mantiene vivo en pausa si hay cliente remoto`() {
+        assertFalse(ServicePowerPolicy.shouldAcquireWifiLock(MediaTargetMode.HOST, hasRemoteClients = false))
+        assertTrue(ServicePowerPolicy.shouldAcquireWifiLock(MediaTargetMode.HOST, hasRemoteClients = true))
+        assertTrue(ServicePowerPolicy.shouldAcquireWifiLock(MediaTargetMode.REMOTE, hasRemoteClients = false))
+
+        assertTrue(ServicePowerPolicy.shouldStopOnTaskRemoved(isMediaPlaying = false, hasRemoteClients = false))
+        assertFalse(ServicePowerPolicy.shouldStopOnTaskRemoved(isMediaPlaying = false, hasRemoteClients = true))
+        assertFalse(ServicePowerPolicy.shouldStopOnTaskRemoved(isMediaPlaying = true, hasRemoteClients = false))
+    }
 }

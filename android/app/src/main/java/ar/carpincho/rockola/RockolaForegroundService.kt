@@ -15,6 +15,19 @@ import android.os.PowerManager
 import android.util.Log
 
 /**
+ * Reglas puras de energía y ciclo de vida en segundo plano (testeables en JVM).
+ */
+internal object ServicePowerPolicy {
+    fun shouldAcquireWifiLock(mode: MediaTargetMode, hasRemoteClients: Boolean): Boolean {
+        return mode == MediaTargetMode.REMOTE || hasRemoteClients
+    }
+
+    fun shouldStopOnTaskRemoved(isMediaPlaying: Boolean, hasRemoteClients: Boolean): Boolean {
+        return !isMediaPlaying && !hasRemoteClients
+    }
+}
+
+/**
  * Servicio en primer plano orquestador para el servidor FastAPI/Uvicorn embebido,
  * reproducción nativa Media3 ExoPlayer y MediaSession consciente del origen activo
  * (host local o servidor remoto).
@@ -68,6 +81,7 @@ class RockolaForegroundService : Service() {
         private const val NOTIFICATION_ID = 1729
         private const val DEFAULT_PORT = 1729
         private const val STOP_JOIN_TIMEOUT_MS = 4000L
+        private const val WAKELOCK_TIMEOUT_MS = 4 * 60 * 60 * 1000L
 
         @Volatile
         var hostState: HostServerState = HostServerState.STOPPED
@@ -484,26 +498,55 @@ class RockolaForegroundService : Service() {
         }
     }
 
+    private fun hasConnectedRemoteClients(): Boolean {
+        if (!isRunning) return false
+        return try {
+            val py = com.chaquo.python.Python.getInstance()
+            py.getModule("app.android_entry").callAttr("get_connected_remote_clients").toInt() > 0
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
     private fun acquireLocks() {
         if (wakeLock == null) {
             val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "RockolaCarpincho::ServerWakeLock").apply {
                 setReferenceCounted(false)
-                acquire()
             }
         }
-        if (wifiLock == null) {
-            val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-            val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                WifiManager.WIFI_MODE_FULL_LOW_LATENCY
-            } else {
-                @Suppress("DEPRECATION")
-                WifiManager.WIFI_MODE_FULL_HIGH_PERF
+        try {
+            wakeLock?.acquire(WAKELOCK_TIMEOUT_MS)
+        } catch (_: Exception) {
+        }
+
+        val needsWifi = ServicePowerPolicy.shouldAcquireWifiLock(
+            currentMediaTarget.mode,
+            hasConnectedRemoteClients(),
+        )
+        if (needsWifi) {
+            if (wifiLock == null) {
+                val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+                val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+                } else {
+                    @Suppress("DEPRECATION")
+                    WifiManager.WIFI_MODE_FULL_HIGH_PERF
+                }
+                wifiLock = wm.createWifiLock(mode, "RockolaCarpincho::ServerWifiLock").apply {
+                    setReferenceCounted(false)
+                }
             }
-            wifiLock = wm.createWifiLock(mode, "RockolaCarpincho::ServerWifiLock").apply {
-                setReferenceCounted(false)
-                acquire()
+            try {
+                if (wifiLock?.isHeld == false) wifiLock?.acquire()
+            } catch (_: Exception) {
             }
+        } else {
+            try {
+                if (wifiLock?.isHeld == true) wifiLock?.release()
+            } catch (_: Exception) {
+            }
+            wifiLock = null
         }
     }
 
@@ -550,8 +593,11 @@ class RockolaForegroundService : Service() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        if (!isMediaPlaying) {
+        val hasRemotes = hasConnectedRemoteClients()
+        if (ServicePowerPolicy.shouldStopOnTaskRemoved(isMediaPlaying, hasRemotes)) {
             stopServerAndService()
+        } else if (!isMediaPlaying && hasRemotes && !isInForeground) {
+            promoteToForeground("Sirviendo a clientes remotos")
         }
         super.onTaskRemoved(rootIntent)
     }

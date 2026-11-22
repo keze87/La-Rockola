@@ -50,6 +50,17 @@ class ConnectionManager:
 		"""Indica si hay un cliente activo reproduciendo localmente."""
 		return self.local_player_ws is not None
 
+	def remote_client_count(self) -> int:
+		"""Cantidad de clientes WebSocket conectados desde hosts no-loopback."""
+		loopback_hosts = {"127.0.0.1", "::1", "localhost"}
+		count = 0
+		for ws in self.active_connections:
+			client = getattr(ws, "client", None)
+			host = getattr(client, "host", None)
+			if host and host not in loopback_hosts:
+				count += 1
+		return count
+
 	def claim_local_player(self, websocket: WebSocket) -> tuple[bool, WebSocket | None]:
 		"""
 		Asigna el rol de reproductor local exclusivo a este cliente.

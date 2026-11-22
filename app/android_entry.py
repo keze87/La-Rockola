@@ -93,6 +93,17 @@ def dispatch_native_command(cmd: str, extra_json: str = "{}", timeout_sec: float
 		return "error"
 
 
+def get_connected_remote_clients() -> int:
+	"""Devuelve la cantidad de clientes WebSocket remotos conectados al servidor embebido."""
+	mgr = get_container().ws_manager
+	if mgr is None or not hasattr(mgr, "remote_client_count"):
+		return 0
+	try:
+		return int(mgr.remote_client_count())
+	except Exception:
+		return 0
+
+
 def _invoke_ready_callback(callback: Any) -> None:
 	"""Invoca callback Python o Runnable Java sin propagar errores al ciclo de Uvicorn."""
 	if callback is None:
