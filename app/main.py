@@ -167,95 +167,60 @@ async def serve_index():
 	return FileResponse(html_path, headers=headers)
 
 
-async def serve_radio_jpg(request: Request = None):  # type: ignore[assignment]
-	from app.infrastructure.media.mixer import get_static_asset_path
-
-	radio_path = get_static_asset_path("radio.jpg")
-	if not radio_path or not radio_path.exists():
-		return Response(status_code=404)
-
-	stat = radio_path.stat()
-	etag = f'"{int(stat.st_mtime)}-{stat.st_size}"'
-	cache_headers = {
-		"ETag": etag,
-		"Cache-Control": "public, max-age=86400, stale-while-revalidate=3600",
-	}
-
-	if request:
-		if_none_match = request.headers.get("if-none-match")
-		if if_none_match and etag in if_none_match:
-			return Response(status_code=304, headers=cache_headers)
-
-	return FileResponse(radio_path, media_type="image/jpeg", headers=cache_headers)
-
-
-async def serve_favicon(request: Request = None):  # type: ignore[assignment]
-	from app.infrastructure.media.mixer import get_static_asset_path
-
-	favicon_path = get_static_asset_path("favicon.png")
-	if not favicon_path or not favicon_path.exists():
-		return Response(status_code=404)
-
-	stat = favicon_path.stat()
-	etag = f'"{int(stat.st_mtime)}-{stat.st_size}"'
-	cache_headers = {
-		"ETag": etag,
-		"Cache-Control": "public, max-age=31536000, immutable",
-	}
-
-	if request:
-		if_none_match = request.headers.get("if-none-match")
-		if if_none_match and etag in if_none_match:
-			return Response(status_code=304, headers=cache_headers)
-
-	return FileResponse(favicon_path, media_type="image/png", headers=cache_headers)
+_PUBLIC_ROOT_ASSETS: dict[str, tuple[str, str, dict[str, str], bool]] = {
+	"/favicon.ico": ("favicon.png", "image/png", {"Cache-Control": "public, max-age=31536000, immutable"}, True),
+	"/favicon.png": ("favicon.png", "image/png", {"Cache-Control": "public, max-age=31536000, immutable"}, True),
+	"/manifest.webmanifest": (
+		"manifest.webmanifest",
+		"application/manifest+json",
+		{"Cache-Control": "public, max-age=3600"},
+		False,
+	),
+	"/sw.js": (
+		"sw.js",
+		"application/javascript",
+		{"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"},
+		False,
+	),
+	"/icon-192.png": ("icon-192.png", "image/png", {"Cache-Control": "public, max-age=86400"}, False),
+	"/icon-192-maskable.png": ("icon-192-maskable.png", "image/png", {"Cache-Control": "public, max-age=86400"}, False),
+	"/icon-512.png": ("icon-512.png", "image/png", {"Cache-Control": "public, max-age=86400"}, False),
+	"/icon-512-maskable.png": ("icon-512-maskable.png", "image/png", {"Cache-Control": "public, max-age=86400"}, False),
+	"/radio.jpg": (
+		"radio.jpg",
+		"image/jpeg",
+		{"Cache-Control": "public, max-age=86400, stale-while-revalidate=3600"},
+		True,
+	),
+}
 
 
-async def serve_manifest(request: Request = None):  # type: ignore[assignment]
-	from app.infrastructure.media.mixer import get_static_asset_path
+def _build_public_asset_endpoint(
+	asset_name: str,
+	media_type: str,
+	base_headers: dict[str, str],
+	use_etag: bool,
+):
+	async def _serve_public_asset(request: Request = None):  # type: ignore[assignment]
+		from app.infrastructure.media.mixer import get_static_asset_path
 
-	manifest_path = get_static_asset_path("manifest.webmanifest")
-	if not manifest_path or not manifest_path.exists():
-		return Response(status_code=404)
-	return FileResponse(
-		manifest_path,
-		media_type="application/manifest+json",
-		headers={"Cache-Control": "public, max-age=3600"},
-	)
+		asset_path = get_static_asset_path(asset_name)
+		if not asset_path or not asset_path.exists():
+			return Response(status_code=404)
 
+		headers = dict(base_headers)
+		if use_etag:
+			stat = asset_path.stat()
+			etag = f'"{int(stat.st_mtime)}-{stat.st_size}"'
+			headers["ETag"] = etag
+			if request:
+				if_none_match = request.headers.get("if-none-match")
+				if if_none_match and etag in if_none_match:
+					return Response(status_code=304, headers=headers)
 
-async def serve_sw(request: Request = None):  # type: ignore[assignment]
-	from app.infrastructure.media.mixer import get_static_asset_path
+		return FileResponse(asset_path, media_type=media_type, headers=headers)
 
-	sw_path = get_static_asset_path("sw.js")
-	if not sw_path or not sw_path.exists():
-		return Response(status_code=404)
-	return FileResponse(
-		sw_path,
-		media_type="application/javascript",
-		headers={
-			"Cache-Control": "no-cache, no-store, must-revalidate",
-			"Pragma": "no-cache",
-			"Expires": "0",
-		},
-	)
-
-
-async def serve_pwa_icon(icon_name: str):
-	from app.infrastructure.media.mixer import get_static_asset_path
-
-	icon_path = get_static_asset_path(icon_name)
-	if not icon_path or not icon_path.exists():
-		return Response(status_code=404)
-	return FileResponse(icon_path, media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
-
-
-async def serve_icon_192():
-	return await serve_pwa_icon("icon-192.png")
-
-
-async def serve_icon_512():
-	return await serve_pwa_icon("icon-512.png")
+	return _serve_public_asset
 
 
 def create_app() -> FastAPI:
@@ -303,13 +268,13 @@ def create_app() -> FastAPI:
 		"/lyrics",
 	):
 		app.add_api_route(spa_route, serve_index, methods=["GET"], include_in_schema=False)
-	app.add_api_route("/favicon.ico", serve_favicon, methods=["GET"], include_in_schema=False)
-	app.add_api_route("/favicon.png", serve_favicon, methods=["GET"], include_in_schema=False)
-	app.add_api_route("/manifest.webmanifest", serve_manifest, methods=["GET"], include_in_schema=False)
-	app.add_api_route("/sw.js", serve_sw, methods=["GET"], include_in_schema=False)
-	app.add_api_route("/icon-192.png", serve_icon_192, methods=["GET"], include_in_schema=False)
-	app.add_api_route("/icon-512.png", serve_icon_512, methods=["GET"], include_in_schema=False)
-	app.add_api_route("/radio.jpg", serve_radio_jpg, methods=["GET"], include_in_schema=False)
+	for route_path, (asset_name, media_type, base_headers, use_etag) in _PUBLIC_ROOT_ASSETS.items():
+		app.add_api_route(
+			route_path,
+			_build_public_asset_endpoint(asset_name, media_type, base_headers, use_etag),
+			methods=["GET"],
+			include_in_schema=False,
+		)
 	app.add_api_websocket_route("/ws", websocket_endpoint)
 
 	return app
