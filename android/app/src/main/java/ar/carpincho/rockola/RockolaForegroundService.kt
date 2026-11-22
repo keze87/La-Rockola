@@ -587,6 +587,7 @@ class RockolaForegroundService : Service() {
         isMediaPlaying = false
         hostCoordinator.stop(STOP_JOIN_TIMEOUT_MS)
         stopExecutor.shutdownNow()
+        nativeCommandExecutor.shutdownNow()
         onPipStateNeedsRefresh = null
         onNativeCommandError = null
         demoteFromForeground(keepDismissibleNotification = false)

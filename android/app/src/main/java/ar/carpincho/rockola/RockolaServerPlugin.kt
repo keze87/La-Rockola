@@ -1,10 +1,8 @@
 package ar.carpincho.rockola
 
-import android.Manifest
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.database.ContentObserver
 import android.media.AudioManager
 import android.os.Build
@@ -19,14 +17,11 @@ import android.view.WindowManager
 import androidx.activity.result.ActivityResult
 import androidx.core.content.ContextCompat
 import com.getcapacitor.JSObject
-import com.getcapacitor.PermissionState
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.ActivityCallback
 import com.getcapacitor.annotation.CapacitorPlugin
-import com.getcapacitor.annotation.Permission
-import com.getcapacitor.annotation.PermissionCallback
 import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.ExecutorService

@@ -62,7 +62,7 @@ sealed class CommandResult {
  */
 class MediaCommandClient(
     initialTarget: MediaTarget = MediaTarget(MediaTargetMode.HOST, "http://127.0.0.1:1729"),
-    private val timeoutMs: Int = 10_000,
+    private val timeoutMs: Int = 4_000,
     private val artworkTimeoutMs: Int = 12_000,
     private val artworkMaxBytes: Int = 6 * 1024 * 1024,
     private val bitmapDecoder: (InputStream) -> Bitmap? = { stream -> BitmapFactory.decodeStream(stream) },
@@ -127,10 +127,15 @@ class MediaCommandClient(
             return
         }
 
+        val enqueuedAtMs = System.currentTimeMillis()
         commandExecutor.execute {
             val activeNow = currentTarget
             if (expectedGeneration != null && expectedGeneration != activeNow.generation) {
                 onResult?.invoke(CommandResult.StaleTarget(expectedGeneration, activeNow.generation))
+                return@execute
+            }
+            if (System.currentTimeMillis() - enqueuedAtMs >= timeoutMs) {
+                onResult?.invoke(CommandResult.Timeout("El comando expiró en la cola antes de enviarse."))
                 return@execute
             }
             if (activeNow.generation != scheduledTarget.generation || activeNow.origin != scheduledTarget.origin) {

@@ -270,4 +270,44 @@ class MediaCommandClientTest {
         assertEquals(CommandResult.ServerError(500), RockolaForegroundService.mapNativeDispatchResult("error"))
         assertNull(RockolaForegroundService.mapNativeDispatchResult("unavailable"))
     }
+
+    @Test
+    fun discardsStaleQueuedCommandsWhenExecutorWasBlockedBeyondTimeout() {
+        val remoteOrigin = "http://127.0.0.1:${remoteServer.port}"
+        remoteDelayMs.set(350)
+        val client = MediaCommandClient(
+            initialTarget = MediaTarget(MediaTargetMode.REMOTE, remoteOrigin, null, 1L),
+            timeoutMs = 200,
+        )
+
+        val firstLatch = CountDownLatch(1)
+        val secondLatch = CountDownLatch(1)
+        val thirdLatch = CountDownLatch(1)
+        val firstResult = AtomicReference<CommandResult>()
+        val secondResult = AtomicReference<CommandResult>()
+        val thirdResult = AtomicReference<CommandResult>()
+
+        client.sendCommand("pause") {
+            firstResult.set(it)
+            firstLatch.countDown()
+        }
+        client.sendCommand("prev") {
+            secondResult.set(it)
+            secondLatch.countDown()
+        }
+        client.sendCommand("skip") {
+            thirdResult.set(it)
+            thirdLatch.countDown()
+        }
+
+        assertTrue(firstLatch.await(2, TimeUnit.SECONDS))
+        assertTrue(secondLatch.await(2, TimeUnit.SECONDS))
+        assertTrue(thirdLatch.await(2, TimeUnit.SECONDS))
+        assertTrue(firstResult.get() is CommandResult.Timeout)
+        assertTrue(thirdResult.get() is CommandResult.Timeout)
+        // Al menos un comando vencido en cola se descartó sin abrir nueva conexión HTTP
+        assertTrue(remoteRequests.size < 3)
+
+        client.shutdown()
+    }
 }
