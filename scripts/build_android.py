@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Script de empaquetado para Android (Capacitor + Chaquopy 17.2 / Python 3.13).
+Script de empaquetado para Android (Capacitor + Chaquopy 17.2 / Python 3.14).
 Prepara el frontend compilado (`dist/`), copia el backend Python (`app/`)
 al source set de Chaquopy, sincroniza Capacitor, compila APK/AAB con Gradle,
 verifica alineamiento ELF 16 KB (0x4000) y genera checksums `.sha256`.

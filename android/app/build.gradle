@@ -99,10 +99,10 @@ gradle.taskGraph.whenReady { taskGraph ->
 
 chaquopy {
     defaultConfig {
-        version = "3.13"
-        def localPy313 = new File(System.getProperty("user.home"), ".local/bin/python3.13")
-        if (localPy313.isFile()) {
-            buildPython localPy313.absolutePath
+        version = "3.14"
+        def localPy314 = new File(System.getProperty("user.home"), ".local/bin/python3.14")
+        if (localPy314.isFile()) {
+            buildPython localPy314.absolutePath
         }
         pip {
             options "--extra-index-url", "https://pypi.flet.dev"
@@ -115,10 +115,10 @@ chaquopy {
             install "pydantic-settings"
             install "websockets"
             install "edge-tts"
-            install "aiohttp==3.10.10"
-            install "frozenlist==1.4.1"
-            install "multidict==6.1.0"
-            install "yarl==1.16.0"
+            install "aiohttp"
+            install "frozenlist"
+            install "multidict"
+            install "yarl"
         }
     }
 }

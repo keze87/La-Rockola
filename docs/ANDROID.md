@@ -1,6 +1,6 @@
 # Guía de Arquitectura y Compilación Android — La Rockola del Carpincho
 
-La edición Android empaqueta la interfaz **Vue 3 + TypeScript + Tailwind CSS**, el contenedor nativo **Capacitor 8**, los componentes nativos **Kotlin + Media3 ExoPlayer**, y el servidor **FastAPI + Uvicorn** corriendo sobre **Chaquopy 17.2.0 (Python 3.13)** con verificación estricta de alineamiento **16 KB (`0x4000`)**.
+La edición Android empaqueta la interfaz **Vue 3 + TypeScript + Tailwind CSS**, el contenedor nativo **Capacitor 8**, los componentes nativos **Kotlin + Media3 ExoPlayer**, y el servidor **FastAPI + Uvicorn** corriendo sobre **Chaquopy 17.2.0 (Python 3.14)** con verificación estricta de alineamiento **16 KB (`0x4000`)**.
 
 ---
 
@@ -50,7 +50,7 @@ La aplicación **no solicita** `MANAGE_EXTERNAL_STORAGE` y **no copia** tu bibli
 - **Node.js 22+** y **npm**
 - **Java JDK 21** (`JAVA_HOME=/usr/lib/jvm/java-21-openjdk` en Linux si tu `java` por defecto no trae `javac`)
 - **Android SDK** (`ANDROID_HOME` o `android/local.properties` con `compileSdk 36`, `minSdk 24`)
-- **Python 3.13** disponible para `buildPython` de Chaquopy `17.2.0`
+- **Python 3.14** disponible para `buildPython` de Chaquopy `17.2.0`
 
 ### ABIs y verificación binaria de 16 KB (`0x4000`)
 
