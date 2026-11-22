@@ -241,8 +241,22 @@ class MediaNotificationManager(
     @Synchronized
     fun dispatchAction(cmd: String, extra: Map<String, Any> = emptyMap()) {
         val gen = currentTarget.generation
+        val prevPaused = currentPaused
+        var optimisticPauseTarget: Boolean? = null
+        if (cmd == "pause") {
+            val requested = (extra["state"] as? Boolean) ?: !currentPaused
+            optimisticPauseTarget = requested
+            currentPaused = requested
+            syncMediaSessionState()
+            if (isNotificationVisible) notify(currentArtist)
+        }
         onCommand(cmd, extra, gen) { result ->
             if (!result.isSuccess()) {
+                if (optimisticPauseTarget != null && currentTarget.generation == gen) {
+                    currentPaused = prevPaused
+                    syncMediaSessionState()
+                    if (isNotificationVisible) notify(currentArtist)
+                }
                 onCommandFailed(cmd, result)
             }
         }
@@ -365,6 +379,7 @@ class MediaNotificationManager(
             .setLargeIcon(largeIcon)
             .setContentIntent(openPending)
             .setOngoing(!currentPaused)
+            .setOnlyAlertOnce(true)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .addAction(favIcon, favLabel, favPending)
             .addAction(android.R.drawable.ic_media_previous, "Anterior", prevPending)

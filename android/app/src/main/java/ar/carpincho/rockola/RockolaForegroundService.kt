@@ -141,6 +141,9 @@ class RockolaForegroundService : Service() {
     private var wifiLock: WifiManager.WifiLock? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val stopExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    private val nativeCommandExecutor: ExecutorService = Executors.newFixedThreadPool(2) { runnable ->
+        Thread(runnable, "RockolaNativeCmd").apply { isDaemon = true }
+    }
 
     @Volatile
     private var isInForeground: Boolean = false
@@ -186,8 +189,14 @@ class RockolaForegroundService : Service() {
                     expectedGen == targetNow.generation &&
                     com.chaquo.python.Python.isStarted()
                 ) {
+                    if (cmd == "pause") {
+                        val requestedPaused = extra["state"] as? Boolean
+                        if (requestedPaused != null) {
+                            audioPlayer.setPause(requestedPaused)
+                        }
+                    }
                     val payloadJson = MediaCommandClient.serializeCommandJson(cmd, extra)
-                    stopExecutor.execute {
+                    nativeCommandExecutor.execute {
                         val dispatched = try {
                             com.chaquo.python.Python.getInstance()
                                 .getModule("app.android_entry")
