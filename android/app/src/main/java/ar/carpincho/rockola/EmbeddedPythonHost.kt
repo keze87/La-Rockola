@@ -70,7 +70,8 @@ class EmbeddedPythonHost(
             if (Python.isStarted()) {
                 Python.getInstance().getModule("app.android_entry").callAttr("stop_embedded_server")
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w("RockolaPythonHost", "Error solicitando apagado de Python embebido", e)
         }
     }
 
@@ -83,12 +84,24 @@ class EmbeddedPythonHost(
             return
         }
 
-        if (distDir.exists()) {
-            distDir.deleteRecursively()
+        val parentDir = distDir.parentFile ?: context.filesDir
+        val tempDir = File(parentDir, "${distDir.name}.tmp-${System.currentTimeMillis()}")
+        try {
+            tempDir.mkdirs()
+            extractAssetFolder("public", tempDir)
+            File(tempDir, ".dist_stamp").writeText(currentStamp)
+
+            if (distDir.exists() && !distDir.deleteRecursively()) {
+                throw IllegalStateException("No se pudo limpiar la versión web anterior en ${distDir.absolutePath}")
+            }
+            if (!tempDir.renameTo(distDir)) {
+                tempDir.copyRecursively(distDir, overwrite = true)
+                tempDir.deleteRecursively()
+            }
+        } catch (e: Exception) {
+            tempDir.deleteRecursively()
+            throw e
         }
-        extractAssetFolder("public", distDir)
-        distDir.mkdirs()
-        stampFile.writeText(currentStamp)
     }
 
     private fun currentBuildStamp(): String {

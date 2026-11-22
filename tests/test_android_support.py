@@ -370,3 +370,87 @@ def test_retag_wheel_for_android(tmp_path: Path) -> None:
 		rec = zf.read("pydantic_core-2.46.3.dist-info/RECORD").decode("utf-8")
 		assert "pydantic_core-2.46.3.dist-info/WHEEL,sha256=" in rec
 		assert "sha256=old" not in rec
+
+
+def test_start_embedded_server_prevents_duplicate_instances_and_reports_state(
+	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+	"""start_embedded_server ignora inicios duplicados concurrentes y reporta host_state."""
+	import threading
+
+	from app import android_entry
+
+	android_entry.stop_embedded_server()
+
+	data_dir = tmp_path / "data"
+	dist_dir = tmp_path / "dist"
+	music_dir = tmp_path / "music"
+	data_dir.mkdir()
+	dist_dir.mkdir()
+	(dist_dir / "index.html").write_text("<html></html>", encoding="utf-8")
+	music_dir.mkdir()
+
+	entered = threading.Event()
+	release = threading.Event()
+	constructed: list[object] = []
+
+	class BlockingServer:
+		def __init__(self, config: object) -> None:
+			self.config = config
+			self.should_exit = False
+			self.install_signal_handlers = lambda: None
+			constructed.append(self)
+
+		def run(self) -> None:
+			entered.set()
+			while not self.should_exit and not release.is_set():
+				release.wait(0.05)
+
+	monkeypatch.setattr("uvicorn.Server", BlockingServer)
+	android_entry.configure_android_environment(
+		data_dir=str(data_dir),
+		dist_dir=str(dist_dir),
+		music_dir=str(music_dir),
+		port=1829,
+		host="0.0.0.0",
+	)
+
+	t1 = threading.Thread(
+		target=lambda: android_entry.start_embedded_server(
+			data_dir=str(data_dir),
+			dist_dir=str(dist_dir),
+			music_dir=str(music_dir),
+			port=1829,
+			already_configured=True,
+		),
+		daemon=True,
+	)
+	t1.start()
+	assert entered.wait(2.0)
+
+	mid_info = android_entry.get_server_info()
+	assert mid_info["running"] is True
+	assert mid_info["host_state"] == "ready"
+	assert mid_info["last_error"] is None
+
+	# Segundo arranque simultáneo no debe instanciar otro uvicorn.Server
+	dup_result = android_entry.start_embedded_server(
+		data_dir=str(data_dir),
+		dist_dir=str(dist_dir),
+		music_dir=str(music_dir),
+		port=1829,
+		already_configured=True,
+	)
+	assert dup_result is False
+	assert len(constructed) == 1
+
+	android_entry.stop_embedded_server()
+	stopping_info = android_entry.get_server_info()
+	assert stopping_info["host_state"] == "stopping"
+	release.set()
+	t1.join(timeout=2.0)
+	assert not t1.is_alive()
+
+	end_info = android_entry.get_server_info()
+	assert end_info["running"] is False
+	assert end_info["host_state"] == "stopped"

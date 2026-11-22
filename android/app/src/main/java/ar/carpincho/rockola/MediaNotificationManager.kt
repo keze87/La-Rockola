@@ -117,7 +117,7 @@ class MediaNotificationManager(
     }
 
     @Synchronized
-    fun setTarget(target: MediaTarget) {
+    fun setTarget(target: MediaTarget, allowNotificationCancel: Boolean = true) {
         val changed = target.mode != currentTarget.mode ||
             target.normalizedOrigin() != currentTarget.normalizedOrigin() ||
             target.generation != currentTarget.generation
@@ -138,7 +138,9 @@ class MediaNotificationManager(
         isNotificationVisible = false
         mediaSession?.isActive = false
         syncMediaSessionState()
-        cancelNotification()
+        if (allowNotificationCancel) {
+            cancelNotification()
+        }
     }
 
     @Synchronized
@@ -151,6 +153,14 @@ class MediaNotificationManager(
         isNotificationVisible = false
         val manager = service.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.cancel(notificationId)
+    }
+
+    @Synchronized
+    fun notifyCurrentState() {
+        if (hasActiveTrack) {
+            isNotificationVisible = true
+            notify(currentArtist)
+        }
     }
 
     @Synchronized
@@ -169,6 +179,7 @@ class MediaNotificationManager(
         positionMs: Long,
         isFavorite: Boolean,
         isPauseAfter: Boolean,
+        postNotification: Boolean = true,
     ) {
         val coverChanged = coverUrl != currentCoverUrl
         val targetGen = currentTarget.generation
@@ -192,10 +203,12 @@ class MediaNotificationManager(
         isNotificationVisible = hasTrack
         mediaSession?.isActive = hasTrack
         syncMediaSessionState()
-        if (hasTrack) {
-            notify(currentArtist)
-        } else {
-            cancelNotification()
+        if (postNotification) {
+            if (hasTrack) {
+                notify(currentArtist)
+            } else {
+                cancelNotification()
+            }
         }
     }
 

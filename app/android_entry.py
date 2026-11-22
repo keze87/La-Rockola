@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +25,11 @@ from app.core.network import get_server_urls
 
 logger = logging.getLogger("RockolaCarpincho")
 
+_server_lock = threading.Lock()
 _active_server: Any = None
+_host_state: str = "stopped"
+_last_error: str | None = None
+_stop_requested: bool = False
 
 
 def configure_android_environment(
@@ -128,55 +133,94 @@ def start_embedded_server(
 	port: int = 1729,
 	host: str = "0.0.0.0",
 	already_configured: bool = False,
-) -> None:
+) -> bool:
 	"""Arranca Uvicorn de forma bloqueante dentro de un hilo secundario del ForegroundService."""
-	global _active_server
+	global _active_server, _host_state, _last_error, _stop_requested
 	import uvicorn
 
 	from app.main import create_app
 
-	if not already_configured:
-		configure_android_environment(
-			data_dir=data_dir,
-			dist_dir=dist_dir,
-			music_dir=music_dir,
-			port=port,
-			host=host,
-		)
-	fastapi_app = create_app()
-	uv_config = uvicorn.Config(
-		fastapi_app,
-		host=host,
-		port=port,
-		proxy_headers=True,
-		forwarded_allow_ips="*",
-		access_log=False,
-		log_level="info",
-	)
-	server = uvicorn.Server(uv_config)
-	# En Android el servidor corre en un hilo worker y signal.signal() falla fuera del hilo principal
-	server.install_signal_handlers = lambda: None  # type: ignore[method-assign]
-	_active_server = server
+	with _server_lock:
+		if _active_server is not None or _host_state in ("starting", "ready", "stopping"):
+			logger.warning("Se omitió arranque duplicado del servidor embebido (estado actual: %s)", _host_state)
+			return False
+		_host_state = "starting"
+		_last_error = None
+		_stop_requested = False
+
+	server = None
 	try:
+		if not already_configured:
+			configure_android_environment(
+				data_dir=data_dir,
+				dist_dir=dist_dir,
+				music_dir=music_dir,
+				port=port,
+				host=host,
+			)
+		fastapi_app = create_app()
+		uv_config = uvicorn.Config(
+			fastapi_app,
+			host=host,
+			port=port,
+			proxy_headers=True,
+			forwarded_allow_ips="*",
+			access_log=False,
+			log_level="info",
+		)
+		server = uvicorn.Server(uv_config)
+		# En Android el servidor corre en un hilo worker y signal.signal() falla fuera del hilo principal
+		server.install_signal_handlers = lambda: None  # type: ignore[method-assign]
+
+		with _server_lock:
+			if _stop_requested:
+				_host_state = "stopped"
+				return True
+			_active_server = server
+			_host_state = "ready"
+
 		server.run()
+		return True
+	except Exception as exc:
+		logger.exception("Error fatal en servidor embebido")
+		with _server_lock:
+			_last_error = str(exc) or exc.__class__.__name__
+			_host_state = "failed"
+		raise
 	finally:
-		if _active_server is server:
-			_active_server = None
+		with _server_lock:
+			if server is None or _active_server is server:
+				_active_server = None
+				if _host_state != "failed":
+					_host_state = "stopped"
 
 
 def stop_embedded_server() -> None:
 	"""Solicita el apagado limpio del servidor Uvicorn embebido."""
-	if _active_server is not None:
-		_active_server.should_exit = True
+	global _host_state, _stop_requested
+	with _server_lock:
+		_stop_requested = True
+		if _active_server is not None:
+			_active_server.should_exit = True
+			_host_state = "stopping"
+		elif _host_state == "starting":
+			_host_state = "stopping"
+		elif _host_state != "failed":
+			_host_state = "stopped"
 
 
 def get_server_info() -> dict[str, Any]:
 	"""Devuelve el estado actual del servidor embebido para el puente Kotlin."""
 	container = get_container()
 	orch = container.orchestrator
-	running = _active_server is not None and not getattr(_active_server, "should_exit", False)
+	with _server_lock:
+		running = _active_server is not None and not getattr(_active_server, "should_exit", False)
+		host_state = _host_state
+		last_error = _last_error
 	return {
 		"running": running,
+		"host_state": host_state,
+		"last_error": last_error,
 		"port": getattr(orch, "server_port", 1729) if orch else 1729,
 		"local_ip": getattr(orch, "local_ip", "127.0.0.1") if orch else "127.0.0.1",
 		"server_url": getattr(orch, "server_url", "http://127.0.0.1:1729") if orch else "http://127.0.0.1:1729",

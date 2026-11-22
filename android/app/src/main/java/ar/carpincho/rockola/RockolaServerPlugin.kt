@@ -29,6 +29,8 @@ import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 import org.json.JSONObject
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import kotlin.math.roundToInt
 
 /**
@@ -55,6 +57,7 @@ class RockolaServerPlugin : Plugin() {
     }
 
     private var volumeReceiver: BroadcastReceiver? = null
+    private val pluginExecutor: ExecutorService = Executors.newSingleThreadExecutor()
 
     override fun load() {
         super.load()
@@ -107,6 +110,7 @@ class RockolaServerPlugin : Plugin() {
             }
         }
         volumeReceiver = null
+        pluginExecutor.shutdownNow()
         super.handleOnDestroy()
     }
 
@@ -147,6 +151,8 @@ class RockolaServerPlugin : Plugin() {
             ?: prefs.getString(RockolaForegroundService.KEY_MUSIC_DIR, null)
         return JSObject().apply {
             put("running", RockolaForegroundService.isRunning)
+            put("hostState", RockolaForegroundService.hostState.wireName())
+            put("lastError", RockolaForegroundService.lastHostError ?: JSONObject.NULL)
             put("port", port)
             put("localIp", RockolaForegroundService.currentLocalIp)
             put("serverUrl", RockolaForegroundService.currentServerUrl)
@@ -172,15 +178,15 @@ class RockolaServerPlugin : Plugin() {
 
     @PluginMethod
     fun stopServer(call: PluginCall) {
-        if (!RockolaForegroundService.isRunning) {
-            call.resolve(JSObject().apply { put("stopped", true) })
-            return
+        pluginExecutor.execute {
+            val stopped = RockolaForegroundService.requestStopAndAwait(context, timeoutMs = 4500L)
+            call.resolve(
+                JSObject().apply {
+                    put("stopped", stopped)
+                    put("hostState", RockolaForegroundService.hostState.wireName())
+                },
+            )
         }
-        val intent = Intent(context, RockolaForegroundService::class.java).apply {
-            action = RockolaForegroundService.ACTION_STOP
-        }
-        context.startService(intent)
-        call.resolve(JSObject().apply { put("stopped", true) })
     }
 
     @PluginMethod
@@ -251,6 +257,7 @@ class RockolaServerPlugin : Plugin() {
             }
         }
         if (!paused && !trackPath.isNullOrBlank()) {
+            intent.putExtra(RockolaForegroundService.EXTRA_STARTED_AS_FOREGROUND, true)
             ContextCompat.startForegroundService(context, intent)
         } else {
             context.startService(intent)

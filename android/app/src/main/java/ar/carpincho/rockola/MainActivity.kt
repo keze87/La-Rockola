@@ -180,7 +180,6 @@ class MainActivity : BridgeActivity() {
             settings.mediaPlaybackRequiresUserGesture = false
         }
         requestNotificationPermissionIfNeeded()
-        ensureServerAutoStarted()
         handleShortcutIntent(intent)
     }
 
@@ -307,15 +306,6 @@ class MainActivity : BridgeActivity() {
                     pendingShortcutAction = null
                 }
             }
-        }
-    }
-
-    private fun ensureServerAutoStarted() {
-        if (!RockolaForegroundService.isRunning) {
-            val intent = Intent(this, RockolaForegroundService::class.java).apply {
-                action = RockolaForegroundService.ACTION_START
-            }
-            startService(intent)
         }
     }
 }

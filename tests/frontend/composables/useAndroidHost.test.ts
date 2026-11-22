@@ -608,4 +608,37 @@ describe('useAndroidHost.ts', () => {
 		expect(res).toEqual({ entered: false, reason: 'PIP_DENIED' });
 		expect(mod.isAndroidPipMode.value).toBe(false);
 	});
+
+	it('initAndroidServer aborts quickly and exposes lastError when native hostState is failed', async () => {
+		const mod = await import('@/composables/useAndroidHost');
+		const store = await import('@/stores/useServerConnectionStore');
+
+		state.isNative = true;
+		state.platform = 'android';
+		store.resetServerConnectionStore();
+
+		pluginMock.startServer.mockResolvedValue({
+			running: true,
+			hostState: 'starting',
+			port: 1729,
+			localIp: '127.0.0.1',
+			serverUrl: 'http://127.0.0.1:1729',
+			musicDir: '',
+		});
+		pluginMock.getStatus.mockResolvedValue({
+			running: false,
+			hostState: 'failed',
+			lastError: 'Puerto ocupado en Uvicorn',
+			port: 1729,
+			localIp: '127.0.0.1',
+			serverUrl: 'http://127.0.0.1:1729',
+			musicDir: '',
+		});
+		global.fetch = vi.fn().mockRejectedValue(new Error('Connection refused'));
+
+		const ok = await mod.initAndroidServer({ pollIntervalMs: 10, timeoutMs: 5000 });
+		expect(ok).toBe(false);
+		expect(store.localServerState.value).toBe('unavailable');
+		expect(store.lastServerError.value?.message).toContain('Puerto ocupado en Uvicorn');
+	});
 });

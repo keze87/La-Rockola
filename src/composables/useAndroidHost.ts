@@ -383,7 +383,32 @@ function applyLocalServerInfo(info: AndroidServerInfo): number {
 	} else if (libraryFolderStatus.value === 'unconfigured') {
 		libraryFolderStatus.value = 'ok';
 	}
+	if (info.hostState === 'failed') {
+		localServerState.value = 'unavailable';
+		setServerError('SERVER_START_FAILED', info.lastError || 'El servidor embebido falló al arrancar');
+	} else if (info.hostState === 'stopping') {
+		localServerState.value = 'stopping';
+	} else if (info.hostState === 'stopped' && !info.running) {
+		localServerState.value = 'stopped';
+	}
 	return port;
+}
+
+export async function refreshAndroidHostStatus(): Promise<AndroidServerInfo | null> {
+	if (!isNativeAndroidHost()) return null;
+	try {
+		const info = await RockolaServer.getStatus();
+		applyLocalServerInfo(info);
+		if (info.hostState === 'ready' || (info.running && !info.hostState)) {
+			localServerState.value = 'ready';
+			clearServerError();
+		} else if (info.hostState === 'starting') {
+			localServerState.value = 'starting';
+		}
+		return info;
+	} catch {
+		return null;
+	}
 }
 
 export function initAndroidServer(opts?: { pollIntervalMs?: number; timeoutMs?: number }): Promise<boolean> {
@@ -421,6 +446,9 @@ export function initAndroidServer(opts?: { pollIntervalMs?: number; timeoutMs?: 
 		}
 
 		const port = applyLocalServerInfo(info);
+		if (info.hostState === 'failed') {
+			return false;
+		}
 		if (isHostMode.value) {
 			setApiOrigin(`http://127.0.0.1:${port}`);
 			await syncAndroidMediaTarget();
@@ -443,6 +471,17 @@ export function initAndroidServer(opts?: { pollIntervalMs?: number; timeoutMs?: 
 			}
 			if (probe.message) {
 				lastFailure = probe.message;
+			}
+			if (typeof RockolaServer.getStatus === 'function') {
+				try {
+					const status = await RockolaServer.getStatus();
+					if (status?.hostState === 'failed') {
+						applyLocalServerInfo(status);
+						return false;
+					}
+				} catch {
+					// Continuamos esperando /health mientras el plugin responde
+				}
 			}
 			await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
 		}
