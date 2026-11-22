@@ -7,6 +7,7 @@ y expone ciclo de vida limpio de inicio y apagado para Uvicorn.
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import json
 import logging
 import os
@@ -44,12 +45,12 @@ def set_server_event_loop(loop: asyncio.AbstractEventLoop | None) -> None:
 		_server_loop = loop
 
 
-def dispatch_native_command(cmd: str, extra_json: str = "{}") -> bool:
-	"""Agenda un comando del orquestador directo en el event loop de Uvicorn sin pasar por HTTP."""
+def dispatch_native_command(cmd: str, extra_json: str = "{}", timeout_sec: float = 2.0) -> str:
+	"""Ejecuta un comando del orquestador en el event loop de Uvicorn esperando resultado real o timeout."""
 	with _server_lock:
 		loop = _server_loop
 	if loop is None or loop.is_closed():
-		return False
+		return "unavailable"
 
 	from app.api.commands import COMMAND_HANDLERS
 	from app.api.schemas import CommandRequest
@@ -57,12 +58,12 @@ def dispatch_native_command(cmd: str, extra_json: str = "{}") -> bool:
 
 	handler = COMMAND_HANDLERS.get(cmd)
 	if handler is None:
-		return False
+		return "unavailable"
 
 	container = get_container()
 	state = container.orchestrator
 	if state is None:
-		return False
+		return "unavailable"
 	mgr = container.ws_manager
 
 	try:
@@ -73,17 +74,23 @@ def dispatch_native_command(cmd: str, extra_json: str = "{}") -> bool:
 		req = CommandRequest(**raw_extra)
 	except Exception:
 		logger.warning("Payload inválido en dispatch_native_command(%s)", cmd)
-		return False
+		return "unavailable"
 
 	async def _run() -> None:
-		try:
-			await handler(state, req, mgr)
-			await broadcast_state()
-		except Exception:
-			logger.exception("Error ejecutando comando nativo '%s'", cmd)
+		await handler(state, req, mgr)
+		await broadcast_state()
 
-	asyncio.run_coroutine_threadsafe(_run(), loop)
-	return True
+	future = asyncio.run_coroutine_threadsafe(_run(), loop)
+	try:
+		future.result(timeout=timeout_sec)
+		return "ok"
+	except concurrent.futures.TimeoutError:
+		future.cancel()
+		logger.warning("Timeout ejecutando comando nativo '%s' (%.1fs)", cmd, timeout_sec)
+		return "timeout"
+	except Exception:
+		logger.exception("Error ejecutando comando nativo '%s'", cmd)
+		return "error"
 
 
 def _invoke_ready_callback(callback: Any) -> None:

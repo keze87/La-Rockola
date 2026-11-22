@@ -778,10 +778,57 @@ async def test_dispatch_native_command_executes_handler_without_http(
 	android_entry.set_server_event_loop(asyncio.get_running_loop())
 
 	try:
-		ok = android_entry.dispatch_native_command("skip", '{"amount": 1}')
-		assert ok is True
-		await asyncio.sleep(0.05)
+		res = await asyncio.to_thread(android_entry.dispatch_native_command, "skip", '{"amount": 1}')
+		assert res == "ok"
 		assert called == [("skip", {"amount": 1})]
+	finally:
+		android_entry.set_server_event_loop(None)
+
+
+@pytest.mark.asyncio
+async def test_dispatch_native_command_returns_error_when_handler_raises(
+	monkeypatch: pytest.MonkeyPatch,
+) -> None:
+	"""Un handler que lanza excepción debe devolver 'error' en vez de éxito silencioso."""
+	import asyncio
+
+	from app import android_entry
+	from app.api import commands as commands_mod
+	from app.core.container import get_container
+
+	async def _boom(_state: object, _req: object, _mgr: object) -> None:
+		raise RuntimeError("fallo simulado")
+
+	monkeypatch.setitem(commands_mod.COMMAND_HANDLERS, "skip", _boom)
+	get_container().orchestrator = MagicMock()
+	android_entry.set_server_event_loop(asyncio.get_running_loop())
+	try:
+		res = await asyncio.to_thread(android_entry.dispatch_native_command, "skip", "{}")
+		assert res == "error"
+	finally:
+		android_entry.set_server_event_loop(None)
+
+
+@pytest.mark.asyncio
+async def test_dispatch_native_command_returns_timeout_when_handler_hangs(
+	monkeypatch: pytest.MonkeyPatch,
+) -> None:
+	"""Un handler que tarda más que el timeout debe devolver 'timeout'."""
+	import asyncio
+
+	from app import android_entry
+	from app.api import commands as commands_mod
+	from app.core.container import get_container
+
+	async def _slow(_state: object, _req: object, _mgr: object) -> None:
+		await asyncio.sleep(0.3)
+
+	monkeypatch.setitem(commands_mod.COMMAND_HANDLERS, "skip", _slow)
+	get_container().orchestrator = MagicMock()
+	android_entry.set_server_event_loop(asyncio.get_running_loop())
+	try:
+		res = await asyncio.to_thread(android_entry.dispatch_native_command, "skip", "{}", 0.05)
+		assert res == "timeout"
 	finally:
 		android_entry.set_server_event_loop(None)
 

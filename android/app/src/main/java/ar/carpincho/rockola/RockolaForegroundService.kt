@@ -33,6 +33,13 @@ class RockolaForegroundService : Service() {
         const val ACTION_MEDIA_PLAY_PAUSE = "ar.carpincho.rockola.ACTION_MEDIA_PLAY_PAUSE"
         const val ACTION_MEDIA_NEXT = "ar.carpincho.rockola.ACTION_MEDIA_NEXT"
         const val ACTION_MEDIA_FAVORITE = "ar.carpincho.rockola.ACTION_MEDIA_FAVORITE"
+
+        fun mapNativeDispatchResult(status: String): CommandResult? = when (status) {
+            "ok" -> CommandResult.Success
+            "timeout" -> CommandResult.Timeout("Tiempo de espera agotado ejecutando comando nativo.")
+            "error" -> CommandResult.ServerError(500)
+            else -> null
+        }
         const val ACTION_MEDIA_PAUSE_AFTER = "ar.carpincho.rockola.ACTION_MEDIA_PAUSE_AFTER"
         const val ACTION_UPDATE_MEDIA = "ar.carpincho.rockola.ACTION_UPDATE_MEDIA"
         const val ACTION_UPDATE_POSITION = "ar.carpincho.rockola.ACTION_UPDATE_POSITION"
@@ -197,16 +204,17 @@ class RockolaForegroundService : Service() {
                     }
                     val payloadJson = MediaCommandClient.serializeCommandJson(cmd, extra)
                     nativeCommandExecutor.execute {
-                        val dispatched = try {
+                        val status = try {
                             com.chaquo.python.Python.getInstance()
                                 .getModule("app.android_entry")
                                 .callAttr("dispatch_native_command", cmd, payloadJson)
-                                .toBoolean()
+                                .toString()
                         } catch (_: Exception) {
-                            false
+                            "unavailable"
                         }
-                        if (dispatched) {
-                            onResult(CommandResult.Success)
+                        val mapped = mapNativeDispatchResult(status)
+                        if (mapped != null) {
+                            onResult(mapped)
                         } else {
                             commandClient.sendCommand(cmd, extra, expectedGen, onResult)
                         }

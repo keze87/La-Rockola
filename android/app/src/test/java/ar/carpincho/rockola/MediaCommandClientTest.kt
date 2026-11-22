@@ -262,4 +262,12 @@ class MediaCommandClientTest {
         artServer.stop()
         client.shutdown()
     }
+
+    @Test
+    fun mapsNativeDispatchStatusToExplicitCommandResult() {
+        assertEquals(CommandResult.Success, RockolaForegroundService.mapNativeDispatchResult("ok"))
+        assertTrue(RockolaForegroundService.mapNativeDispatchResult("timeout") is CommandResult.Timeout)
+        assertEquals(CommandResult.ServerError(500), RockolaForegroundService.mapNativeDispatchResult("error"))
+        assertNull(RockolaForegroundService.mapNativeDispatchResult("unavailable"))
+    }
 }
