@@ -1,12 +1,9 @@
 package ar.carpincho.rockola
 
 import android.app.Service
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.ServiceInfo
-import android.media.AudioManager
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Handler
@@ -14,14 +11,11 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
 import android.util.Log
-import androidx.core.content.ContextCompat
 
 /**
- * Servicio en primer plano orquestador que mantiene vivo el servidor FastAPI/Uvicorn
- * sobre Chaquopy, junto con WakeLock, WifiLock, protección al desconectar auriculares
- * (`ACTION_AUDIO_BECOMING_NOISY`) y el administrador de notificaciones multimedia.
- * El AudioFocus lo gestiona directamente el motor de audio del WebView para evitar
- * conflictos de foco dentro del mismo proceso.
+ * Servicio en primer plano orquestador para el servidor FastAPI/Uvicorn embebido,
+ * reproducción nativa Media3 ExoPlayer y MediaSession consciente del origen activo
+ * (host local o servidor remoto).
  */
 class RockolaForegroundService : Service() {
 
@@ -32,6 +26,7 @@ class RockolaForegroundService : Service() {
 
         const val ACTION_START = "ar.carpincho.rockola.ACTION_START"
         const val ACTION_STOP = "ar.carpincho.rockola.ACTION_STOP"
+        const val ACTION_SET_MEDIA_TARGET = "ar.carpincho.rockola.ACTION_SET_MEDIA_TARGET"
         const val ACTION_MEDIA_PREV = "ar.carpincho.rockola.ACTION_MEDIA_PREV"
         const val ACTION_MEDIA_PLAY_PAUSE = "ar.carpincho.rockola.ACTION_MEDIA_PLAY_PAUSE"
         const val ACTION_MEDIA_NEXT = "ar.carpincho.rockola.ACTION_MEDIA_NEXT"
@@ -45,6 +40,10 @@ class RockolaForegroundService : Service() {
 
         const val EXTRA_PORT = "port"
         const val EXTRA_MUSIC_DIR = "music_dir"
+        const val EXTRA_TARGET_MODE = "target_mode"
+        const val EXTRA_TARGET_ORIGIN = "target_origin"
+        const val EXTRA_TARGET_AUTH = "target_auth"
+        const val EXTRA_TARGET_GENERATION = "target_generation"
         const val EXTRA_TITLE = "media_title"
         const val EXTRA_ARTIST = "media_artist"
         const val EXTRA_PAUSED = "media_paused"
@@ -68,6 +67,10 @@ class RockolaForegroundService : Service() {
             private set
 
         @Volatile
+        var isMediaPlaying: Boolean = false
+            private set
+
+        @Volatile
         var currentPort: Int = DEFAULT_PORT
             private set
 
@@ -82,6 +85,19 @@ class RockolaForegroundService : Service() {
         @Volatile
         var currentLocalIp: String = "127.0.0.1"
             private set
+
+        @Volatile
+        var currentMediaTarget: MediaTarget = MediaTarget(
+            mode = MediaTargetMode.HOST,
+            origin = "http://127.0.0.1:$DEFAULT_PORT",
+        )
+            internal set
+
+        @Volatile
+        internal var onPipStateNeedsRefresh: (() -> Unit)? = null
+
+        @Volatile
+        internal var onNativeCommandError: ((cmd: String, code: String, message: String) -> Unit)? = null
     }
 
     private var wakeLock: PowerManager.WakeLock? = null
@@ -89,7 +105,7 @@ class RockolaForegroundService : Service() {
     private var serverThread: Thread? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val demoteRunnable = Runnable {
-        if (!isActivelyPlaying) {
+        if (!isMediaPlaying) {
             demoteToBackground()
         }
     }
@@ -103,44 +119,42 @@ class RockolaForegroundService : Service() {
         mainHandler.removeCallbacks(demoteRunnable)
     }
 
-    private lateinit var commandClient: LocalCommandClient
+    private lateinit var commandClient: MediaCommandClient
     private lateinit var pythonHost: EmbeddedPythonHost
     private lateinit var notificationManager: MediaNotificationManager
     private lateinit var audioPlayer: AndroidAudioPlayer
-
-    private val noisyReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY) {
-                audioPlayer.setPause(true)
-                if (!notificationManager.isPaused || isActivelyPlaying) {
-                    commandClient.sendCommand("pause", mapOf("state" to true))
-                }
-            }
-        }
-    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
-        commandClient = LocalCommandClient { currentPort }
+        commandClient = MediaCommandClient(initialTarget = currentMediaTarget)
         pythonHost = EmbeddedPythonHost(this)
         notificationManager = MediaNotificationManager(
             service = this,
             channelId = CHANNEL_ID,
             notificationId = NOTIFICATION_ID,
-            onCommand = { cmd, extra -> commandClient.sendCommand(cmd, extra) },
-            onRequestArtwork = { coverUrl ->
-                commandClient.fetchArtwork(coverUrl) { bmp ->
-                    notificationManager.applyArtworkIfCurrent(coverUrl, bmp)
+            onCommand = { cmd, extra, expectedGen, onResult ->
+                commandClient.sendCommand(cmd, extra, expectedGen, onResult)
+            },
+            onRequestArtwork = { coverUrl, expectedGen ->
+                commandClient.fetchArtwork(coverUrl, expectedGen) { bmp ->
+                    notificationManager.applyArtworkIfCurrent(coverUrl, expectedGen, bmp)
                 }
+            },
+            onCommandFailed = { cmd, result ->
+                onNativeCommandError?.invoke(cmd, result.errorCode(), result.userMessage())
             },
         )
         notificationManager.initialize()
+        notificationManager.setTarget(currentMediaTarget)
         audioPlayer = AndroidAudioPlayer(
             context = this,
             onPlaybackActiveChanged = { active ->
+                if (currentMediaTarget.mode != MediaTargetMode.HOST) return@AndroidAudioPlayer
                 isActivelyPlaying = isRunning && active
+                isMediaPlaying = isActivelyPlaying
+                onPipStateNeedsRefresh?.invoke()
                 if (isActivelyPlaying) {
                     cancelScheduledDemote()
                     acquireLocks()
@@ -150,6 +164,8 @@ class RockolaForegroundService : Service() {
                 }
             },
             onMediaNotification = { title, artist, paused, coverUrl, trackPath, durationMs, positionMs, isFavorite, isPauseAfter ->
+                // En modo remoto ignoramos metadatos locales para no pisar la sesión del servidor remoto
+                if (currentMediaTarget.mode != MediaTargetMode.HOST) return@AndroidAudioPlayer
                 applyMediaUpdate(
                     title = title,
                     artist = artist,
@@ -163,17 +179,11 @@ class RockolaForegroundService : Service() {
                 )
             },
             onPositionNotification = { durationMs, positionMs, paused ->
+                if (currentMediaTarget.mode != MediaTargetMode.HOST) return@AndroidAudioPlayer
                 applyPositionUpdate(durationMs, positionMs, paused)
             },
         )
         audioPlayer.initialize()
-
-        ContextCompat.registerReceiver(
-            this,
-            noisyReceiver,
-            IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY),
-            ContextCompat.RECEIVER_EXPORTED,
-        )
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -182,16 +192,34 @@ class RockolaForegroundService : Service() {
                 stopServerAndService()
                 return START_NOT_STICKY
             }
+            ACTION_SET_MEDIA_TARGET -> {
+                val modeStr = intent.getStringExtra(EXTRA_TARGET_MODE) ?: "host"
+                val mode = if (modeStr == "remote") MediaTargetMode.REMOTE else MediaTargetMode.HOST
+                val origin = intent.getStringExtra(EXTRA_TARGET_ORIGIN)
+                    ?: "http://127.0.0.1:$currentPort"
+                val auth = intent.getStringExtra(EXTRA_TARGET_AUTH)
+                val gen = intent.getLongExtra(EXTRA_TARGET_GENERATION, currentMediaTarget.generation)
+                val target = MediaTarget(mode = mode, origin = origin, authHeader = auth, generation = gen)
+                currentMediaTarget = target
+                commandClient.setTarget(target)
+                notificationManager.setTarget(target)
+                isMediaPlaying = false
+                isActivelyPlaying = false
+                demoteToBackground()
+                onPipStateNeedsRefresh?.invoke()
+                return START_NOT_STICKY
+            }
             ACTION_MEDIA_PREV -> {
-                commandClient.sendCommand("prev")
+                notificationManager.dispatchAction("prev")
                 return START_NOT_STICKY
             }
             ACTION_MEDIA_PLAY_PAUSE -> {
-                commandClient.sendCommand("pause")
+                val targetPaused = !notificationManager.isPaused
+                notificationManager.dispatchAction("pause", mapOf("state" to targetPaused))
                 return START_NOT_STICKY
             }
             ACTION_MEDIA_NEXT -> {
-                commandClient.sendCommand("skip")
+                notificationManager.dispatchAction("skip")
                 return START_NOT_STICKY
             }
             ACTION_MEDIA_FAVORITE -> {
@@ -255,10 +283,17 @@ class RockolaForegroundService : Service() {
 
         currentPort = port
         currentMusicDir = musicDir
+        if (currentMediaTarget.mode == MediaTargetMode.HOST) {
+            val hostTarget = MediaTarget(
+                mode = MediaTargetMode.HOST,
+                origin = "http://127.0.0.1:$port",
+                generation = currentMediaTarget.generation,
+            )
+            currentMediaTarget = hostTarget
+            commandClient.setTarget(hostTarget)
+        }
 
-        if (!isActivelyPlaying) {
-            // Al iniciar sin reproducción activa, no dejamos notificación "En espera" ni WakeLocks
-            // para que Android pueda liberar el proceso cuando no se usa.
+        if (!isMediaPlaying) {
             demoteToBackground()
         }
 
@@ -271,9 +306,13 @@ class RockolaForegroundService : Service() {
     }
 
     private fun applyPositionUpdate(durationMs: Long, positionMs: Long, paused: Boolean) {
-        isActivelyPlaying = isRunning && !paused
+        val active = (isRunning || currentMediaTarget.mode == MediaTargetMode.REMOTE) &&
+            !paused && notificationManager.hasActiveTrack
+        isMediaPlaying = active
+        isActivelyPlaying = currentMediaTarget.mode == MediaTargetMode.HOST && active
         notificationManager.updatePosition(durationMs, positionMs, paused)
-        if (isActivelyPlaying) {
+        onPipStateNeedsRefresh?.invoke()
+        if (active) {
             cancelScheduledDemote()
             acquireLocks()
         } else {
@@ -292,7 +331,10 @@ class RockolaForegroundService : Service() {
         isFavorite: Boolean,
         isPauseAfter: Boolean,
     ) {
-        isActivelyPlaying = isRunning && !paused && !trackPath.isNullOrBlank()
+        val canNotify = isRunning || currentMediaTarget.mode == MediaTargetMode.REMOTE
+        val active = canNotify && !paused && !trackPath.isNullOrBlank()
+        isMediaPlaying = active
+        isActivelyPlaying = currentMediaTarget.mode == MediaTargetMode.HOST && active
         notificationManager.updateMedia(
             title = title,
             artist = artist,
@@ -304,7 +346,8 @@ class RockolaForegroundService : Service() {
             isFavorite = isFavorite,
             isPauseAfter = isPauseAfter,
         )
-        if (isActivelyPlaying) {
+        onPipStateNeedsRefresh?.invoke()
+        if (active) {
             cancelScheduledDemote()
             acquireLocks()
             startForegroundWithNotification(artist)
@@ -326,10 +369,12 @@ class RockolaForegroundService : Service() {
                 }
             } catch (e: Exception) {
                 Log.e("RockolaService", "Error fatal en servidor Python embebido", e)
-                notificationManager.notify("Error en servidor: ${e.message ?: "fallo desconocido"}")
             } finally {
                 isRunning = false
-                isActivelyPlaying = false
+                if (currentMediaTarget.mode == MediaTargetMode.HOST) {
+                    isActivelyPlaying = false
+                    isMediaPlaying = false
+                }
                 releaseLocks()
             }
         }, "RockolaUvicornThread").apply {
@@ -386,7 +431,7 @@ class RockolaForegroundService : Service() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        if (!isActivelyPlaying) {
+        if (!isMediaPlaying) {
             stopServerAndService()
         }
         super.onTaskRemoved(rootIntent)
@@ -396,16 +441,15 @@ class RockolaForegroundService : Service() {
         pythonHost.stop()
         isRunning = false
         isActivelyPlaying = false
+        isMediaPlaying = false
         demoteToBackground()
         stopSelf()
     }
 
     override fun onDestroy() {
         pythonHost.stop()
-        try {
-            unregisterReceiver(noisyReceiver)
-        } catch (_: Exception) {
-        }
+        onPipStateNeedsRefresh = null
+        onNativeCommandError = null
         notificationManager.release()
         if (::audioPlayer.isInitialized) {
             audioPlayer.release()
@@ -413,6 +457,7 @@ class RockolaForegroundService : Service() {
         commandClient.shutdown()
         isRunning = false
         isActivelyPlaying = false
+        isMediaPlaying = false
         releaseLocks()
         super.onDestroy()
     }

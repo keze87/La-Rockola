@@ -52,6 +52,10 @@ class _KotlinCallbackBridge:
 	def on_eof(self) -> None:
 		self._ctrl._emit("song_ended")
 
+	def on_playback_error(self, message: str = "") -> None:
+		logger.error(f"Error persistente de reproducción en ExoPlayer: {message}")
+		self._ctrl._emit("pause_update", True)
+
 
 class AndroidPlayerController:
 	"""Implementa la interfaz de AsyncMpvController delegando en AndroidAudioPlayer (ExoPlayer)."""

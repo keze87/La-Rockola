@@ -13,5 +13,6 @@ declare global {
 		__rockolaOpenQueue?: () => void;
 		__rockolaSetPipMode?: (active: boolean) => void;
 		__rockolaOnMediaVolumeChanged?: (level: number, muted: boolean) => void;
+		__rockolaOnNativeCommandError?: (cmd: string, code: string, message: string) => void;
 	}
 }

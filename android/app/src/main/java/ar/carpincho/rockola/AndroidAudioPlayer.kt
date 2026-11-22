@@ -19,7 +19,7 @@ import kotlin.math.roundToInt
 /**
  * Motor de reproducción nativo basado en AndroidX Media3 ExoPlayer.
  * Vive dentro de RockolaForegroundService para sobrevivir pantalla apagada,
- * cambio de app y cierre de la Activity, con manejo nativo de AudioFocus.
+ * cambio de app y cierre de la Activity, con manejo nativo de AudioFocus y becoming-noisy.
  */
 class AndroidAudioPlayer(
     private val context: Context,
@@ -44,6 +44,7 @@ class AndroidAudioPlayer(
     companion object {
         private const val TAG = "RockolaExoPlayer"
         private const val POSITION_TICK_MS = 500L
+        private const val MAX_CONSECUTIVE_ERRORS = 3
 
         @Volatile
         private var activeInstance: AndroidAudioPlayer? = null
@@ -56,6 +57,8 @@ class AndroidAudioPlayer(
     private var player: ExoPlayer? = null
     private var lastVolume: Float = 1.0f
     private var isMuted: Boolean = false
+    private var consecutiveErrors: Int = 0
+    private var lastReportedPaused: Boolean? = null
 
     @Volatile
     private var pyCallbackHandler: PyObject? = null
@@ -71,6 +74,12 @@ class AndroidAudioPlayer(
                 mainHandler.postDelayed(this, POSITION_TICK_MS)
             }
         }
+    }
+
+    private fun emitPauseIfChanged(paused: Boolean) {
+        if (lastReportedPaused == paused) return
+        lastReportedPaused = paused
+        dispatchToPython("on_pause_changed", paused)
     }
 
     fun initialize() {
@@ -89,12 +98,11 @@ class AndroidAudioPlayer(
                 .apply {
                     addListener(object : Player.Listener {
                         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
-                            dispatchToPython("on_pause_changed", !playWhenReady)
+                            emitPauseIfChanged(!playWhenReady)
                         }
 
                         override fun onIsPlayingChanged(isPlaying: Boolean) {
                             onPlaybackActiveChanged(isPlaying)
-                            dispatchToPython("on_pause_changed", !isPlaying)
                             mainHandler.removeCallbacks(positionTicker)
                             if (isPlaying) {
                                 mainHandler.post(positionTicker)
@@ -104,11 +112,13 @@ class AndroidAudioPlayer(
                         override fun onPlaybackStateChanged(playbackState: Int) {
                             val p = player ?: return
                             if (playbackState == Player.STATE_READY) {
+                                consecutiveErrors = 0
                                 val durMs = p.duration
                                 if (durMs > 0L && durMs != C.TIME_UNSET) {
                                     dispatchToPython("on_duration", durMs / 1000.0)
                                 }
                             } else if (playbackState == Player.STATE_ENDED) {
+                                consecutiveErrors = 0
                                 mainHandler.removeCallbacks(positionTicker)
                                 dispatchToPython("on_eof")
                             }
@@ -117,11 +127,25 @@ class AndroidAudioPlayer(
                         override fun onPlayerError(error: PlaybackException) {
                             Log.e(TAG, "Error de reproducción en ExoPlayer: ${error.message}", error)
                             mainHandler.removeCallbacks(positionTicker)
-                            dispatchToPython("on_eof")
+                            consecutiveErrors += 1
+                            if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+                                p_stopInternal()
+                                emitPauseIfChanged(true)
+                                dispatchToPython("on_playback_error", error.message ?: "Error en ExoPlayer")
+                            } else {
+                                dispatchToPython("on_eof")
+                            }
                         }
                     })
                 }
         }
+    }
+
+    private fun p_stopInternal() {
+        val p = player ?: return
+        p.stop()
+        p.clearMediaItems()
+        onPlaybackActiveChanged(false)
     }
 
     fun setPythonCallbackHandler(handler: PyObject?) {
@@ -132,11 +156,16 @@ class AndroidAudioPlayer(
         mainHandler.post {
             val p = player ?: return@post
             try {
-                val uri = if (pathOrUrl.startsWith("http://") || pathOrUrl.startsWith("https://")) {
+                val uri = if (
+                    pathOrUrl.startsWith("http://") ||
+                    pathOrUrl.startsWith("https://") ||
+                    pathOrUrl.startsWith("content://")
+                ) {
                     Uri.parse(pathOrUrl)
                 } else {
                     Uri.fromFile(File(pathOrUrl))
                 }
+                lastReportedPaused = null
                 p.setMediaItem(MediaItem.fromUri(uri))
                 p.prepare()
                 p.playWhenReady = true
@@ -151,6 +180,7 @@ class AndroidAudioPlayer(
         mainHandler.post {
             val p = player ?: return@post
             p.playWhenReady = !paused
+            emitPauseIfChanged(paused)
         }
     }
 
@@ -238,11 +268,10 @@ class AndroidAudioPlayer(
 
     fun stopPlayback() {
         mainHandler.post {
-            val p = player ?: return@post
             mainHandler.removeCallbacks(positionTicker)
-            p.stop()
-            p.clearMediaItems()
-            onPlaybackActiveChanged(false)
+            consecutiveErrors = 0
+            lastReportedPaused = null
+            p_stopInternal()
         }
     }
 

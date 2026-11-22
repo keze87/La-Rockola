@@ -24,8 +24,7 @@ import com.getcapacitor.BridgeActivity
 /**
  * Actividad principal de Capacitor. Registra el plugin RockolaServer,
  * configura barras edge-to-edge transparentes con íconos claros,
- * arranca automáticamente el servidor embebido, delega navegación atrás y shortcuts a Vue
- * y mantiene activos los timers del WebView solo mientras suena música.
+ * gestiona PiP con confirmación real del sistema operativo y delega navegación atrás y shortcuts a Vue.
  */
 class MainActivity : BridgeActivity() {
 
@@ -34,6 +33,7 @@ class MainActivity : BridgeActivity() {
         private const val REQ_PIP_PREV = 201
         private const val REQ_PIP_PLAY_PAUSE = 202
         private const val REQ_PIP_NEXT = 203
+        private const val STATE_FOGON_ACTIVE = "rockola_fogon_active"
         const val ACTION_OPEN_FOGON = "ar.carpincho.rockola.ACTION_OPEN_FOGON"
         const val ACTION_OPEN_QUEUE = "ar.carpincho.rockola.ACTION_OPEN_QUEUE"
 
@@ -61,7 +61,9 @@ class MainActivity : BridgeActivity() {
     fun refreshPipParams() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         if (!packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) return
+        if (isFinishing || isDestroyed) return
         runOnUiThread {
+            if (isFinishing || isDestroyed) return@runOnUiThread
             try {
                 setPictureInPictureParams(buildPipParams(autoEnter = isFogonActive))
             } catch (_: Exception) {
@@ -70,18 +72,36 @@ class MainActivity : BridgeActivity() {
         }
     }
 
-    fun enterPipIfSupported(): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
-        if (!packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) return false
-        val params = buildPipParams(autoEnter = isFogonActive)
+    fun enterPipIfSupported(onResult: (entered: Boolean, reason: String?) -> Unit) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            onResult(false, "ANDROID_VERSION_UNSUPPORTED")
+            return
+        }
+        if (!packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) {
+            onResult(false, "PIP_FEATURE_UNAVAILABLE")
+            return
+        }
+        if (isFinishing || isDestroyed) {
+            onResult(false, "ACTIVITY_FINISHING")
+            return
+        }
         runOnUiThread {
+            if (isFinishing || isDestroyed) {
+                onResult(false, "ACTIVITY_FINISHING")
+                return@runOnUiThread
+            }
+            if (isInPictureInPictureMode) {
+                onResult(true, null)
+                return@runOnUiThread
+            }
             try {
-                enterPictureInPictureMode(params)
-            } catch (_: Exception) {
-                // Ignoramos si la actividad no está en primer plano para entrar a PiP
+                val params = buildPipParams(autoEnter = isFogonActive)
+                val entered = enterPictureInPictureMode(params)
+                onResult(entered, if (entered) null else "PIP_DENIED")
+            } catch (e: Exception) {
+                onResult(false, e.message ?: "PIP_FAILED")
             }
         }
-        return true
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
@@ -98,7 +118,7 @@ class MainActivity : BridgeActivity() {
 
     @RequiresApi(Build.VERSION_CODES.O)
     private fun buildPipActions(): List<RemoteAction> {
-        val isPlaying = RockolaForegroundService.isActivelyPlaying
+        val isPlaying = RockolaForegroundService.isMediaPlaying
         val playPauseIconRes = if (isPlaying) {
             android.R.drawable.ic_media_pause
         } else {
@@ -150,6 +170,7 @@ class MainActivity : BridgeActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         registerPlugin(RockolaServerPlugin::class.java)
+        isFogonActive = savedInstanceState?.getBoolean(STATE_FOGON_ACTIVE, false) ?: false
         super.onCreate(savedInstanceState)
 
         applyHeadbarSystemBars()
@@ -163,6 +184,11 @@ class MainActivity : BridgeActivity() {
         handleShortcutIntent(intent)
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean(STATE_FOGON_ACTIVE, isFogonActive)
+        super.onSaveInstanceState(outState)
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -173,12 +199,19 @@ class MainActivity : BridgeActivity() {
         super.onResume()
         applyHeadbarSystemBars()
         bridge?.webView?.settings?.mediaPlaybackRequiresUserGesture = false
+        val inPip = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode
+        bridge?.webView?.post {
+            bridge?.webView?.evaluateJavascript(
+                "window.__rockolaSetPipMode && window.__rockolaSetPipMode($inPip)",
+                null,
+            )
+        }
     }
 
     override fun onPause() {
         super.onPause()
         val inPip = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode
-        if (RockolaForegroundService.isActivelyPlaying || inPip) {
+        if (RockolaForegroundService.isMediaPlaying || inPip) {
             bridge?.webView?.resumeTimers()
         }
     }
@@ -189,7 +222,7 @@ class MainActivity : BridgeActivity() {
             isFogonActive &&
             !isInPictureInPictureMode
         ) {
-            enterPipIfSupported()
+            enterPipIfSupported { _, _ -> }
         }
     }
 

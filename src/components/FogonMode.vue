@@ -5,12 +5,13 @@
 	import { usePlaybackControls } from '../composables/usePlaybackControls';
 	import { usePlayer } from '../composables/usePlayer';
 	import {
-		enterAndroidPipMode,
+		enterAndroidPipModeDetailed,
 		isAndroidPipMode,
 		isNativeAndroidHost,
 		setAndroidFogonState,
 		setAndroidKeepScreenOn,
 	} from '../composables/useAndroidHost';
+	import { useToasts } from '../composables/player/useToasts';
 	import { useSliderFactory } from '../composables/useSliderFactory';
 	import { useContextMenuBindings } from '../composables/useContextMenu';
 	import { useMarquee } from '../composables/useMarquee';
@@ -556,10 +557,14 @@
 	}
 
 	const canEnterAndroidPip = computed(() => isNativeAndroidHost() && !isAndroidPipMode.value);
+	const { showToast } = useToasts();
 
-	function openAndroidPip() {
+	async function openAndroidPip() {
 		haptic();
-		void enterAndroidPipMode();
+		const res = await enterAndroidPipModeDetailed();
+		if (!res.entered) {
+			showToast('Este teléfono no permitió abrir la ventana flotante (PiP).', 'warning');
+		}
 	}
 
 	watch(

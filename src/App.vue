@@ -18,6 +18,7 @@
 	import { useLyrics, type LyricSyllable } from './composables/useLyrics';
 	import { usePlaybackControls } from './composables/usePlaybackControls';
 	import { usePlayer } from './composables/usePlayer';
+	import { useToasts } from './composables/player/useToasts';
 	import { useSliderFactory } from './composables/useSliderFactory';
 	import { useContextMenu } from './composables/useContextMenu';
 	import { isLyricsEditorOpen } from './stores/useUiStore';
@@ -33,6 +34,7 @@
 	import TopTab from './components/TopTab.vue';
 
 	const { seekAbsolute } = usePlaybackControls();
+	const { showToast } = useToasts();
 
 	const {
 		_sendLocalPlayerUpdate,
@@ -342,6 +344,10 @@
 		}
 	}
 
+	function handleNativeCommandError(_cmd: string, _code: string, message: string): void {
+		showToast(message || 'No se pudo ejecutar el control multimedia en el servidor.', 'error');
+	}
+
 	onMounted(() => {
 		initRouter();
 		window.__rockolaHandleBack = handleAndroidBack;
@@ -349,6 +355,7 @@
 		window.__rockolaOpenQueue = openQueueFromAndroid;
 		window.__rockolaSetPipMode = handleAndroidPipMode;
 		window.__rockolaOnMediaVolumeChanged = handleAndroidMediaVolumeChanged;
+		window.__rockolaOnNativeCommandError = handleNativeCommandError;
 		if (isNativeAndroidHost()) {
 			void consumeAndroidPendingShortcut().then(applyShortcutAction);
 			initAndroidServer().finally(() => {
@@ -391,6 +398,9 @@
 		}
 		if (window.__rockolaOnMediaVolumeChanged === handleAndroidMediaVolumeChanged) {
 			delete window.__rockolaOnMediaVolumeChanged;
+		}
+		if (window.__rockolaOnNativeCommandError === handleNativeCommandError) {
+			delete window.__rockolaOnNativeCommandError;
 		}
 	});
 </script>

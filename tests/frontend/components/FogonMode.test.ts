@@ -941,10 +941,12 @@ Dialogue: 0,0:00:01.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Letra {\\kf100}animad
 		}
 	});
 
-	it('renders native PiP button on Android, invokes enterAndroidPipMode, and applies is-android-pip class when isAndroidPipMode is true', async () => {
+	it('renders native PiP button on Android, invokes enterAndroidPipModeDetailed, and applies is-android-pip class when isAndroidPipMode is true', async () => {
 		const androidHost = await import('@/composables/useAndroidHost');
 		const isNativeSpy = vi.spyOn(androidHost, 'isNativeAndroidHost').mockReturnValue(true);
-		const enterPipSpy = vi.spyOn(androidHost as any, 'enterAndroidPipMode').mockResolvedValue(true);
+		const enterPipSpy = vi
+			.spyOn(androidHost as any, 'enterAndroidPipModeDetailed')
+			.mockResolvedValue({ entered: true, reason: null });
 
 		try {
 			isFogonMode.value = true;
@@ -961,6 +963,17 @@ Dialogue: 0,0:00:01.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Letra {\\kf100}animad
 			const container = wrapper.find('.fogon-container');
 			expect(container.classes()).toContain('is-android-pip');
 			expect(wrapper.find('button[aria-label="Abrir en ventana flotante"]').exists()).toBe(false);
+
+			// Si PiP falla al pedirlo, NO debe marcar isAndroidPipMode ni ocultar controles
+			(androidHost as any).isAndroidPipMode.value = false;
+			await wrapper.vm.$nextTick();
+			const detailSpy = vi
+				.spyOn(androidHost as any, 'enterAndroidPipModeDetailed')
+				.mockResolvedValue({ entered: false, reason: 'PIP_UNSUPPORTED' });
+			const pipBtnAgain = wrapper.find('button[aria-label="Abrir en ventana flotante"]');
+			await pipBtnAgain.trigger('click');
+			expect((androidHost as any).isAndroidPipMode.value).toBe(false);
+			detailSpy.mockRestore();
 		} finally {
 			if ((androidHost as any).isAndroidPipMode) {
 				(androidHost as any).isAndroidPipMode.value = false;

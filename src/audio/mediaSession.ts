@@ -7,7 +7,7 @@ import {
 	syncAndroidMediaNotification,
 	syncAndroidMediaPosition,
 } from '../composables/useAndroidHost';
-import { isRemoteMode } from '../stores/useServerConnectionStore';
+import { isRemoteMode, activeServerOrigin } from '../stores/useServerConnectionStore';
 import type { Track } from '../types';
 
 export interface MediaSessionActionCallbacks {
@@ -35,7 +35,9 @@ export function syncMediaSessionMetadata(
 	const info = trackPath ? getTrackInfo(trackPath) : null;
 	const resolvedCover =
 		trackPath && !trackPath.startsWith('http')
-			? apiUrl(`/cover?path=${encodeURIComponent(trackPath)}&size=512`)
+			? isNativeAndroidHost()
+				? `${activeServerOrigin.value}/cover?path=${encodeURIComponent(trackPath)}&size=512`
+				: apiUrl(`/cover?path=${encodeURIComponent(trackPath)}&size=512`)
 			: null;
 	const artworkSrc = resolvedCover
 		? resolvedCover.startsWith('http')

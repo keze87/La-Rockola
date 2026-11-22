@@ -148,8 +148,32 @@ describe('mediaSession.ts', () => {
 				seekAbsolute: vi.fn(),
 			});
 			expect(mockMediaSession.setActionHandler).not.toHaveBeenCalled();
+
+			// Al conectar a un servidor remoto con otra URL, la carátula debe apuntar al origen remoto
+			const call = syncNotifSpy.mock.calls.at(-1)?.[0];
+			expect(call?.coverUrl).toContain('http://192.168.1.50:1729/cover');
 		} finally {
 			androidHost.activeRemoteServerUrl.value = prevRemote;
 		}
+	});
+
+	it('updates native Android media target when switching between host and remote servers', async () => {
+		const { setApiOrigin, clearApiOrigin } = await import('@/composables/useApi');
+		const { resetServerConnectionStore, setHostMode, setRemoteMode } =
+			await import('@/stores/useServerConnectionStore');
+		vi.spyOn(androidHost, 'isNativeAndroidHost').mockReturnValue(true);
+		const syncTargetSpy = vi.spyOn(androidHost, 'syncAndroidMediaTarget').mockResolvedValue();
+
+		resetServerConnectionStore();
+		setRemoteMode('http://192.168.0.55:1729');
+		setApiOrigin('http://192.168.0.55:1729');
+		await androidHost.syncAndroidMediaTarget();
+		expect(syncTargetSpy).toHaveBeenCalled();
+
+		setHostMode();
+		setApiOrigin('http://127.0.0.1:1729');
+		await androidHost.syncAndroidMediaTarget();
+		expect(syncTargetSpy).toHaveBeenCalledTimes(2);
+		clearApiOrigin();
 	});
 });

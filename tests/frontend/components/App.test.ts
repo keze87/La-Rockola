@@ -587,7 +587,10 @@ Dialogue: 0,0:00:20.00,0:00:24.00,Default,,0,0,0,,{\\kf100}Verso {\\kf100}tres
 			(window as any).__rockolaOnMediaVolumeChanged(35);
 			expect(volume.value).toBe(35);
 
+			expect(typeof (window as any).__rockolaOnNativeCommandError).toBe('function');
+
 			wrapper.unmount();
+			expect((window as any).__rockolaOnNativeCommandError).toBeUndefined();
 		} finally {
 			listenLocally.value = prevListenLocally;
 			androidHost.activeRemoteServerUrl.value = prevRemoteUrl;

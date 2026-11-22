@@ -583,10 +583,29 @@ describe('useAndroidHost.ts', () => {
 		expect(store.serverMode.value).toBe('remote');
 		expect(store.activeRemoteServerUrl.value).toBe('http://192.168.0.88:1729');
 
+		await mod.syncAndroidMediaTarget();
+		expect(pluginMock.setMediaTarget).toHaveBeenCalledWith(
+			expect.objectContaining({
+				mode: 'remote',
+				origin: 'http://192.168.0.88:1729',
+			})
+		);
+
 		playback.currentTrackPath.value = '/remote/track.mp3';
 		mod.disconnectFromRemoteServer({ onServerChanged: onModeSwitch });
 		expect(store.serverMode.value).toBe('host');
 		expect(playback.currentTrackPath.value).toBeNull();
 		expect(onModeSwitch).toHaveBeenCalledTimes(2);
+	});
+
+	it('enterAndroidPipMode returns structured failure reason when Android denies PiP', async () => {
+		const mod = await import('@/composables/useAndroidHost');
+		state.isNative = true;
+		state.platform = 'android';
+
+		pluginMock.enterPipMode.mockResolvedValue({ entered: false, reason: 'PIP_DENIED' });
+		const res = await mod.enterAndroidPipModeDetailed();
+		expect(res).toEqual({ entered: false, reason: 'PIP_DENIED' });
+		expect(mod.isAndroidPipMode.value).toBe(false);
 	});
 });

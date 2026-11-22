@@ -19,7 +19,6 @@ import android.view.HapticFeedbackConstants
 import android.view.WindowManager
 import androidx.activity.result.ActivityResult
 import androidx.core.content.ContextCompat
-import kotlin.math.roundToInt
 import com.getcapacitor.JSObject
 import com.getcapacitor.PermissionState
 import com.getcapacitor.Plugin
@@ -30,10 +29,11 @@ import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 import org.json.JSONObject
+import kotlin.math.roundToInt
 
 /**
- * Plugin nativo de Capacitor para controlar el servidor embebido y
- * seleccionar carpetas de la tarjeta MicroSD en Android 11+.
+ * Plugin nativo de Capacitor para controlar el servidor embebido, enrutar eventos
+ * multimedia hacia host/remoto y gestionar permisos y ventana PiP.
  */
 @CapacitorPlugin(
     name = "RockolaServer",
@@ -77,9 +77,29 @@ class RockolaServerPlugin : Plugin() {
             IntentFilter(ACTION_VOLUME_CHANGED),
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
+
+        RockolaForegroundService.onPipStateNeedsRefresh = {
+            (activity as? MainActivity)?.let { act ->
+                if (act.isFogonActive) act.refreshPipParams()
+            }
+        }
+
+        RockolaForegroundService.onNativeCommandError = { cmd, code, message ->
+            val cmdJson = JSONObject.quote(cmd)
+            val codeJson = JSONObject.quote(code)
+            val msgJson = JSONObject.quote(message)
+            bridge?.webView?.post {
+                bridge?.webView?.evaluateJavascript(
+                    "window.__rockolaOnNativeCommandError && window.__rockolaOnNativeCommandError($cmdJson, $codeJson, $msgJson)",
+                    null,
+                )
+            }
+        }
     }
 
     override fun handleOnDestroy() {
+        RockolaForegroundService.onPipStateNeedsRefresh = null
+        RockolaForegroundService.onNativeCommandError = null
         volumeReceiver?.let {
             try {
                 context.unregisterReceiver(it)
@@ -169,8 +189,38 @@ class RockolaServerPlugin : Plugin() {
     }
 
     @PluginMethod
+    fun setMediaTarget(call: PluginCall) {
+        val modeStr = call.getString("mode") ?: "host"
+        val origin = call.getString("origin")?.trim()?.trimEnd('/')
+            ?: "http://127.0.0.1:${RockolaForegroundService.currentPort}"
+        val authHeader = call.getString("authHeader")
+        val generation = call.getInt("generation")?.toLong() ?: 0L
+
+        val mode = if (modeStr == "remote") MediaTargetMode.REMOTE else MediaTargetMode.HOST
+        RockolaForegroundService.currentMediaTarget = MediaTarget(
+            mode = mode,
+            origin = origin,
+            authHeader = authHeader,
+            generation = generation,
+        )
+
+        val intent = Intent(context, RockolaForegroundService::class.java).apply {
+            action = RockolaForegroundService.ACTION_SET_MEDIA_TARGET
+            putExtra(RockolaForegroundService.EXTRA_TARGET_MODE, modeStr)
+            putExtra(RockolaForegroundService.EXTRA_TARGET_ORIGIN, origin)
+            putExtra(RockolaForegroundService.EXTRA_TARGET_GENERATION, generation)
+            if (!authHeader.isNullOrBlank()) {
+                putExtra(RockolaForegroundService.EXTRA_TARGET_AUTH, authHeader)
+            }
+        }
+        context.startService(intent)
+        call.resolve(JSObject().apply { put("updated", true) })
+    }
+
+    @PluginMethod
     fun updateMediaNotification(call: PluginCall) {
-        if (!RockolaForegroundService.isRunning) {
+        val isRemote = RockolaForegroundService.currentMediaTarget.mode == MediaTargetMode.REMOTE
+        if (!RockolaForegroundService.isRunning && !isRemote) {
             call.resolve(JSObject().apply { put("updated", false) })
             return
         }
@@ -200,7 +250,7 @@ class RockolaServerPlugin : Plugin() {
                 putExtra(RockolaForegroundService.EXTRA_TRACK_PATH, trackPath)
             }
         }
-        if (!paused) {
+        if (!paused && !trackPath.isNullOrBlank()) {
             ContextCompat.startForegroundService(context, intent)
         } else {
             context.startService(intent)
@@ -214,7 +264,8 @@ class RockolaServerPlugin : Plugin() {
 
     @PluginMethod
     fun updateMediaPosition(call: PluginCall) {
-        if (!RockolaForegroundService.isRunning) {
+        val isRemote = RockolaForegroundService.currentMediaTarget.mode == MediaTargetMode.REMOTE
+        if (!RockolaForegroundService.isRunning && !isRemote) {
             call.resolve(JSObject().apply { put("updated", false) })
             return
         }
@@ -228,11 +279,7 @@ class RockolaServerPlugin : Plugin() {
             putExtra(RockolaForegroundService.EXTRA_POSITION_MS, (positionSec * 1000.0).toLong().coerceAtLeast(0L))
             putExtra(RockolaForegroundService.EXTRA_PAUSED, paused)
         }
-        if (!paused) {
-            ContextCompat.startForegroundService(context, intent)
-        } else {
-            context.startService(intent)
-        }
+        context.startService(intent)
         val mainActivity = activity as? MainActivity
         if (mainActivity?.isFogonActive == true) {
             mainActivity.refreshPipParams()
@@ -371,8 +418,20 @@ class RockolaServerPlugin : Plugin() {
 
     @PluginMethod
     fun enterPipMode(call: PluginCall) {
-        val entered = (activity as? MainActivity)?.enterPipIfSupported() ?: false
-        call.resolve(JSObject().apply { put("entered", entered) })
+        val mainActivity = activity as? MainActivity
+        if (mainActivity == null) {
+            call.resolve(JSObject().apply {
+                put("entered", false)
+                put("reason", "NO_ACTIVITY")
+            })
+            return
+        }
+        mainActivity.enterPipIfSupported { entered, reason ->
+            call.resolve(JSObject().apply {
+                put("entered", entered)
+                put("reason", reason ?: JSONObject.NULL)
+            })
+        }
     }
 
     @PluginMethod

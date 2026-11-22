@@ -175,14 +175,22 @@ export async function setAndroidFogonState(active: boolean): Promise<void> {
 	}
 }
 
-export async function enterAndroidPipMode(): Promise<boolean> {
-	if (!isNativeAndroidHost()) return false;
+export async function enterAndroidPipModeDetailed(): Promise<{ entered: boolean; reason: string | null }> {
+	if (!isNativeAndroidHost()) return { entered: false, reason: 'NOT_ANDROID' };
 	try {
 		const res = await RockolaServer.enterPipMode();
-		return Boolean(res?.entered);
-	} catch {
-		return false;
+		return { entered: Boolean(res?.entered), reason: res?.reason ?? null };
+	} catch (err) {
+		return {
+			entered: false,
+			reason: err instanceof Error ? err.message : 'PIP_FAILED',
+		};
 	}
+}
+
+export async function enterAndroidPipMode(): Promise<boolean> {
+	const res = await enterAndroidPipModeDetailed();
+	return res.entered;
 }
 
 export async function getAndroidMediaVolume(): Promise<{ level: number; muted: boolean } | null> {

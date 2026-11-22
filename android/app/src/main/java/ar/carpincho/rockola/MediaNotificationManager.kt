@@ -21,14 +21,16 @@ import androidx.media.app.NotificationCompat.MediaStyle
 
 /**
  * Administra la MediaSession, los metadatos, el progreso en vivo (seekbar),
- * las acciones personalizadas (favorito y pausa al terminar) y la notificación MediaStyle.
+ * las acciones personalizadas (favorito y pausa al terminar) y la notificación MediaStyle,
+ * sincronizada estrictamente con la generación del servidor activo (host local o remoto).
  */
 class MediaNotificationManager(
     private val service: Service,
     private val channelId: String,
     private val notificationId: Int,
-    private val onCommand: (cmd: String, extra: Map<String, Any>) -> Unit,
-    private val onRequestArtwork: (coverUrl: String) -> Unit,
+    private val onCommand: (cmd: String, extra: Map<String, Any>, generation: Long, onResult: (CommandResult) -> Unit) -> Unit,
+    private val onRequestArtwork: (coverUrl: String, generation: Long) -> Unit,
+    private val onCommandFailed: (cmd: String, result: CommandResult) -> Unit,
 ) {
     private var mediaSession: MediaSessionCompat? = null
 
@@ -44,6 +46,9 @@ class MediaNotificationManager(
     @Volatile
     private var currentCoverUrl: String? = null
 
+    @Volatile
+    private var isNotificationVisible: Boolean = false
+
     private var currentArtwork: Bitmap? = null
     private var currentTrackPath: String? = null
     private var currentDurationMs: Long = 0L
@@ -51,6 +56,7 @@ class MediaNotificationManager(
     private var currentIsFavorite: Boolean = false
     private var currentIsPauseAfter: Boolean = false
     private var currentServerUrl: String = "http://127.0.0.1:1729"
+    private var currentTarget: MediaTarget = MediaTarget(MediaTargetMode.HOST, "http://127.0.0.1:1729")
 
     private val defaultArtwork: Bitmap? by lazy {
         BitmapFactory.decodeResource(service.resources, R.mipmap.ic_launcher)
@@ -67,26 +73,31 @@ class MediaNotificationManager(
     val isPaused: Boolean
         get() = currentPaused
 
+    val hasActiveTrack: Boolean
+        get() = !currentTrackPath.isNullOrBlank()
+
     fun initialize() {
         createNotificationChannel()
         mediaSession = MediaSessionCompat(service, "RockolaMediaSession").apply {
             setCallback(object : MediaSessionCompat.Callback() {
                 override fun onPlay() {
-                    if (currentPaused) {
-                        onCommand("pause", emptyMap())
-                    }
+                    dispatchAction("pause", mapOf("state" to false))
                 }
 
                 override fun onPause() {
-                    if (!currentPaused) onCommand("pause", emptyMap())
+                    dispatchAction("pause", mapOf("state" to true))
+                }
+
+                override fun onStop() {
+                    dispatchAction("stop", emptyMap())
                 }
 
                 override fun onSkipToNext() {
-                    onCommand("skip", emptyMap())
+                    dispatchAction("skip", emptyMap())
                 }
 
                 override fun onSkipToPrevious() {
-                    onCommand("prev", emptyMap())
+                    dispatchAction("prev", emptyMap())
                 }
 
                 override fun onSeekTo(pos: Long) {
@@ -100,9 +111,34 @@ class MediaNotificationManager(
                     }
                 }
             })
-            isActive = true
+            isActive = false
         }
         syncMediaSessionState()
+    }
+
+    @Synchronized
+    fun setTarget(target: MediaTarget) {
+        val changed = target.mode != currentTarget.mode ||
+            target.normalizedOrigin() != currentTarget.normalizedOrigin() ||
+            target.generation != currentTarget.generation
+        currentTarget = target.copy(origin = target.normalizedOrigin())
+        if (!changed) return
+
+        // Al cambiar de servidor limpiamos por completo metadatos y carátula anteriores
+        currentTitle = "La Rockola del Carpincho"
+        currentArtist = "En espera"
+        currentPaused = true
+        currentCoverUrl = null
+        currentArtwork = null
+        currentTrackPath = null
+        currentDurationMs = 0L
+        currentPositionMs = 0L
+        currentIsFavorite = false
+        currentIsPauseAfter = false
+        isNotificationVisible = false
+        mediaSession?.isActive = false
+        syncMediaSessionState()
+        cancelNotification()
     }
 
     @Synchronized
@@ -112,6 +148,7 @@ class MediaNotificationManager(
 
     @Synchronized
     fun cancelNotification() {
+        isNotificationVisible = false
         val manager = service.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.cancel(notificationId)
     }
@@ -134,6 +171,7 @@ class MediaNotificationManager(
         isPauseAfter: Boolean,
     ) {
         val coverChanged = coverUrl != currentCoverUrl
+        val targetGen = currentTarget.generation
         currentTitle = title
         currentArtist = artist
         currentPaused = paused
@@ -147,13 +185,14 @@ class MediaNotificationManager(
         if (coverChanged) {
             currentArtwork = null
             if (coverUrl != null) {
-                onRequestArtwork(coverUrl)
+                onRequestArtwork(coverUrl, targetGen)
             }
         }
-        val isActivePlayback = !paused && !trackPath.isNullOrBlank()
-        mediaSession?.isActive = isActivePlayback || !trackPath.isNullOrBlank()
+        val hasTrack = !trackPath.isNullOrBlank()
+        isNotificationVisible = hasTrack
+        mediaSession?.isActive = hasTrack
         syncMediaSessionState()
-        if (isActivePlayback) {
+        if (hasTrack) {
             notify(currentArtist)
         } else {
             cancelNotification()
@@ -169,37 +208,88 @@ class MediaNotificationManager(
     }
 
     @Synchronized
-    fun applyArtworkIfCurrent(coverUrl: String, bitmap: Bitmap) {
-        if (coverUrl != currentCoverUrl) return
+    fun applyArtworkIfCurrent(coverUrl: String, generation: Long, bitmap: Bitmap) {
+        if (coverUrl != currentCoverUrl || generation != currentTarget.generation || !isNotificationVisible) {
+            return
+        }
         currentArtwork = bitmap
         syncMediaSessionState()
         notify(currentArtist)
     }
 
     @Synchronized
+    fun dispatchAction(cmd: String, extra: Map<String, Any> = emptyMap()) {
+        val gen = currentTarget.generation
+        onCommand(cmd, extra, gen) { result ->
+            if (!result.isSuccess()) {
+                onCommandFailed(cmd, result)
+            }
+        }
+    }
+
+    @Synchronized
     fun toggleFavorite() {
         val path = currentTrackPath ?: return
-        currentIsFavorite = !currentIsFavorite
+        val gen = currentTarget.generation
+        val prevValue = currentIsFavorite
+        currentIsFavorite = !prevValue
         syncMediaSessionState()
-        notify(currentArtist)
-        onCommand("toggle_favorite", mapOf("path" to path))
+        if (isNotificationVisible) notify(currentArtist)
+
+        onCommand("toggle_favorite", mapOf("path" to path), gen) { result ->
+            if (!result.isSuccess()) {
+                revertFavoriteIfSame(gen, path, prevValue)
+                onCommandFailed("toggle_favorite", result)
+            }
+        }
+    }
+
+    @Synchronized
+    private fun revertFavoriteIfSame(gen: Long, path: String, prevValue: Boolean) {
+        if (currentTarget.generation == gen && currentTrackPath == path) {
+            currentIsFavorite = prevValue
+            syncMediaSessionState()
+            if (isNotificationVisible) notify(currentArtist)
+        }
     }
 
     @Synchronized
     fun togglePauseAfter() {
         val path = currentTrackPath ?: return
-        currentIsPauseAfter = !currentIsPauseAfter
+        val gen = currentTarget.generation
+        val prevValue = currentIsPauseAfter
+        currentIsPauseAfter = !prevValue
         syncMediaSessionState()
-        notify(currentArtist)
-        onCommand("pause_after", mapOf("path" to path))
+        if (isNotificationVisible) notify(currentArtist)
+
+        onCommand("pause_after", mapOf("path" to path), gen) { result ->
+            if (!result.isSuccess()) {
+                revertPauseAfterIfSame(gen, path, prevValue)
+                onCommandFailed("pause_after", result)
+            }
+        }
+    }
+
+    @Synchronized
+    private fun revertPauseAfterIfSame(gen: Long, path: String, prevValue: Boolean) {
+        if (currentTarget.generation == gen && currentTrackPath == path) {
+            currentIsPauseAfter = prevValue
+            syncMediaSessionState()
+            if (isNotificationVisible) notify(currentArtist)
+        }
     }
 
     @Synchronized
     private fun seekTo(pos: Long) {
         val clamped = pos.coerceAtLeast(0L)
+        val gen = currentTarget.generation
         currentPositionMs = clamped
         syncMediaSessionState()
-        onCommand("seek_absolute", mapOf("amount" to (clamped / 1000.0)))
+        onCommand("seek_absolute", mapOf("amount" to (clamped / 1000.0)), gen) { result ->
+            if (!result.isSuccess()) {
+                onCommandFailed("seek_absolute", result)
+            }
+        }
     }
 
     @Synchronized
@@ -236,6 +326,11 @@ class MediaNotificationManager(
         val pauseAfterLabel = if (currentIsPauseAfter) "Cancelar pausa al terminar" else "Pausar al terminar"
 
         val largeIcon = currentArtwork ?: defaultArtwork
+        val subTextLabel = if (currentTarget.mode == MediaTargetMode.REMOTE) {
+            "Remoto · ${currentTarget.normalizedOrigin()}"
+        } else {
+            currentServerUrl
+        }
 
         val mediaStyle = MediaStyle().setShowActionsInCompactView(1, 2, 3)
         mediaSession?.sessionToken?.let { mediaStyle.setMediaSession(it) }
@@ -243,7 +338,7 @@ class MediaNotificationManager(
         return NotificationCompat.Builder(service, channelId)
             .setContentTitle(currentTitle)
             .setContentText(contentText)
-            .setSubText(currentServerUrl)
+            .setSubText(subTextLabel)
             .setSmallIcon(R.drawable.ic_stat_carpincho)
             .setColor(0xFFA67C52.toInt())
             .setLargeIcon(largeIcon)
@@ -265,6 +360,7 @@ class MediaNotificationManager(
     }
 
     fun release() {
+        isNotificationVisible = false
         mediaSession?.isActive = false
         mediaSession?.release()
         mediaSession = null
@@ -273,11 +369,16 @@ class MediaNotificationManager(
     @Synchronized
     private fun syncMediaSessionState() {
         val session = mediaSession ?: return
-        val stateCode = if (currentPaused) PlaybackStateCompat.STATE_PAUSED else PlaybackStateCompat.STATE_PLAYING
-        val speed = if (currentPaused) 0.0f else 1.0f
+        val stateCode = when {
+            currentTrackPath.isNullOrBlank() -> PlaybackStateCompat.STATE_STOPPED
+            currentPaused -> PlaybackStateCompat.STATE_PAUSED
+            else -> PlaybackStateCompat.STATE_PLAYING
+        }
+        val speed = if (currentPaused || currentTrackPath.isNullOrBlank()) 0.0f else 1.0f
         val actions = PlaybackStateCompat.ACTION_PLAY or
             PlaybackStateCompat.ACTION_PAUSE or
             PlaybackStateCompat.ACTION_PLAY_PAUSE or
+            PlaybackStateCompat.ACTION_STOP or
             PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
             PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
             PlaybackStateCompat.ACTION_SEEK_TO
