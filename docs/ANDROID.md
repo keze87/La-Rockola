@@ -27,6 +27,15 @@ El servidor HTTP embebido y el servicio en primer plano **no** abusan de `FOREGR
 - **En pausa**: Soltamos inmediatamente `WakeLock`/`WifiLock` y ejecutamos `STOP_FOREGROUND_DETACH`, dejando la notificación descartable para poder reanudar sin consumir batería en primer plano.
 - **Detenido / cambio de destino**: Desmontamos el modo foreground con `STOP_FOREGROUND_REMOVE` antes de cancelar la notificación para evitar inconsistencias de ciclo de vida.
 - **Cierre desde Recientes (`onTaskRemoved`) y apagado**: Si no hay reproducción activa, el servicio detiene Uvicorn de forma ordenada (`should_exit = True` + join acotado de hasta 4 segundos en `HostLifecycleCoordinator`) y se cierra limpio sin hilos Python huérfanos. Si cerrás la app desde Recientes mientras está en reposo, Android también detendrá el servidor embebido.
+- **Limitaciones en segundo plano (Android 12+)**: Si no hay audio reproduciéndose, el SO puede frenar el proceso en segundo plano o bloquear `startService` desde el plugin (`SERVICE_START_NOT_ALLOWED`); la app captura estas excepciones sin crashear y muestra un aviso accionable para reabrir/reiniciar desde primer plano.
+
+---
+
+## 🌐 Seguridad de Red (LAN), Precarga TTS y Permisos
+
+- **Network Security Config (`network_security_config.xml`)**: Se reemplazó `usesCleartextTraffic="true"` global por una configuración explícita de `localhost` / `127.0.0.1` junto con `base-config` documentando que el modo Cliente Remoto se conecta por HTTP plano a IPs LAN privadas (`192.168.x.x`, `10.x.x.x`) que no admiten CIDR en `<domain-config>`.
+- **Permisos mínimos y backup**: Se eliminaron `READ_MEDIA_AUDIO`, `READ_EXTERNAL_STORAGE` y `FileProvider` (acceso 100% SAF), y se desactivó `allowBackup` (`false`) con gesto atrás predictivo (`enableOnBackInvokedCallback="true"`).
+- **Precarga TTS controlada**: En Android, `run_tts_preload` solo se ejecuta en **Wi-Fi / Ethernet no medida** (`ConnectivityManager` + `NET_CAPABILITY_NOT_METERED`) y respeta un tope máximo de **64 MB** en `tts_cache.db` (podando por `last_used` antes de seguir descargando).
 
 ---
 
