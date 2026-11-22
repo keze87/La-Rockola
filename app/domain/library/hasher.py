@@ -65,7 +65,7 @@ def _mp4_audio_bounds(f: BinaryIO, file_size: int) -> tuple[int, int]:
 
 
 def _hash_byte_range(f: BinaryIO, start: int, end: int, chunk_size: int) -> str:
-	"""Hashea el primer y último MB del rango de audio [start, end) y su longitud."""
+	"""Hashea primer, medio (si aplica) y último bloque del rango de audio [start, end) y su longitud."""
 	span = end - start
 	hasher = hashlib.md5()
 	if span <= chunk_size * 2:
@@ -76,10 +76,67 @@ def _hash_byte_range(f: BinaryIO, start: int, end: int, chunk_size: int) -> str:
 
 	f.seek(start)
 	hasher.update(f.read(chunk_size))
+	if span > chunk_size * 2:
+		mid_len = min(chunk_size, span - chunk_size * 2)
+		mid_start = start + chunk_size + ((span - chunk_size * 2 - mid_len) // 2)
+		f.seek(mid_start)
+		hasher.update(f.read(mid_len))
 	f.seek(end - chunk_size)
 	hasher.update(f.read(chunk_size))
 	hasher.update(str(span).encode("utf-8"))
 	return hasher.hexdigest()
+
+
+def _compute_audio_hash_from_stream(f: BinaryIO, suffix: str, file_size: int, chunk_size: int) -> str:
+	"""Calcula audio_hash sobre un stream binario ya abierto, sin reabrir el archivo."""
+	if suffix == ".flac":
+		try:
+			from mutagen.flac import FLAC
+
+			f.seek(0)
+			audio = FLAC(f)
+			md5_sig = getattr(audio.info, "md5_signature", 0)
+			if md5_sig:
+				return f"flac:{md5_sig:032x}"
+		except Exception:
+			pass
+
+	if suffix == ".mp3":
+		start, end = _mp3_audio_bounds(f, file_size)
+	elif suffix in (".m4a", ".mp4"):
+		start, end = _mp4_audio_bounds(f, file_size)
+	else:
+		start, end = 0, file_size
+	return _hash_byte_range(f, start, end, chunk_size)
+
+
+def generate_track_hashes(
+	filepath: str | Path,
+	file_size: int | None = None,
+	chunk_size: int = 1024 * 1024,
+) -> tuple[str, str]:
+	"""
+	Calcula (track_hash, audio_hash) en una única apertura y lectura sobre el almacenamiento
+	(evitando doble I/O en tarjetas microSD / SAF).
+	"""
+	saf = is_saf_uri(filepath)
+	ref: str | Path = str(filepath) if saf else Path(filepath)
+	suffix = os.path.splitext(get_saf_name(ref))[1].lower()
+	backend = get_storage_backend(ref)
+	try:
+		resolved_size = file_size
+		if resolved_size is None:
+			st = backend.stat_file(ref)
+			if st is None:
+				raise FileNotFoundError(ref)
+			resolved_size = st[1]
+		with backend.open_binary(ref) as f:
+			audio_hash = _compute_audio_hash_from_stream(f, suffix, resolved_size, chunk_size)
+			return audio_hash, audio_hash
+	except Exception as e:
+		logger.debug(f"Pifió el cálculo unificado de hashes para {filepath}: {e}")
+		fallback = hashlib.md5(str(ref).encode("utf-8")).hexdigest()
+		return fallback, fallback
 
 
 def generate_audio_hash(filepath: str | Path, chunk_size: int = 1024 * 1024) -> str:
@@ -87,42 +144,8 @@ def generate_audio_hash(filepath: str | Path, chunk_size: int = 1024 * 1024) -> 
 	Genera un hash basado únicamente en el stream de audio, inmune a cambios de metadata.
 	Soporta MD5 nativo de FLAC, salto de ID3 en MP3 y átomo mdat en MP4/M4A.
 	"""
-	saf = is_saf_uri(filepath)
-	ref: str | Path = str(filepath) if saf else Path(filepath)
-	suffix = os.path.splitext(get_saf_name(ref))[1].lower()
-	backend = get_storage_backend(ref)
-
-	if suffix == ".flac":
-		try:
-			from mutagen.flac import FLAC
-
-			if saf:
-				with backend.open_binary(ref) as flac_f:
-					audio = FLAC(flac_f)
-			else:
-				audio = FLAC(ref)
-			md5_sig = getattr(audio.info, "md5_signature", 0)
-			if md5_sig:
-				return f"flac:{md5_sig:032x}"
-		except Exception:
-			pass
-
-	try:
-		st = backend.stat_file(ref)
-		if st is None:
-			raise FileNotFoundError(ref)
-		file_size = st[1]
-		with backend.open_binary(ref) as f:
-			if suffix == ".mp3":
-				start, end = _mp3_audio_bounds(f, file_size)
-			elif suffix in (".m4a", ".mp4"):
-				start, end = _mp4_audio_bounds(f, file_size)
-			else:
-				start, end = 0, file_size
-			return _hash_byte_range(f, start, end, chunk_size)
-	except Exception as e:
-		logger.debug(f"Pifió el audio hash para {filepath}: {e}")
-		return hashlib.md5(str(ref).encode("utf-8")).hexdigest()
+	_, audio_hash = generate_track_hashes(filepath, chunk_size=chunk_size)
+	return audio_hash
 
 
 def generate_smart_hash(filepath: str | Path, chunk_size: int = 1024 * 1024) -> str:

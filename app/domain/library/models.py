@@ -98,7 +98,13 @@ def get_track_duration_seconds(path: str | Path | None, tracks_cache: list[dict[
 class Track:
 	"""Representa una pista musical con sus metadatos y análisis acústico."""
 
-	def __init__(self, path: Path | str, extract_mood: bool = True, extract_fingerprint: bool = True) -> None:
+	def __init__(
+		self,
+		path: Path | str,
+		extract_mood: bool = True,
+		extract_fingerprint: bool = True,
+		track_hash: str | None = None,
+	) -> None:
 		self.is_saf = is_saf_uri(path)
 		self.raw_path = str(path)
 		self.path: Path | str = self.raw_path if self.is_saf else Path(path)
@@ -126,7 +132,9 @@ class Track:
 			self.fingerprint = None
 
 		self.search_string = f"{self.artist} {self.title}".lower()
-		self.track_hash = str(generate_smart_hash(self.raw_path if self.is_saf else self.path))
+		self.track_hash = (
+			str(track_hash) if track_hash else str(generate_smart_hash(self.raw_path if self.is_saf else self.path))
+		)
 
 	def _extract_metadata(self) -> None:
 		try:

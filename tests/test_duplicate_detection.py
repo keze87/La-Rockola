@@ -55,8 +55,8 @@ def test_audio_hash_ignores_mp3_metadata_changes(tmp_path: Path) -> None:
 	assert generate_audio_hash(f1) != generate_audio_hash(f3)
 
 
-def test_audio_hash_hashes_first_and_last_mb(tmp_path: Path) -> None:
-	"""Verifica que generate_audio_hash hashee el primer y último MB del stream de audio."""
+def test_audio_hash_hashes_first_middle_and_last_mb(tmp_path: Path) -> None:
+	"""Verifica que generate_audio_hash incluya primer, medio y último bloque para evitar falsos positivos."""
 	from app.domain.library.hasher import generate_audio_hash
 
 	mb = 1024 * 1024
@@ -73,10 +73,35 @@ def test_audio_hash_hashes_first_and_last_mb(tmp_path: Path) -> None:
 	_write_synthetic_mp3(f2, first_mb + mid_b + last_mb, id3v2_payload=b"APIC" + (b"\x01" * 5000))
 	_write_synthetic_mp3(f3, first_mb + mid_a + (b"X" * mb), id3v2_payload=b"TIT2\x00\x00\x00\x02\x00\x00A")
 
-	# Mismo primer y último MB -> mismo hash
-	assert generate_audio_hash(f1) == generate_audio_hash(f2)
+	# Distinto bloque central -> distinto hash (evita falsos duplicados)
+	assert generate_audio_hash(f1) != generate_audio_hash(f2)
 	# Distinto último MB -> distinto hash
 	assert generate_audio_hash(f1) != generate_audio_hash(f3)
+
+
+def test_generate_track_hashes_opens_file_once(tmp_path: Path, monkeypatch: object) -> None:
+	"""generate_track_hashes debe calcular track_hash y audio_hash abriendo el archivo una sola vez."""
+	from app.domain.library import hasher as hasher_mod
+	from app.infrastructure import storage as storage_mod
+
+	mp3 = tmp_path / "single_open.mp3"
+	_write_synthetic_mp3(mp3, b"\xff\xfb\x90\x64" * 20000)
+
+	backend = storage_mod.get_storage_backend(mp3)
+	orig_open = backend.open_binary
+	open_calls = 0
+
+	def tracked_open(ref: object):
+		nonlocal open_calls
+		open_calls += 1
+		return orig_open(ref)
+
+	monkeypatch.setattr(backend, "open_binary", tracked_open)  # type: ignore[attr-defined]
+	monkeypatch.setattr(hasher_mod, "get_storage_backend", lambda _p="": backend)  # type: ignore[attr-defined]
+
+	track_hash, audio_hash = hasher_mod.generate_track_hashes(mp3, file_size=mp3.stat().st_size)
+	assert track_hash and audio_hash
+	assert open_calls == 1
 
 
 def test_audio_hash_ignores_mp4_metadata_atoms(tmp_path: Path) -> None:

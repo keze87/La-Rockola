@@ -21,7 +21,7 @@ from typing import Any
 from mutagen import File as MutagenFile
 
 from app.core.container import get_container
-from app.domain.library.hasher import compare_fps, generate_audio_hash, parse_fp
+from app.domain.library.hasher import compare_fps, generate_audio_hash, generate_track_hashes, parse_fp
 from app.domain.library.models import Track
 from app.domain.library.mood import calculate_mood_scores, extract_audio_features_ffmpeg, is_mood_available
 from app.infrastructure.binaries.manager import find_binary, get_clean_env
@@ -395,11 +395,15 @@ class LibraryService:
 				item: tuple[str | Path, float, int],
 			) -> tuple[str, float, dict[str, Any], str, tuple[Any, ...], str | None]:
 				target_f, mtime, size = item
-				track_obj = Track(target_f, extract_mood=extract_mood, extract_fingerprint=bool(extract_fingerprint))
+				track_hash, audio_hash = generate_track_hashes(target_f, file_size=size)
+				track_obj = Track(
+					target_f,
+					extract_mood=extract_mood,
+					extract_fingerprint=bool(extract_fingerprint),
+					track_hash=track_hash,
+				)
 				track_dict = track_obj.to_dict()
-				audio_hash = generate_audio_hash(target_f)
 				track_dict["audio_hash"] = audio_hash
-				track_hash = track_obj.track_hash
 				db_tuple = (
 					track_hash,
 					str(target_f),
