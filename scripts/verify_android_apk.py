@@ -21,6 +21,10 @@ DT_STRTAB = 5
 DT_STRSZ = 10
 DT_RPATH = 15
 DT_RUNPATH = 29
+ABI_MACHINE_MAP = {
+	"arm64-v8a": 183,  # EM_AARCH64
+	"x86_64": 62,  # EM_X86_64
+}
 
 
 @dataclass(slots=True)
@@ -40,8 +44,18 @@ def _vaddr_to_offset(vaddr: int, load_segments: list[tuple[int, int, int, int]])
 	return None
 
 
+def _expected_machine_for_label(label: str) -> tuple[str, int] | None:
+	parts = label.replace("\\", "/").split("/")
+	for idx, part in enumerate(parts):
+		if part == "lib" and idx + 1 < len(parts):
+			abi = parts[idx + 1]
+			if abi in ABI_MACHINE_MAP:
+				return abi, ABI_MACHINE_MAP[abi]
+	return None
+
+
 def inspect_elf_bytes(label: str, data: bytes) -> list[str]:
-	"""Inspecciona headers ELF32/ELF64 para validar PT_LOAD >= 0x4000 y ausencia de com.termux en RUNPATH."""
+	"""Inspecciona headers ELF32/ELF64 para validar PT_LOAD >= 0x4000, ABI, tabla phdr y ausencia de com.termux en RUNPATH."""
 	if len(data) < 52 or data[:4] != b"\x7fELF":
 		return [f"{label}: no es un binario ELF válido"]
 
@@ -52,6 +66,15 @@ def inspect_elf_bytes(label: str, data: bytes) -> list[str]:
 		return [f"{label}: endianness ELF desconocida ({ei_data})"]
 
 	issues: list[str] = []
+	e_machine = struct.unpack_from(f"{endian}H", data, 18)[0]
+	expected_abi = _expected_machine_for_label(label)
+	if expected_abi is not None:
+		abi_name, expected_machine = expected_abi
+		if e_machine != expected_machine:
+			issues.append(
+				f"{label}: ABI incompatible con {abi_name} (e_machine={e_machine}, esperado={expected_machine})"
+			)
+
 	load_segments: list[tuple[int, int, int, int]] = []
 	dynamic_segment: tuple[int, int] | None = None
 
@@ -62,10 +85,10 @@ def inspect_elf_bytes(label: str, data: bytes) -> list[str]:
 			struct.unpack_from(f"{endian}Q", data, 32)[0],
 			*struct.unpack_from(f"{endian}HH", data, 54),
 		)
+		if e_phentsize < 56 or e_phnum == 0 or e_phoff + (e_phnum * e_phentsize) > len(data):
+			return issues + [f"{label}: tabla de program headers ELF64 truncada o inválida"]
 		for idx in range(e_phnum):
 			off = e_phoff + idx * e_phentsize
-			if off + 56 > len(data):
-				break
 			p_type, _p_flags, p_offset, p_vaddr, _p_paddr, p_filesz, p_memsz, p_align = struct.unpack_from(
 				f"{endian}IIQQQQQQ", data, off
 			)
@@ -85,10 +108,10 @@ def inspect_elf_bytes(label: str, data: bytes) -> list[str]:
 			struct.unpack_from(f"{endian}I", data, 28)[0],
 			*struct.unpack_from(f"{endian}HH", data, 42),
 		)
+		if e_phentsize < 32 or e_phnum == 0 or e_phoff + (e_phnum * e_phentsize) > len(data):
+			return issues + [f"{label}: tabla de program headers ELF32 truncada o inválida"]
 		for idx in range(e_phnum):
 			off = e_phoff + idx * e_phentsize
-			if off + 32 > len(data):
-				break
 			p_type, p_offset, p_vaddr, _p_paddr, p_filesz, p_memsz, _flags, p_align = struct.unpack_from(
 				f"{endian}IIIIIIII", data, off
 			)
@@ -100,6 +123,9 @@ def inspect_elf_bytes(label: str, data: bytes) -> list[str]:
 		dyn_step = 8
 	else:
 		return [f"{label}: clase ELF desconocida ({ei_class})"]
+
+	if not load_segments:
+		issues.append(f"{label}: no posee segmentos PT_LOAD")
 
 	if dynamic_segment is not None:
 		dyn_off, dyn_sz = dynamic_segment
@@ -138,13 +164,40 @@ def inspect_elf_bytes(label: str, data: bytes) -> list[str]:
 	return issues
 
 
-def _inspect_zip_recursive(zf: zipfile.ZipFile, prefix: str, result: VerificationResult) -> None:
+def _check_apk_so_zip_alignment(archive_path: Path, zf: zipfile.ZipFile, info: zipfile.ZipInfo) -> str | None:
+	if archive_path.suffix.lower() != ".apk" or info.compress_type != zipfile.ZIP_STORED:
+		return None
+	with archive_path.open("rb") as raw_fp:
+		raw_fp.seek(info.header_offset)
+		local_hdr = raw_fp.read(30)
+		if len(local_hdr) < 30 or local_hdr[:4] != b"PK\x03\x04":
+			return f"{info.filename}: cabecera local ZIP inválida"
+		name_len, extra_len = struct.unpack_from("<HH", local_hdr, 26)
+		data_offset = info.header_offset + 30 + name_len + extra_len
+		if data_offset % REQUIRED_ALIGN_16KB != 0:
+			return (
+				f"{info.filename}: payload ZIP_STORED en offset 0x{data_offset:x} no alineado a 16 KB "
+				f"(ejecutar zipalign -P 16)"
+			)
+	return None
+
+
+def _inspect_zip_recursive(
+	zf: zipfile.ZipFile,
+	prefix: str,
+	result: VerificationResult,
+	top_apk_path: Path | None = None,
+) -> None:
 	for info in zf.infolist():
 		if info.is_dir():
 			continue
 		name = f"{prefix}{info.filename}"
 		lower = info.filename.lower()
 		if lower.endswith(".so"):
+			if top_apk_path is not None and not prefix:
+				align_err = _check_apk_so_zip_alignment(top_apk_path, zf, info)
+				if align_err:
+					result.errors.append(align_err)
 			raw = zf.read(info.filename)
 			result.inspected_so_count += 1
 			result.inspected_names.append(name)
@@ -153,7 +206,7 @@ def _inspect_zip_recursive(zf: zipfile.ZipFile, prefix: str, result: Verificatio
 			raw_nested = zf.read(info.filename)
 			try:
 				with zipfile.ZipFile(io.BytesIO(raw_nested), "r") as nested_zf:
-					_inspect_zip_recursive(nested_zf, f"{name}::", result)
+					_inspect_zip_recursive(nested_zf, f"{name}::", result, None)
 			except zipfile.BadZipFile:
 				continue
 
@@ -165,7 +218,7 @@ def verify_android_archive(archive_path: Path) -> VerificationResult:
 		return VerificationResult(ok=False, errors=[f"Artefacto no encontrado: {archive_path}"])
 
 	with zipfile.ZipFile(archive_path, "r") as zf:
-		_inspect_zip_recursive(zf, "", result)
+		_inspect_zip_recursive(zf, "", result, archive_path)
 
 	if result.inspected_so_count == 0:
 		result.errors.append(f"{archive_path.name}: no se encontraron bibliotecas nativas (.so) dentro del paquete")
