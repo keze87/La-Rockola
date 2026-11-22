@@ -204,11 +204,12 @@ class RockolaServerPlugin : Plugin() {
         val intent = Intent(context, RockolaForegroundService::class.java).apply {
             action = RockolaForegroundService.ACTION_START
             putExtra(RockolaForegroundService.EXTRA_PORT, port)
+            putExtra(RockolaForegroundService.EXTRA_STARTED_AS_FOREGROUND, true)
             if (!musicDir.isNullOrBlank()) {
                 putExtra(RockolaForegroundService.EXTRA_MUSIC_DIR, musicDir)
             }
         }
-        val err = safeStartService(intent)
+        val err = safeStartService(intent, foreground = true)
         if (err != null) {
             call.reject(err, "SERVICE_START_NOT_ALLOWED")
             return

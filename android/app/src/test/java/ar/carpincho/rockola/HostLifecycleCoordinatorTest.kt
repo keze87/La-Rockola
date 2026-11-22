@@ -315,7 +315,8 @@ class HostLifecycleCoordinatorTest {
         assertFalse(ServicePowerPolicy.shouldStopOnTaskRemoved(isMediaPlaying = true, hasRemoteClients = false))
 
         assertFalse(ServicePowerPolicy.shouldStopForeground(keepDismissibleNotification = true, isHostRunning = true))
-        assertTrue(ServicePowerPolicy.shouldStopForeground(keepDismissibleNotification = false, isHostRunning = true))
+        assertFalse(ServicePowerPolicy.shouldStopForeground(keepDismissibleNotification = false, isHostRunning = true))
+        assertTrue(ServicePowerPolicy.shouldStopForeground(keepDismissibleNotification = false, isHostRunning = true, forceStop = true))
         assertTrue(ServicePowerPolicy.shouldStopForeground(keepDismissibleNotification = true, isHostRunning = false))
     }
 }

@@ -26,8 +26,13 @@ internal object ServicePowerPolicy {
         return !isMediaPlaying && !hasRemoteClients
     }
 
-    fun shouldStopForeground(keepDismissibleNotification: Boolean, isHostRunning: Boolean): Boolean {
-        return !keepDismissibleNotification || !isHostRunning
+    fun shouldStopForeground(
+        keepDismissibleNotification: Boolean,
+        isHostRunning: Boolean,
+        forceStop: Boolean = false,
+    ): Boolean {
+        if (forceStop) return true
+        return !isHostRunning
     }
 }
 
@@ -408,8 +413,11 @@ class RockolaForegroundService : Service() {
             commandClient.setTarget(hostTarget)
         }
 
+        if (!isInForeground && (intent?.getBooleanExtra(EXTRA_STARTED_AS_FOREGROUND, false) == true || isMediaPlaying)) {
+            promoteToForeground("La Rockola está lista")
+        }
         if (!isMediaPlaying) {
-            demoteFromForeground(keepDismissibleNotification = notificationManager.hasActiveTrack)
+            releaseLocks()
         }
 
         startEmbeddedPythonServer(port, musicDir)
@@ -587,9 +595,9 @@ class RockolaForegroundService : Service() {
         }
     }
 
-    private fun demoteFromForeground(keepDismissibleNotification: Boolean) {
+    private fun demoteFromForeground(keepDismissibleNotification: Boolean, forceStop: Boolean = false) {
         releaseLocks()
-        val shouldStopFg = ServicePowerPolicy.shouldStopForeground(keepDismissibleNotification, isRunning)
+        val shouldStopFg = ServicePowerPolicy.shouldStopForeground(keepDismissibleNotification, isRunning, forceStop)
         if (isInForeground && shouldStopFg) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                 val mode = if (keepDismissibleNotification) STOP_FOREGROUND_DETACH else STOP_FOREGROUND_REMOVE
@@ -621,7 +629,7 @@ class RockolaForegroundService : Service() {
         isActivelyPlaying = false
         isMediaPlaying = false
         mainHandler.post {
-            demoteFromForeground(keepDismissibleNotification = false)
+            demoteFromForeground(keepDismissibleNotification = false, forceStop = true)
         }
         val clean = hostCoordinator.stop(timeoutMs)
         isRunning = hostCoordinator.isRunning
@@ -638,7 +646,7 @@ class RockolaForegroundService : Service() {
     private fun stopServerAndService() {
         isActivelyPlaying = false
         isMediaPlaying = false
-        demoteFromForeground(keepDismissibleNotification = false)
+        demoteFromForeground(keepDismissibleNotification = false, forceStop = true)
         stopExecutor.execute {
             val clean = hostCoordinator.stop(STOP_JOIN_TIMEOUT_MS)
             if (clean) {
@@ -660,7 +668,7 @@ class RockolaForegroundService : Service() {
         nativeCommandExecutor.shutdownNow()
         onPipStateNeedsRefresh = null
         onNativeCommandError = null
-        demoteFromForeground(keepDismissibleNotification = false)
+        demoteFromForeground(keepDismissibleNotification = false, forceStop = true)
         notificationManager.release()
         if (::audioPlayer.isInitialized) {
             audioPlayer.release()
