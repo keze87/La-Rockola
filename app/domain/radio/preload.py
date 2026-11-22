@@ -250,30 +250,41 @@ async def run_tts_preload(
 	)
 
 	semaphore = asyncio.Semaphore(max(1, concurrency))
-	tasks = [
-		asyncio.create_task(
-			_synthesize_one(
-				semaphore=semaphore,
-				category=category,
-				text=text,
-				voice=voice,
-				db_path=target_db,
-				delay=delay,
-				max_retries=max_retries,
-				stats=stats,
-				quiet=quiet,
-			)
-		)
-		for category, text, voice in pending
-	]
+	batch_size = max(1, concurrency * 4)
+	max_bytes = int(max_mb * 1024 * 1024) if (max_mb is not None and max_mb > 0) else None
 
-	try:
-		await asyncio.gather(*tasks)
-	except asyncio.CancelledError:
-		for t in tasks:
-			t.cancel()
-		await asyncio.gather(*tasks, return_exceptions=True)
-		raise
+	for idx in range(0, len(pending), batch_size):
+		batch = pending[idx : idx + batch_size]
+		tasks = [
+			asyncio.create_task(
+				_synthesize_one(
+					semaphore=semaphore,
+					category=category,
+					text=text,
+					voice=voice,
+					db_path=target_db,
+					delay=delay,
+					max_retries=max_retries,
+					stats=stats,
+					quiet=quiet,
+				)
+			)
+			for category, text, voice in batch
+		]
+		try:
+			await asyncio.gather(*tasks)
+		except asyncio.CancelledError:
+			for t in tasks:
+				t.cancel()
+			await asyncio.gather(*tasks, return_exceptions=True)
+			raise
+
+		if max_bytes is not None:
+			current_bytes = await asyncio.to_thread(_get_cache_size_bytes, target_db)
+			if current_bytes >= max_bytes:
+				if not quiet:
+					logger.info("🎙️ Caché TTS alcanzó el tope de %.1f MB durante la precarga; deteniendo.", max_mb)
+				break
 
 	if stats["synthesized"] > 0:
 		await asyncio.to_thread(prune_tts_cache_db, max_entries=max_entries, max_mb=max_mb, db_path=target_db)

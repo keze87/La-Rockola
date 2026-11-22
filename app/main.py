@@ -41,6 +41,14 @@ from app.infrastructure.db.migrations import apply_migrations
 
 logger = logging.getLogger("RockolaCarpincho")
 
+
+def should_auto_preload_tts(android_mode: bool) -> bool:
+	"""En Android la precarga TTS es opt-in; en escritorio se ejecuta automáticamente al iniciar."""
+	if not android_mode:
+		return True
+	return os.environ.get("ROCKOLA_TTS_PRELOAD_ANDROID", "").strip().lower() in ("1", "true", "yes")
+
+
 WSIncomingMessage = Annotated[
 	LocalPlayerClaim | LocalPlayerRelease | LocalPlayerReset | LocalPlayerUpdate,
 	Field(discriminator="type"),
@@ -111,15 +119,16 @@ async def lifespan(app: FastAPI):
 		from app.infrastructure.binaries.manager import is_android
 
 		android_mode = is_android()
-		preload_task = asyncio.create_task(
-			run_tts_preload(
-				concurrency=1,
-				delay=0.5,
-				max_mb=333.0,
-				require_unmetered_wifi=android_mode,
-				quiet=True,
+		if should_auto_preload_tts(android_mode=android_mode):
+			preload_task = asyncio.create_task(
+				run_tts_preload(
+					concurrency=1,
+					delay=0.5,
+					max_mb=333.0,
+					require_unmetered_wifi=android_mode,
+					quiet=True,
+				)
 			)
-		)
 
 	yield
 

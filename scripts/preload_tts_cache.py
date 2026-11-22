@@ -46,12 +46,14 @@ async def run_preload(
 	max_retries: int = 3,
 	db_path: Path | None = None,
 	max_entries: int = 9000,
+	max_mb: float | None = 333.0,
 ) -> None:
 	"""Orquesta la precarga CLI delegando en run_tts_preload y mostrando resumen en consola."""
 	target_db = init_tts_cache_db(db_path)
 	logger.info(f"🧉 Iniciando precarga de caché TTS en: {target_db}")
 	start_time = time.time()
 
+	resolved_max_mb = None if (max_mb is not None and max_mb <= 0) else max_mb
 	stats = await run_tts_preload(
 		voices=voices,
 		concurrency=concurrency,
@@ -59,6 +61,7 @@ async def run_preload(
 		max_retries=max_retries,
 		db_path=target_db,
 		max_entries=max_entries,
+		max_mb=resolved_max_mb,
 		quiet=False,
 	)
 
@@ -119,6 +122,12 @@ def main() -> None:
 		default=9000,
 		help="Capacidad máxima de la base de datos tts_cache.db (default: 9000).",
 	)
+	parser.add_argument(
+		"--max-mb",
+		type=float,
+		default=333.0,
+		help="Tamaño máximo en MB de la caché TTS (default: 333.0; <= 0 sin límite).",
+	)
 
 	args = parser.parse_args()
 
@@ -155,6 +164,7 @@ def main() -> None:
 			max_retries=args.retries,
 			db_path=target_db_path,
 			max_entries=args.max_entries,
+			max_mb=args.max_mb,
 		)
 	)
 

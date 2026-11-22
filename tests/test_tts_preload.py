@@ -191,3 +191,77 @@ def test_prune_tts_cache_db_enforces_max_mb_cap(tmp_path: Path) -> None:
 		total_bytes = sum(r[1] for r in rows)
 		assert total_bytes <= int(0.001 * 1024 * 1024)
 		assert rows[-1][0] == "frase 2"
+
+
+@pytest.mark.asyncio
+async def test_run_tts_preload_stops_batches_when_max_mb_reached(tmp_path: Path) -> None:
+	"""La precarga debe revisar max_mb por tandas y frenar antes de sintetizar toda la cola."""
+	from app.domain.radio.preload import run_tts_preload
+
+	db_path = tmp_path / "tts_cache.db"
+	init_tts_cache_db(db_path)
+
+	phrases = [("intro", f"Frase larga número {i}") for i in range(12)]
+
+	async def _fake_synth_and_store(*, text: str, voice: str, category: str, **_kwargs: object) -> bytes:
+		key = get_cache_key(category, voice, text)
+		with sqlite3.connect(db_path) as conn:
+			conn.execute(
+				"""
+				INSERT INTO tts_cache (cache_key, category, voice, text, audio_blob, duration, created_at, last_used, use_count)
+				VALUES (?, ?, ?, ?, ?, 1.0, 1000.0, 1000.0, 1)
+				""",
+				(key, category, voice, text, b"X" * 600),
+			)
+			conn.commit()
+		return b"X" * 600
+
+	synth_mock = AsyncMock(side_effect=_fake_synth_and_store)
+
+	with (
+		patch("app.domain.radio.preload.HAS_EDGE_TTS", True),
+		patch("app.domain.radio.preload.is_internet_available", return_value=True),
+		patch("app.domain.radio.preload.collect_preload_phrases", return_value=phrases),
+		patch("app.domain.radio.preload.synthesize_segment", synth_mock),
+	):
+		stats = await run_tts_preload(
+			voices=["es-AR-TomasNeural"],
+			concurrency=1,
+			delay=0.0,
+			max_retries=1,
+			db_path=db_path,
+			max_mb=0.001,  # ~1048 bytes -> con 1 tanda de <=4 ya supera el tope y frena antes de las 12
+		)
+
+	assert stats["synthesized"] < len(phrases)
+	assert synth_mock.await_count < len(phrases)
+
+
+def test_preload_script_passes_max_mb_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+	"""scripts/preload_tts_cache.py debe aceptar --max-mb y reenviarlo a run_preload."""
+	import sys
+
+	from scripts import preload_tts_cache
+
+	captured: dict[str, object] = {}
+
+	async def _fake_run_preload(**kwargs: object) -> None:
+		captured.update(kwargs)
+
+	monkeypatch.setattr(preload_tts_cache, "run_preload", _fake_run_preload)
+	monkeypatch.setattr(sys, "argv", ["preload_tts_cache.py", "--voices", "tomas", "--max-mb", "512"])
+
+	preload_tts_cache.main()
+	assert captured.get("max_mb") == 512.0
+
+
+def test_should_auto_preload_tts_is_opt_in_on_android(monkeypatch: pytest.MonkeyPatch) -> None:
+	"""En Android la precarga automática al arranque debe ser opt-in (desactivada por defecto)."""
+	from app.main import should_auto_preload_tts
+
+	monkeypatch.delenv("ROCKOLA_TTS_PRELOAD_ANDROID", raising=False)
+	assert should_auto_preload_tts(android_mode=False) is True
+	assert should_auto_preload_tts(android_mode=True) is False
+
+	monkeypatch.setenv("ROCKOLA_TTS_PRELOAD_ANDROID", "1")
+	assert should_auto_preload_tts(android_mode=True) is True
