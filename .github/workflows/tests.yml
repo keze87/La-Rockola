@@ -98,9 +98,12 @@ jobs:
                   java-version: '21'
 
             - name: Set up Android SDK
-              uses: android-actions/setup-android@v3
+              uses: android-actions/setup-android@v4
 
-            - name: Set up Node.js & Python
+            - name: Set up Gradle cache
+              uses: gradle/actions/setup-gradle@v4
+
+            - name: Set up Node.js
               uses: actions/setup-node@v7
               with:
                   node-version: '22'
@@ -120,8 +123,53 @@ jobs:
             - name: Sync Android assets & run Kotlin unit tests
               run: |
                   python3 scripts/build_android.py --skip-frontend --sync-only
-                  ./android/gradlew -p android testArm64DebugUnitTest
+                  ./android/gradlew -p android testArm64DebugUnitTest --no-daemon
 
             - name: Build Debug APK & verify 16 KB alignment
               run: |
                   python3 scripts/build_android.py --skip-frontend --flavor arm64
+
+    android-instrumented:
+        name: Android Instrumented Smoke Test (x86_64)
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v7
+
+            - name: Set up Java 21
+              uses: actions/setup-java@v4
+              with:
+                  distribution: 'temurin'
+                  java-version: '21'
+
+            - name: Set up Android SDK
+              uses: android-actions/setup-android@v4
+
+            - name: Set up Gradle cache
+              uses: gradle/actions/setup-gradle@v4
+
+            - name: Set up Node.js
+              uses: actions/setup-node@v7
+              with:
+                  node-version: '22'
+                  cache: 'npm'
+
+            - name: Set up Python
+              uses: actions/setup-python@v7
+              with:
+                  python-version: '3.14'
+                  cache: 'pip'
+
+            - name: Install dependencies, build frontend & sync Android
+              run: |
+                  npm ci
+                  npm run build
+                  python3 scripts/build_android.py --skip-frontend --sync-only
+
+            - name: Run EmbeddedRuntimeSmokeTest on x86_64 emulator
+              uses: reactivecircus/android-emulator-runner@v2
+              with:
+                  api-level: 34
+                  arch: x86_64
+                  profile: pixel_6
+                  script: ./android/gradlew -p android connectedX86_64DebugAndroidTest --no-daemon
