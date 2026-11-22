@@ -93,13 +93,24 @@
 		}
 	}
 
+	const PULL_COOLDOWN_MS = 5000;
+	let lastPullRefreshAt = 0;
+
 	function onPullTouchEnd() {
 		if (!isPulling.value) return;
 		const ready = pullDistance.value >= PULL_THRESHOLD;
 		resetPull();
-		if (ready && !isScanning.value && !scanStatus.value?.is_analyzing_mood) {
+		const now = Date.now();
+		if (
+			ready &&
+			!isScanning.value &&
+			!scanStatus.value?.is_analyzing_mood &&
+			now - lastPullRefreshAt >= PULL_COOLDOWN_MS
+		) {
+			lastPullRefreshAt = now;
 			haptic();
-			void loadLibrary(true);
+			// Pull-to-refresh recarga la lista liviana (/library); el re-escaneo completo (/scan) es explícito
+			void loadLibrary(false);
 		}
 	}
 
@@ -164,7 +175,9 @@
 				refresh
 			</i>
 			<span>
-				{{ pullDistance >= PULL_THRESHOLD ? 'Soltá para re-escanear 🧉' : 'Deslizá para actualizar...' }}
+				{{
+					pullDistance >= PULL_THRESHOLD ? 'Soltá para actualizar la lista 🧉' : 'Deslizá para actualizar...'
+				}}
 			</span>
 		</div>
 

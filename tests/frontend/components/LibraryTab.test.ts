@@ -236,14 +236,22 @@ describe('LibraryTab.vue', () => {
 		await section.trigger('touchend');
 		expect(fetchMock).not.toHaveBeenCalledWith('/scan');
 
-		// En la cima y sin escaneo activo, pull >= umbral dispara /scan
+		// En la cima y sin escaneo activo, pull >= umbral dispara refresh liviano (/library, NO /scan)
 		isScanning.value = false;
 		await section.trigger('touchstart', { touches: [{ clientX: 150, clientY: 100 }] });
 		await section.trigger('touchmove', { touches: [{ clientX: 152, clientY: 240 }] });
 		expect(wrapper.find('.library-pull-indicator').exists()).toBe(true);
 		await section.trigger('touchend');
 
-		expect(fetchMock).toHaveBeenCalledWith('/scan');
+		expect(fetchMock).toHaveBeenCalledWith('/library');
+		expect(fetchMock).not.toHaveBeenCalledWith('/scan');
+
+		// Segundo pull inmediato dentro del cooldown no vuelve a llamar /library
+		fetchMock.mockClear();
+		await section.trigger('touchstart', { touches: [{ clientX: 150, clientY: 100 }] });
+		await section.trigger('touchmove', { touches: [{ clientX: 152, clientY: 240 }] });
+		await section.trigger('touchend');
+		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
 	it('shows actionable folder error/unconfigured state on Android Host and semantic clear-search button', async () => {
