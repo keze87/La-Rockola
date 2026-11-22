@@ -11,7 +11,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Prueba de humo instrumentada que valida en dispositivo real que Chaquopy Python 3.13,
+ * Prueba de humo instrumentada que valida en dispositivo real que Chaquopy Python 3.14,
  * FastAPI, Pydantic Core y los puentes Kotlin nativos carguen sin errores binarios ni de rutas.
  */
 @RunWith(AndroidJUnit4::class)

@@ -35,7 +35,8 @@ El servidor HTTP embebido y el servicio en primer plano **no** abusan de `FOREGR
 
 - **Network Security Config (`network_security_config.xml`)**: Se reemplazó `usesCleartextTraffic="true"` global por una configuración explícita de `localhost` / `127.0.0.1` junto con `base-config` documentando que el modo Cliente Remoto se conecta por HTTP plano a IPs LAN privadas (`192.168.x.x`, `10.x.x.x`) que no admiten CIDR en `<domain-config>`.
 - **Permisos mínimos y backup**: Se eliminaron `READ_MEDIA_AUDIO`, `READ_EXTERNAL_STORAGE` y `FileProvider` (acceso 100% SAF), y se desactivó `allowBackup` (`false`) con gesto atrás predictivo (`enableOnBackInvokedCallback="true"`).
-- **Precarga TTS controlada**: En Android, `run_tts_preload` solo se ejecuta en **Wi-Fi / Ethernet no medida** (`ConnectivityManager` + `NET_CAPABILITY_NOT_METERED`) y respeta un tope máximo de **333 MB** en `tts_cache.db` (podando por `last_used` antes de seguir descargando).
+- **Precarga TTS controlada (opt-in en Android)**: En Android, `run_tts_preload` está desactivada por defecto (`ROCKOLA_TTS_PRELOAD_ANDROID=1` para habilitarla) para evitar consumo de batería/almacenamiento; cuando se activa, solo corre en **Wi-Fi / Ethernet no medida** (`ConnectivityManager` + `NET_CAPABILITY_NOT_METERED`) y corta por tandas al alcanzar **333 MB** en `tts_cache.db` (podando por `last_used`).
+- **Botones físicos de volumen (`ContentObserver`)**: Observar `Settings.System.CONTENT_URI` es un mecanismo best-effort que puede no emitir eventos en todos los fabricantes o versiones de Android 14–16; como respaldo, `RockolaServerPlugin.handleOnResume()` re-lee el volumen multimedia cada vez que la app vuelve a primer plano.
 
 ---
 
@@ -63,8 +64,9 @@ La aplicación **no solicita** `MANAGE_EXTERNAL_STORAGE` y **no copia** tu bibli
 
 ### ABIs y verificación binaria de 16 KB (`0x4000`)
 
-- **Arquitecturas soportadas**: `arm64` (`arm64-v8a`) y `x86_64` con `versionCode` diferenciado (`base * 10 + 1` y `base * 10 + 2`). Se removió `armv7` (32 bits) ya que el stack `cp313` de Play exige 64-bit y 16 KB.
-- **Wheels nativos sin reetiquetado Linux**: Usamos `pydantic==2.14.3` / `pydantic-core==2.50.4` desde `https://pypi.flet.dev` y `aiohttp==3.10.10` / `frozenlist==1.4.1` / `multidict==6.1.0` / `yarl==1.16.0` desde `https://chaquo.com/pypi-13.1`, eliminando `pillow`/`libfreetype.so` mediante `AndroidImageResizer.kt` (`BitmapFactory`).
+- **Arquitecturas soportadas**: `arm64` (`arm64-v8a`) y `x86_64` con `versionCode` diferenciado (`base * 10 + 1` y `base * 10 + 2`). Se removió `armv7` (32 bits) ya que el stack `cp314` (Python 3.14) de Play exige 64-bit y 16 KB.
+- **Decisión Python 3.14 + wheels nativos sin reetiquetado Linux**: Se adoptó **Python 3.14** sobre **Chaquopy 17.2.0** para contar con wheels `cp314` compilados nativamente con alineamiento 16 KB (`pydantic==2.14.3`, `pydantic-core==2.50.4`, `aiohttp==3.14.5`, `frozenlist==1.8.0`, `multidict==7.2.1`, `yarl==1.25.1`) desde `https://pypi.flet.dev` / PyPI sin reetiquetado manual, eliminando `pillow`/`libfreetype.so` mediante `AndroidImageResizer.kt` (`BitmapFactory`).
+- **Pines estrictos sin `--require-hashes` en Chaquopy**: Todas las dependencias Python en `android/app/build.gradle` están fijadas con `==`. No se habilita `--require-hashes` porque `chaquopy-pip` resuelve wheels específicos por ABI (`arm64-v8a` / `x86_64`) entre PyPI y `--extra-index-url https://pypi.flet.dev` con dependencias transitivas cuyo conjunto de hashes difiere por arquitectura/plataforma.
 - **Verificador automático**: `scripts/verify_android_apk.py` audita cada `.so` dentro de `lib/` **y dentro de archivos comprimidos `.imy` de Chaquopy**, exigiendo `PT_LOAD p_align >= 0x4000` y ausencia de `RUNPATH/RPATH` apuntando a `com.termux`.
 
 ### Firma obligatoria en Release

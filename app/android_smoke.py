@@ -1,5 +1,5 @@
 """
-Prueba de humo en proceso para verificar el runtime embebido Android (Chaquopy Python 3.13).
+Prueba de humo en proceso para verificar el runtime embebido Android (Chaquopy Python 3.14).
 Valida imports críticos y responde endpoints básicos de FastAPI sin efectos secundarios globales.
 """
 
