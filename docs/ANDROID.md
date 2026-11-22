@@ -35,7 +35,7 @@ El servidor HTTP embebido y el servicio en primer plano **no** abusan de `FOREGR
 
 - **Network Security Config (`network_security_config.xml`)**: Se reemplazó `usesCleartextTraffic="true"` global por una configuración explícita de `localhost` / `127.0.0.1` junto con `base-config` documentando que el modo Cliente Remoto se conecta por HTTP plano a IPs LAN privadas (`192.168.x.x`, `10.x.x.x`) que no admiten CIDR en `<domain-config>`.
 - **Permisos mínimos y backup**: Se eliminaron `READ_MEDIA_AUDIO`, `READ_EXTERNAL_STORAGE` y `FileProvider` (acceso 100% SAF), y se desactivó `allowBackup` (`false`) con gesto atrás predictivo (`enableOnBackInvokedCallback="true"`).
-- **Precarga TTS controlada (opt-in en Android)**: En Android, `run_tts_preload` está desactivada por defecto (`ROCKOLA_TTS_PRELOAD_ANDROID=1` para habilitarla) para evitar consumo de batería/almacenamiento; cuando se activa, solo corre en **Wi-Fi / Ethernet no medida** (`ConnectivityManager` + `NET_CAPABILITY_NOT_METERED`) y corta por tandas al alcanzar **333 MB** en `tts_cache.db` (podando por `last_used`).
+- **Precarga TTS controlada**: En Android, `run_tts_preload` arranca automáticamente en segundo plano **solo en Wi-Fi / Ethernet no medida** (`ConnectivityManager` + `NET_CAPABILITY_NOT_METERED`) y corta por tandas al alcanzar **333 MB** en `tts_cache.db` (podando por `last_used`).
 - **Botones físicos de volumen (`ContentObserver`)**: Observar `Settings.System.CONTENT_URI` es un mecanismo best-effort que puede no emitir eventos en todos los fabricantes o versiones de Android 14–16; como respaldo, `RockolaServerPlugin.handleOnResume()` re-lee el volumen multimedia cada vez que la app vuelve a primer plano.
 
 ---

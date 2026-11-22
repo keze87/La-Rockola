@@ -255,13 +255,33 @@ def test_preload_script_passes_max_mb_flag(monkeypatch: pytest.MonkeyPatch) -> N
 	assert captured.get("max_mb") == 512.0
 
 
-def test_should_auto_preload_tts_is_opt_in_on_android(monkeypatch: pytest.MonkeyPatch) -> None:
-	"""En Android la precarga automática al arranque debe ser opt-in (desactivada por defecto)."""
-	from app.main import should_auto_preload_tts
+def test_lifespan_starts_tts_preload_with_unmetered_wifi_on_android(
+	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+	"""En Android la precarga TTS arranca automáticamente pero exigiendo Wi-Fi/red no medida."""
+	import asyncio
 
-	monkeypatch.delenv("ROCKOLA_TTS_PRELOAD_ANDROID", raising=False)
-	assert should_auto_preload_tts(android_mode=False) is True
-	assert should_auto_preload_tts(android_mode=True) is False
+	from fastapi.testclient import TestClient
 
-	monkeypatch.setenv("ROCKOLA_TTS_PRELOAD_ANDROID", "1")
-	assert should_auto_preload_tts(android_mode=True) is True
+	import app.main as main_mod
+	from app.core import config as config_mod
+
+	captured: list[dict[str, object]] = []
+
+	async def _fake_run_tts_preload(**kwargs: object) -> dict[str, int]:
+		captured.append(dict(kwargs))
+		await asyncio.sleep(0)
+		return {"skipped": 0, "synthesized": 0, "failed": 0, "offline": 0, "metered": 0}
+
+	monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+	monkeypatch.setenv("ROCKOLA_DATA_DIR", str(tmp_path))
+	config_mod.set_settings(config_mod.Settings(music_dir="", music_dir_configured=False))
+	monkeypatch.setattr("app.infrastructure.binaries.manager.is_android", lambda: True)
+	monkeypatch.setattr(main_mod, "run_tts_preload", _fake_run_tts_preload)
+
+	with TestClient(main_mod.create_app()):
+		pass
+
+	assert len(captured) == 1
+	assert captured[0]["require_unmetered_wifi"] is True
+	assert captured[0]["max_mb"] == 333.0
