@@ -57,7 +57,8 @@ internal object MainActivityPolicy {
         return action == MainActivity.ACTION_OPEN_FOGON ||
             action == MainActivity.ACTION_OPEN_LIBRARY ||
             action == MainActivity.ACTION_OPEN_QUEUE ||
-            action == MainActivity.ACTION_OPEN_TOPS
+            action == MainActivity.ACTION_OPEN_TOPS ||
+            action == MainActivity.ACTION_RESUME_LAST
     }
 
     fun shouldHandleShortcutOnCreate(hasSavedInstanceState: Boolean, action: String?): Boolean {
@@ -83,6 +84,7 @@ class MainActivity : BridgeActivity() {
         const val ACTION_OPEN_LIBRARY = "ar.carpincho.rockola.ACTION_OPEN_LIBRARY"
         const val ACTION_OPEN_QUEUE = "ar.carpincho.rockola.ACTION_OPEN_QUEUE"
         const val ACTION_OPEN_TOPS = "ar.carpincho.rockola.ACTION_OPEN_TOPS"
+        const val ACTION_RESUME_LAST = "ar.carpincho.rockola.ACTION_RESUME_LAST"
 
         @Volatile
         private var pendingShortcutAction: String? = null
@@ -258,6 +260,7 @@ class MainActivity : BridgeActivity() {
         if (MainActivityPolicy.shouldHandleShortcutOnCreate(savedInstanceState != null, intent?.action)) {
             handleShortcutIntent(intent)
         }
+        ShortcutHelper.refreshDynamicShortcuts(this)
         checkWebViewCompatibility()
     }
 
@@ -467,6 +470,7 @@ class MainActivity : BridgeActivity() {
             ACTION_OPEN_LIBRARY -> "__rockolaOpenLibrary"
             ACTION_OPEN_QUEUE -> "__rockolaOpenQueue"
             ACTION_OPEN_TOPS -> "__rockolaOpenTops"
+            ACTION_RESUME_LAST -> "__rockolaResumeLast"
             else -> return
         }
         pendingShortcutAction = action

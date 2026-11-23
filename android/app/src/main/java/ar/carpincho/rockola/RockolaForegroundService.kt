@@ -509,6 +509,9 @@ class RockolaForegroundService : Service() {
             isPauseAfter = isPauseAfter,
             postNotification = false,
         )
+        if (hasTrack) {
+            ShortcutHelper.saveLastTrackTitleAndRefresh(this, title)
+        }
         onPipStateNeedsRefresh?.invoke()
         if (active) {
             acquireLocks()

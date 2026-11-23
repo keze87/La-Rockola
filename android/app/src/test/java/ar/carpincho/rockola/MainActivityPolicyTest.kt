@@ -55,4 +55,17 @@ class MainActivityPolicyTest {
         assertFalse(BackNavigationPolicy.shouldEnableCallback(false))
         assertTrue(BackNavigationPolicy.shouldEnableCallback(true))
     }
+
+    @Test
+    fun `accesos directos dinamicos incluyen los 4 base y suman Reanudar lo ultimo cuando hay tema`() {
+        assertTrue(MainActivityPolicy.isSupportedShortcutAction(MainActivity.ACTION_RESUME_LAST))
+
+        val withoutLast = ShortcutPolicy.buildSpecs(lastTrackTitle = null)
+        org.junit.Assert.assertEquals(4, withoutLast.size)
+
+        val withLast = ShortcutPolicy.buildSpecs(lastTrackTitle = "El Viejo - Pappo")
+        org.junit.Assert.assertEquals(5, withLast.size)
+        org.junit.Assert.assertEquals("resume_last", withLast.first().id)
+        org.junit.Assert.assertTrue(withLast.first().longLabel.contains("El Viejo"))
+    }
 }

@@ -50,7 +50,7 @@
 	import QueueTab from './components/QueueTab.vue';
 	import TopTab from './components/TopTab.vue';
 
-	const { seekAbsolute } = usePlaybackControls();
+	const { pause, seekAbsolute } = usePlaybackControls();
 	const { showToast } = useToasts();
 
 	const {
@@ -418,6 +418,15 @@
 		switchTab('top');
 	}
 
+	function resumeLastFromAndroid(): void {
+		isLyricsEditorOpen.value = false;
+		isFogonMode.value = false;
+		switchTab('queue');
+		if (!isPlaying.value && currentTrackPath.value) {
+			void pause();
+		}
+	}
+
 	function applyShortcutAction(action: string | null): void {
 		if (action === 'ar.carpincho.rockola.ACTION_OPEN_FOGON') {
 			openFogonFromAndroid();
@@ -427,6 +436,8 @@
 			openQueueFromAndroid();
 		} else if (action === 'ar.carpincho.rockola.ACTION_OPEN_TOPS') {
 			openTopsFromAndroid();
+		} else if (action === 'ar.carpincho.rockola.ACTION_RESUME_LAST') {
+			resumeLastFromAndroid();
 		}
 	}
 
@@ -457,6 +468,7 @@
 		window.__rockolaOpenLibrary = openLibraryFromAndroid;
 		window.__rockolaOpenQueue = openQueueFromAndroid;
 		window.__rockolaOpenTops = openTopsFromAndroid;
+		window.__rockolaResumeLast = resumeLastFromAndroid;
 		window.__rockolaSetPipMode = handleAndroidPipMode;
 		window.__rockolaOnMediaVolumeChanged = handleAndroidMediaVolumeChanged;
 		window.__rockolaOnNativeCommandError = handleNativeCommandError;
@@ -528,6 +540,9 @@
 		}
 		if (window.__rockolaOpenTops === openTopsFromAndroid) {
 			delete window.__rockolaOpenTops;
+		}
+		if (window.__rockolaResumeLast === resumeLastFromAndroid) {
+			delete window.__rockolaResumeLast;
 		}
 		if (window.__rockolaSetPipMode === handleAndroidPipMode) {
 			delete window.__rockolaSetPipMode;
