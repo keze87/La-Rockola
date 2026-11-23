@@ -45,6 +45,6 @@ describe('ToggleRow.vue', () => {
 		const switchBtn = wrapper.find('button');
 		expect(switchBtn.classes()).toContain('bg-green-500');
 		const knob = wrapper.find('span[aria-hidden="true"]');
-		expect(knob.classes()).toContain('translate-x-5');
+		expect(knob.classes()).toContain('translate-x-[22px]');
 	});
 });

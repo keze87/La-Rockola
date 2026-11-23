@@ -13,7 +13,7 @@
 			icon: null,
 			title: '',
 			description: '',
-			activeClass: 'bg-carpincho-warning',
+			activeClass: 'bg-[var(--accent-mate)]',
 		}
 	);
 
@@ -24,29 +24,33 @@
 
 <template>
 	<div
-		class="bg-carpincho-panel border-carpincho-warning mx-auto mb-8 flex w-full max-w-lg items-center justify-between rounded-xl border-l-4 p-4 shadow-md transition-all"
+		class="flex w-full items-center justify-between px-4 py-3.5 transition-colors hover:bg-[var(--bg-surface-hover)]"
 	>
-		<div class="text-left">
-			<div class="text-carpincho-text flex items-center gap-2 font-bold">
-				<i class="material-icons text-carpincho-warning">{{ icon }}</i>
-				{{ title }}
+		<div class="min-w-0 flex-1 pr-3 text-left">
+			<div class="flex items-center gap-2.5 text-[15px] font-semibold text-[var(--text-primary)]">
+				<i v-if="icon" class="material-icons !text-[20px] text-[var(--accent-primary)]" aria-hidden="true">
+					{{ icon }}
+				</i>
+				<span class="truncate">{{ title }}</span>
 			</div>
-			<div class="text-carpincho-muted text-xs">{{ description }}</div>
+			<div v-if="description" class="mt-0.5 text-[12px] leading-snug text-[var(--text-secondary)]">
+				{{ description }}
+			</div>
 		</div>
 
 		<Switch
 			:model-value="modelValue"
 			:class="[
-				modelValue ? activeClass : 'bg-gray-700',
-				'relative ml-4 inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
+				modelValue ? activeClass : 'bg-[rgba(255,236,210,0.16)]',
+				'relative inline-flex h-[30px] w-[50px] shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none',
 			]"
 			@update:model-value="$emit('update:modelValue', $event)"
 		>
 			<span
 				aria-hidden="true"
 				:class="[
-					modelValue ? 'translate-x-5' : 'translate-x-0',
-					'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+					modelValue ? 'translate-x-[22px]' : 'translate-x-[2px]',
+					'pointer-events-none inline-block h-[26px] w-[26px] transform rounded-full bg-[#faf6f0] shadow-[0_2px_6px_rgba(0,0,0,0.35)] ring-0 transition-transform duration-200 ease-in-out',
 				]"
 			/>
 		</Switch>

@@ -8,7 +8,7 @@
 		}>(),
 		{
 			icon: null,
-			colorClass: 'bg-gray-800 hover:bg-gray-700',
+			colorClass: 'bg-[var(--bg-input)] hover:bg-[var(--bg-surface-hover)] border border-[var(--hairline)] text-[var(--text-primary)]',
 			disabled: false,
 			title: undefined,
 		}
@@ -22,7 +22,7 @@
 	<button
 		:disabled="disabled"
 		:title="title"
-		class="flex items-center gap-2 rounded-full px-5 py-2 font-medium text-white transition active:scale-95 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50"
+		class="tap-feedback flex items-center gap-2 rounded-[var(--radius-md)] px-4 py-2.5 text-sm font-semibold disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50"
 		:class="colorClass"
 		@click="!disabled && $emit('click')"
 	>

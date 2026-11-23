@@ -150,7 +150,7 @@
 
 <template>
 	<section
-		class="floating-player bg-carpincho-panel/85 border-carpincho-border/80 flex items-center justify-between rounded-t-[26px] rounded-b-none border border-b-0 p-3 shadow-[0_-4px_20px_rgba(0,0,0,0.4)] backdrop-blur-xl transition-transform duration-200 md:rounded-[24px] md:border-b md:shadow-[0_8px_24px_rgba(0,0,0,0.55)]"
+		class="floating-player flex h-[var(--floating-player-h)] items-center justify-between rounded-[var(--radius-lg)] border border-[var(--glass-border)] bg-[var(--glass-bg-strong)] px-3 py-2 [box-shadow:var(--glass-highlight),0_10px_30px_rgba(0,0,0,0.45)] [backdrop-filter:var(--glass-blur)] [-webkit-backdrop-filter:var(--glass-blur)] transition-transform duration-200"
 		:style="swipeStyle"
 		@touchstart.passive="onTouchStart"
 		@touchmove="onTouchMove"
@@ -160,11 +160,11 @@
 		<button
 			type="button"
 			aria-label="Abrir fila de reproducción"
-			class="flex grow cursor-pointer items-center overflow-hidden text-left"
+			class="flex min-w-0 grow cursor-pointer items-center overflow-hidden text-left"
 			@click="goToQueue"
 		>
 			<div
-				class="bg-carpincho-bg relative mr-3 flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg"
+				class="relative mr-3 flex h-[44px] w-[44px] shrink-0 items-center justify-center overflow-hidden rounded-[var(--radius-sm)] border border-[var(--hairline)] bg-[var(--bg-input)]"
 			>
 				<img
 					v-if="coverUrl"
@@ -175,16 +175,16 @@
 				/>
 				<i
 					v-else-if="djBaraEnabled && queueState.length === 0"
-					class="material-icons text-carpincho-warning animate-pulse !text-[2rem]"
+					class="material-icons animate-pulse !text-[24px] text-[var(--accent-primary)]"
 					aria-hidden="true"
 				>
 					auto_awesome
 				</i>
-				<i v-else class="material-icons text-carpincho-warning !text-[2rem]" aria-hidden="true">album</i>
+				<i v-else class="material-icons !text-[24px] text-[var(--accent-primary)]" aria-hidden="true">album</i>
 			</div>
 
-			<div class="flex grow flex-col justify-center overflow-hidden">
-				<div class="text-carpincho-primary text-[0.7rem] font-bold tracking-wider uppercase">
+			<div class="flex min-w-0 grow flex-col justify-center overflow-hidden">
+				<div class="text-[10px] font-semibold tracking-[0.06em] text-[var(--accent-primary)]/90 uppercase">
 					{{
 						queueState.length > 0
 							? 'Próximo Temazo'
@@ -195,20 +195,20 @@
 								: 'Fin de la fila'
 					}}
 				</div>
-				<div class="text-carpincho-text truncate text-[0.95rem] font-bold">
+				<div class="truncate text-[14px] font-semibold text-[var(--text-primary)]">
 					{{ upNextTitle }}
 				</div>
 			</div>
 		</button>
 
-		<div class="ml-2 flex shrink-0 items-center gap-3">
+		<div class="ml-2 flex shrink-0 items-center gap-2">
 			<button
 				type="button"
 				:class="[
-					'touch-target tap-feedback hidden h-10 w-10 items-center justify-center rounded-full transition sm:flex',
+					'touch-target tap-feedback hidden h-9 w-9 items-center justify-center rounded-full sm:flex',
 					pauseAfterPath === currentTrackPath && currentTrackPath
-						? 'text-carpincho-warning'
-						: 'text-gray-400 hover:text-white',
+						? 'bg-[var(--accent-primary-soft)] text-[var(--accent-primary)]'
+						: 'bg-[rgba(255,236,210,0.08)] text-[var(--text-primary)] hover:bg-[var(--bg-surface-active)]',
 				]"
 				:aria-label="
 					pauseAfterPath === currentTrackPath && currentTrackPath
@@ -225,32 +225,29 @@
 					haptic();
 				"
 			>
-				<i class="material-icons !text-2xl" aria-hidden="true">timer</i>
+				<i class="material-icons !text-[20px]" aria-hidden="true">timer</i>
 			</button>
 			<button
 				type="button"
 				:aria-label="isPlaying ? 'Pausar' : 'Reproducir'"
-				:class="[
-					'touch-target tap-feedback flex h-14 w-14 items-center justify-center rounded-full text-white shadow-lg transition',
-					isPlaying ? 'bg-orange-600 hover:bg-orange-500' : 'bg-green-600 hover:bg-green-500',
-				]"
+				class="touch-target tap-feedback flex h-11 w-11 items-center justify-center rounded-full bg-[var(--accent-primary)] text-[#120e0b] shadow-md hover:brightness-110"
 				@click="
 					pause();
 					haptic(true);
 				"
 			>
-				<i class="material-icons !text-4xl" aria-hidden="true">{{ isPlaying ? 'pause' : 'play_arrow' }}</i>
+				<i class="material-icons !text-[28px]" aria-hidden="true">{{ isPlaying ? 'pause' : 'play_arrow' }}</i>
 			</button>
 			<button
 				type="button"
 				aria-label="Siguiente tema"
-				class="touch-target tap-feedback flex h-10 w-10 items-center justify-center rounded-full bg-gray-700 text-white shadow transition hover:bg-gray-600"
+				class="touch-target tap-feedback flex h-9 w-9 items-center justify-center rounded-full bg-[rgba(255,236,210,0.08)] text-[var(--text-primary)] hover:bg-[var(--bg-surface-active)]"
 				@click="
 					skip();
 					haptic();
 				"
 			>
-				<i class="material-icons !text-2xl" aria-hidden="true">skip_next</i>
+				<i class="material-icons !text-[22px]" aria-hidden="true">skip_next</i>
 			</button>
 		</div>
 	</section>

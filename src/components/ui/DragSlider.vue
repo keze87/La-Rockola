@@ -10,8 +10,8 @@
 		}>(),
 		{
 			max: 100,
-			activeColor: 'bg-carpincho-warning',
-			trackColor: 'bg-gray-600/50',
+			activeColor: 'bg-[var(--accent-primary)]',
+			trackColor: 'bg-[rgba(255,236,210,0.14)]',
 		}
 	);
 
@@ -43,7 +43,10 @@
 		@pointerup="endDrag"
 		@pointercancel="endDrag"
 	>
-		<div class="pointer-events-none relative h-1.5 w-full rounded-full" :class="trackColor">
+		<div
+			class="pointer-events-none relative h-[6px] w-full rounded-full transition-[height] duration-150 group-active:h-[10px]"
+			:class="trackColor"
+		>
 			<div
 				class="absolute top-0 left-0 h-full rounded-full"
 				:class="activeColor"
@@ -51,8 +54,7 @@
 			/>
 
 			<div
-				class="absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full shadow transition-transform group-active:scale-125"
-				:class="activeColor"
+				class="absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full bg-[#f5efe6] shadow-[0_2px_6px_rgba(0,0,0,0.45)] transition-transform group-active:scale-110"
 				:style="{ left: progressPercent + '%', marginLeft: '-8px' }"
 			/>
 		</div>
