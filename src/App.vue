@@ -9,6 +9,7 @@
 		initAndroidServer,
 		isAndroidPipMode,
 		isNativeAndroidHost,
+		markAndroidUiReady,
 		pickAndApplyMusicFolder,
 	} from './composables/useAndroidHost';
 	import {
@@ -382,6 +383,7 @@
 		window.__rockolaOnNativeCommandError = handleNativeCommandError;
 		if (isNativeAndroidHost()) {
 			void consumeAndroidPendingShortcut().then(applyShortcutAction);
+			requestAnimationFrame(() => markAndroidUiReady());
 			initAndroidServer().then((ok) => {
 				if (!ok) return;
 				loadLibrary(false);

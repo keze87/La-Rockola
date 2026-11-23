@@ -77,6 +77,7 @@ export interface MediaTargetPayload {
 }
 
 export interface RockolaServerPlugin {
+	markUiReady?(): Promise<{ ready: boolean }>;
 	startServer(options?: { port?: number; musicDir?: string }): Promise<AndroidServerInfo>;
 	stopServer(): Promise<{ stopped: boolean }>;
 	getStatus(): Promise<AndroidServerInfo>;
@@ -136,6 +137,13 @@ export const isAndroidPipMode = ref<boolean>(false);
 
 export function isNativeAndroidHost(): boolean {
 	return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
+}
+
+export function markAndroidUiReady(): void {
+	if (!isNativeAndroidHost() || typeof RockolaServer.markUiReady !== 'function') return;
+	void RockolaServer.markUiReady().catch(() => {
+		// El splash nativo tiene tope de seguridad si el plugin todavía no está listo
+	});
 }
 
 export function triggerAndroidHaptic(heavy = false): void {

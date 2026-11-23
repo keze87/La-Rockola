@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Paleta unificada de La Rockola del Carpincho -->
+    <color name="rockola_bg">#1F1A17</color>
+    <color name="rockola_surface">#2B2622</color>
+    <color name="rockola_primary">#A67C52</color>
+    <color name="rockola_secondary">#D4A373</color>
+    <color name="rockola_warning">#E9C46A</color>
+    <color name="rockola_success">#588157</color>
+    <color name="rockola_border">#4A3F35</color>
+    <color name="rockola_text">#E8D5C4</color>
+    <color name="rockola_muted">#A6ADC8</color>
+
+    <color name="colorPrimary">@color/rockola_primary</color>
+    <color name="colorPrimaryDark">@color/rockola_bg</color>
+    <color name="colorAccent">@color/rockola_warning</color>
+</resources>

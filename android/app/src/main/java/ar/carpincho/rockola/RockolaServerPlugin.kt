@@ -198,6 +198,12 @@ class RockolaServerPlugin : Plugin() {
     }
 
     @PluginMethod
+    fun markUiReady(call: PluginCall) {
+        (activity as? MainActivity)?.markUiReady()
+        call.resolve(JSObject().apply { put("ready", true) })
+    }
+
+    @PluginMethod
     fun startServer(call: PluginCall) {
         val port = call.getInt("port") ?: RockolaForegroundService.currentPort
         val musicDir = call.getString("musicDir")

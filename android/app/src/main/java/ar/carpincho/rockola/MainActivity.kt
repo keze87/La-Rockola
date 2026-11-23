@@ -11,6 +11,7 @@ import android.graphics.Color
 import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.Rational
 import androidx.activity.OnBackPressedCallback
 import androidx.annotation.RequiresApi
@@ -20,6 +21,19 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.getcapacitor.BridgeActivity
+import java.util.concurrent.atomic.AtomicBoolean
+
+/**
+ * Política de retención del splash nativo hasta el primer frame útil de Vue.
+ */
+internal object SplashHoldPolicy {
+    const val MAX_HOLD_MS = 2500L
+
+    fun shouldKeepOnScreen(uiReady: Boolean, elapsedMs: Long, maxHoldMs: Long = MAX_HOLD_MS): Boolean {
+        if (uiReady) return false
+        return elapsedMs < maxHoldMs
+    }
+}
 
 /**
  * Reglas puras de ciclo de vida y accesos directos de MainActivity (testeables en JVM).
@@ -187,9 +201,22 @@ class MainActivity : BridgeActivity() {
     }
 
     private var notificationPermissionRequested = false
+    private val uiReady = AtomicBoolean(false)
+    private var splashStartedAtMs: Long = 0L
+
+    fun markUiReady() {
+        uiReady.set(true)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        installSplashScreen()
+        splashStartedAtMs = SystemClock.elapsedRealtime()
+        val splashScreen = installSplashScreen()
+        splashScreen.setKeepOnScreenCondition {
+            SplashHoldPolicy.shouldKeepOnScreen(
+                uiReady = uiReady.get(),
+                elapsedMs = SystemClock.elapsedRealtime() - splashStartedAtMs,
+            )
+        }
         registerPlugin(RockolaServerPlugin::class.java)
         isFogonActive = savedInstanceState?.getBoolean(STATE_FOGON_ACTIVE, false) ?: false
         if (savedInstanceState != null) {
@@ -200,7 +227,7 @@ class MainActivity : BridgeActivity() {
         applyHeadbarSystemBars()
         registerBackNavigationHandler()
         bridge?.webView?.apply {
-            setBackgroundColor(0xFF1F1A17.toInt())
+            setBackgroundColor(ContextCompat.getColor(this@MainActivity, R.color.rockola_bg))
             settings.mediaPlaybackRequiresUserGesture = false
         }
         if (MainActivityPolicy.shouldHandleShortcutOnCreate(savedInstanceState != null, intent?.action)) {

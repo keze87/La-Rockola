@@ -32,4 +32,14 @@ class MainActivityPolicyTest {
             ),
         )
     }
+
+    @Test
+    fun `splash nativo espera a que la UI este lista hasta el tope de seguridad`() {
+        assertTrue(SplashHoldPolicy.shouldKeepOnScreen(uiReady = false, elapsedMs = 0L))
+        assertTrue(SplashHoldPolicy.shouldKeepOnScreen(uiReady = false, elapsedMs = 2499L))
+        assertFalse(SplashHoldPolicy.shouldKeepOnScreen(uiReady = false, elapsedMs = 2500L))
+        assertFalse(SplashHoldPolicy.shouldKeepOnScreen(uiReady = false, elapsedMs = 4000L))
+        assertFalse(SplashHoldPolicy.shouldKeepOnScreen(uiReady = true, elapsedMs = 200L))
+        assertFalse(SplashHoldPolicy.shouldKeepOnScreen(uiReady = true, elapsedMs = 0L))
+    }
 }

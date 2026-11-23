@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es" style="background-color: #1f1a17">
+<html lang="es" style="--rockola-bg: #1f1a17; background-color: var(--rockola-bg)">
 	<head>
 		<meta charset="UTF-8" />
 		<meta
@@ -49,10 +49,11 @@
 		<meta name="mobile-web-app-capable" content="yes" />
 	</head>
 
-	<body class="text-carpincho-text font-sans antialiased" style="background-color: #1f1a17">
+	<body class="text-carpincho-text font-sans antialiased" style="background-color: var(--rockola-bg)">
 		<!-- Vue attaches your application here -->
 		<div id="app">
 			<div
+				id="web-boot-splash"
 				style="
 					display: flex;
 					flex-direction: column;
@@ -60,7 +61,7 @@
 					justify-content: center;
 					height: 100dvh;
 					width: 100%;
-					background-color: #1f1a17;
+					background-color: var(--rockola-bg);
 					color: #e8d5c4;
 					font-family:
 						system-ui,
@@ -78,6 +79,17 @@
 					Prendiendo la rockola... 🧉
 				</span>
 			</div>
+			<script>
+				// En Capacitor Android el splash nativo permanece hasta que Vue esté listo, evitando doble pantalla
+				if (
+					window.Capacitor &&
+					typeof window.Capacitor.isNativePlatform === 'function' &&
+					window.Capacitor.isNativePlatform()
+				) {
+					var bootEl = document.getElementById('web-boot-splash');
+					if (bootEl) bootEl.style.display = 'none';
+				}
+			</script>
 		</div>
 
 		<!-- Vite injects the compiled application through this module -->
