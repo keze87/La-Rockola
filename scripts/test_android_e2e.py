@@ -358,6 +358,39 @@ def _run_shortcut_checks(serial: str) -> list[E2EResult]:
 	return [E2EResult("shortcuts_pantalla_prendida", True, f"4/4 shortcuts OK (pid={pid})")]
 
 
+def _run_radio_test_checks(serial: str, base_url: str) -> list[E2EResult]:
+	"""Prueba generación y reproducción radial con fundido en distintas variantes."""
+	variants = (
+		("continue_play", {"play": True, "outro_mode": "continue"}),
+		("dj_play", {"play": True, "outro_mode": "dj"}),
+		("pause_dry", {"play": False, "outro_mode": "pause"}),
+	)
+	results: list[E2EResult] = []
+	for label, payload in variants:
+		st, data = _http_json(f"{base_url}/api/radio/test", "POST", payload, timeout=30.0)
+		if st != 200 or not data.get("ok") or not data.get("script"):
+			raise RuntimeError(f"POST /api/radio/test ({label}) falló: status={st}, data={data}")
+		if payload["play"] and not data.get("played"):
+			raise RuntimeError(f"POST /api/radio/test ({label}) no inició reproducción: {data}")
+		if payload["play"]:
+			time.sleep(1.5)
+			session_dump = _get_media_session_state(serial)
+			if "RockolaMediaSession" not in session_dump:
+				raise RuntimeError(f"RockolaMediaSession ausente tras radio test ({label})")
+		results.append(
+			E2EResult(
+				f"radio_{label}",
+				True,
+				f"ok=True, played={data.get('played')}, script={len(data.get('script', ''))}ch",
+			)
+		)
+
+	_http_json(f"{base_url}/command", "POST", {"cmd": "pause", "state": True})
+	_assert_process_and_foreground(serial)
+	_assert_no_fatal_logcat(serial)
+	return results
+
+
 def _run_idle_paused_soak_check(serial: str, base_url: str, idle_seconds: int) -> list[E2EResult]:
 	"""Observa qué ocurre sin clientes conectados y el servidor en pausa (informativo: no falla si Android lo mata)."""
 	if idle_seconds <= 0:
@@ -449,6 +482,7 @@ def run_e2e(
 	try:
 		_wait_health(base_url, timeout_sec=20.0)
 		all_results.extend(_run_shortcut_checks(serial))
+		all_results.extend(_run_radio_test_checks(serial, base_url))
 		if mode in ("server", "all"):
 			all_results.extend(_run_server_mode_checks(serial, base_url, screen_awake=True))
 			all_results.extend(_run_server_mode_checks(serial, base_url, screen_awake=False))
