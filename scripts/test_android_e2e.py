@@ -114,11 +114,14 @@ def _assert_process_and_foreground(serial: str) -> str:
 
 
 def _assert_no_fatal_logcat(serial: str) -> None:
-	logs = _run_adb(serial, ["logcat", "-d", "-t", "400"], check=False)
+	logs = _run_adb(serial, ["logcat", "-d", "-t", "500"], check=False)
 	bad_markers = (
 		"FATAL EXCEPTION",
 		"ForegroundServiceStartNotAllowedException",
 		"Stopping service due to app idle",
+		"Scheduling restart of crashed service",
+		"ANR in ",
+		"has died",
 	)
 	for line in logs.splitlines():
 		if any(marker in line for marker in bad_markers) and (
@@ -222,6 +225,54 @@ def _run_client_mode_checks(serial: str, base_url: str, screen_awake: bool) -> l
 	return results
 
 
+def _run_screen_off_soak_check(serial: str, base_url: str, soak_seconds: int) -> list[E2EResult]:
+	"""Verifica durante un período prolongado con pantalla apagada que Android no mate ni reinicie el servicio."""
+	if soak_seconds <= 0:
+		return []
+
+	_, lib = _http_json(f"{base_url}/library")
+	tracks = lib.get("data") or []
+	if not tracks:
+		raise RuntimeError("No hay pistas en biblioteca para ejecutar la prueba prolongada con pantalla apagada")
+
+	initial_pid = _assert_process_and_foreground(serial)
+	_http_json(f"{base_url}/command", "POST", {"cmd": "play", "path": tracks[0]["path"]})
+	_set_screen_state(serial, awake=False)
+
+	print(f"⏳ Iniciando soak con pantalla apagada ({soak_seconds}s, pid={initial_pid})...")
+	deadline = time.monotonic() + soak_seconds
+	checks = 0
+	poll_interval = 10.0
+
+	while True:
+		remaining = deadline - time.monotonic()
+		if remaining <= 0:
+			break
+		time.sleep(min(poll_interval, remaining))
+		checks += 1
+		current_pid = _assert_process_and_foreground(serial)
+		if current_pid != initial_pid:
+			raise RuntimeError(
+				f"El proceso cambió de PID durante la prueba con pantalla apagada ({initial_pid} -> {current_pid})"
+			)
+		st_h, health = _http_json(f"{base_url}/health", timeout=5.0)
+		if st_h != 200 or health.get("status") != "ok":
+			raise RuntimeError(f"/health falló durante soak: status={st_h}, body={health}")
+		session_dump = _get_media_session_state(serial)
+		if "RockolaMediaSession" not in session_dump:
+			raise RuntimeError("RockolaMediaSession desapareció durante soak con pantalla apagada")
+		_assert_no_fatal_logcat(serial)
+
+	_http_json(f"{base_url}/command", "POST", {"cmd": "pause", "state": True})
+	return [
+		E2EResult(
+			"soak_pantalla_apagada_estabilidad",
+			True,
+			f"{soak_seconds}s vivo sin reinicios (pid={initial_pid}, checks={checks})",
+		)
+	]
+
+
 def run_e2e(
 	serial: str | None,
 	mode: str = "all",
@@ -230,6 +281,7 @@ def run_e2e(
 	device_port: int = DEFAULT_DEVICE_PORT,
 	server_url: str | None = None,
 	if_available: bool = False,
+	soak_seconds: int = 90,
 ) -> int:
 	"""Orquesta la batería E2E sobre el dispositivo Android conectado por ADB."""
 	devices = detect_adb_devices()
@@ -276,6 +328,7 @@ def run_e2e(
 		if mode in ("client", "all"):
 			all_results.extend(_run_client_mode_checks(serial, base_url, screen_awake=True))
 			all_results.extend(_run_client_mode_checks(serial, base_url, screen_awake=False))
+		all_results.extend(_run_screen_off_soak_check(serial, base_url, soak_seconds=soak_seconds))
 	finally:
 		_set_screen_state(serial, awake=True)
 		if forwarded:
@@ -300,6 +353,12 @@ def main(argv: list[str] | None = None) -> int:
 	parser.add_argument("--install", type=Path, default=None, help="Ruta a APK para instalar antes de probar.")
 	parser.add_argument("--server-url", default=None, help="URL HTTP remota opcional (omite adb forward).")
 	parser.add_argument("--if-available", action="store_true", help="Sale con 0 si no hay dispositivo ADB conectado.")
+	parser.add_argument(
+		"--soak-seconds",
+		type=int,
+		default=90,
+		help="Segundos sostenidos con pantalla apagada reproduciendo para verificar que Android no mate el servicio (default: 90, 0 desactiva).",
+	)
 	args = parser.parse_args(argv)
 
 	try:
@@ -309,6 +368,7 @@ def main(argv: list[str] | None = None) -> int:
 			apk_path=args.install,
 			server_url=args.server_url,
 			if_available=args.if_available,
+			soak_seconds=args.soak_seconds,
 		)
 	except Exception as exc:
 		print(f"❌ Falló E2E Android: {exc}", file=sys.stderr)
