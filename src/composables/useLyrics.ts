@@ -314,9 +314,9 @@ export function useLyrics(player: { localTimePos: Ref<number> }) {
 		return path.includes('radio_announcement') || path.includes('radio_pregenerated');
 	}
 
-	async function loadLyrics(path: string | null) {
+	async function loadLyrics(path: string | null, force: boolean = false) {
 		const isRadio = Boolean(path && isRadioAnnouncementPath(path));
-		if (path === currentLoadedPath && !isRadio) {
+		if (!force && path === currentLoadedPath && !isRadio) {
 			if (currentFetchPromise) await currentFetchPromise;
 			return;
 		}
@@ -341,9 +341,15 @@ export function useLyrics(player: { localTimePos: Ref<number> }) {
 							parseLrc(text);
 						}
 					}
+				} else if (!res.ok && res.status !== 404 && currentLoadedPath === path) {
+					// Permitimos reintentar si el servidor embebido aún no terminó de arrancar (ej. 500/503)
+					currentLoadedPath = null;
 				}
 			} catch (err) {
 				console.error('Pifió buscando las lyrics, maestro:', err);
+				if (currentLoadedPath === path) {
+					currentLoadedPath = null;
+				}
 			} finally {
 				if (currentLoadedPath === path) {
 					currentFetchPromise = null;

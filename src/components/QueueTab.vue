@@ -6,7 +6,7 @@
 	import { useContextMenu } from '../composables/useContextMenu';
 	import { usePlaybackControls } from '../composables/usePlaybackControls';
 	import { usePlayer } from '../composables/usePlayer';
-	import { restoreTabScroll, saveTabScroll } from '../composables/useUiPersistence';
+	import { restoreTabScroll, saveTabScrollDebounced } from '../composables/useUiPersistence';
 	import DjBanner from './queue/DjBanner.vue';
 	import TrackRow from './ui/TrackRow.vue';
 
@@ -113,7 +113,7 @@
 		const target = e.target as HTMLElement;
 		if (target) {
 			handleScroll(target.scrollTop);
-			saveTabScroll('queue', target.scrollTop);
+			saveTabScrollDebounced('queue', target.scrollTop);
 		}
 	}
 

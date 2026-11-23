@@ -328,4 +328,62 @@ Dialogue: 0,0:02:14.81,0:02:17.31,Default,,0,0,0,,{\\blur3}{\\kf0}A{\\k3} {\\kf1
 		expect(fetchMock.mock.calls[1][0]).toContain('&_t=');
 		expect(lyrics.value.map((l) => l.text)).toEqual(['Segundo segmento']);
 	});
+
+	it('retries loading lyrics when initial request fails with network error or 503', async () => {
+		const localTimePos = ref(0);
+		const { lyrics, loadLyrics } = useLyrics({ localTimePos });
+
+		const fetchMock = vi
+			.fn()
+			.mockRejectedValueOnce(new Error('Network error'))
+			.mockResolvedValueOnce({
+				ok: false,
+				status: 503,
+				text: () => Promise.resolve('Service Unavailable'),
+			} as unknown as Response)
+			.mockResolvedValueOnce({
+				ok: true,
+				status: 200,
+				text: () => Promise.resolve('[00:01.00] Letras restauradas\n'),
+			} as unknown as Response);
+		global.fetch = fetchMock;
+
+		const restoredPath = '/music/restaurada.mp3';
+		await loadLyrics(restoredPath);
+		expect(lyrics.value).toEqual([]);
+
+		await loadLyrics(restoredPath);
+		expect(lyrics.value).toEqual([]);
+
+		await loadLyrics(restoredPath);
+		expect(fetchMock).toHaveBeenCalledTimes(3);
+		expect(lyrics.value.map((l) => l.text)).toEqual(['Letras restauradas']);
+	});
+
+	it('re-fetches lyrics when force=true even if path matches currentLoadedPath', async () => {
+		const localTimePos = ref(0);
+		const { lyrics, loadLyrics } = useLyrics({ localTimePos });
+
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValueOnce({
+				ok: true,
+				status: 200,
+				text: () => Promise.resolve('[00:01.00] Primera carga\n'),
+			} as unknown as Response)
+			.mockResolvedValueOnce({
+				ok: true,
+				status: 200,
+				text: () => Promise.resolve('[00:01.00] Carga forzada\n'),
+			} as unknown as Response);
+		global.fetch = fetchMock;
+
+		const songPath = '/music/forzada.mp3';
+		await loadLyrics(songPath);
+		expect(lyrics.value.map((l) => l.text)).toEqual(['Primera carga']);
+
+		await loadLyrics(songPath, true);
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+		expect(lyrics.value.map((l) => l.text)).toEqual(['Carga forzada']);
+	});
 });

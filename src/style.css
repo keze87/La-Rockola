@@ -46,7 +46,7 @@
 	--glass-bg-strong: rgba(20, 15, 11, 0.88);
 	--glass-border: rgba(255, 235, 208, 0.09);
 	--glass-highlight: inset 0 1px 0 rgba(255, 240, 220, 0.08);
-	--glass-blur: blur(24px) saturate(160%);
+	--glass-blur: blur(16px) saturate(140%);
 
 	/* Acentos de marca */
 	--accent-primary: #d49642; /* Ámbar miel cálido: progreso, activos, links */

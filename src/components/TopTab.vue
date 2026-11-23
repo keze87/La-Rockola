@@ -3,7 +3,7 @@
 	import { usePlayer } from '../composables/usePlayer';
 	import { useContextMenuBindings } from '../composables/useContextMenu';
 	import { usePullToRefresh } from '../composables/usePullToRefresh';
-	import { restoreTabScroll, saveTabScroll } from '../composables/useUiPersistence';
+	import { restoreTabScroll, saveTabScrollDebounced } from '../composables/useUiPersistence';
 	import FavoritableCover from './ui/FavoritableCover.vue';
 
 	const { topPlayedState, getTrackInfo, toggleQueue, handleScroll, loadLibrary, haptic, isScanning } = usePlayer();
@@ -28,7 +28,7 @@
 		const target = e.target as HTMLElement;
 		if (target) {
 			handleScroll(target.scrollTop);
-			saveTabScroll('top', target.scrollTop);
+			saveTabScrollDebounced('top', target.scrollTop);
 		}
 	}
 

@@ -2,19 +2,31 @@
 // a "No conservar actividades", rotación y muerte de proceso por el sistema.
 
 import { watch } from 'vue';
-import { librarySearchQuery, showFavoritesOnly } from '../stores/useLibraryStore';
+import {
+	activeSort,
+	hasUserSelectedSort,
+	librarySearchQuery,
+	showFavoritesOnly,
+	urlParams,
+} from '../stores/useLibraryStore';
 import { activeTab, isFogonMode } from '../stores/useUiStore';
 
 export const UI_PERSISTENCE_KEY = 'rockola_ui_state_v1';
 export const UI_SCROLL_KEY = 'rockola_ui_scroll_v1';
 
 const VALID_TABS = new Set(['library', 'queue', 'top', 'controls']);
+const VALID_SORTS = new Set(['time', 'artist', 'mood', 'shuffle']);
+
+type SortValue = 'time' | 'artist' | 'mood' | 'shuffle';
 
 interface PersistedUiState {
 	activeTab: string;
 	searchQuery: string;
 	showFavoritesOnly: boolean;
 	isFogonMode: boolean;
+	activeSort?: SortValue;
+	hasUserSelectedSort?: boolean;
+	vibra?: string | null;
 }
 
 function readStorage(key: string): string | null {
@@ -54,22 +66,26 @@ function writeStorage(key: string, value: string): void {
 }
 
 export function saveUiState(): void {
+	const vibraVal = typeof urlParams.vibra === 'string' && urlParams.vibra.trim() !== '' ? urlParams.vibra : null;
 	const payload: PersistedUiState = {
 		activeTab: activeTab.value,
 		searchQuery: librarySearchQuery.value,
 		showFavoritesOnly: showFavoritesOnly.value,
 		isFogonMode: isFogonMode.value,
+		activeSort: activeSort.value,
+		hasUserSelectedSort: hasUserSelectedSort.value,
+		vibra: vibraVal,
 	};
 	writeStorage(UI_PERSISTENCE_KEY, JSON.stringify(payload));
 }
 
-export function restoreUiState(): boolean {
+export function restoreUiState(options?: { restoreTab?: boolean }): boolean {
 	const raw = readStorage(UI_PERSISTENCE_KEY);
 	if (!raw) return false;
 	try {
 		const parsed = JSON.parse(raw) as Partial<PersistedUiState> | null;
 		if (!parsed || typeof parsed !== 'object') return false;
-		if (typeof parsed.activeTab === 'string' && VALID_TABS.has(parsed.activeTab)) {
+		if (options?.restoreTab !== false && typeof parsed.activeTab === 'string' && VALID_TABS.has(parsed.activeTab)) {
 			activeTab.value = parsed.activeTab;
 		}
 		if (typeof parsed.searchQuery === 'string') {
@@ -78,10 +94,33 @@ export function restoreUiState(): boolean {
 		if (typeof parsed.showFavoritesOnly === 'boolean') {
 			showFavoritesOnly.value = parsed.showFavoritesOnly;
 		}
+		if (typeof parsed.activeSort === 'string' && VALID_SORTS.has(parsed.activeSort)) {
+			activeSort.value = parsed.activeSort as SortValue;
+		}
+		if (typeof parsed.hasUserSelectedSort === 'boolean') {
+			hasUserSelectedSort.value = parsed.hasUserSelectedSort;
+		}
+		if (urlParams.vibra === undefined && typeof parsed.vibra === 'string' && parsed.vibra.trim() !== '') {
+			urlParams.vibra = parsed.vibra;
+		}
 		return true;
 	} catch {
 		return false;
 	}
+}
+
+const scrollDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+export function saveTabScrollDebounced(tabId: string, scrollTop: number, delayMs: number = 200): void {
+	const prev = scrollDebounceTimers.get(tabId);
+	if (prev) clearTimeout(prev);
+	scrollDebounceTimers.set(
+		tabId,
+		setTimeout(() => {
+			scrollDebounceTimers.delete(tabId);
+			saveTabScroll(tabId, scrollTop);
+		}, delayMs)
+	);
 }
 
 export function saveTabScroll(tabId: string, scrollTop: number): void {
@@ -114,7 +153,15 @@ export function restoreTabScroll(tabId: string): number {
 
 export function initUiPersistence(): () => void {
 	return watch(
-		[activeTab, librarySearchQuery, showFavoritesOnly, isFogonMode],
+		[
+			activeTab,
+			librarySearchQuery,
+			showFavoritesOnly,
+			isFogonMode,
+			activeSort,
+			hasUserSelectedSort,
+			() => urlParams.vibra,
+		],
 		() => {
 			saveUiState();
 		},

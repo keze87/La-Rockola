@@ -38,7 +38,8 @@ export const filteredTracks = computed(() => {
 	let tracks = currentTracks.value;
 
 	if (showFavoritesOnly.value) {
-		tracks = tracks.filter((t) => favorites.value.includes(t.path));
+		const favSet = new Set(favorites.value);
+		tracks = tracks.filter((t) => favSet.has(t.path));
 	}
 
 	const query = librarySearchQuery.value.trim();

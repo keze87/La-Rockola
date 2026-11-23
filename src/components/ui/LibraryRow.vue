@@ -50,7 +50,7 @@
 <template>
 	<div
 		:id="isCurrent ? 'current-library-row' : undefined"
-		class="tap-feedback relative flex h-[72px] cursor-pointer items-center gap-3 px-4 transition-colors select-none hover:bg-[var(--bg-surface-hover)] min-[720px]:grid min-[720px]:grid-cols-[5rem_minmax(0,1fr)_minmax(0,1fr)_5rem] min-[720px]:gap-0 min-[720px]:px-0"
+		class="tap-feedback relative flex h-[72px] cursor-pointer items-center gap-3 px-4 transition-colors [contain:layout_style_paint] select-none hover:bg-[var(--bg-surface-hover)] min-[720px]:grid min-[720px]:grid-cols-[5rem_minmax(0,1fr)_minmax(0,1fr)_5rem] min-[720px]:gap-0 min-[720px]:px-0"
 		:class="isCurrent ? 'bg-[var(--accent-primary-soft)]' : ''"
 		v-on="bindings"
 		@click="emit('click', track)"
@@ -84,7 +84,7 @@
 			<span
 				v-else-if="hasPlayed"
 				title="Ya sonó"
-				class="played-indicator absolute flex h-6 w-6 items-center justify-center rounded-full bg-[var(--glass-bg-strong)] text-[var(--text-secondary)] shadow backdrop-blur-sm"
+				class="played-indicator absolute flex h-6 w-6 items-center justify-center rounded-full bg-[#1c1612]/90 text-[var(--text-secondary)] shadow"
 			>
 				<i class="material-icons !text-sm">history</i>
 			</span>

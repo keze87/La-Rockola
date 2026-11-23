@@ -111,7 +111,7 @@
 		}
 	);
 
-	const { currentLyricLine, activeLyricLines, loadLyrics } = useLyrics({ localTimePos });
+	const { currentLyricLine, activeLyricLines, loadLyrics, lyrics } = useLyrics({ localTimePos });
 	watch(
 		currentTrackPath,
 		(newPath: string | null) => {
@@ -464,8 +464,8 @@
 
 	onMounted(() => {
 		initRouter();
-		if (typeof window !== 'undefined' && extractSpaRoute(window.location.pathname) === '/') {
-			restoreUiState();
+		if (typeof window !== 'undefined') {
+			restoreUiState({ restoreTab: extractSpaRoute(window.location.pathname) === '/' });
 		}
 		stopUiPersistence = initUiPersistence();
 		window.__rockolaHandleBack = handleAndroidBack;
@@ -493,6 +493,9 @@
 				if (!ok) return;
 				loadLibrary(false);
 				connectWebSocket();
+				if (currentTrackPath.value && lyrics.value.length === 0) {
+					void loadLyrics(currentTrackPath.value, true);
+				}
 			});
 			if (typeof document !== 'undefined') {
 				document.addEventListener('visibilitychange', handleAndroidVisibilityChange);
@@ -500,6 +503,12 @@
 		} else {
 			loadLibrary(false);
 			connectWebSocket();
+		}
+	});
+
+	watch(localServerState, (nextState) => {
+		if (nextState === 'ready' && currentTrackPath.value && lyrics.value.length === 0) {
+			void loadLyrics(currentTrackPath.value, true);
 		}
 	});
 

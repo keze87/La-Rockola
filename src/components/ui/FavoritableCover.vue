@@ -47,7 +47,7 @@
 		<button
 			v-if="showFavorite"
 			type="button"
-			class="touch-target-hit tap-feedback absolute z-20 flex cursor-pointer items-center justify-center rounded-full border border-[var(--hairline)] bg-[var(--glass-bg-strong)] shadow-[0_2px_8px_rgba(0,0,0,0.45)] [backdrop-filter:blur(8px)] select-none"
+			class="touch-target-hit tap-feedback absolute z-20 flex cursor-pointer items-center justify-center rounded-full border border-[var(--hairline)] bg-[#1c1612]/95 shadow-[0_2px_8px_rgba(0,0,0,0.45)] select-none"
 			:class="[buttonPosition, buttonSize]"
 			:aria-label="isFavorite ? 'Quitar de favoritos' : 'Agregar a favoritos'"
 			@click.stop.prevent="toggleFavorite"

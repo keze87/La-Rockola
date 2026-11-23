@@ -4,7 +4,7 @@
 	import { isNativeAndroidHost, pickAndApplyMusicFolder } from '../composables/useAndroidHost';
 	import { usePlayer } from '../composables/usePlayer';
 	import { usePullToRefresh } from '../composables/usePullToRefresh';
-	import { restoreTabScroll, saveTabScroll } from '../composables/useUiPersistence';
+	import { restoreTabScroll, saveTabScrollDebounced } from '../composables/useUiPersistence';
 	import {
 		isHostMode,
 		libraryFolderError,
@@ -58,7 +58,7 @@
 		scrollTo,
 	} = useVirtualList(filteredTracks, {
 		itemHeight: 72, // Debe coincidir con la clase fija h-[72px] en LibraryRow.vue
-		overscan: 15,
+		overscan: 6,
 	});
 
 	watch(searchQuery, () => {
@@ -80,7 +80,7 @@
 		const target = e.target as HTMLElement;
 		if (target) {
 			handleScroll(target.scrollTop);
-			saveTabScroll('library', target.scrollTop);
+			saveTabScrollDebounced('library', target.scrollTop);
 		}
 	}
 
@@ -156,7 +156,7 @@
 
 		<!-- Encabezado fijo con buscador iOS y filtros cálidos -->
 		<div
-			class="sticky top-0 z-30 flex items-center gap-2 border-b border-[var(--hairline)] bg-[var(--glass-bg)] px-3 py-2.5 [backdrop-filter:var(--glass-blur)] [-webkit-backdrop-filter:var(--glass-blur)]"
+			class="sticky top-0 z-30 flex items-center gap-2 border-b border-[var(--hairline)] bg-[rgba(18,14,11,0.94)] px-3 py-2.5"
 		>
 			<button
 				type="button"

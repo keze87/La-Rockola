@@ -30,7 +30,7 @@ export function clearSnapshotHydrationFlag(): void {
 export function saveBootSnapshot(targetKey: string): void {
 	if (typeof localStorage === 'undefined') return;
 	try {
-		const sourceTracks = originalTracks.value.length > 0 ? originalTracks.value : currentTracks.value;
+		const sourceTracks = currentTracks.value.length > 0 ? currentTracks.value : originalTracks.value;
 		const payload: BootSnapshotPayload = {
 			version: 1,
 			targetKey,
