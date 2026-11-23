@@ -581,8 +581,7 @@
 				title: 'font-bold text-[var(--text-primary)]',
 				description: 'text-[var(--text-secondary)] text-sm',
 				success: '!bg-[var(--accent-mate)] !text-[var(--text-primary)] !border-[var(--accent-mate)]',
-				warning:
-					'!bg-[var(--accent-primary)] !text-[#120e0b] !border-[var(--accent-primary)] font-semibold',
+				warning: '!bg-[var(--accent-primary)] !text-[#120e0b] !border-[var(--accent-primary)] font-semibold',
 				error: '!bg-[var(--accent-danger)] !text-[var(--text-primary)] !border-[var(--accent-danger)]',
 				actionButton: 'bg-[var(--accent-primary)] text-[#120e0b] font-semibold',
 				cancelButton: 'bg-[var(--bg-input)] text-[var(--text-secondary)]',
@@ -658,7 +657,10 @@
 							class="block w-full truncate text-left text-[0.95rem] font-medium whitespace-pre italic drop-shadow-sm"
 						>
 							<template v-for="(line, idx) in activeLyricLines" :key="idx + '-' + line.time">
-								<span v-if="idx > 0" class="mx-1.5 font-normal text-[var(--text-secondary)]/70 not-italic">
+								<span
+									v-if="idx > 0"
+									class="mx-1.5 font-normal text-[var(--text-secondary)]/70 not-italic"
+								>
 									/
 								</span>
 								<template v-if="line.syllables && line.syllables.length > 0">
@@ -832,14 +834,17 @@
 			<!-- PESTAÑAS (anclada borde a borde en móvil cubriendo safe-bottom, riel lateral desde md) -->
 			<nav
 				aria-label="Secciones principales"
-				class="floating-tab-bar fixed z-40 order-2 flex min-h-[var(--tabbar-h)] shrink-0 items-center overflow-hidden border-t-[0.5px] border-[var(--glass-border)] bg-[var(--glass-bg-strong)] px-2 pt-1.5 [backdrop-filter:var(--glass-blur)] [-webkit-backdrop-filter:var(--glass-blur)] transition-all duration-200 ease-out md:static md:inset-auto md:z-10 md:order-1 md:h-auto md:min-h-0 md:w-[96px] md:flex-col md:items-stretch md:border-t-0 md:border-r md:border-[var(--hairline)] md:bg-[var(--bg-elevated)] md:px-0 md:py-0 md:pb-0 md:[backdrop-filter:none] lg:w-[104px]"
+				class="floating-tab-bar fixed z-40 order-2 flex min-h-[var(--tabbar-h)] shrink-0 items-center overflow-hidden border-t-[0.5px] border-[var(--glass-border)] bg-[var(--glass-bg-strong)] px-2 pt-1.5 [backdrop-filter:var(--glass-blur)] transition-all duration-200 ease-out [-webkit-backdrop-filter:var(--glass-blur)] md:static md:inset-auto md:z-10 md:order-1 md:h-auto md:min-h-0 md:w-[96px] md:flex-col md:items-stretch md:border-t-0 md:border-r md:border-[var(--hairline)] md:bg-[var(--bg-elevated)] md:px-0 md:py-0 md:pb-0 md:[backdrop-filter:none] lg:w-[104px]"
 				:class="[
 					isTabsBarHidden && isShortScreen
 						? 'pointer-events-none max-h-0 translate-y-2 border-0 py-0 opacity-0 md:max-h-none md:translate-y-0 md:opacity-100'
 						: 'translate-y-0 opacity-100',
 				]"
 			>
-				<div role="tablist" class="flex w-full items-center justify-around gap-1 md:flex-col md:gap-2 md:px-1.5 md:py-4">
+				<div
+					role="tablist"
+					class="flex w-full items-center justify-around gap-1 md:flex-col md:gap-2 md:px-1.5 md:py-4"
+				>
 					<button
 						v-for="tab in tabs"
 						:key="tab.id"
@@ -862,12 +867,14 @@
 							<i class="material-icons !text-[22px]" aria-hidden="true">{{ tab.icon }}</i>
 							<span
 								v-if="tab.id === 'queue' && queueState.length > 0"
-								class="tabular-nums absolute -top-1 -right-0.5 flex h-[15px] min-w-[15px] items-center justify-center rounded-full bg-[var(--accent-primary)] px-1 text-[10px] leading-none font-bold text-[#120e0b]"
+								class="absolute -top-1 -right-0.5 flex h-[15px] min-w-[15px] items-center justify-center rounded-full bg-[var(--accent-primary)] px-1 text-[10px] leading-none font-bold text-[#120e0b] tabular-nums"
 							>
 								{{ queueState.length > 99 ? '99+' : queueState.length }}
 							</span>
 						</div>
-						<span class="whitespace-nowrap px-0.5 text-[11px] leading-tight font-semibold tracking-tight md:text-[12px]">
+						<span
+							class="px-0.5 text-[11px] leading-tight font-semibold tracking-tight whitespace-nowrap md:text-[12px]"
+						>
 							{{ tab.name }}
 						</span>
 					</button>

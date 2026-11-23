@@ -237,7 +237,7 @@
 						</template>
 
 						<template v-else-if="item.status === 'queue' && item.queueIndex !== undefined">
-							<span class="tabular-nums text-[12px] font-semibold text-[var(--text-tertiary)]">
+							<span class="text-[12px] font-semibold text-[var(--text-tertiary)] tabular-nums">
 								{{ item.queueIndex + 1 }}
 							</span>
 						</template>
@@ -253,7 +253,10 @@
 						</i>
 					</template>
 
-					<template v-if="item.status === 'current' || (item.status === 'queue' && item.queueIndex !== undefined)" #suffix>
+					<template
+						v-if="item.status === 'current' || (item.status === 'queue' && item.queueIndex !== undefined)"
+						#suffix
+					>
 						<div v-if="item.status === 'current'" class="flex items-center" @click.stop>
 							<button
 								type="button"
@@ -282,7 +285,11 @@
 							</button>
 						</div>
 
-						<div v-else-if="item.status === 'queue' && item.queueIndex !== undefined" class="flex items-center gap-1" @click.stop>
+						<div
+							v-else-if="item.status === 'queue' && item.queueIndex !== undefined"
+							class="flex items-center gap-1"
+							@click.stop
+						>
 							<button
 								type="button"
 								aria-label="Subir a próximo"
@@ -304,7 +311,10 @@
 							<button
 								type="button"
 								aria-label="Sacar de la fila"
-								:class="[btnBaseClass, 'hidden hover:bg-[var(--accent-danger)]/20 hover:text-[var(--accent-danger)] sm:flex']"
+								:class="[
+									btnBaseClass,
+									'hidden hover:bg-[var(--accent-danger)]/20 hover:text-[var(--accent-danger)] sm:flex',
+								]"
 								title="Sacar de la fila"
 								@click="onRemoveClick(item.queueIndex, $event)"
 							>
@@ -332,7 +342,9 @@
 			>
 				<div class="p-12 text-center">
 					<div class="flex flex-col items-center gap-2 text-[var(--text-secondary)]">
-						<p class="text-base font-bold text-[var(--text-primary)]">El Carpincho está esperando el mate...</p>
+						<p class="text-base font-bold text-[var(--text-primary)]">
+							El Carpincho está esperando el mate...
+						</p>
 						<p class="text-sm">Agregá música para que empiece a cantar.</p>
 					</div>
 				</div>

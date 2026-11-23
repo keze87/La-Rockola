@@ -55,7 +55,9 @@
 			<i
 				class="material-icons favorite-icon transition-colors"
 				:class="[
-					isFavorite ? 'text-[var(--accent-danger)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]',
+					isFavorite
+						? 'text-[var(--accent-danger)]'
+						: 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]',
 					buttonIconSize,
 				]"
 			>

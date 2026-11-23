@@ -674,7 +674,10 @@
 			</PillButton>
 		</div>
 
-		<div v-if="hasMpv && hasLocalPlayer && !listenLocally" class="mx-auto mb-4 flex max-w-lg flex-wrap justify-center gap-2.5">
+		<div
+			v-if="hasMpv && hasLocalPlayer && !listenLocally"
+			class="mx-auto mb-4 flex max-w-lg flex-wrap justify-center gap-2.5"
+		>
 			<PillButton
 				icon="volume_up"
 				color-class="bg-[var(--accent-carpincho)] hover:bg-[var(--accent-carpincho-hover)] text-[#f5efe6]"
@@ -747,7 +750,7 @@
 				v-model="remoteServerInput"
 				type="text"
 				placeholder="IP de tu PC (ej: 192.168.0.55)"
-				class="mb-4 w-full rounded-[var(--radius-md)] border border-[var(--hairline)] bg-[var(--bg-input)] px-3 py-2.5 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:border-[var(--accent-primary)] outline-none"
+				class="mb-4 w-full rounded-[var(--radius-md)] border border-[var(--hairline)] bg-[var(--bg-input)] px-3 py-2.5 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-tertiary)] focus:border-[var(--accent-primary)]"
 				@keyup.enter="handleConnectRemoteServer"
 			/>
 			<div class="flex flex-wrap justify-end gap-2">
@@ -859,7 +862,9 @@
 
 		<div class="flex flex-col items-center pb-6">
 			<!-- Clase 'relative' agregada para contener la imagen absoluta -->
-			<div class="relative flex items-center justify-center rounded-[var(--radius-lg)] bg-[#f5efe6] p-4 shadow-lg">
+			<div
+				class="relative flex items-center justify-center rounded-[var(--radius-lg)] bg-[#f5efe6] p-4 shadow-lg"
+			>
 				<!-- Componente QR con los colores de la aplicación -->
 				<QRCode :value="currentUrl" :size="200" level="H" foreground="#120e0b" background="#f5efe6" />
 
@@ -910,7 +915,9 @@
 					<span class="text-[var(--text-primary)]">
 						{{ localMusicDisplayName || androidServerStatus.musicDir || 'Sin elegir' }}
 					</span>
-					<span v-if="libraryFolderError" class="text-[var(--accent-danger)]">· {{ libraryFolderError }}</span>
+					<span v-if="libraryFolderError" class="text-[var(--accent-danger)]">
+						· {{ libraryFolderError }}
+					</span>
 				</p>
 				<p class="leading-relaxed">
 					El servidor embebido se mantiene activo mientras suena música o la app está abierta; Android puede

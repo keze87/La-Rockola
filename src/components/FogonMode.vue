@@ -802,7 +802,7 @@
 							<!-- Barra de progreso personalizada -->
 							<div
 								v-show="currentTrackPath"
-								class="fogon-seekbar-wrapper tabular-nums flex w-[90vw] max-w-[380px] items-center gap-3 text-[12px] font-medium text-[var(--text-secondary)] select-none md:w-full md:max-w-none"
+								class="fogon-seekbar-wrapper flex w-[90vw] max-w-[380px] items-center gap-3 text-[12px] font-medium text-[var(--text-secondary)] tabular-nums select-none md:w-full md:max-w-none"
 							>
 								<span class="w-10 shrink-0 text-right">{{ formattedTimePos }}</span>
 

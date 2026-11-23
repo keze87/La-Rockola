@@ -236,7 +236,7 @@
 					}}
 				</span>
 			</div>
-			<div v-if="scanStatus?.total" class="tabular-nums ml-2 shrink-0 font-bold text-[var(--accent-primary)]">
+			<div v-if="scanStatus?.total" class="ml-2 shrink-0 font-bold text-[var(--accent-primary)] tabular-nums">
 				{{ Math.round((scanStatus.current / scanStatus.total) * 100) }}%
 			</div>
 		</div>

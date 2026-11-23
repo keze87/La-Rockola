@@ -97,7 +97,7 @@
 				v-on="useContextMenuBindings(() => getTrackInfo(t.path), 'library')"
 			>
 				<div
-					class="tabular-nums hidden w-8 shrink-0 text-center text-base font-bold text-[var(--accent-primary)] sm:block"
+					class="hidden w-8 shrink-0 text-center text-base font-bold text-[var(--accent-primary)] tabular-nums sm:block"
 				>
 					#{{ i + 1 }}
 				</div>
@@ -113,7 +113,7 @@
 					<div class="truncate text-[15px] font-semibold text-[var(--text-primary)]">
 						{{ getTrackInfo(t.path).display_title }}
 					</div>
-					<div class="tabular-nums truncate text-[13px] text-[var(--text-secondary)]">
+					<div class="truncate text-[13px] text-[var(--text-secondary)] tabular-nums">
 						{{ getTrackInfo(t.path).display_artist }} •
 						{{ t.count === 1 ? 'Sonó 1 vez' : `Sonó ${t.count} veces` }}
 					</div>

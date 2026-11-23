@@ -150,7 +150,7 @@
 
 <template>
 	<section
-		class="floating-player flex h-[var(--floating-player-h)] items-center justify-between rounded-[var(--radius-lg)] border border-[var(--glass-border)] bg-[var(--glass-bg-strong)] px-3 py-2 [box-shadow:var(--glass-highlight),0_10px_30px_rgba(0,0,0,0.45)] [backdrop-filter:var(--glass-blur)] [-webkit-backdrop-filter:var(--glass-blur)] transition-transform duration-200"
+		class="floating-player flex h-[var(--floating-player-h)] items-center justify-between rounded-[var(--radius-lg)] border border-[var(--glass-border)] bg-[var(--glass-bg-strong)] px-3 py-2 [box-shadow:var(--glass-highlight),0_10px_30px_rgba(0,0,0,0.45)] [backdrop-filter:var(--glass-blur)] transition-transform duration-200 [-webkit-backdrop-filter:var(--glass-blur)]"
 		:style="swipeStyle"
 		@touchstart.passive="onTouchStart"
 		@touchmove="onTouchMove"

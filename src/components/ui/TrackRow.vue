@@ -121,7 +121,7 @@
 
 		<div
 			v-else
-			class="tabular-nums hidden shrink-0 text-[12px] text-[var(--text-tertiary)] min-[720px]:block min-[720px]:px-4 min-[720px]:text-right"
+			class="hidden shrink-0 text-[12px] text-[var(--text-tertiary)] tabular-nums min-[720px]:block min-[720px]:px-4 min-[720px]:text-right"
 		>
 			{{ durationStr }}
 		</div>

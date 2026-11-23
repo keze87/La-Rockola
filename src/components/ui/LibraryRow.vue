@@ -56,12 +56,7 @@
 		@click="emit('click', track)"
 	>
 		<div class="relative flex shrink-0 items-center justify-center min-[720px]:p-2">
-			<FavoritableCover
-				:track="track"
-				size="h-12 w-12"
-				rounded="rounded-[var(--radius-sm)]"
-				:size-px="128"
-			/>
+			<FavoritableCover :track="track" size="h-12 w-12" rounded="rounded-[var(--radius-sm)]" :size-px="128" />
 
 			<!-- Indicador de tema sonando, superpuesto a la portada -->
 			<div
@@ -79,7 +74,7 @@
 			<!-- Posición en la fila, superpuesta a la portada -->
 			<span
 				v-else-if="queuePosition !== -1"
-				class="tabular-nums absolute flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border border-[var(--hairline)] bg-[var(--glass-bg-strong)] text-sm font-bold text-[var(--accent-primary)] shadow"
+				class="absolute flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border border-[var(--hairline)] bg-[var(--glass-bg-strong)] text-sm font-bold text-[var(--accent-primary)] tabular-nums shadow"
 				@click.stop.prevent="toggleFavorite"
 			>
 				{{ queuePosition + 1 }}
@@ -119,7 +114,7 @@
 		</div>
 
 		<div
-			class="tabular-nums shrink-0 text-[12px] text-[var(--text-tertiary)] min-[720px]:px-4 min-[720px]:text-right min-[720px]:text-[13px]"
+			class="shrink-0 text-[12px] text-[var(--text-tertiary)] tabular-nums min-[720px]:px-4 min-[720px]:text-right min-[720px]:text-[13px]"
 		>
 			{{ durationStr }}
 		</div>

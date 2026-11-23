@@ -8,7 +8,8 @@
 		}>(),
 		{
 			icon: null,
-			colorClass: 'bg-[var(--bg-input)] hover:bg-[var(--bg-surface-hover)] border border-[var(--hairline)] text-[var(--text-primary)]',
+			colorClass:
+				'bg-[var(--bg-input)] hover:bg-[var(--bg-surface-hover)] border border-[var(--hairline)] text-[var(--text-primary)]',
 			disabled: false,
 			title: undefined,
 		}
