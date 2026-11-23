@@ -1,5 +1,7 @@
 import { watch } from 'vue';
+import { isHostMode, activeRemoteServerUrl } from '../../stores/useServerConnectionStore';
 import { useApi } from '../useApi';
+import { clearSnapshotHydrationFlag, saveBootSnapshot } from './useLocalSnapshot';
 import { useToasts } from './useToasts';
 import {
 	activeSort,
@@ -140,6 +142,8 @@ export function useLibrary() {
 				} else {
 					applyLibrarySort(defaultSort.value || 'time', false);
 				}
+				clearSnapshotHydrationFlag();
+				saveBootSnapshot(isHostMode.value ? 'host' : `remote:${activeRemoteServerUrl.value}`);
 			}
 		} catch (err) {
 			console.error(err);

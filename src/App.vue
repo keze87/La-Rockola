@@ -3,6 +3,8 @@
 	import { Toaster } from 'vue-sonner';
 	import { apiUrl } from './composables/useApi';
 	import {
+		androidBootStage,
+		androidExtractProgress,
 		androidServerStatus,
 		consumeAndroidPendingShortcut,
 		ensureLocalAndroidServerAlive,
@@ -12,12 +14,14 @@
 		markAndroidUiReady,
 		pickAndApplyMusicFolder,
 	} from './composables/useAndroidHost';
+	import { hydrateFromBootSnapshot, isHydratedFromSnapshot } from './composables/player/useLocalSnapshot';
 	import {
 		activeRemoteServerUrl,
 		isHostMode,
 		isRemoteMode,
 		libraryFolderError,
 		libraryFolderStatus,
+		localServerState,
 	} from './stores/useServerConnectionStore';
 	import { useCover } from './composables/useCover';
 	import { buildSpaPath, extractSpaRoute, useAppRouter } from './composables/useAppRouter';
@@ -382,6 +386,8 @@
 		window.__rockolaOnMediaVolumeChanged = handleAndroidMediaVolumeChanged;
 		window.__rockolaOnNativeCommandError = handleNativeCommandError;
 		if (isNativeAndroidHost()) {
+			const snapshotKey = isHostMode.value ? 'host' : `remote:${activeRemoteServerUrl.value}`;
+			hydrateFromBootSnapshot(snapshotKey);
 			void consumeAndroidPendingShortcut().then(applyShortcutAction);
 			requestAnimationFrame(() => markAndroidUiReady());
 			initAndroidServer().then((ok) => {
@@ -584,6 +590,32 @@
 		</nav>
 
 		<!-- AVISO RÁPIDO ANDROID / HEADLESS -->
+		<div
+			v-if="isNativeAndroidHost() && isHostMode && androidBootStage === 'extracting_assets'"
+			role="status"
+			aria-live="polite"
+			class="bg-carpincho-panel border-carpincho-border text-carpincho-warning flex w-full shrink-0 flex-col gap-1 border-b px-4 py-1.5 text-xs font-semibold"
+		>
+			<div class="flex items-center justify-between gap-2">
+				<span>Preparando recursos de la Rockola...</span>
+				<span>{{ androidExtractProgress }}%</span>
+			</div>
+			<div class="bg-carpincho-border h-1 w-full overflow-hidden rounded-full">
+				<div
+					class="bg-carpincho-warning h-full transition-[width] duration-150"
+					:style="{ width: `${androidExtractProgress}%` }"
+				/>
+			</div>
+		</div>
+		<div
+			v-else-if="isNativeAndroidHost() && isHydratedFromSnapshot && localServerState !== 'ready'"
+			role="status"
+			aria-live="polite"
+			class="bg-carpincho-panel border-carpincho-border text-carpincho-muted flex w-full shrink-0 items-center justify-center gap-2 border-b px-4 py-1 text-xs font-semibold"
+		>
+			<i class="material-icons text-sm" aria-hidden="true">sync</i>
+			<span>Actualizando lista...</span>
+		</div>
 		<div
 			v-if="isNativeAndroidHost() && isRemoteMode"
 			class="bg-carpincho-panel border-carpincho-border text-carpincho-secondary flex w-full shrink-0 items-center justify-center gap-2 border-b px-4 py-1.5 text-xs font-semibold"

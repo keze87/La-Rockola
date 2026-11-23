@@ -1,11 +1,13 @@
 import { _startLocalPlayer, _stopLocalPlayer, applyRemoteSeek } from './useLocalPlayback';
 import { registerSocketReconnectHandler } from './connectionActions';
 import { applyLibrarySort } from './useLibrary';
+import { clearSnapshotHydrationFlag, saveBootSnapshot } from './useLocalSnapshot';
 import { useToasts } from './useToasts';
 import { ensureLocalAndroidServerAlive, isNativeAndroidHost } from '../useAndroidHost';
 import { getWsUrl } from '../useApi';
 import {
 	type LibraryFolderStatus,
+	activeRemoteServerUrl,
 	clearServerError,
 	connectionState,
 	isHostMode,
@@ -271,6 +273,10 @@ export function useSocket() {
 									: defaultSort.value || 'time';
 								applyLibrarySort(targetSort, true);
 							}
+						}
+						clearSnapshotHydrationFlag();
+						if (state.library || state.queue !== undefined || state.current_track !== undefined) {
+							saveBootSnapshot(isHostMode.value ? 'host' : `remote:${activeRemoteServerUrl.value}`);
 						}
 					}
 				} catch (e) {

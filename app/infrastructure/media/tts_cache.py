@@ -8,12 +8,14 @@ import asyncio
 import base64
 import contextlib
 import hashlib
+import importlib.util
 import io
 import logging
 import sqlite3
 import tempfile
 import time
 from pathlib import Path
+from typing import Any
 
 from app.core.config import get_carpincho_data_dir
 from app.domain.radio.voices import DEFAULT_TTS_RETRIES, DEFAULT_TTS_TIMEOUT, VOICE_PROSODY
@@ -35,13 +37,24 @@ _DUMMY_MP3_DATA: bytes = (
 ALLOW_TEST_DUMMY_AUDIO: bool = False
 _TIME_SENSITIVE_CATEGORIES = frozenset({"hora", "minuto", "clima"})
 
-try:
-	import edge_tts
+edge_tts: Any = None
+HAS_EDGE_TTS: bool = importlib.util.find_spec("edge_tts") is not None
 
-	HAS_EDGE_TTS = True
-except ImportError:
-	edge_tts = None
-	HAS_EDGE_TTS = False
+
+def get_edge_tts() -> Any:
+	"""Carga perezosa de edge_tts para no penalizar el arranque del servidor embebido."""
+	global edge_tts
+	if edge_tts is not None:
+		return edge_tts
+	if not HAS_EDGE_TTS:
+		return None
+	try:
+		import edge_tts as _edge_tts
+
+		edge_tts = _edge_tts
+	except ImportError:
+		edge_tts = None
+	return edge_tts
 
 
 def is_valid_mp3_stream(data: bytes) -> bool:
@@ -352,7 +365,8 @@ async def synthesize_segment(
 		return bytes(data)
 
 	last_err: Exception | None = None
-	if HAS_EDGE_TTS and edge_tts is not None:
+	active_edge_tts = get_edge_tts() if HAS_EDGE_TTS else None
+	if HAS_EDGE_TTS and active_edge_tts is not None:
 		logger.debug(f"🌐 [TTS Remoto / Primario] Sintetizando '{category}' ({voice}): '{text}'")
 		prosody = VOICE_PROSODY.get(voice, {})
 		rate = prosody.get("rate", "+0%")
@@ -365,14 +379,14 @@ async def synthesize_segment(
 		for attempt in range(max_retries + 1):
 			try:
 				try:
-					communicate = edge_tts.Communicate(
+					communicate = active_edge_tts.Communicate(
 						text, voice, rate=rate, pitch=pitch, volume=volume, boundary=boundary
 					)
 				except TypeError:
 					try:
-						communicate = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch, volume=volume)
+						communicate = active_edge_tts.Communicate(text, voice, rate=rate, pitch=pitch, volume=volume)
 					except TypeError:
-						communicate = edge_tts.Communicate(text, voice)
+						communicate = active_edge_tts.Communicate(text, voice)
 
 				# Serializamos las llamadas remotas para no desbordar los sockets de Microsoft
 				async with _get_tts_lock():

@@ -177,6 +177,8 @@ class RockolaServerPlugin : Plugin() {
             put("localIp", RockolaForegroundService.currentLocalIp)
             put("serverUrl", RockolaForegroundService.currentServerUrl)
             put("musicDir", musicDir ?: "")
+            put("bootStage", EmbeddedPythonHost.currentBootStage)
+            put("extractProgress", EmbeddedPythonHost.currentExtractProgress)
         }
     }
 

@@ -4,9 +4,18 @@ import android.content.Context
 import android.os.Build
 import android.util.Log
 import com.chaquo.python.Python
-import com.chaquo.python.android.AndroidPlatform
 import java.io.File
 import java.io.FileOutputStream
+
+/**
+ * Reglas puras para calcular el progreso porcentual de extracción de assets.
+ */
+internal object BootProgressPolicy {
+    fun computeExtractPercent(done: Int, total: Int): Int {
+        if (total <= 0 || done <= 0) return 0
+        return ((done * 100L) / total).toInt().coerceIn(0, 100)
+    }
+}
 
 /**
  * Administra el ciclo de vida del intérprete Python embebido (Chaquopy),
@@ -16,6 +25,16 @@ import java.io.FileOutputStream
 class EmbeddedPythonHost(
     private val context: Context,
 ) {
+    companion object {
+        @Volatile
+        var currentBootStage: String = "idle"
+            private set
+
+        @Volatile
+        var currentExtractProgress: Int = 0
+            private set
+    }
+
     data class ServerEndpointInfo(
         val localIp: String,
         val serverUrl: String,
@@ -27,14 +46,14 @@ class EmbeddedPythonHost(
         onConfigured: (ServerEndpointInfo) -> Unit,
         onReady: () -> Unit,
     ) {
-        if (!Python.isStarted()) {
-            Python.start(AndroidPlatform(context.applicationContext))
-        }
+        currentBootStage = "starting_python"
+        RockolaApplication.ensurePythonStarted(context)
 
         val dataDir = File(context.filesDir, "rockola_data").apply { mkdirs() }
         val distDir = File(context.filesDir, "dist")
         ensureDistExtracted(distDir)
 
+        currentBootStage = "starting_server"
         val py = Python.getInstance()
         val entry = py.getModule("app.android_entry")
 
@@ -54,8 +73,6 @@ class EmbeddedPythonHost(
         onConfigured(ServerEndpointInfo(localIp = localIp, serverUrl = serverUrl))
 
         Log.i("RockolaPythonHost", "Arrancando Uvicorn embebido en $serverUrl...")
-        val readyHook = Runnable { onReady() }
-        // already_configured = true evita correr migraciones e init dos veces en el arranque
         val started = entry.callAttr(
             "start_embedded_server",
             dataDir.absolutePath,
@@ -64,7 +81,11 @@ class EmbeddedPythonHost(
             port,
             "0.0.0.0",
             true,
-            readyHook,
+            Runnable {
+                currentBootStage = "ready"
+                currentExtractProgress = 100
+                onReady()
+            },
         ).toBoolean()
         if (!started) {
             val statusObj = entry.callAttr("get_server_info").asMap()
@@ -89,14 +110,36 @@ class EmbeddedPythonHost(
         val indexFile = File(distDir, "index.html")
 
         if (stampFile.isFile && indexFile.isFile && stampFile.readText().trim() == currentStamp) {
+            currentExtractProgress = 100
             return
         }
 
+        currentBootStage = "extracting_assets"
+        currentExtractProgress = 0
         val parentDir = distDir.parentFile ?: context.filesDir
         val tempDir = File(parentDir, "${distDir.name}.tmp-${System.currentTimeMillis()}")
         try {
             tempDir.mkdirs()
-            extractAssetFolder("public", tempDir)
+            val filesToExtract = mutableListOf<String>()
+            collectAssetFiles("public", filesToExtract)
+            val totalFiles = filesToExtract.size
+            for ((index, assetFile) in filesToExtract.withIndex()) {
+                val relativePath = assetFile.removePrefix("public/").removePrefix("public")
+                if (relativePath.isNotEmpty()) {
+                    val outFile = File(tempDir, relativePath)
+                    outFile.parentFile?.mkdirs()
+                    try {
+                        context.assets.open(assetFile).use { input ->
+                            FileOutputStream(outFile).use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                    } catch (_: Exception) {
+                        // Si era un subdirectorio vacío en assets, lo omitimos sin abortar
+                    }
+                }
+                currentExtractProgress = BootProgressPolicy.computeExtractPercent(index + 1, totalFiles)
+            }
             File(tempDir, ".dist_stamp").writeText(currentStamp)
 
             if (distDir.exists() && !distDir.deleteRecursively()) {
@@ -106,9 +149,22 @@ class EmbeddedPythonHost(
                 tempDir.copyRecursively(distDir, overwrite = true)
                 tempDir.deleteRecursively()
             }
+            currentExtractProgress = 100
+            currentBootStage = "starting_server"
         } catch (e: Exception) {
             tempDir.deleteRecursively()
             throw e
+        }
+    }
+
+    private fun collectAssetFiles(assetPath: String, out: MutableList<String>) {
+        val entries = context.assets.list(assetPath) ?: return
+        if (entries.isEmpty()) {
+            out.add(assetPath)
+            return
+        }
+        for (entry in entries) {
+            collectAssetFiles("$assetPath/$entry", out)
         }
     }
 
@@ -124,27 +180,6 @@ class EmbeddedPythonHost(
             "$version-${info.lastUpdateTime}"
         } catch (_: Exception) {
             "unknown"
-        }
-    }
-
-    private fun extractAssetFolder(assetPath: String, target: File) {
-        val entries = context.assets.list(assetPath) ?: return
-        if (entries.isEmpty()) {
-            target.parentFile?.mkdirs()
-            try {
-                context.assets.open(assetPath).use { input ->
-                    FileOutputStream(target).use { output ->
-                        input.copyTo(output)
-                    }
-                }
-            } catch (_: Exception) {
-                // Si era un subdirectorio vacío en assets, lo omitimos sin abortar
-            }
-            return
-        }
-        target.mkdirs()
-        for (entry in entries) {
-            extractAssetFolder("$assetPath/$entry", File(target, entry))
         }
     }
 }

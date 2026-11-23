@@ -74,6 +74,7 @@ from app.infrastructure.media.tts_cache import (
 	HAS_EDGE_TTS,
 	edge_tts,
 	estimate_mp3_duration,
+	get_edge_tts,
 	synthesize_segment,
 )
 from app.infrastructure.weather.client import (
@@ -697,7 +698,8 @@ async def create_radio_announcement(
 	outro_mode: str = "continue",
 ) -> RadioAnnouncementResult:
 	"""Sintetiza la locución radial con dinámica de charla de cabina entre locutores carpinchos."""
-	if not HAS_EDGE_TTS or edge_tts is None:
+	active_edge_tts = edge_tts if edge_tts is not None else get_edge_tts()
+	if not HAS_EDGE_TTS or active_edge_tts is None:
 		err_msg = "El paquete 'edge-tts' no está instalado en el entorno de Python o falló su importación."
 		logger.warning(f"📻 El Carpincho no puede locutar: {err_msg}")
 		return RadioAnnouncementResult(ok=False, display_title="", script="", error=err_msg, outro_mode=outro_mode)

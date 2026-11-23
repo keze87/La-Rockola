@@ -37,6 +37,8 @@ export interface AndroidServerInfo {
 	localIp: string;
 	serverUrl: string;
 	musicDir: string | null;
+	bootStage?: string;
+	extractProgress?: number;
 }
 
 export interface AndroidServerStatus extends AndroidServerInfo {
@@ -134,6 +136,8 @@ watch(
 
 export const isAndroidFullscreen = ref<boolean>(false);
 export const isAndroidPipMode = ref<boolean>(false);
+export const androidBootStage = ref<string>('idle');
+export const androidExtractProgress = ref<number>(0);
 
 export function isNativeAndroidHost(): boolean {
 	return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
@@ -407,6 +411,12 @@ function applyLocalServerInfo(info: AndroidServerInfo): number {
 	} else if (info.hostState === 'stopped' && !info.running) {
 		localServerState.value = 'stopped';
 	}
+	if (typeof info.bootStage === 'string') {
+		androidBootStage.value = info.bootStage;
+	}
+	if (typeof info.extractProgress === 'number') {
+		androidExtractProgress.value = info.extractProgress;
+	}
 	return port;
 }
 
@@ -491,8 +501,8 @@ export function initAndroidServer(opts?: { pollIntervalMs?: number; timeoutMs?: 
 			if (typeof RockolaServer.getStatus === 'function') {
 				try {
 					const status = await RockolaServer.getStatus();
+					applyLocalServerInfo(status);
 					if (status?.hostState === 'failed') {
-						applyLocalServerInfo(status);
 						return false;
 					}
 				} catch {

@@ -42,4 +42,11 @@ class MainActivityPolicyTest {
         assertFalse(SplashHoldPolicy.shouldKeepOnScreen(uiReady = true, elapsedMs = 200L))
         assertFalse(SplashHoldPolicy.shouldKeepOnScreen(uiReady = true, elapsedMs = 0L))
     }
+
+    @Test
+    fun `progreso de extraccion calcula porcentaje seguro`() {
+        org.junit.Assert.assertEquals(0, BootProgressPolicy.computeExtractPercent(0, 0))
+        org.junit.Assert.assertEquals(50, BootProgressPolicy.computeExtractPercent(5, 10))
+        org.junit.Assert.assertEquals(100, BootProgressPolicy.computeExtractPercent(15, 10))
+    }
 }
