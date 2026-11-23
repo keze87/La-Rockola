@@ -2,8 +2,9 @@ apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 apply plugin: 'com.chaquo.python'
 
-def baseVersionCode = (project.findProperty('ROCKOLA_VERSION_CODE')?.toString()?.toInteger()) ?: 1
-def baseVersionName = project.findProperty('ROCKOLA_VERSION_NAME')?.toString() ?: "0.1.0"
+def buildDateStamp = new Date().format('yyMMdd')
+def baseVersionCode = (project.findProperty('ROCKOLA_VERSION_CODE')?.toString()?.toInteger()) ?: buildDateStamp.toInteger()
+def baseVersionName = project.findProperty('ROCKOLA_VERSION_NAME')?.toString() ?: buildDateStamp
 def ignoreKeystoreProps = project.hasProperty('ROCKOLA_IGNORE_KEYSTORE_PROPS') &&
     project.property('ROCKOLA_IGNORE_KEYSTORE_PROPS').toString().toBoolean()
 
