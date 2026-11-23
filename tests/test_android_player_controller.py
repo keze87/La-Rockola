@@ -367,3 +367,49 @@ async def test_orchestrator_starts_radio_bed_when_playing_radio_announcement(
 
 	orch.play_track.assert_awaited_once_with(orch.radio_announcement_path)
 	orch.mpv.start_radio_bed.assert_awaited_once_with(next_uri, offset_sec=60.0, volume=0.1)
+
+
+@pytest.mark.asyncio
+async def test_radio_test_endpoint_synthesizes_plays_and_starts_bed(
+	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+	"""POST /api/radio/test debe sintetizar la locución, reproducirla e iniciar la cortina del tema siguiente."""
+	from fastapi import FastAPI
+	from fastapi.testclient import TestClient
+
+	from app.api import system as system_api
+
+	orch = MagicMock()
+	orch.radio_service = MagicMock()
+	orch.radio_service.is_available = True
+	orch.radio_service.announcement_path = tmp_path / "radio_announcement.mp3"
+	orch.radio_service.get_or_synthesize = AsyncMock(
+		return_value=(True, "Carpincho Locutor", "Probando la radio", None, "Locutor")
+	)
+	orch.radio_announcement_path = str(tmp_path / "radio_announcement.mp3")
+	orch.url_metadata = {}
+	orch.queue = []
+	orch.tracks_cache = [{"path": "content://music/song.mp3", "duration_str": "2:00"}]
+	orch.play_track = AsyncMock()
+	orch.mpv = MagicMock()
+	orch.mpv.start_radio_bed = AsyncMock()
+
+	fake_container = MagicMock()
+	fake_container.ensure_orchestrator.return_value = orch
+	monkeypatch.setattr(system_api, "get_container", lambda: fake_container)
+	monkeypatch.setattr(system_api, "broadcast_state", AsyncMock())
+
+	app = FastAPI()
+	app.include_router(system_api.router, prefix="/api")
+	client = TestClient(app)
+
+	resp = client.post("/api/radio/test", json={"play": True, "outro_mode": "continue"})
+	assert resp.status_code == 200
+	data = resp.json()
+	assert data["ok"] is True
+	assert data["played"] is True
+	assert data["script"] == "Probando la radio"
+	assert data["next_track_path"] == "content://music/song.mp3"
+	assert data["bg_offset"] == 60.0
+	orch.play_track.assert_awaited_once_with(orch.radio_announcement_path)
+	orch.mpv.start_radio_bed.assert_awaited_once_with("content://music/song.mp3", offset_sec=60.0, volume=0.1)

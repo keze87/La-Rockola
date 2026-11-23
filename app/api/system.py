@@ -11,6 +11,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from app.api.library import scan_library
 from app.api.schemas import MusicDirRequest
@@ -174,6 +175,92 @@ async def update_music_dir(req: MusicDirRequest) -> dict[str, Any]:
 async def health_check() -> dict[str, str]:
 	"""Endpoint liviano para verificar que el servidor HTTP esté vivo."""
 	return {"status": "ok"}
+
+
+class RadioTestRequest(BaseModel):
+	"""Parámetros opcionales para probar generación y reproducción radial en vivo."""
+
+	play: bool = True
+	outro_mode: str = "continue"
+	next_track_path: str | None = None
+	bg_offset: float | None = None
+
+
+@router.post("/radio/test")
+async def test_radio_generation(req: RadioTestRequest | None = None) -> dict[str, Any]:
+	"""Genera una locución radial de prueba (y opcionalmente la reproduce con cortina/fundido)."""
+	import random
+
+	from app.domain.library.models import get_track_duration_seconds
+
+	body = req or RadioTestRequest()
+	state = get_container().ensure_orchestrator()
+	if not state or not getattr(state, "radio_service", None) or not state.radio_service.is_available:
+		raise HTTPException(status_code=503, detail="Servicio de radio no disponible")
+
+	next_track_path = body.next_track_path
+	if not next_track_path and body.outro_mode in ("continue", "dj"):
+		if getattr(state, "queue", None):
+			next_track_path = state.queue[0]
+		elif getattr(state, "tracks_cache", None):
+			next_track_path = random.choice(state.tracks_cache).get("path")
+
+	bg_offset = body.bg_offset
+	if bg_offset is None:
+		bg_offset = 0.0
+		if next_track_path:
+			total_dur = get_track_duration_seconds(next_track_path, getattr(state, "tracks_cache", None))
+			if total_dur > 10.0:
+				bg_offset = total_dur / 2.0
+			elif total_dur > 0:
+				bg_offset = total_dur * 0.4
+
+	synth_res = await state.radio_service.get_or_synthesize(
+		next_track_path=next_track_path,
+		bg_offset=bg_offset,
+		outro_mode=body.outro_mode,
+	)
+
+	if hasattr(synth_res, "ok") and hasattr(synth_res, "display_title"):
+		ok = bool(synth_res.ok)
+		display_title = synth_res.display_title
+		script = synth_res.script
+		radio_err = synth_res.error
+		display_artist = getattr(synth_res, "display_artist", None) or "Transmisión de Cabina 🎙️"
+	else:
+		ok = bool(synth_res[0])
+		display_title = synth_res[1]
+		script = synth_res[2]
+		radio_err = synth_res[3] if len(synth_res) > 3 else None
+		display_artist = synth_res[4] if len(synth_res) > 4 else "Transmisión de Cabina 🎙️"
+
+	played = False
+	if ok and body.play:
+		state.is_playing_radio_announcement = True
+		state.url_metadata[state.radio_announcement_path] = {
+			"path": state.radio_announcement_path,
+			"display_title": display_title,
+			"display_artist": display_artist,
+			"album": "La Rockola del Carpincho",
+			"duration_str": "0:12",
+		}
+		await state.play_track(state.radio_announcement_path)
+		if next_track_path and hasattr(state.mpv, "start_radio_bed"):
+			await state.mpv.start_radio_bed(next_track_path, offset_sec=bg_offset, volume=0.1)
+		await broadcast_state()
+		played = True
+
+	return {
+		"ok": ok,
+		"played": played,
+		"display_title": display_title,
+		"display_artist": display_artist,
+		"script": script,
+		"outro_mode": body.outro_mode,
+		"next_track_path": next_track_path,
+		"bg_offset": bg_offset,
+		"error": radio_err,
+	}
 
 
 @router.post("/test/reset")
