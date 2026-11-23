@@ -119,7 +119,43 @@ class SafTreeBrowser(
         var firstError: String? = null,
         var terminalStatus: SafScanStatus? = null,
         @Volatile var cancelled: Boolean = false,
+        @Volatile var inUse: Boolean = false,
+        @Volatile var lastAccessedAtMs: Long = System.currentTimeMillis(),
     )
+
+    private val sessionMaintenanceLock = Any()
+
+    fun activeScanSessionCount(): Int = scanSessions.size
+
+    private fun clearSessionData(session: ScanSession) {
+        session.queue.clear()
+        session.visitedDirs.clear()
+        session.seenFiles.clear()
+        session.pendingBuffer.clear()
+        session.failedDirs.clear()
+    }
+
+    private fun pruneScanSessions() {
+        val now = System.currentTimeMillis()
+        synchronized(sessionMaintenanceLock) {
+            val iterator = scanSessions.entries.iterator()
+            while (iterator.hasNext()) {
+                val (_, sess) = iterator.next()
+                if (!sess.inUse && (sess.cancelled || (now - sess.lastAccessedAtMs) > 300_000L)) {
+                    iterator.remove()
+                    clearSessionData(sess)
+                }
+            }
+            while (scanSessions.size >= 4) {
+                val oldest = scanSessions.entries
+                    .filter { !it.value.inUse }
+                    .minByOrNull { it.value.lastAccessedAtMs }
+                    ?: break
+                scanSessions.remove(oldest.key)
+                clearSessionData(oldest.value)
+            }
+        }
+    }
 
     private data class CachedDirLyrics(
         val fetchedAtMs: Long,
@@ -194,6 +230,7 @@ class SafTreeBrowser(
     }
 
     fun startScanSession(treeUriString: String): String {
+        pruneScanSessions()
         val sessionId = UUID.randomUUID().toString()
         synchronized(cacheLock) {
             if (activeTreeForCache != null && activeTreeForCache != treeUriString) {
@@ -264,85 +301,111 @@ class SafTreeBrowser(
     fun nextScanBatch(sessionId: String, batchSize: Int = 250): SafScanBatch {
         val session = scanSessions[sessionId]
             ?: return SafScanBatch(SafScanStatus.STORAGE_UNAVAILABLE, emptyList(), hasMore = false, error = "Sesión inexistente")
-        if (session.cancelled) {
-            scanSessions.remove(sessionId)
-            return SafScanBatch(SafScanStatus.SUCCESS_EMPTY, emptyList(), hasMore = false)
-        }
-        session.terminalStatus?.let { term ->
-            scanSessions.remove(sessionId)
-            return SafScanBatch(term, emptyList(), hasMore = false, session.failedDirs, session.firstError)
-        }
-
-        val limit = batchSize.coerceAtLeast(1)
-        val out = ArrayList<SafAudioTrackEntry>(limit)
-        while (out.size < limit && session.pendingBuffer.isNotEmpty()) {
-            out.add(session.pendingBuffer.removeFirst())
-        }
-
-        while (out.size < limit && session.queue.isNotEmpty() && !session.cancelled) {
-            val (dirDocId, prefix) = session.queue.removeFirst()
-            val children = try {
-                provider.listChildren(session.treeUri, dirDocId)
-            } catch (e: Exception) {
-                session.failedDirs.add(dirDocId)
-                if (session.firstError == null) {
-                    session.firstError = e.message ?: e.javaClass.simpleName
+        synchronized(session) {
+            session.inUse = true
+            session.lastAccessedAtMs = System.currentTimeMillis()
+            try {
+                if (session.cancelled) {
+                    scanSessions.remove(sessionId)
+                    clearSessionData(session)
+                    return SafScanBatch(SafScanStatus.SUCCESS_EMPTY, emptyList(), hasMore = false)
                 }
-                continue
-            }
-            indexDirLyrics(session.treeUri, dirDocId, children)
-            for (child in children) {
-                if (child.mimeType == MIME_TYPE_DIR) {
-                    if (session.visitedDirs.add(child.documentId)) {
-                        val nextPrefix = if (prefix.isEmpty()) child.name else "$prefix/${child.name}"
-                        session.queue.add(Pair(child.documentId, nextPrefix))
+                session.terminalStatus?.let { term ->
+                    val failedCopy = session.failedDirs.toList()
+                    val errCopy = session.firstError
+                    scanSessions.remove(sessionId)
+                    clearSessionData(session)
+                    return SafScanBatch(term, emptyList(), hasMore = false, failedCopy, errCopy)
+                }
+
+                val limit = batchSize.coerceAtLeast(1)
+                val out = ArrayList<SafAudioTrackEntry>(limit)
+                while (out.size < limit && session.pendingBuffer.isNotEmpty()) {
+                    out.add(session.pendingBuffer.removeFirst())
+                }
+
+                while (out.size < limit && session.queue.isNotEmpty() && !session.cancelled) {
+                    val (dirDocId, prefix) = session.queue.removeFirst()
+                    val children = try {
+                        provider.listChildren(session.treeUri, dirDocId)
+                    } catch (e: Exception) {
+                        session.failedDirs.add(dirDocId)
+                        if (session.firstError == null) {
+                            session.firstError = e.message ?: e.javaClass.simpleName
+                        }
+                        continue
                     }
-                    continue
-                }
-                putParentCache(child.uri, session.treeUri, dirDocId, child.name)
-                val dotIdx = child.name.lastIndexOf('.')
-                val ext = if (dotIdx >= 0) child.name.substring(dotIdx).lowercase() else ""
-                if (ext !in audioExtensions) continue
-                if (!session.seenFiles.add(child.uri)) continue
+                    indexDirLyrics(session.treeUri, dirDocId, children)
+                    for (child in children) {
+                        if (child.mimeType == MIME_TYPE_DIR) {
+                            if (session.visitedDirs.add(child.documentId)) {
+                                val nextPrefix = if (prefix.isEmpty()) child.name else "$prefix/${child.name}"
+                                session.queue.add(Pair(child.documentId, nextPrefix))
+                            }
+                            continue
+                        }
+                        putParentCache(child.uri, session.treeUri, dirDocId, child.name)
+                        val dotIdx = child.name.lastIndexOf('.')
+                        val ext = if (dotIdx >= 0) child.name.substring(dotIdx).lowercase() else ""
+                        if (ext !in audioExtensions) continue
+                        if (!session.seenFiles.add(child.uri)) continue
 
-                val relPath = if (prefix.isEmpty()) child.name else "$prefix/${child.name}"
-                val entry = SafAudioTrackEntry(
-                    uri = child.uri,
-                    name = child.name,
-                    relativePath = relPath,
-                    size = child.size,
-                    mtimeSec = if (child.lastModifiedMs >= 0L) child.lastModifiedMs / 1000.0 else -1.0,
-                    mimeType = child.mimeType,
-                )
-                if (out.size < limit) {
-                    out.add(entry)
-                } else {
-                    session.pendingBuffer.addLast(entry)
+                        val relPath = if (prefix.isEmpty()) child.name else "$prefix/${child.name}"
+                        val entry = SafAudioTrackEntry(
+                            uri = child.uri,
+                            name = child.name,
+                            relativePath = relPath,
+                            size = child.size,
+                            mtimeSec = if (child.lastModifiedMs >= 0L) child.lastModifiedMs / 1000.0 else -1.0,
+                            mimeType = child.mimeType,
+                        )
+                        if (out.size < limit) {
+                            out.add(entry)
+                        } else {
+                            session.pendingBuffer.addLast(entry)
+                        }
+                    }
                 }
+
+                if (session.cancelled) {
+                    scanSessions.remove(sessionId)
+                    clearSessionData(session)
+                    return SafScanBatch(SafScanStatus.SUCCESS_EMPTY, emptyList(), hasMore = false)
+                }
+
+                val hasMore = session.pendingBuffer.isNotEmpty() || session.queue.isNotEmpty()
+                val status = when {
+                    session.failedDirs.isNotEmpty() && !hasMore && out.isEmpty() && session.seenFiles.isEmpty() ->
+                        SafScanStatus.PROVIDER_ERROR
+                    session.failedDirs.isNotEmpty() -> SafScanStatus.PARTIAL_FAILURE
+                    out.isNotEmpty() || session.seenFiles.isNotEmpty() -> SafScanStatus.SUCCESS_WITH_FILES
+                    else -> SafScanStatus.SUCCESS_EMPTY
+                }
+                val failedCopy = session.failedDirs.toList()
+                val errCopy = session.firstError
+                if (!hasMore) {
+                    scanSessions.remove(sessionId)
+                    clearSessionData(session)
+                }
+                return SafScanBatch(status, out, hasMore, failedCopy, errCopy)
+            } finally {
+                session.inUse = false
+                session.lastAccessedAtMs = System.currentTimeMillis()
             }
         }
-
-        if (session.cancelled) {
-            scanSessions.remove(sessionId)
-            return SafScanBatch(SafScanStatus.SUCCESS_EMPTY, emptyList(), hasMore = false)
-        }
-
-        val hasMore = session.pendingBuffer.isNotEmpty() || session.queue.isNotEmpty()
-        val status = when {
-            session.failedDirs.isNotEmpty() && !hasMore && out.isEmpty() && session.seenFiles.isEmpty() ->
-                SafScanStatus.PROVIDER_ERROR
-            session.failedDirs.isNotEmpty() -> SafScanStatus.PARTIAL_FAILURE
-            out.isNotEmpty() || session.seenFiles.isNotEmpty() -> SafScanStatus.SUCCESS_WITH_FILES
-            else -> SafScanStatus.SUCCESS_EMPTY
-        }
-        if (!hasMore) {
-            scanSessions.remove(sessionId)
-        }
-        return SafScanBatch(status, out, hasMore, session.failedDirs.toList(), session.firstError)
     }
 
     fun cancelScanSession(sessionId: String) {
-        scanSessions[sessionId]?.cancelled = true
+        val session = scanSessions[sessionId] ?: return
+        session.cancelled = true
+        if (!session.inUse) {
+            scanSessions.remove(sessionId)
+            synchronized(session) {
+                if (!session.inUse) {
+                    clearSessionData(session)
+                }
+            }
+        }
     }
 
     fun validateTreeUri(uriString: String?): SafValidationResult {

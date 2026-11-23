@@ -119,6 +119,14 @@ def test_saf_stream_handles_non_seekable_unknown_size_zero_size_and_missing_file
 		assert r_full.headers.get("accept-ranges") == "none"
 		assert "content-length" not in r_full.headers
 
+		# Aunque llegue Range con tamaño desconocido no-seekable, responde 200 secuencial sin inventar Content-Length
+		for rng in ("bytes=0-", "bytes=100-200", "bytes=-5"):
+			r_rng = client.get("/stream", params={"path": TRACK_URI}, headers={"Range": rng})
+			assert r_rng.status_code == 200
+			assert r_rng.content == payload
+			assert r_rng.headers.get("accept-ranges") == "none"
+			assert "content-length" not in r_rng.headers
+
 	class _ZeroSizeBridge:
 		def isAuthorizedDocumentUri(self, doc: str, *_a: object) -> bool:
 			return doc == TRACK_URI

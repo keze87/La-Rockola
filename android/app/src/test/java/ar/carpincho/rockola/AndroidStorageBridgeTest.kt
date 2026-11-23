@@ -457,4 +457,34 @@ class AndroidStorageBridgeTest {
         assertEquals(SafScanStatus.PROVIDER_ERROR, failRes.status)
         assertTrue(failRes.files.isEmpty())
     }
+
+    @Test
+    fun `cancelScanSession libera la sesion sin requerir otro nextScanBatch y limita sesiones activas`() {
+        val treeUri = "content://com.android.externalstorage.documents/tree/primary%3AMusic"
+        val rootDocId = "primary:Music"
+        val song = "$treeUri/document/primary%3AMusic%2Ftema.mp3"
+        val provider = FakeSafProvider(
+            validTreeUris = setOf(treeUri),
+            persistedTrees = setOf(treeUri),
+            roots = mapOf(
+                treeUri to SafDocumentEntry(rootDocId, "Music", SafTreeBrowser.MIME_TYPE_DIR, 0L, 100L, "$treeUri/document/$rootDocId"),
+            ),
+            treeChildren = mapOf(
+                Pair(treeUri, rootDocId) to listOf(
+                    SafDocumentEntry("primary:Music/tema.mp3", "tema.mp3", "audio/mpeg", 100L, 100L, song),
+                ),
+            ),
+        )
+        val browser = SafTreeBrowser(provider)
+        val s1 = browser.startScanSession(treeUri)
+        assertEquals(1, browser.activeScanSessionCount())
+        browser.cancelScanSession(s1)
+        assertEquals(0, browser.activeScanSessionCount())
+
+        // Sesiones abandonadas se acotan al límite máximo
+        repeat(6) {
+            browser.startScanSession(treeUri)
+        }
+        assertTrue(browser.activeScanSessionCount() <= 4)
+    }
 }

@@ -356,9 +356,11 @@ def _build_saf_stream_response(
 	}
 
 	if file_size is None or file_size < 0:
-		if range_header:
-			stream.close()
-			return Response(status_code=416, headers={**base_headers, "Content-Range": "bytes */*"})
+		# Si el proveedor no informa tamaño, ignoramos Range y hacemos streaming secuencial 200 sin Content-Length
+		unknown_headers = {
+			**base_headers,
+			"Accept-Ranges": "none",
+		}
 
 		def _iter_unknown():
 			try:
@@ -370,7 +372,7 @@ def _build_saf_stream_response(
 			finally:
 				stream.close()
 
-		return StreamingResponse(_iter_unknown(), status_code=200, media_type=media_type, headers=base_headers)
+		return StreamingResponse(_iter_unknown(), status_code=200, media_type=media_type, headers=unknown_headers)
 
 	if file_size == 0:
 		stream.close()
