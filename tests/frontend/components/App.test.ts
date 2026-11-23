@@ -43,17 +43,17 @@ describe('App.vue', () => {
 	it('renders tabs navigation with all main tabs', () => {
 		const wrapper = mount(App);
 
-		expect(wrapper.text()).toContain('Los Temazos');
-		expect(wrapper.text()).toContain('La Ronda');
-		expect(wrapper.text()).toContain('Los Clásicos');
-		expect(wrapper.text()).toContain('Las Perillas');
+		expect(wrapper.text()).toContain('Temazos');
+		expect(wrapper.text()).toContain('Ronda');
+		expect(wrapper.text()).toContain('Clásicos');
+		expect(wrapper.text()).toContain('Perillas');
 	});
 
 	it('switches active tab when tab header is clicked', async () => {
 		const wrapper = mount(App);
 
-		const tabHeaders = wrapper.findAll('.cursor-pointer.touch-manipulation');
-		const queueTabBtn = tabHeaders.find((w) => w.text().includes('La Ronda'));
+		const tabHeaders = wrapper.findAll('[role="tab"]');
+		const queueTabBtn = tabHeaders.find((w) => w.text().includes('Ronda'));
 		expect(queueTabBtn).toBeDefined();
 
 		await queueTabBtn!.trigger('click');
@@ -176,7 +176,8 @@ Dialogue: 0,0:00:01.00,0:00:06.00,Default,,0,0,0,,{\\kf100}Bizcochitos {\\kf100}
 		expect(sylSpans.length).toBe(4);
 		const activeSyllable = sylSpans.find((s) => s.text().includes('de grasa'));
 		expect(activeSyllable).toBeDefined();
-		expect(activeSyllable!.classes()).toContain('text-white');
+		expect(activeSyllable!.classes()).toContain('text-[var(--text-primary)]');
+		expect(activeSyllable!.classes()).toContain('font-extrabold');
 	});
 
 	it('shows carpincho emoji for short gaps and reverts to track title for long gaps in headbar', async () => {

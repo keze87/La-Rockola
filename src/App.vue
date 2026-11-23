@@ -124,24 +124,24 @@
 	function getHeadbarSyllableClass(syl: LyricSyllable): string {
 		const pos = localTimePos.value;
 		if (pos >= syl.end) {
-			// Ya sonó: bien destacada con el amarillo carpincho
-			return 'headbar-syllable text-carpincho-warning font-bold transition-colors duration-150 inline';
+			// Ya sonó: bien destacada con el ámbar cálido
+			return 'headbar-syllable text-[var(--accent-primary)] font-bold transition-colors duration-150 inline';
 		} else if (pos >= syl.start && pos < syl.end) {
-			// Cantándose en este instante: blanca con brillo para captar el ojo
-			return 'headbar-syllable text-white font-extrabold drop-shadow-[0_0_8px_rgba(233,196,106,0.9)] underline decoration-carpincho-warning/50 transition-all duration-100 inline-block';
+			// Cantándose en este instante: crema brillante para captar el ojo
+			return 'headbar-syllable text-[var(--text-primary)] font-extrabold drop-shadow-[0_0_8px_rgba(212,150,66,0.75)] underline decoration-[var(--accent-primary)]/50 transition-all duration-100 inline-block';
 		}
 		// Futura: atenuada para dar efecto de lectura karaoke
-		return 'headbar-syllable text-gray-400/60 font-medium transition-colors duration-150 inline';
+		return 'headbar-syllable text-[var(--text-tertiary)] font-medium transition-colors duration-150 inline';
 	}
 
 	// Conectamos los atajos de teclado (espacio, flechas, f, l, t, n, p, m, esc...)
 	useKeyboardShortcuts();
 
 	const tabs = [
-		{ id: 'library', name: 'Los Temazos', icon: 'library_music' },
-		{ id: 'queue', name: 'La Ronda', icon: 'queue_music' },
-		{ id: 'top', name: 'Los Clásicos', icon: 'local_fire_department' },
-		{ id: 'controls', name: 'Las Perillas', icon: 'settings' },
+		{ id: 'library', name: 'Temazos', icon: 'library_music' },
+		{ id: 'queue', name: 'Ronda', icon: 'queue_music' },
+		{ id: 'top', name: 'Clásicos', icon: 'local_fire_department' },
+		{ id: 'controls', name: 'Perillas', icon: 'settings' },
 	];
 
 	const currentTrackTitle = computed(() => {
@@ -577,17 +577,17 @@
 		:close-button="false"
 		:toast-options="{
 			classes: {
-				toast: 'bg-[var(--color-carpincho-panel)] text-[var(--color-carpincho-text)] border border-[var(--color-carpincho-border)] shadow-xl rounded-xl font-sans',
-				title: 'font-bold text-[var(--color-carpincho-text)]',
-				description: 'text-[var(--color-carpincho-muted)] text-sm',
-				success: '!bg-[var(--color-carpincho-success)] !text-white !border-[var(--color-carpincho-success)]',
+				toast: 'bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--glass-border)] shadow-xl rounded-[var(--radius-lg)] font-sans backdrop-blur-xl',
+				title: 'font-bold text-[var(--text-primary)]',
+				description: 'text-[var(--text-secondary)] text-sm',
+				success: '!bg-[var(--accent-mate)] !text-[var(--text-primary)] !border-[var(--accent-mate)]',
 				warning:
-					'!bg-[var(--color-carpincho-warning)] !text-[var(--color-carpincho-panel)] !border-[var(--color-carpincho-warning)] font-medium',
-				error: '!bg-red-900 !text-white !border-red-700',
-				actionButton: 'bg-[var(--color-carpincho-primary)] text-white',
-				cancelButton: 'bg-gray-700 text-gray-300',
+					'!bg-[var(--accent-primary)] !text-[#120e0b] !border-[var(--accent-primary)] font-semibold',
+				error: '!bg-[var(--accent-danger)] !text-[var(--text-primary)] !border-[var(--accent-danger)]',
+				actionButton: 'bg-[var(--accent-primary)] text-[#120e0b] font-semibold',
+				cancelButton: 'bg-[var(--bg-input)] text-[var(--text-secondary)]',
 				closeButton:
-					'text-[var(--color-carpincho-text)] hover:text-white bg-[var(--color-carpincho-border)] border-[var(--color-carpincho-border)]',
+					'text-[var(--text-primary)] hover:text-white bg-[var(--bg-input)] border-[var(--hairline)]',
 			},
 		}"
 	/>
@@ -634,16 +634,16 @@
 	>
 		<!-- BARRA SUPERIOR DE NAVEGACIÓN -->
 		<nav
-			class="bg-carpincho-panel border-carpincho-primary shrink-0 cursor-pointer overflow-hidden border-b px-5 pt-[calc(10px+var(--rockola-safe-top))] pb-2"
+			class="shrink-0 cursor-pointer overflow-hidden border-b border-[var(--hairline)] bg-[var(--glass-bg)] px-4 pt-[calc(10px+var(--rockola-safe-top))] pb-2.5 [backdrop-filter:var(--glass-blur)] [-webkit-backdrop-filter:var(--glass-blur)]"
 			@click="
 				isFogonMode = true;
 				haptic();
 			"
 		>
-			<div class="text-carpincho-text flex w-full items-center justify-start gap-3 font-bold">
-				<div class="flex h-[40px] min-w-0 flex-1 items-center overflow-hidden">
+			<div class="flex w-full items-center justify-start gap-3 font-semibold text-[var(--text-primary)]">
+				<div class="flex h-[38px] min-w-0 flex-1 items-center overflow-hidden">
 					<transition name="lyric" mode="out-in">
-						<span v-if="isScanning" class="block w-full truncate text-left">
+						<span v-if="isScanning" class="block w-full truncate text-left text-[14px]">
 							{{
 								scanStatus?.message
 									? `[Avisando] ${scanStatus.message}`
@@ -658,7 +658,7 @@
 							class="block w-full truncate text-left text-[0.95rem] font-medium whitespace-pre italic drop-shadow-sm"
 						>
 							<template v-for="(line, idx) in activeLyricLines" :key="idx + '-' + line.time">
-								<span v-if="idx > 0" class="text-carpincho-secondary/70 mx-1.5 font-normal not-italic">
+								<span v-if="idx > 0" class="mx-1.5 font-normal text-[var(--text-secondary)]/70 not-italic">
 									/
 								</span>
 								<template v-if="line.syllables && line.syllables.length > 0">
@@ -670,17 +670,17 @@
 										{{ syl.text }}
 									</span>
 								</template>
-								<span v-else class="text-carpincho-warning">{{ line.text }}</span>
+								<span v-else class="text-[var(--accent-primary)]">{{ line.text }}</span>
 							</template>
 						</div>
 						<span
 							v-else-if="currentTrackPath && currentLyricLine && currentLyricLine.trim() !== ''"
 							:key="currentLyricLine"
-							class="text-carpincho-warning block w-full truncate text-left text-[0.95rem] font-medium italic drop-shadow-sm"
+							class="block w-full truncate text-left text-[0.95rem] font-medium text-[var(--accent-primary)] italic drop-shadow-sm"
 						>
 							{{ currentLyricLine }}
 						</span>
-						<span v-else class="block w-full truncate text-left">
+						<span v-else class="block w-full truncate text-left text-[14px] font-semibold">
 							{{ currentTrackTitle }}
 						</span>
 					</transition>
@@ -689,11 +689,14 @@
 				<img
 					v-if="headbarCoverUrl"
 					:src="headbarCoverUrl"
-					class="h-10 w-10 shrink-0 rounded object-cover shadow-sm"
+					class="h-9 w-9 shrink-0 rounded-[6px] border border-[var(--hairline)] object-cover shadow-[0_2px_8px_rgba(0,0,0,0.35)]"
 					@error="onHeadbarCoverError"
 				/>
-				<div v-else class="flex h-10 w-10 shrink-0 items-center justify-center rounded shadow-sm">
-					<i class="material-icons text-carpincho-warning">
+				<div
+					v-else
+					class="flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px] border border-[var(--hairline)] bg-[var(--bg-input)]"
+				>
+					<i class="material-icons !text-[20px] text-[var(--accent-primary)]">
 						{{
 							isScanning || scanStatus?.is_analyzing_mood
 								? 'sync'
@@ -801,7 +804,7 @@
 		<!-- BARRA DE PROGRESO  -->
 		<div
 			v-show="!isScanning && currentTrackPath"
-			class="bg-carpincho-panel group relative flex h-2 w-full shrink-0 cursor-pointer touch-none items-start"
+			class="group relative flex h-2 w-full shrink-0 cursor-pointer touch-none items-start bg-transparent"
 			style="-webkit-tap-highlight-color: transparent"
 			@pointerdown="startSeek"
 			@pointermove="moveSeek"
@@ -809,34 +812,34 @@
 			@pointercancel="endSeek"
 		>
 			<div
-				class="relative h-1 w-full bg-[#38312c] transition-all duration-100 ease-out group-hover:h-2 group-active:h-2"
+				class="relative h-[2px] w-full bg-[rgba(255,235,208,0.1)] transition-all duration-100 ease-out group-hover:h-1.5 group-active:h-1.5"
 			>
 				<div
-					class="bg-carpincho-warning absolute top-0 left-0 z-50 h-full"
+					class="absolute top-0 left-0 z-50 h-full bg-[var(--accent-primary)]"
 					:style="{ width: progressPercent + '%' }"
 				/>
 
 				<!-- Bolita que solo aparece al pasar el dedo/mouse -->
 				<div
-					class="bg-carpincho-warning absolute top-1/2 z-50 h-3 w-3 -translate-y-1/2 rounded-full opacity-0 shadow-md group-hover:opacity-100 group-active:opacity-100"
+					class="absolute top-1/2 z-50 h-3 w-3 -translate-y-1/2 rounded-full bg-[var(--accent-primary)] opacity-0 shadow-md group-hover:opacity-100 group-active:opacity-100"
 					:style="{ left: progressPercent + '%', marginLeft: '-6px' }"
 				/>
 			</div>
 		</div>
 
-		<!-- CUERPO PRINCIPAL: NAVEGACIÓN INFERIOR M3 EN MÓVIL / RIEL LATERAL Y DOS PANELES EN PANTALLAS GRANDES -->
+		<!-- CUERPO PRINCIPAL: TAB BAR INFERIOR iOS EN MÓVIL / RIEL LATERAL Y DOS PANELES EN PANTALLAS GRANDES -->
 		<div class="flex min-h-0 w-full flex-1 flex-col overflow-hidden md:flex-row">
-			<!-- PESTAÑAS (mitad inferior del dock flotante unificado en móvil, riel lateral desde md) -->
+			<!-- PESTAÑAS (anclada borde a borde en móvil cubriendo safe-bottom, riel lateral desde md) -->
 			<nav
 				aria-label="Secciones principales"
-				class="floating-tab-bar bg-carpincho-panel/85 border-carpincho-border/80 border-t-carpincho-border/35 fixed z-40 order-2 flex h-[62px] shrink-0 items-center overflow-hidden rounded-t-none rounded-b-[26px] border border-t px-1.5 py-1 shadow-[0_10px_28px_rgba(0,0,0,0.6)] backdrop-blur-xl transition-all duration-300 ease-in-out md:static md:inset-auto md:z-10 md:order-1 md:mx-0 md:mb-0 md:h-auto md:w-24 md:flex-col md:items-stretch md:rounded-none md:border-t-0 md:border-r md:border-b-0 md:border-l-0 md:px-0 md:py-0 md:pb-0 md:shadow-md md:backdrop-blur-none lg:w-28"
+				class="floating-tab-bar fixed z-40 order-2 flex min-h-[var(--tabbar-h)] shrink-0 items-center overflow-hidden border-t-[0.5px] border-[var(--glass-border)] bg-[var(--glass-bg-strong)] px-2 pt-1.5 [backdrop-filter:var(--glass-blur)] [-webkit-backdrop-filter:var(--glass-blur)] transition-all duration-200 ease-out md:static md:inset-auto md:z-10 md:order-1 md:h-auto md:min-h-0 md:w-[96px] md:flex-col md:items-stretch md:border-t-0 md:border-r md:border-[var(--hairline)] md:bg-[var(--bg-elevated)] md:px-0 md:py-0 md:pb-0 md:[backdrop-filter:none] lg:w-[104px]"
 				:class="[
 					isTabsBarHidden && isShortScreen
 						? 'pointer-events-none max-h-0 translate-y-2 border-0 py-0 opacity-0 md:max-h-none md:translate-y-0 md:opacity-100'
-						: 'max-h-24 translate-y-0 opacity-100 md:max-h-none',
+						: 'translate-y-0 opacity-100',
 				]"
 			>
-				<div role="tablist" class="flex w-full items-center gap-1 md:flex-col md:gap-2 md:px-2 md:py-4">
+				<div role="tablist" class="flex w-full items-center justify-around gap-1 md:flex-col md:gap-2 md:px-1.5 md:py-4">
 					<button
 						v-for="tab in tabs"
 						:key="tab.id"
@@ -845,28 +848,26 @@
 						:aria-selected="activeTab === tab.id"
 						:aria-label="tab.name"
 						:class="[
-							'touch-target tap-feedback flex flex-1 cursor-pointer touch-manipulation flex-col items-center justify-center gap-0.5 rounded-full py-1.5 text-center transition-all duration-150 md:w-full md:flex-none md:rounded-xl md:py-3',
+							'touch-target tap-feedback flex flex-1 cursor-pointer touch-manipulation flex-col items-center justify-center gap-0.5 rounded-xl py-1 text-center transition-colors duration-150 md:w-full md:flex-none md:py-2.5',
 							activeTab === tab.id
-								? 'bg-carpincho-primary/25 ring-carpincho-primary/40 text-carpincho-warning shadow-sm ring-1 md:bg-transparent md:shadow-none md:ring-0'
-								: 'hover:bg-carpincho-border/40 text-carpincho-muted',
+								? 'text-[var(--accent-primary)]'
+								: 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text-primary)]',
 						]"
 						@click="switchTab(tab.id)"
 					>
 						<div
-							class="relative flex items-center justify-center rounded-full px-3 py-0.5 transition-colors duration-150 md:px-4"
-							:class="activeTab === tab.id ? 'md:bg-carpincho-primary/25' : ''"
+							class="relative flex items-center justify-center rounded-full px-3 py-0.5 transition-colors duration-150"
+							:class="activeTab === tab.id ? 'bg-[var(--accent-primary-soft)]' : ''"
 						>
-							<i class="material-icons !text-[21px]" aria-hidden="true">{{ tab.icon }}</i>
+							<i class="material-icons !text-[22px]" aria-hidden="true">{{ tab.icon }}</i>
 							<span
 								v-if="tab.id === 'queue' && queueState.length > 0"
-								class="bg-carpincho-primary absolute -top-1 -right-0.5 flex h-[14px] min-w-[14px] items-center justify-center rounded-full px-[3px] text-[0.55rem] leading-none font-bold text-white"
+								class="tabular-nums absolute -top-1 -right-0.5 flex h-[15px] min-w-[15px] items-center justify-center rounded-full bg-[var(--accent-primary)] px-1 text-[10px] leading-none font-bold text-[#120e0b]"
 							>
 								{{ queueState.length > 99 ? '99+' : queueState.length }}
 							</span>
 						</div>
-						<span
-							class="max-w-full truncate px-1 text-[0.65rem] leading-tight font-bold tracking-wide sm:text-xs"
-						>
+						<span class="whitespace-nowrap px-0.5 text-[11px] leading-tight font-semibold tracking-tight md:text-[12px]">
 							{{ tab.name }}
 						</span>
 					</button>

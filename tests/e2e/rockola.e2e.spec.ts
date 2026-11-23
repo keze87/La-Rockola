@@ -81,9 +81,9 @@ test.describe('La Rockola del Carpincho E2E', () => {
 		});
 		expect(clearRes.ok()).toBeTruthy();
 
-		await page.getByText('Los Clásicos').click();
-		await page.getByText('Las Perillas').click();
-		await page.getByText('Los Temazos').click();
+		await page.getByText('Clásicos').click();
+		await page.getByText('Perillas').click();
+		await page.getByText('Temazos').click();
 		await expect(page.getByText('03 - Siesta en el Río')).toBeVisible();
 	});
 });
