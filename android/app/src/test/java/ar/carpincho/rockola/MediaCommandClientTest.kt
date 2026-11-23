@@ -2,6 +2,7 @@ package ar.carpincho.rockola
 
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -384,5 +385,14 @@ class MediaCommandClientTest {
         client.sendCommand("pause") { result.set(it) }
         assertTrue(result.get() is CommandResult.Disconnected)
         assertEquals(1, dispatched.get())
+    }
+
+    @Test
+    fun isSameOriginValidatesExactSchemeHostAndPort() {
+        assertTrue(MediaCommandClient.isSameOrigin("http://192.168.1.5:1729", "http://192.168.1.5:1729/cover?p=1"))
+        assertFalse(MediaCommandClient.isSameOrigin("http://192.168.1.5:1729", "http://192.168.1.5:17290/cover?p=1"))
+        assertFalse(MediaCommandClient.isSameOrigin("http://192.168.1.5:1729", "http://192.168.1.5:1729.evil.com/cover"))
+        assertFalse(MediaCommandClient.isSameOrigin("https://host.local", "http://host.local/cover"))
+        assertTrue(MediaCommandClient.isSameOrigin("http://host.local:80", "http://host.local/cover"))
     }
 }

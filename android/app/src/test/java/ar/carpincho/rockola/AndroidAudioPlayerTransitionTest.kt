@@ -1,6 +1,7 @@
 package ar.carpincho.rockola
 
 import androidx.media3.common.Player
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -77,5 +78,13 @@ class AndroidAudioPlayerTransitionTest {
                 isLoadingMedia = false,
             ),
         )
+    }
+
+    @Test
+    fun `ganancia propia del reproductor preserva volumen al mutear y desmutear`() {
+        assertEquals(0.55f, AndroidAudioPlayer.computePlayerGain(55.0, muted = false), 0.001f)
+        assertEquals(0.0f, AndroidAudioPlayer.computePlayerGain(55.0, muted = true), 0.001f)
+        assertEquals(1.0f, AndroidAudioPlayer.computePlayerGain(150.0, muted = false), 0.001f)
+        assertEquals(0.0f, AndroidAudioPlayer.computePlayerGain(-10.0, muted = false), 0.001f)
     }
 }

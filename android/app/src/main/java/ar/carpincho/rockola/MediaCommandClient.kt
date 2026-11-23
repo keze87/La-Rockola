@@ -11,6 +11,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.SocketTimeoutException
+import java.net.URI
 import java.net.URL
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
@@ -95,13 +96,34 @@ class MediaCommandClient(
     private val cacheLock = Any()
     private var artworkCacheBytes = 0
     private val inFlightArtwork = mutableMapOf<String, MutableList<(Bitmap) -> Unit>>()
-    private val artworkCache = object : LinkedHashMap<String, Bitmap>(32, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Bitmap>?): Boolean {
-            if (artworkCacheBytes > artworkMaxBytes && eldest != null) {
-                artworkCacheBytes = (artworkCacheBytes - bitmapSize(eldest.value)).coerceAtLeast(0)
-                return true
+    private val artworkCache = LinkedHashMap<String, Bitmap>(32, 0.75f, true)
+
+    private fun putArtworkInCache(cacheKey: String, bmp: Bitmap) {
+        val newSize = bitmapSize(bmp)
+        synchronized(cacheLock) {
+            if (newSize > artworkMaxBytes) {
+                // No cacheamos un bitmap que por sí solo supera el presupuesto de memoria
+                val previous = artworkCache.remove(cacheKey)
+                if (previous != null) {
+                    artworkCacheBytes = (artworkCacheBytes - bitmapSize(previous)).coerceAtLeast(0)
+                }
+                return
             }
-            return false
+            val previous = artworkCache.put(cacheKey, bmp)
+            if (previous != null) {
+                artworkCacheBytes = (artworkCacheBytes - bitmapSize(previous)).coerceAtLeast(0)
+            }
+            artworkCacheBytes += newSize
+            trimArtworkCacheLocked()
+        }
+    }
+
+    private fun trimArtworkCacheLocked() {
+        val it = artworkCache.entries.iterator()
+        while (artworkCacheBytes > artworkMaxBytes && it.hasNext()) {
+            val eldest = it.next()
+            it.remove()
+            artworkCacheBytes = (artworkCacheBytes - bitmapSize(eldest.value)).coerceAtLeast(0)
         }
     }
 
@@ -264,7 +286,7 @@ class MediaCommandClient(
                                 connectTimeout = artworkTimeoutMs
                                 readTimeout = artworkTimeoutMs
                                 val origin = target.normalizedOrigin()
-                                if (origin.isNotEmpty() && coverUrl.startsWith(origin)) {
+                                if (isSameOrigin(origin, coverUrl)) {
                                     target.authHeader?.takeIf { it.isNotBlank() }?.let {
                                         setRequestProperty("Authorization", it)
                                     }
@@ -283,13 +305,7 @@ class MediaCommandClient(
                             val bmp = ByteArrayInputStream(payload).use { bitmapDecoder(it) } ?: return@execute
                             if (currentTarget.generation != target.generation) return@execute
 
-                            synchronized(cacheLock) {
-                                val previous = artworkCache.put(cacheKey, bmp)
-                                if (previous != null) {
-                                    artworkCacheBytes = (artworkCacheBytes - bitmapSize(previous)).coerceAtLeast(0)
-                                }
-                                artworkCacheBytes += bitmapSize(bmp)
-                            }
+                            putArtworkInCache(cacheKey, bmp)
                             loadedBmp = bmp
                             return@execute
                         } catch (_: Exception) {
@@ -335,6 +351,29 @@ class MediaCommandClient(
     }
 
     companion object {
+        internal fun isSameOrigin(targetOrigin: String, urlString: String): Boolean {
+            if (targetOrigin.isBlank() || urlString.isBlank()) return false
+            return try {
+                val originUri = URI(targetOrigin.trim())
+                val reqUri = URI(urlString.trim())
+                val oScheme = originUri.scheme?.lowercase() ?: return false
+                val rScheme = reqUri.scheme?.lowercase() ?: return false
+                val oHost = originUri.host?.lowercase() ?: return false
+                val rHost = reqUri.host?.lowercase() ?: return false
+                if (oScheme != rScheme || oHost != rHost) return false
+                effectivePort(oScheme, originUri.port) == effectivePort(rScheme, reqUri.port)
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        private fun effectivePort(scheme: String, port: Int): Int = when {
+            port > 0 -> port
+            scheme == "https" -> 443
+            scheme == "http" -> 80
+            else -> -1
+        }
+
         private fun dispatchToMainThread(action: () -> Unit) {
             try {
                 val mainLooper = Looper.getMainLooper()

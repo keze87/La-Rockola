@@ -66,6 +66,11 @@ class AndroidAudioPlayer(
                 playbackState == Player.STATE_BUFFERING ||
                 playbackState == Player.STATE_ENDED
         }
+
+        fun computePlayerGain(volPercent: Double, muted: Boolean): Float {
+            if (muted) return 0f
+            return (volPercent.coerceIn(0.0, 100.0) / 100.0).toFloat()
+        }
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -73,6 +78,9 @@ class AndroidAudioPlayer(
         Thread(runnable, "RockolaPyCallback").apply { isDaemon = true }
     }
     private var player: ExoPlayer? = null
+    @Volatile
+    private var currentVolumePercent: Double = 100.0
+    @Volatile
     private var isMuted: Boolean = false
     private var consecutiveErrors: Int = 0
     private var lastReportedPaused: Boolean? = null
@@ -246,21 +254,15 @@ class AndroidAudioPlayer(
 
     fun setVolume(volPercent: Double) {
         val clamped = volPercent.coerceIn(0.0, 100.0)
-        val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        val maxVol = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
-        val target = ((clamped / 100.0) * maxVol).roundToInt().coerceIn(0, maxVol)
-        am.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
+        currentVolumePercent = clamped
         mainHandler.post {
             val p = player ?: return@post
-            p.volume = if (isMuted) 0f else 1.0f
+            p.volume = computePlayerGain(clamped, isMuted)
         }
     }
 
     fun getSystemVolumePercent(): Int {
-        val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        val maxVol = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
-        val curVol = am.getStreamVolume(AudioManager.STREAM_MUSIC).coerceIn(0, maxVol)
-        return ((curVol * 100f) / maxVol).roundToInt().coerceIn(0, 100)
+        return currentVolumePercent.roundToInt().coerceIn(0, 100)
     }
 
     fun updateNotification(
@@ -296,10 +298,10 @@ class AndroidAudioPlayer(
     }
 
     fun setMute(muted: Boolean) {
+        isMuted = muted
         mainHandler.post {
             val p = player ?: return@post
-            isMuted = muted
-            p.volume = if (muted) 0f else 1.0f
+            p.volume = computePlayerGain(currentVolumePercent, muted)
         }
     }
 
