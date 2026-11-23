@@ -238,7 +238,9 @@ describe('useAndroidHost.ts', () => {
 
 	it('triggerAndroidHaptic calls native RockolaServer.hapticFeedback only on Android', async () => {
 		const mod = await import('@/composables/useAndroidHost');
-		const triggerAndroidHaptic = (mod as any).triggerAndroidHaptic as (heavy?: boolean) => Promise<void> | void;
+		const triggerAndroidHaptic = (mod as any).triggerAndroidHaptic as (
+			kindOrHeavy?: boolean | 'tap' | 'confirm' | 'long_press' | 'reject'
+		) => Promise<void> | void;
 
 		expect(typeof triggerAndroidHaptic).toBe('function');
 
@@ -246,16 +248,18 @@ describe('useAndroidHost.ts', () => {
 		await triggerAndroidHaptic(false);
 		expect(pluginMock.hapticFeedback).not.toHaveBeenCalled();
 
-		// En Android nativo invoca feedback nativo liviano o pesado
+		// En Android nativo traduce booleanos legacy o tipos semánticos al contrato nativo
 		state.isNative = true;
 		state.platform = 'android';
 		pluginMock.hapticFeedback.mockResolvedValue({ performed: true });
 
 		await triggerAndroidHaptic(false);
 		await triggerAndroidHaptic(true);
+		await triggerAndroidHaptic('confirm');
 
-		expect(pluginMock.hapticFeedback).toHaveBeenNthCalledWith(1, { heavy: false });
-		expect(pluginMock.hapticFeedback).toHaveBeenNthCalledWith(2, { heavy: true });
+		expect(pluginMock.hapticFeedback).toHaveBeenNthCalledWith(1, { kind: 'tap' });
+		expect(pluginMock.hapticFeedback).toHaveBeenNthCalledWith(2, { kind: 'long_press' });
+		expect(pluginMock.hapticFeedback).toHaveBeenNthCalledWith(3, { kind: 'confirm' });
 	});
 
 	it('setAndroidKeepScreenOn, shareAndroidUrl, and consumeAndroidPendingShortcut work only on Android', async () => {

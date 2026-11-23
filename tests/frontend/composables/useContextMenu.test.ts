@@ -234,7 +234,7 @@ describe('useContextMenu.ts', () => {
 			onCtxTouchStart(touchEvent, sampleTrack, 'library', 1);
 			vi.advanceTimersByTime(500);
 			expect(ctxMenu.visible).toBe(true);
-			expect(nativeHapticSpy).toHaveBeenCalledWith(true);
+			expect(nativeHapticSpy).toHaveBeenCalledWith('long_press');
 
 			// Caso 2: cuando WebView dispara contextmenu táctil antes de 500ms
 			nativeHapticSpy.mockClear();
@@ -245,7 +245,7 @@ describe('useContextMenu.ts', () => {
 				'library',
 				1
 			);
-			expect(nativeHapticSpy).toHaveBeenCalledWith(true);
+			expect(nativeHapticSpy).toHaveBeenCalledWith('long_press');
 		} finally {
 			isNativeSpy.mockRestore();
 			nativeHapticSpy.mockRestore();
