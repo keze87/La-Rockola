@@ -319,4 +319,107 @@ class HostLifecycleCoordinatorTest {
         assertTrue(ServicePowerPolicy.shouldStopForeground(keepDismissibleNotification = false, isHostRunning = true, forceStop = true))
         assertTrue(ServicePowerPolicy.shouldStopForeground(keepDismissibleNotification = true, isHostRunning = false))
     }
+
+    @Test
+    fun `stop respeta timeout aunque el hook de apagado se bloquee`() {
+        val hookRelease = CountDownLatch(1)
+        val workerRelease = CountDownLatch(1)
+        val startedLatch = CountDownLatch(1)
+        val coord = HostLifecycleCoordinator()
+
+        assertTrue(
+            coord.start(
+                port = 1729,
+                musicDir = null,
+                onRequestStop = {
+                    hookRelease.await(5, TimeUnit.SECONDS)
+                },
+            ) { onReady ->
+                onReady()
+                startedLatch.countDown()
+                workerRelease.await(5, TimeUnit.SECONDS)
+            },
+        )
+        assertTrue(startedLatch.await(2, TimeUnit.SECONDS))
+
+        val t0 = System.currentTimeMillis()
+        val stopped = coord.stop(timeoutMs = 120L)
+        val elapsedMs = System.currentTimeMillis() - t0
+
+        assertFalse(stopped)
+        assertTrue("El stop debe respetar el timeout acotado (tardó ${elapsedMs}ms)", elapsedMs < 900L)
+        assertEquals(HostServerState.STOP_TIMED_OUT, coord.state)
+        assertTrue(coord.hasActiveWorker)
+
+        // Liberamos hook y worker: pasa a STOPPED y vuelve a permitir start
+        hookRelease.countDown()
+        workerRelease.countDown()
+        val deadline = System.currentTimeMillis() + 2000L
+        while (coord.state != HostServerState.STOPPED && System.currentTimeMillis() < deadline) {
+            Thread.sleep(15)
+        }
+        assertEquals(HostServerState.STOPPED, coord.state)
+        assertFalse(coord.hasActiveWorker)
+    }
+
+    @Test
+    fun `stop ante excepcion en hook de apagado igualmente espera y finaliza el worker`() {
+        val stopSignal = CountDownLatch(1)
+        val startedLatch = CountDownLatch(1)
+        val coord = HostLifecycleCoordinator()
+
+        assertTrue(
+            coord.start(
+                port = 1729,
+                musicDir = null,
+                onRequestStop = {
+                    stopSignal.countDown()
+                    throw RuntimeException("Error simulado en Python")
+                },
+            ) { onReady ->
+                onReady()
+                startedLatch.countDown()
+                stopSignal.await(2, TimeUnit.SECONDS)
+            },
+        )
+        assertTrue(startedLatch.await(2, TimeUnit.SECONDS))
+        assertTrue(coord.stop(timeoutMs = 1000L))
+        assertEquals(HostServerState.STOPPED, coord.state)
+        assertFalse(coord.hasActiveWorker)
+    }
+
+    @Test
+    fun `notificaciones de estado nunca entregan STOPPED despues de STARTING mas reciente`() {
+        val observed = java.util.concurrent.CopyOnWriteArrayList<HostServerState>()
+        val coord = HostLifecycleCoordinator(
+            onStateChanged = { st, _ -> observed.add(st) },
+        )
+        val ready1 = CountDownLatch(1)
+        assertTrue(
+            coord.start(1729, null, {}) { onReady ->
+                onReady()
+                ready1.countDown()
+            },
+        )
+        assertTrue(ready1.await(2, TimeUnit.SECONDS))
+        val deadline = System.currentTimeMillis() + 2000L
+        while (coord.state != HostServerState.STOPPED && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10)
+        }
+        assertTrue(coord.stop(500L))
+        val ready2 = CountDownLatch(1)
+        val stop2 = CountDownLatch(1)
+        assertTrue(
+            coord.start(1729, null, { stop2.countDown() }) { onReady ->
+                onReady()
+                ready2.countDown()
+                stop2.await(2, TimeUnit.SECONDS)
+            },
+        )
+        assertTrue(ready2.await(2, TimeUnit.SECONDS))
+        val lastStoppedIdx = observed.lastIndexOf(HostServerState.STOPPED)
+        val lastStartingIdx = observed.lastIndexOf(HostServerState.STARTING)
+        assertTrue(lastStartingIdx > lastStoppedIdx)
+        coord.stop(500L)
+    }
 }

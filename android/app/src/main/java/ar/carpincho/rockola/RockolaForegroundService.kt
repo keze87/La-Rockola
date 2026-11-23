@@ -105,6 +105,10 @@ class RockolaForegroundService : Service() {
             private set
 
         @Volatile
+        var hasActiveWorker: Boolean = false
+            private set
+
+        @Volatile
         private var activeInstance: RockolaForegroundService? = null
 
         @Volatile
@@ -197,6 +201,7 @@ class RockolaForegroundService : Service() {
                 hostState = nextState
                 lastHostError = err
                 isRunning = hostCoordinator.isRunning
+                hasActiveWorker = hostCoordinator.hasActiveWorker
                 if ((nextState == HostServerState.FAILED || nextState == HostServerState.STOP_TIMED_OUT) && err != null) {
                     onNativeCommandError?.invoke("host_server", "HOST_FAILED", err)
                 }
@@ -625,6 +630,13 @@ class RockolaForegroundService : Service() {
         super.onTaskRemoved(rootIntent)
     }
 
+    private fun syncCoordinatorSnapshot() {
+        isRunning = hostCoordinator.isRunning
+        hasActiveWorker = hostCoordinator.hasActiveWorker
+        hostState = hostCoordinator.state
+        lastHostError = hostCoordinator.lastError
+    }
+
     private fun stopServerBlocking(timeoutMs: Long): Boolean {
         isActivelyPlaying = false
         isMediaPlaying = false
@@ -632,9 +644,7 @@ class RockolaForegroundService : Service() {
             demoteFromForeground(keepDismissibleNotification = false, forceStop = true)
         }
         val clean = hostCoordinator.stop(timeoutMs)
-        isRunning = hostCoordinator.isRunning
-        hostState = hostCoordinator.state
-        lastHostError = hostCoordinator.lastError
+        syncCoordinatorSnapshot()
         if (clean) {
             mainHandler.post {
                 stopSelf()
@@ -649,6 +659,7 @@ class RockolaForegroundService : Service() {
         demoteFromForeground(keepDismissibleNotification = false, forceStop = true)
         stopExecutor.execute {
             val clean = hostCoordinator.stop(STOP_JOIN_TIMEOUT_MS)
+            syncCoordinatorSnapshot()
             if (clean) {
                 mainHandler.post {
                     stopSelf()
@@ -663,9 +674,6 @@ class RockolaForegroundService : Service() {
         }
         isActivelyPlaying = false
         isMediaPlaying = false
-        hostCoordinator.stop(STOP_JOIN_TIMEOUT_MS)
-        stopExecutor.shutdownNow()
-        nativeCommandExecutor.shutdownNow()
         onPipStateNeedsRefresh = null
         onNativeCommandError = null
         demoteFromForeground(keepDismissibleNotification = false, forceStop = true)
@@ -674,9 +682,17 @@ class RockolaForegroundService : Service() {
             audioPlayer.release()
         }
         commandClient.shutdown()
-        isRunning = false
-        hostState = hostCoordinator.state
-        lastHostError = hostCoordinator.lastError
+        nativeCommandExecutor.shutdownNow()
+        if (hostCoordinator.hasActiveWorker) {
+            stopExecutor.execute {
+                hostCoordinator.stop(STOP_JOIN_TIMEOUT_MS)
+                syncCoordinatorSnapshot()
+            }
+            stopExecutor.shutdown()
+        } else {
+            stopExecutor.shutdownNow()
+        }
+        syncCoordinatorSnapshot()
         super.onDestroy()
     }
 }

@@ -170,6 +170,7 @@ class RockolaServerPlugin : Plugin() {
             ?: prefs.getString(RockolaForegroundService.KEY_MUSIC_DIR, null)
         return JSObject().apply {
             put("running", RockolaForegroundService.isRunning)
+            put("hasActiveWorker", RockolaForegroundService.hasActiveWorker)
             put("hostState", RockolaForegroundService.hostState.wireName())
             put("lastError", RockolaForegroundService.lastHostError ?: JSONObject.NULL)
             put("port", port)

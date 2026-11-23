@@ -341,15 +341,33 @@ def start_embedded_server(
 					_host_state = "stopped"
 
 
-def stop_embedded_server() -> None:
-	"""Solicita el apagado limpio del servidor Uvicorn embebido."""
-	global _host_state, _stop_requested
-	from app.api.commands import flush_pending_volume_persist
+_persist_lock = threading.Lock()
+_persist_in_flight = False
+_persist_executor: concurrent.futures.ThreadPoolExecutor | None = None
 
-	flush_pending_volume_persist()
-	orch = get_container().orchestrator
-	if orch is not None and hasattr(orch, "save_playback_session"):
-		orch.save_playback_session(force=True)
+
+def _run_stop_persistence() -> None:
+	global _persist_in_flight
+	try:
+		from app.api.commands import flush_pending_volume_persist
+
+		flush_pending_volume_persist()
+	except Exception as exc:
+		logger.warning("Error haciendo flush de volumen al apagar: %s", exc)
+	try:
+		orch = get_container().orchestrator
+		if orch is not None and hasattr(orch, "save_playback_session"):
+			orch.save_playback_session(force=True)
+	except Exception as exc:
+		logger.warning("Error guardando sesión de reproducción al apagar: %s", exc)
+	finally:
+		with _persist_lock:
+			_persist_in_flight = False
+
+
+def stop_embedded_server() -> None:
+	"""Solicita el apagado limpio del servidor Uvicorn embebido sin bloquear por persistencia."""
+	global _host_state, _stop_requested, _persist_in_flight, _persist_executor
 	with _server_lock:
 		_stop_requested = True
 		if _active_server is not None:
@@ -362,6 +380,16 @@ def stop_embedded_server() -> None:
 			_host_state = "stopping"
 		elif _host_state != "failed":
 			_host_state = "stopped"
+
+	with _persist_lock:
+		if not _persist_in_flight:
+			_persist_in_flight = True
+			if _persist_executor is None:
+				_persist_executor = concurrent.futures.ThreadPoolExecutor(
+					max_workers=1,
+					thread_name_prefix="RockolaStopPersist",
+				)
+			_persist_executor.submit(_run_stop_persistence)
 
 
 def get_server_info() -> dict[str, Any]:

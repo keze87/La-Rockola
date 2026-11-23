@@ -1,5 +1,9 @@
 package ar.carpincho.rockola
 
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
+
 /**
  * Estados explícitos del ciclo de vida del servidor embebido Android.
  */
@@ -16,7 +20,7 @@ enum class HostServerState {
 
 /**
  * Coordina el hilo del servidor FastAPI/Uvicorn embebido con transiciones sincronizadas,
- * inicio idempotente y apagado acotado libre de deadlocks.
+ * inicio idempotente, snapshots ordenados y apagado acotado libre de deadlocks.
  */
 class HostLifecycleCoordinator(
     private val onStateChanged: (HostServerState, String?) -> Unit = { _, _ -> },
@@ -24,12 +28,25 @@ class HostLifecycleCoordinator(
         Thread(runnable, name).apply { isDaemon = true }
     },
 ) {
+    private data class StateSnapshot(
+        val version: Long,
+        val state: HostServerState,
+        val error: String?,
+    )
+
     private val lock = Any()
+    private val notificationLock = Any()
+    private var stateVersion: Long = 0L
+    private var lastNotifiedVersion: Long = 0L
     private var runIdCounter: Long = 0L
     private var activeRunId: Long = 0L
+    private var finishingRunId: Long = 0L
     private var activeThread: Thread? = null
     private var activeStopHook: (() -> Unit)? = null
     private var stopRequestedForRun: Boolean = false
+    private val stopHookExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "RockolaStopHook").apply { isDaemon = true }
+    }
 
     @Volatile
     var state: HostServerState = HostServerState.STOPPED
@@ -45,6 +62,7 @@ class HostLifecycleCoordinator(
     val hasActiveWorker: Boolean
         get() = synchronized(lock) {
             activeThread != null ||
+                finishingRunId != 0L ||
                 state == HostServerState.STARTING ||
                 state == HostServerState.READY ||
                 state == HostServerState.STOPPING ||
@@ -57,23 +75,24 @@ class HostLifecycleCoordinator(
         onRequestStop: () -> Unit,
         runner: (onReady: () -> Unit) -> Unit,
     ): Boolean {
-        val runId: Long
+        val snapshot: StateSnapshot
         val thread: Thread
         synchronized(lock) {
             if (state == HostServerState.STARTING ||
                 state == HostServerState.READY ||
                 state == HostServerState.STOPPING ||
                 state == HostServerState.STOP_TIMED_OUT ||
+                finishingRunId != 0L ||
                 activeThread?.isAlive == true
             ) {
                 return false
             }
             runIdCounter += 1L
-            runId = runIdCounter
+            val runId = runIdCounter
             activeRunId = runId
             stopRequestedForRun = false
             activeStopHook = onRequestStop
-            setStateLocked(HostServerState.STARTING, null)
+            snapshot = setStateLocked(HostServerState.STARTING, null)
 
             thread = threadFactory("RockolaUvicornThread-$port") {
                 val cancelledBeforeStart = synchronized(lock) {
@@ -96,41 +115,46 @@ class HostLifecycleCoordinator(
             activeThread = thread
             thread.start()
         }
-        notifyState()
+        notifySnapshot(snapshot)
         return true
     }
 
     private fun markReady(runId: Long) {
-        var shouldNotify = false
-        synchronized(lock) {
+        val snapshot = synchronized(lock) {
             if (activeRunId == runId && state == HostServerState.STARTING && !stopRequestedForRun) {
                 setStateLocked(HostServerState.READY, null)
-                shouldNotify = true
+            } else {
+                null
             }
         }
-        if (shouldNotify) {
-            notifyState()
+        if (snapshot != null) {
+            notifySnapshot(snapshot)
         }
     }
 
     private fun finishRun(runId: Long, error: String?) {
-        var shouldNotify = false
-        synchronized(lock) {
+        val snapshot = synchronized(lock) {
             if (activeRunId != runId) return
+            finishingRunId = runId
             val wasStopping = stopRequestedForRun ||
                 state == HostServerState.STOPPING ||
                 state == HostServerState.STOP_TIMED_OUT
-            activeThread = null
-            activeStopHook = null
             if (error != null && !wasStopping) {
                 setStateLocked(HostServerState.FAILED, error)
             } else {
                 setStateLocked(HostServerState.STOPPED, null)
             }
-            shouldNotify = true
         }
-        if (shouldNotify) {
-            notifyState()
+        try {
+            notifySnapshot(snapshot)
+        } finally {
+            synchronized(lock) {
+                if (activeRunId == runId) {
+                    activeThread = null
+                    activeStopHook = null
+                    finishingRunId = 0L
+                }
+            }
         }
     }
 
@@ -138,12 +162,21 @@ class HostLifecycleCoordinator(
         val threadToJoin: Thread?
         val stopHook: (() -> Unit)?
         val runId: Long
-        var notifyStopping = false
+        val stoppingSnapshot: StateSnapshot?
         synchronized(lock) {
             when (state) {
-                HostServerState.STOPPED -> return true
+                HostServerState.STOPPED -> {
+                    if (finishingRunId == 0L && activeThread?.isAlive != true) {
+                        return true
+                    }
+                    stopRequestedForRun = true
+                    runId = activeRunId
+                    threadToJoin = activeThread
+                    stopHook = activeStopHook
+                    stoppingSnapshot = null
+                }
                 HostServerState.FAILED -> {
-                    if (activeThread?.isAlive != true) {
+                    if (finishingRunId == 0L && activeThread?.isAlive != true) {
                         activeThread = null
                         activeStopHook = null
                         return true
@@ -152,78 +185,105 @@ class HostLifecycleCoordinator(
                     runId = activeRunId
                     threadToJoin = activeThread
                     stopHook = activeStopHook
+                    stoppingSnapshot = null
                 }
                 HostServerState.STARTING, HostServerState.READY -> {
                     stopRequestedForRun = true
                     runId = activeRunId
                     threadToJoin = activeThread
                     stopHook = activeStopHook
-                    setStateLocked(HostServerState.STOPPING, null)
-                    notifyStopping = true
+                    stoppingSnapshot = setStateLocked(HostServerState.STOPPING, null)
                 }
                 HostServerState.STOPPING, HostServerState.STOP_TIMED_OUT -> {
                     stopRequestedForRun = true
                     runId = activeRunId
                     threadToJoin = activeThread
                     stopHook = activeStopHook
+                    stoppingSnapshot = null
                 }
             }
         }
-        if (notifyStopping) {
-            notifyState()
+        if (stoppingSnapshot != null) {
+            notifySnapshot(stoppingSnapshot)
         }
 
-        try {
-            stopHook?.invoke()
-        } catch (_: Throwable) {
+        val deadlineNs = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs.coerceAtLeast(0L))
+        var hookCompleted = true
+        if (stopHook != null) {
+            hookCompleted = runStopHookWithBudget(stopHook, deadlineNs)
         }
 
-        // Esperamos fuera del lock para que el hilo worker pueda finalizar sin deadlock
-        if (threadToJoin != null && Thread.currentThread() !== threadToJoin && timeoutMs > 0L) {
+        // Esperamos fuera del lock usando únicamente el presupuesto restante de tiempo
+        val remainingAfterHookMs = TimeUnit.NANOSECONDS.toMillis(deadlineNs - System.nanoTime()).coerceAtLeast(0L)
+        if (threadToJoin != null && Thread.currentThread() !== threadToJoin && remainingAfterHookMs > 0L) {
             try {
-                threadToJoin.join(timeoutMs)
+                threadToJoin.join(remainingAfterHookMs)
             } catch (_: InterruptedException) {
                 Thread.currentThread().interrupt()
             }
         }
 
-        var timedOut = false
-        var finalizedCleanly = false
+        val resultSnapshot: StateSnapshot?
+        val timedOut: Boolean
         synchronized(lock) {
-            if (activeRunId == runId) {
-                if (threadToJoin != null && threadToJoin.isAlive) {
-                    timedOut = true
-                    // Mantenemos activeRunId, activeThread y activeStopHook para no perder control del worker vivo
-                    setStateLocked(
-                        HostServerState.STOP_TIMED_OUT,
-                        "El servidor embebido no respondió al apagado en ${timeoutMs}ms",
-                    )
-                } else if (state == HostServerState.STOPPING || state == HostServerState.STOP_TIMED_OUT) {
+            val workerStillAlive = (threadToJoin != null && threadToJoin.isAlive) || !hookCompleted
+            if (activeRunId == runId && workerStillAlive) {
+                timedOut = true
+                resultSnapshot = setStateLocked(
+                    HostServerState.STOP_TIMED_OUT,
+                    "El servidor embebido no respondió al apagado en ${timeoutMs}ms",
+                )
+            } else if (activeRunId == runId && (state == HostServerState.STOPPING || state == HostServerState.STOP_TIMED_OUT)) {
+                timedOut = false
+                if (finishingRunId == 0L) {
                     activeThread = null
                     activeStopHook = null
-                    setStateLocked(HostServerState.STOPPED, null)
-                    finalizedCleanly = true
                 }
+                resultSnapshot = setStateLocked(HostServerState.STOPPED, null)
+            } else {
+                timedOut = state == HostServerState.STOP_TIMED_OUT || (threadToJoin != null && threadToJoin.isAlive)
+                resultSnapshot = null
             }
         }
-        if (timedOut || finalizedCleanly) {
-            notifyState()
+        if (resultSnapshot != null) {
+            notifySnapshot(resultSnapshot)
         }
         return !timedOut
     }
 
-    private fun setStateLocked(next: HostServerState, err: String?) {
-        state = next
-        lastError = err
+    private fun runStopHookWithBudget(stopHook: () -> Unit, deadlineNs: Long): Boolean {
+        val remainingMs = TimeUnit.NANOSECONDS.toMillis(deadlineNs - System.nanoTime()).coerceAtLeast(1L)
+        return try {
+            val future = stopHookExecutor.submit {
+                try {
+                    stopHook()
+                } catch (_: Throwable) {
+                }
+            }
+            future.get(remainingMs, TimeUnit.MILLISECONDS)
+            true
+        } catch (_: TimeoutException) {
+            false
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            false
+        } catch (_: Throwable) {
+            true
+        }
     }
 
-    private fun notifyState() {
-        val snapState: HostServerState
-        val snapError: String?
-        synchronized(lock) {
-            snapState = state
-            snapError = lastError
+    private fun setStateLocked(next: HostServerState, err: String?): StateSnapshot {
+        stateVersion += 1L
+        state = next
+        lastError = err
+        return StateSnapshot(stateVersion, next, err)
+    }
+
+    private fun notifySnapshot(snapshot: StateSnapshot) {
+        synchronized(notificationLock) {
+            if (snapshot.version <= lastNotifiedVersion) return
+            lastNotifiedVersion = snapshot.version
+            onStateChanged(snapshot.state, snapshot.error)
         }
-        onStateChanged(snapState, snapError)
     }
 }
