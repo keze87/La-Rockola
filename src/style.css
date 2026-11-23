@@ -79,6 +79,7 @@
 	--topbar-h: 56px;
 	--floating-player-h: 64px;
 	--tabbar-h: 64px;
+	--rail-w: 96px;
 	--safe-top: max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px));
 	--safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px));
 	--rockola-safe-top: var(--safe-top);
@@ -225,6 +226,22 @@ dialog::backdrop {
 	}
 }
 
+/* Scrim inferior detrás del dock flotante para evitar que el contenido asome en la rendija */
+.bottom-dock-scrim {
+	position: fixed;
+	z-index: 35;
+	bottom: 0;
+	left: 0;
+	right: 0;
+	height: calc(var(--floating-player-h) + var(--tabbar-h) + var(--safe-bottom) + 28px);
+	background: linear-gradient(to bottom, transparent 0%, rgba(18, 14, 11, 0.72) 45%, var(--bg-canvas) 78%);
+	pointer-events: none;
+}
+
+html.ime-open .bottom-dock-scrim {
+	display: none;
+}
+
 /* Barra del reproductor flotante: cápsula independiente sobre la Tab Bar en móvil */
 .floating-player {
 	position: fixed;
@@ -301,9 +318,16 @@ dialog:modal {
 }
 
 @media (min-width: 768px) {
+	.bottom-dock-scrim {
+		left: var(--rail-w);
+		height: calc(var(--floating-player-h) + var(--safe-bottom) + 28px);
+	}
+
 	.floating-player {
 		bottom: calc(12px + var(--safe-bottom));
-		left: calc(96px + max(12px, var(--rockola-safe-left)));
+		left: calc(var(--rail-w) + max(16px, var(--rockola-safe-left)));
+		right: max(16px, var(--rockola-safe-right));
+		max-width: none;
 	}
 
 	[data-sonner-toaster] {
@@ -312,8 +336,8 @@ dialog:modal {
 }
 
 @media (min-width: 1024px) {
-	.floating-player {
-		left: calc(112px + max(12px, var(--rockola-safe-left)));
+	:root {
+		--rail-w: 104px;
 	}
 }
 

@@ -642,14 +642,18 @@
 			<div class="flex w-full items-center justify-start gap-3 font-semibold text-[var(--text-primary)]">
 				<div class="flex h-[38px] min-w-0 flex-1 items-center overflow-hidden">
 					<transition name="lyric" mode="out-in">
-						<span v-if="isScanning" class="block w-full truncate text-left text-[14px]">
-							{{
-								scanStatus?.message
-									? `[Avisando] ${scanStatus.message}`
-									: scanStatus?.total
-										? `[Avisando] Chusmeando temas (${scanStatus.current}/${scanStatus.total}), aguantá fiera... 🧉`
-										: '[Avisando] Chusmeando temas, aguantá fiera... 🧉'
-							}}
+						<span v-if="isScanning" class="flex w-full items-center gap-2 truncate text-left text-[14px]">
+							<span
+								class="h-2 w-2 shrink-0 animate-pulse rounded-full bg-[var(--accent-primary)]"
+								aria-hidden="true"
+							/>
+							<span class="truncate">
+								{{
+									scanStatus?.total
+										? `Chusmeando temas (${scanStatus.current}/${scanStatus.total}), aguantá fiera... 🧉`
+										: 'Chusmeando temas, aguantá fiera... 🧉'
+								}}
+							</span>
 						</span>
 						<div
 							v-else-if="currentTrackPath && activeLyricLines.length > 0"
@@ -867,7 +871,7 @@
 							<i class="material-icons !text-[22px]" aria-hidden="true">{{ tab.icon }}</i>
 							<span
 								v-if="tab.id === 'queue' && queueState.length > 0"
-								class="absolute -top-1 -right-0.5 flex h-[15px] min-w-[15px] items-center justify-center rounded-full bg-[var(--accent-primary)] px-1 text-[10px] leading-none font-bold text-[#120e0b] tabular-nums"
+								class="absolute -top-1.5 -right-1.5 flex h-[15px] min-w-[15px] items-center justify-center rounded-full bg-[var(--accent-primary)] px-1 text-[10px] leading-none font-bold text-[#120e0b] tabular-nums shadow-[0_0_0_2px_var(--bg-canvas)]"
 							>
 								{{ queueState.length > 99 ? '99+' : queueState.length }}
 							</span>
@@ -923,6 +927,9 @@
 			</div>
 		</div>
 	</div>
+
+	<!-- SCRIM INFERIOR DETRÁS DEL DOCK FLOTANTE -->
+	<div v-show="!isLyricsEditorOpen && !isFogonMode" class="bottom-dock-scrim" aria-hidden="true" />
 
 	<!-- REPRODUCTOR FLOTANTE -->
 	<FloatingPlayer v-show="!isLyricsEditorOpen && !isFogonMode" />

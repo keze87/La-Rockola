@@ -73,7 +73,7 @@ describe('App.vue', () => {
 		isScanning.value = true;
 		const wrapper = mount(App);
 
-		expect(wrapper.text()).toContain('[Avisando] Chusmeando temas, aguantá fiera... 🧉');
+		expect(wrapper.text()).toContain('Chusmeando temas, aguantá fiera... 🧉');
 	});
 
 	it('renders scanning indicator with counter when scanStatus has total > 0', () => {
@@ -87,7 +87,7 @@ describe('App.vue', () => {
 		};
 		const wrapper = mount(App);
 
-		expect(wrapper.text()).toContain('[Avisando] Chusmeando temas (450/1765), aguantá fiera... 🧉');
+		expect(wrapper.text()).toContain('Chusmeando temas (450/1765), aguantá fiera... 🧉');
 	});
 
 	it('renders current track title in header when a song is playing', () => {

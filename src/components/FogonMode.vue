@@ -338,10 +338,10 @@
 	// Lógica del botón de temporizador / pausa programada
 	const isTimerActive = computed(() => pauseAfterPath.value === currentTrackPath.value && currentTrackPath.value);
 	const timerClass = computed(() => [
-		'fogon-timer-btn tap-feedback flex h-10 w-10 items-center justify-center rounded-full transition-colors z-20',
+		'fogon-timer-btn tap-feedback flex h-10 w-10 items-center justify-center rounded-full transition-[colors,opacity] z-20',
 		isTimerActive.value
-			? 'bg-[var(--accent-primary-soft)] text-[var(--accent-primary)]'
-			: 'text-[var(--text-primary)]/88 hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text-primary)]',
+			? 'bg-[var(--accent-primary-soft)] text-[var(--accent-primary)] opacity-100'
+			: 'text-[var(--text-primary)] opacity-[0.78] hover:bg-[var(--bg-surface-hover)] hover:opacity-100',
 	]);
 	const timerTitle = computed(() => (isTimerActive.value ? 'Cancelar pausa al terminar' : 'Frenar tras este tema'));
 
@@ -639,16 +639,16 @@
 				<span class="h-[5px] w-[36px] rounded-full bg-[rgba(255,240,220,0.28)]" aria-hidden="true" />
 			</button>
 
-			<!-- Botón nativo de Picture-in-Picture en Android -->
+			<!-- Botón nativo de Picture-in-Picture en Android (alineado con el grabber pill) -->
 			<button
 				v-if="canEnterAndroidPip"
 				type="button"
 				aria-label="Abrir en ventana flotante"
 				title="Ventana flotante (PiP)"
-				class="touch-target tap-feedback absolute top-[calc(0.75rem+var(--rockola-safe-top))] right-4 z-40 flex h-9 w-9 items-center justify-center rounded-full border border-[var(--hairline)] bg-[var(--bg-input)] text-[var(--text-primary)]/88 hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text-primary)]"
+				class="touch-target tap-feedback absolute top-[calc(0.5rem+var(--rockola-safe-top))] right-4 z-40 flex h-9 w-9 items-center justify-center rounded-full border border-[var(--hairline)] bg-[rgba(255,236,210,0.07)] text-[var(--text-primary)] opacity-[0.85] hover:bg-[var(--bg-surface-hover)] hover:opacity-100"
 				@click="openAndroidPip"
 			>
-				<i class="material-icons !text-[20px]" aria-hidden="true">picture_in_picture_alt</i>
+				<i class="material-icons !text-[19px]" aria-hidden="true">picture_in_picture_alt</i>
 			</button>
 
 			<!-- Capa para cerrar el popup de volumen al tocar afuera -->
@@ -814,15 +814,15 @@
 									@pointercancel="endSeek"
 								>
 									<div
-										class="pointer-events-none relative h-[6px] w-full rounded-full bg-[rgba(255,236,210,0.16)] transition-[height] duration-150 group-active:h-[10px]"
+										class="pointer-events-none relative h-[4px] w-full rounded-full bg-[rgba(255,236,210,0.16)] transition-[height] duration-150 group-active:h-[6px]"
 									>
 										<div
 											class="absolute top-0 left-0 h-full rounded-full bg-[var(--accent-primary)]"
 											:style="{ width: progressPercent + '%' }"
 										/>
 										<div
-											class="absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full bg-[#f5efe6] shadow-[0_2px_6px_rgba(0,0,0,0.45)] transition-transform group-active:scale-110"
-											:style="{ left: progressPercent + '%', marginLeft: '-7px' }"
+											class="absolute top-1/2 h-[11px] w-[11px] -translate-y-1/2 rounded-full bg-[var(--text-primary)] shadow-[0_1px_4px_rgba(0,0,0,0.4)] transition-transform group-active:scale-[1.45]"
+											:style="{ left: progressPercent + '%', marginLeft: '-5.5px' }"
 										/>
 									</div>
 								</div>
@@ -867,7 +867,7 @@
 								<button
 									type="button"
 									aria-label="Ajustar volumen"
-									class="fogon-volume-btn touch-target tap-feedback z-20 flex h-10 w-10 items-center justify-center rounded-full text-[var(--text-primary)]/88 hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text-primary)]"
+									class="fogon-volume-btn touch-target tap-feedback z-20 flex h-10 w-10 items-center justify-center rounded-full text-[var(--text-primary)] opacity-[0.78] transition-opacity hover:bg-[var(--bg-surface-hover)] hover:opacity-100"
 									@click="toggleVolumePopup"
 								>
 									<i class="material-icons !text-[24px]" aria-hidden="true">{{ volIcon }}</i>
@@ -876,7 +876,7 @@
 								<button
 									type="button"
 									aria-label="Pista anterior"
-									class="fogon-prev-btn touch-target tap-feedback z-20 flex h-11 w-11 items-center justify-center rounded-full text-[var(--text-primary)]/88 hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text-primary)]"
+									class="fogon-prev-btn touch-target tap-feedback z-20 flex h-11 w-11 items-center justify-center rounded-full text-[var(--text-primary)] opacity-[0.78] transition-opacity hover:bg-[var(--bg-surface-hover)] hover:opacity-100"
 									@click="skipPrev"
 								>
 									<i class="material-icons !text-[32px]" aria-hidden="true">skip_previous</i>
@@ -896,7 +896,7 @@
 								<button
 									type="button"
 									aria-label="Pista siguiente"
-									class="fogon-next-btn touch-target tap-feedback z-20 flex h-11 w-11 items-center justify-center rounded-full text-[var(--text-primary)]/88 hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text-primary)]"
+									class="fogon-next-btn touch-target tap-feedback z-20 flex h-11 w-11 items-center justify-center rounded-full text-[var(--text-primary)] opacity-[0.78] transition-opacity hover:bg-[var(--bg-surface-hover)] hover:opacity-100"
 									@click="skipNext"
 								>
 									<i class="material-icons !text-[32px]" aria-hidden="true">skip_next</i>
@@ -930,8 +930,8 @@
 									class="cursor-pointer whitespace-pre-wrap transition-[color,opacity,transform] duration-300"
 									:class="[
 										isLineActive(line)
-											? 'scale-[1.03] text-lg leading-relaxed font-black text-[var(--text-primary)] opacity-100 sm:text-xl'
-											: 'text-xs font-semibold text-[var(--text-primary)] opacity-[0.42] hover:opacity-75 sm:text-sm',
+											? 'scale-[1.03] text-lg leading-[1.28] font-black text-[var(--text-primary)] opacity-100 sm:text-xl'
+											: 'text-xs leading-snug font-semibold text-[var(--text-primary)] opacity-[0.48] hover:opacity-75 sm:text-sm',
 									]"
 									@click="handleLineClick(line.time)"
 								>
@@ -980,8 +980,8 @@
 								class="cursor-pointer text-left whitespace-pre-wrap transition-[color,opacity,transform] duration-300"
 								:class="[
 									isLineActive(line)
-										? 'origin-left scale-[1.03] text-3xl leading-tight font-black tracking-tight text-[var(--text-primary)] opacity-100 sm:text-4xl lg:text-5xl'
-										: 'text-xl leading-snug font-extrabold tracking-tight text-[var(--text-primary)] opacity-[0.42] hover:opacity-75 sm:text-2xl lg:text-3xl',
+										? 'origin-left scale-[1.03] text-3xl leading-[1.28] font-black tracking-tight text-[var(--text-primary)] opacity-100 sm:text-4xl lg:text-5xl'
+										: 'text-xl leading-snug font-extrabold tracking-tight text-[var(--text-primary)] opacity-[0.48] hover:opacity-75 sm:text-2xl lg:text-3xl',
 								]"
 								@click="handleLineClick(line.time)"
 							>
@@ -1107,14 +1107,14 @@
 
 	/* Máscara de desvanecimiento suave superior e inferior */
 	.lyrics-mask {
-		mask-image: linear-gradient(to bottom, transparent 0%, black 14%, black 86%, transparent 100%);
-		-webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 14%, black 86%, transparent 100%);
+		mask-image: linear-gradient(to bottom, transparent 0%, black 14%, black 82%, transparent 100%);
+		-webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 14%, black 82%, transparent 100%);
 	}
 
 	/* Máscara de desvanecimiento para el modo vertical */
 	.lyrics-mask-vertical {
-		mask-image: linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%);
-		-webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%);
+		mask-image: linear-gradient(to bottom, transparent 0%, black 16%, black 78%, transparent 100%);
+		-webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 16%, black 78%, transparent 100%);
 	}
 
 	/* Marquesina estilo radio vieja para títulos/artistas largos */

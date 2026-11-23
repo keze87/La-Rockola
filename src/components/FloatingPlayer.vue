@@ -205,10 +205,10 @@
 			<button
 				type="button"
 				:class="[
-					'touch-target tap-feedback hidden h-9 w-9 items-center justify-center rounded-full sm:flex',
+					'touch-target tap-feedback hidden h-9 w-9 items-center justify-center rounded-full transition-opacity sm:flex',
 					pauseAfterPath === currentTrackPath && currentTrackPath
-						? 'bg-[var(--accent-primary-soft)] text-[var(--accent-primary)]'
-						: 'bg-[rgba(255,236,210,0.08)] text-[var(--text-primary)] hover:bg-[var(--bg-surface-active)]',
+						? 'bg-[var(--accent-primary-soft)] text-[var(--accent-primary)] opacity-100'
+						: 'bg-[rgba(255,236,210,0.08)] text-[var(--text-primary)] opacity-[0.78] hover:bg-[var(--bg-surface-active)] hover:opacity-100',
 				]"
 				:aria-label="
 					pauseAfterPath === currentTrackPath && currentTrackPath
@@ -241,7 +241,7 @@
 			<button
 				type="button"
 				aria-label="Siguiente tema"
-				class="touch-target tap-feedback flex h-9 w-9 items-center justify-center rounded-full bg-[rgba(255,236,210,0.08)] text-[var(--text-primary)] hover:bg-[var(--bg-surface-active)]"
+				class="touch-target tap-feedback flex h-9 w-9 items-center justify-center rounded-full bg-[rgba(255,236,210,0.08)] text-[var(--text-primary)] opacity-[0.78] transition-opacity hover:bg-[var(--bg-surface-active)] hover:opacity-100"
 				@click="
 					skip();
 					haptic();

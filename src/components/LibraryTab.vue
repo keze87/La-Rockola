@@ -201,7 +201,7 @@
 					type="text"
 					aria-label="Buscar canciones o artistas"
 					placeholder="Buscá un buen tema pa' acompañar los mates..."
-					class="min-w-0 flex-1 bg-transparent text-[14px] text-[var(--text-primary)] placeholder-[var(--text-tertiary)] outline-none"
+					class="min-w-0 flex-1 truncate bg-transparent text-[14px] text-ellipsis text-[var(--text-primary)] placeholder-[var(--text-tertiary)] outline-none"
 				/>
 				<button
 					v-show="searchQuery"

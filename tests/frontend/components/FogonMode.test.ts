@@ -280,7 +280,7 @@ Dialogue: 0,0:00:06.00,0:00:10.00,Default,,0,0,0,,{\\kf100}Segunda {\\kf100}fras
 
 		// Línea inactiva: jerarquía de opacidad cálida sin filtro blur pesado por línea
 		expect(lines[1].classes()).not.toContain('blur-[1.5px]');
-		expect(lines[1].classes()).toContain('opacity-[0.42]');
+		expect(lines[1].classes()).toContain('opacity-[0.48]');
 
 		// Primera sílaba ya cantada: dorado mate carpincho
 		const syllables = lines[0].findAll('span');
