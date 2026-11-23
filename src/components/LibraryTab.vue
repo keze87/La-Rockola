@@ -280,11 +280,25 @@
 			/>
 
 			<!-- Estado vacío cuando no hay resultados o falta permiso/carpeta en Android Host -->
-			<div v-if="filteredTracks.length === 0" class="text-carpincho-primary p-8 text-center">
+			<div v-if="filteredTracks.length === 0" class="text-carpincho-primary p-4 text-center sm:p-8">
 				<template v-if="isScanning">
-					<p class="italic">
+					<p class="mb-4 text-sm italic">
 						🧉 Chusmeando la biblioteca por primera vez... Aguantá que ya asoman los temazos.
 					</p>
+					<div class="library-skeleton-list space-y-2 text-left" aria-hidden="true">
+						<div
+							v-for="idx in 6"
+							:key="idx"
+							class="border-carpincho-border/40 bg-carpincho-panel/40 grid grid-cols-[5rem_minmax(0,1fr)_minmax(0,1fr)] items-center gap-3 rounded-lg border px-3 py-3 sm:grid-cols-[5rem_minmax(0,1fr)_minmax(0,1fr)_5.5rem]"
+						>
+							<div class="bg-carpincho-border/50 mx-auto h-10 w-10 animate-pulse rounded-md" />
+							<div class="bg-carpincho-border/50 h-4 w-3/4 animate-pulse rounded" />
+							<div class="bg-carpincho-border/40 h-3.5 w-1/2 animate-pulse rounded" />
+							<div
+								class="bg-carpincho-border/40 ml-auto hidden h-3.5 w-10 animate-pulse rounded sm:block"
+							/>
+						</div>
+					</div>
 				</template>
 				<template
 					v-else-if="isNativeAndroidHost() && isHostMode && (!localMusicDir || libraryFolderStatus !== 'ok')"
