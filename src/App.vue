@@ -322,17 +322,33 @@
 		isFogonMode.value = true;
 	}
 
+	function openLibraryFromAndroid(): void {
+		isLyricsEditorOpen.value = false;
+		isFogonMode.value = false;
+		switchTab('library');
+	}
+
 	function openQueueFromAndroid(): void {
 		isLyricsEditorOpen.value = false;
 		isFogonMode.value = false;
 		switchTab('queue');
 	}
 
+	function openTopsFromAndroid(): void {
+		isLyricsEditorOpen.value = false;
+		isFogonMode.value = false;
+		switchTab('top');
+	}
+
 	function applyShortcutAction(action: string | null): void {
 		if (action === 'ar.carpincho.rockola.ACTION_OPEN_FOGON') {
 			openFogonFromAndroid();
+		} else if (action === 'ar.carpincho.rockola.ACTION_OPEN_LIBRARY') {
+			openLibraryFromAndroid();
 		} else if (action === 'ar.carpincho.rockola.ACTION_OPEN_QUEUE') {
 			openQueueFromAndroid();
+		} else if (action === 'ar.carpincho.rockola.ACTION_OPEN_TOPS') {
+			openTopsFromAndroid();
 		}
 	}
 
@@ -358,7 +374,9 @@
 		initRouter();
 		window.__rockolaHandleBack = handleAndroidBack;
 		window.__rockolaOpenFogon = openFogonFromAndroid;
+		window.__rockolaOpenLibrary = openLibraryFromAndroid;
 		window.__rockolaOpenQueue = openQueueFromAndroid;
+		window.__rockolaOpenTops = openTopsFromAndroid;
 		window.__rockolaSetPipMode = handleAndroidPipMode;
 		window.__rockolaOnMediaVolumeChanged = handleAndroidMediaVolumeChanged;
 		window.__rockolaOnNativeCommandError = handleNativeCommandError;
@@ -397,8 +415,14 @@
 		if (window.__rockolaOpenFogon === openFogonFromAndroid) {
 			delete window.__rockolaOpenFogon;
 		}
+		if (window.__rockolaOpenLibrary === openLibraryFromAndroid) {
+			delete window.__rockolaOpenLibrary;
+		}
 		if (window.__rockolaOpenQueue === openQueueFromAndroid) {
 			delete window.__rockolaOpenQueue;
+		}
+		if (window.__rockolaOpenTops === openTopsFromAndroid) {
+			delete window.__rockolaOpenTops;
 		}
 		if (window.__rockolaSetPipMode === handleAndroidPipMode) {
 			delete window.__rockolaSetPipMode;

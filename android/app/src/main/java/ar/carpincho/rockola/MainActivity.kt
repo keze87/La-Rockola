@@ -26,7 +26,10 @@ import com.getcapacitor.BridgeActivity
  */
 internal object MainActivityPolicy {
     fun isSupportedShortcutAction(action: String?): Boolean {
-        return action == MainActivity.ACTION_OPEN_FOGON || action == MainActivity.ACTION_OPEN_QUEUE
+        return action == MainActivity.ACTION_OPEN_FOGON ||
+            action == MainActivity.ACTION_OPEN_LIBRARY ||
+            action == MainActivity.ACTION_OPEN_QUEUE ||
+            action == MainActivity.ACTION_OPEN_TOPS
     }
 
     fun shouldHandleShortcutOnCreate(hasSavedInstanceState: Boolean, action: String?): Boolean {
@@ -49,7 +52,9 @@ class MainActivity : BridgeActivity() {
         private const val REQ_PIP_NEXT = 203
         private const val STATE_FOGON_ACTIVE = "rockola_fogon_active"
         const val ACTION_OPEN_FOGON = "ar.carpincho.rockola.ACTION_OPEN_FOGON"
+        const val ACTION_OPEN_LIBRARY = "ar.carpincho.rockola.ACTION_OPEN_LIBRARY"
         const val ACTION_OPEN_QUEUE = "ar.carpincho.rockola.ACTION_OPEN_QUEUE"
+        const val ACTION_OPEN_TOPS = "ar.carpincho.rockola.ACTION_OPEN_TOPS"
 
         @Volatile
         private var pendingShortcutAction: String? = null
@@ -315,7 +320,9 @@ class MainActivity : BridgeActivity() {
         val action = intent?.action ?: return
         val jsHook = when (action) {
             ACTION_OPEN_FOGON -> "__rockolaOpenFogon"
+            ACTION_OPEN_LIBRARY -> "__rockolaOpenLibrary"
             ACTION_OPEN_QUEUE -> "__rockolaOpenQueue"
+            ACTION_OPEN_TOPS -> "__rockolaOpenTops"
             else -> return
         }
         pendingShortcutAction = action
