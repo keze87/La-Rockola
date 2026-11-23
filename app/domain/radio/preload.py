@@ -207,15 +207,13 @@ async def run_tts_preload(
 		has_wifi = await asyncio.to_thread(is_unmetered_wifi_available)
 		if not has_wifi:
 			stats["metered"] = 1
-			if not quiet:
-				logger.info("📶 Red móvil o medida detectada; omitiendo precarga TTS automática.")
+			logger.info("📶 Red móvil o medida detectada; omitiendo precarga TTS automática.")
 			return stats
 
 	has_net = await asyncio.to_thread(is_internet_available)
 	if not has_net:
 		stats["offline"] = 1
-		if not quiet:
-			logger.info("📡 Sin conexión a internet; omitiendo precarga TTS en segundo plano.")
+		logger.info("📡 Sin conexión a internet; omitiendo precarga TTS en segundo plano.")
 		return stats
 
 	target_voices = list(voices) if voices else list(VOICES)
@@ -224,8 +222,7 @@ async def run_tts_preload(
 	if max_mb is not None and max_mb > 0:
 		current_bytes = await asyncio.to_thread(_get_cache_size_bytes, target_db)
 		if current_bytes >= int(max_mb * 1024 * 1024):
-			if not quiet:
-				logger.info("🎙️ Caché TTS alcanzó el tope de %.1f MB; omitiendo nuevas descargas.", max_mb)
+			logger.info("🎙️ Caché TTS alcanzó el tope de %.1f MB; omitiendo nuevas descargas.", max_mb)
 			return stats
 
 	phrases = collect_preload_phrases()
@@ -241,8 +238,7 @@ async def run_tts_preload(
 				pending.append((category, text, voice))
 
 	if not pending:
-		if not quiet:
-			logger.info(f"🎙️ Caché TTS al día ({stats['skipped']} segmentos ya precargados).")
+		logger.info(f"🎙️ Caché TTS al día ({stats['skipped']} segmentos ya precargados).")
 		return stats
 
 	logger.info(
