@@ -3,41 +3,92 @@
 @import './assets/fonts/fonts.css';
 
 @theme {
-	--color-carpincho-bg: #2b2622;
-	/* Barro seco / Tierra profunda */
-	--color-carpincho-panel: #1f1a17;
-	/* Sombra de sauce */
-	--color-carpincho-text: #e8d5c4;
-	/* Pelo de carpincho clarito */
-	--color-carpincho-primary: #a67c52;
-	/* Marrón carpincho clásico */
-	--color-carpincho-secondary: #d4a373;
-	/* Arena de río */
-	--color-carpincho-warning: #e9c46a;
-	/* Mate dulce / Sol de tarde */
-	--color-carpincho-success: #588157;
-	/* Pastito tierno */
-	--color-carpincho-border: #4a3f35;
-	/* Madera de muelle */
-	--color-carpincho-muted: #a6adc8;
-	/* Niebla de río */
+	--color-carpincho-bg: #120e0b;
+	/* Espresso / Cacao profundo */
+	--color-carpincho-panel: #1c1612;
+	/* Superficie elevada */
+	--color-carpincho-text: #f5efe6;
+	/* Crema cálido */
+	--color-carpincho-primary: #a87c56;
+	/* Marrón carpincho */
+	--color-carpincho-secondary: #d49642;
+	/* Ámbar miel cálido */
+	--color-carpincho-warning: #d49642;
+	/* Ámbar miel cálido */
+	--color-carpincho-success: #6a905c;
+	/* Verde yerba mate desaturado */
+	--color-carpincho-border: rgba(255, 235, 208, 0.14);
+	/* Hairline cálido fuerte */
+	--color-carpincho-muted: #a89a8b;
+	/* Arena suave */
 
 	--font-sans:
-		'Nunito', 'Noto Color Emoji', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-		'Helvetica Neue', Arial, sans-serif;
+		-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Nunito', 'Noto Color Emoji', ui-sans-serif, system-ui,
+		sans-serif;
 
 	--animate-ctx-appear: ctx-appear 0.15s ease-out;
 }
 
 :root {
 	color-scheme: dark;
-	accent-color: var(--color-carpincho-primary);
-	--target-size: 24px;
-	--rockola-ime-height: 0px;
-	--rockola-safe-top: max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px));
-	--rockola-safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px));
+	accent-color: var(--accent-primary);
+
+	/* Superficies base (espresso y cacao cálido, nunca azulado ni gris frío) */
+	--bg-canvas: #120e0b;
+	--bg-elevated: #1c1612;
+	--bg-grouped: #211a15;
+	--bg-surface-hover: rgba(255, 236, 210, 0.06);
+	--bg-surface-active: rgba(255, 236, 210, 0.11);
+	--bg-input: rgba(255, 236, 210, 0.08);
+
+	/* Glassmorphism iOS cálido */
+	--glass-bg: rgba(24, 18, 14, 0.78);
+	--glass-bg-strong: rgba(20, 15, 11, 0.88);
+	--glass-border: rgba(255, 235, 208, 0.09);
+	--glass-highlight: inset 0 1px 0 rgba(255, 240, 220, 0.08);
+	--glass-blur: blur(24px) saturate(160%);
+
+	/* Acentos de marca */
+	--accent-primary: #d49642; /* Ámbar miel cálido: progreso, activos, links */
+	--accent-primary-soft: rgba(212, 150, 66, 0.16);
+	--accent-carpincho: #a87c56; /* Marrón carpincho: botón Play principal coherente */
+	--accent-carpincho-hover: #ba8b63;
+	--accent-mate: #6a905c; /* Verde yerba mate desaturado: switches ON y checkmarks */
+	--accent-danger: #d9655b; /* Coral terroso para acciones destructivas */
+
+	/* Texto */
+	--text-primary: #f5efe6; /* Crema cálido de alta legibilidad */
+	--text-secondary: #a89a8b; /* Arena suave */
+	--text-tertiary: #75685b; /* Madera apagada */
+
+	/* Separadores y bordes */
+	--hairline: rgba(255, 235, 208, 0.08);
+	--hairline-strong: rgba(255, 235, 208, 0.14);
+
+	/* Radios iOS */
+	--radius-sm: 8px; /* Portadas de lista */
+	--radius-md: 12px; /* Inputs, pills, botones secundarios */
+	--radius-lg: 16px; /* Tarjetas agrupadas, FloatingPlayer, carátula grande */
+	--radius-pill: 9999px;
+
+	/* Curvas de animación iOS */
+	--ease-ios: cubic-bezier(0.32, 0.72, 0, 1);
+	--ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
+
+	/* Geometría de layout y safe-areas */
+	--topbar-h: 56px;
+	--floating-player-h: 64px;
+	--tabbar-h: 64px;
+	--safe-top: max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px));
+	--safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px));
+	--rockola-safe-top: var(--safe-top);
+	--rockola-safe-bottom: var(--safe-bottom);
 	--rockola-safe-left: max(env(safe-area-inset-left, 0px), var(--safe-area-inset-left, 0px));
 	--rockola-safe-right: max(env(safe-area-inset-right, 0px), var(--safe-area-inset-right, 0px));
+	--bottom-clearance: calc(var(--floating-player-h) + var(--tabbar-h) + var(--safe-bottom) + 28px);
+
+	--target-size: 24px;
+	--rockola-ime-height: 0px;
 }
 
 .touch-target {
@@ -46,28 +97,36 @@
 }
 
 :focus-visible {
-	outline: 2px solid var(--color-carpincho-warning);
+	outline: 2px solid var(--accent-primary);
 	outline-offset: 2px;
 }
 
+.tabular-nums {
+	font-variant-numeric: tabular-nums;
+}
+
 .tap-feedback {
-	transition: background-color 0.15s ease-out;
+	transition:
+		transform 0.16s var(--ease-spring),
+		background-color 0.2s var(--ease-ios);
 }
 
 @media (prefers-reduced-motion: no-preference) {
-	.tap-feedback {
-		transition:
-			background-color 0.15s ease-out,
-			transform 0.12s ease-out;
-	}
-
 	.tap-feedback:active {
-		transform: scale(0.95);
+		transform: scale(0.97);
 	}
 }
 
 .tap-feedback:active {
-	background-color: color-mix(in srgb, currentColor 14%, transparent);
+	background-color: var(--bg-surface-active);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.tap-feedback,
+	.tap-feedback:active {
+		transition: none !important;
+		transform: none !important;
+	}
 }
 
 dialog:modal {
@@ -91,7 +150,7 @@ dialog::backdrop {
 	}
 }
 
-/* Las áreas de scroll de pestañas precisan padding para el reproductor flotante */
+/* Las áreas de scroll de pestañas precisan padding para el reproductor flotante y la tab bar */
 .tab-content {
 	position: absolute;
 	top: 0;
@@ -102,10 +161,10 @@ dialog::backdrop {
 	min-height: 0;
 	overflow-y: auto;
 	overscroll-behavior-y: contain;
-	padding-bottom: calc(96px + var(--rockola-ime-height)) !important;
-	scroll-padding-bottom: calc(104px + var(--rockola-ime-height));
-	--scrollbar-thumb: var(--color-carpincho-border);
-	--scrollbar-track: var(--color-carpincho-panel);
+	padding-bottom: calc(var(--floating-player-h) + var(--safe-bottom) + 28px + var(--rockola-ime-height)) !important;
+	scroll-padding-bottom: calc(var(--floating-player-h) + var(--safe-bottom) + 36px + var(--rockola-ime-height));
+	--scrollbar-thumb: var(--hairline-strong);
+	--scrollbar-track: var(--bg-canvas);
 	scrollbar-width: thin;
 	scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
@@ -115,18 +174,18 @@ dialog::backdrop {
 	.tab-fade-enter-active,
 	.tab-fade-leave-active {
 		transition:
-			opacity 0.2s ease-out,
-			transform 0.2s ease-out;
+			opacity 0.2s var(--ease-ios),
+			transform 0.2s var(--ease-ios);
 	}
 
 	.tab-fade-enter-from {
 		opacity: 0;
-		transform: translateY(10px);
+		transform: translateY(8px);
 	}
 
 	.tab-fade-leave-to {
 		opacity: 0;
-		transform: translateY(-10px);
+		transform: translateY(-8px);
 	}
 }
 
@@ -147,12 +206,13 @@ dialog::backdrop {
 	}
 }
 
-/* Dock unificado inferior en móvil: barra de pestañas + FloatingPlayer pegados */
+/* Dock inferior en móvil: Tab Bar anclada borde a borde hasta bottom: 0 cubriendo safe-bottom */
 @media (max-width: 767px) {
 	.floating-tab-bar {
-		bottom: max(10px, var(--rockola-safe-bottom));
-		left: max(12px, var(--rockola-safe-left));
-		right: max(12px, var(--rockola-safe-right));
+		bottom: 0;
+		left: 0;
+		right: 0;
+		padding-bottom: var(--safe-bottom);
 	}
 
 	html.ime-open .floating-tab-bar {
@@ -160,15 +220,16 @@ dialog::backdrop {
 	}
 
 	.tab-content {
-		padding-bottom: calc(146px + max(10px, var(--rockola-safe-bottom)) + var(--rockola-ime-height));
+		padding-bottom: calc(var(--bottom-clearance) + var(--rockola-ime-height)) !important;
+		scroll-padding-bottom: calc(var(--bottom-clearance) + 8px + var(--rockola-ime-height));
 	}
 }
 
-/* Barra del reproductor flotante: pegada sin hueco sobre la barra de pestañas en móvil */
+/* Barra del reproductor flotante: cápsula independiente sobre la Tab Bar en móvil */
 .floating-player {
 	position: fixed;
 	z-index: 50;
-	bottom: calc(62px + max(10px, var(--rockola-safe-bottom)));
+	bottom: calc(var(--tabbar-h) + var(--safe-bottom) + 9px);
 	left: max(12px, var(--rockola-safe-left));
 	right: max(12px, var(--rockola-safe-right));
 }
@@ -186,8 +247,8 @@ dialog:modal {
 	display: inline-flex;
 	align-items: flex-end;
 	gap: 2px;
-	height: 18px;
-	width: 18px;
+	height: 16px;
+	width: 16px;
 }
 
 .equalizer span {
@@ -195,7 +256,7 @@ dialog:modal {
 	width: 3px;
 	height: 10px;
 	border-radius: 2px 2px 0 0;
-	background-color: var(--color-carpincho-success);
+	background-color: var(--accent-primary);
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -230,29 +291,29 @@ dialog:modal {
 	}
 
 	50% {
-		height: 16px;
+		height: 15px;
 	}
 }
 
 /* Apilamos las notificaciones justo arriba del reproductor flotante */
 [data-sonner-toaster] {
-	bottom: calc(168px + var(--rockola-safe-bottom)) !important;
+	bottom: calc(var(--tabbar-h) + var(--floating-player-h) + var(--safe-bottom) + 20px) !important;
 }
 
 @media (min-width: 768px) {
 	.floating-player {
-		bottom: calc(10px + var(--rockola-safe-bottom));
-		left: calc(6rem + max(12px, var(--rockola-safe-left)));
+		bottom: calc(12px + var(--safe-bottom));
+		left: calc(96px + max(12px, var(--rockola-safe-left)));
 	}
 
 	[data-sonner-toaster] {
-		bottom: calc(104px + var(--rockola-safe-bottom)) !important;
+		bottom: calc(var(--floating-player-h) + var(--safe-bottom) + 24px) !important;
 	}
 }
 
 @media (min-width: 1024px) {
 	.floating-player {
-		left: calc(7rem + max(12px, var(--rockola-safe-left)));
+		left: calc(112px + max(12px, var(--rockola-safe-left)));
 	}
 }
 
@@ -267,7 +328,9 @@ body {
 	display: flex;
 	flex-direction: column;
 	overflow: hidden;
-	background-color: var(--color-carpincho-bg);
+	background-color: var(--bg-canvas);
+	color: var(--text-primary);
+	font-family: var(--font-sans);
 	-webkit-tap-highlight-color: transparent;
 	-webkit-touch-callout: none;
 	user-select: none;
@@ -308,12 +371,12 @@ button,
 
 	.tab-content::-webkit-scrollbar-track,
 	::-webkit-scrollbar-track {
-		background: var(--scrollbar-track, var(--color-carpincho-panel));
+		background: var(--scrollbar-track, var(--bg-canvas));
 	}
 
 	.tab-content::-webkit-scrollbar-thumb,
 	::-webkit-scrollbar-thumb {
-		background: var(--scrollbar-thumb, var(--color-carpincho-border));
+		background: var(--scrollbar-thumb, var(--hairline-strong));
 		border-radius: 4px;
 	}
 }
@@ -351,8 +414,8 @@ button,
 	.lyric-enter-active,
 	.lyric-leave-active {
 		transition:
-			opacity 0.3s ease-out,
-			transform 0.3s ease-out;
+			opacity 0.3s var(--ease-ios),
+			transform 0.3s var(--ease-ios);
 	}
 
 	.lyric-enter-from {
@@ -368,7 +431,7 @@ button,
 	.list-move,
 	.list-enter-active,
 	.list-leave-active {
-		transition: all 0.3s ease-out;
+		transition: all 0.3s var(--ease-ios);
 	}
 
 	.list-enter-from,
@@ -381,7 +444,6 @@ button,
 /* Centrado absoluto para los elementos de las tablas (Horizontal y Vertical) */
 th,
 td {
-	/* text-align: center !important; */
 	vertical-align: middle !important;
 }
 
