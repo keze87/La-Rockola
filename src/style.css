@@ -147,17 +147,27 @@ dialog::backdrop {
 	}
 }
 
-/* Barra del reproductor flotante: arriba de la barra flotante inferior en móvil */
+/* Barra del reproductor flotante: acoplada justo arriba de la barra flotante inferior en móvil */
 .floating-player {
 	position: fixed;
 	z-index: 50;
-	bottom: calc(82px + max(10px, var(--rockola-safe-bottom)));
+	bottom: calc(68px + max(10px, var(--rockola-safe-bottom)));
 	left: max(12px, var(--rockola-safe-left));
 	right: max(12px, var(--rockola-safe-right));
 }
 
 html.ime-open .floating-player {
 	display: none;
+}
+
+@media (max-width: 767px) {
+	html.ime-open .floating-tab-bar {
+		display: none;
+	}
+
+	.tab-content {
+		padding-bottom: calc(152px + max(10px, var(--rockola-safe-bottom)) + var(--rockola-ime-height));
+	}
 }
 
 dialog:modal {
