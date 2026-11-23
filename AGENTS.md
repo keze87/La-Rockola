@@ -77,6 +77,8 @@ Siempre que se realicen cambios en el backend de Python o en el código del fron
 4. **Testing**:
     - Python: `pytest`
     - Frontend: `npm test`
+    - Android (JVM): `./android/gradlew -p android testArm64DebugUnitTest`
+    - Android E2E en dispositivo real (cuando haya un dispositivo conectado por `adb`): `python3 scripts/test_android_e2e.py --if-available` (cubre modo `server` y `client`, con pantalla prendida y apagada, verificando `MediaSession`, `ForegroundService` y `logcat`).
 
 5. **Commit**:
     - Antes de finalizar, crear un nombre de commit con tono profesional argentino.
