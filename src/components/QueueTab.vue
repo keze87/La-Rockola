@@ -11,11 +11,9 @@
 	import TrackRow from './ui/TrackRow.vue';
 
 	// Clases de estructura y maquetado extraídas
-	const trackGridClass =
-		'grid grid-cols-[6.5rem_minmax(0,1fr)_minmax(0,1fr)] sm:grid-cols-[9rem_minmax(0,1fr)_minmax(0,1fr)_5.5rem]';
+	const trackGridClass = 'min-[720px]:grid min-[720px]:grid-cols-[5.5rem_minmax(0,1fr)_minmax(0,1fr)_auto]';
 	const btnBaseClass =
-		'touch-target tap-feedback flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full transition';
-	const btnHoverClass = 'hover:bg-black/20 active:bg-black/30';
+		'tap-feedback flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-[var(--radius-sm)] bg-[var(--bg-input)] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface-active)] hover:text-[var(--text-primary)]';
 
 	const {
 		currentTrackPath,
@@ -130,40 +128,49 @@
 <template>
 	<section
 		ref="queueSectionRef"
-		class="tab-content bg-carpincho-bg h-full overflow-y-auto"
+		class="tab-content h-full overflow-y-auto bg-[var(--bg-canvas)]"
 		@scroll.passive="onTabScroll"
 	>
 		<!-- Agregador de URLs -->
 		<div
 			v-if="!isNativeAndroidHost() || isRemoteMode"
-			class="bg-carpincho-bg sticky top-0 z-10 flex items-center gap-2 px-4 py-3 shadow-md"
+			class="sticky top-0 z-10 border-b border-[var(--hairline)] bg-[var(--glass-bg)] px-3 py-2.5 [backdrop-filter:var(--glass-blur)] [-webkit-backdrop-filter:var(--glass-blur)]"
 		>
-			<i class="material-icons text-carpincho-success shrink-0">link</i>
-			<input
-				v-model="newUrl"
-				type="text"
-				placeholder="Pegá el link de YouTube acá, máquina..."
-				class="border-carpincho-primary focus:border-carpincho-secondary text-carpincho-text w-full border-b bg-transparent py-2 outline-none"
-			/>
-			<button :class="[btnBaseClass, 'bg-green-700 text-white shadow active:scale-90']" @click="addUrl">
-				<i class="material-icons">add</i>
-			</button>
+			<div
+				class="flex h-[42px] items-center gap-2 rounded-[var(--radius-md)] border border-[var(--hairline)] bg-[var(--bg-input)] px-3 transition-colors focus-within:border-[rgba(212,150,66,0.45)]"
+			>
+				<i class="material-icons shrink-0 !text-[18px] text-[var(--accent-primary)]">link</i>
+				<input
+					v-model="newUrl"
+					type="text"
+					placeholder="Pegá el link de YouTube acá, máquina..."
+					class="min-w-0 flex-1 bg-transparent text-[14px] text-[var(--text-primary)] placeholder-[var(--text-tertiary)] outline-none"
+				/>
+				<button
+					type="button"
+					class="tap-feedback flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--accent-primary)] text-[#120e0b] shadow-sm hover:brightness-110"
+					aria-label="Agregar link a la fila"
+					@click="addUrl"
+				>
+					<i class="material-icons !text-[18px]">add</i>
+				</button>
+			</div>
 		</div>
 
-		<!-- Encabezado de la grilla -->
+		<!-- Encabezado de la grilla (oculto en portrait < 720px para dar aire a títulos y artistas) -->
 		<div
 			:class="[
-				'bg-carpincho-panel text-carpincho-primary border-carpincho-border items-center border-b shadow-sm',
+				'hidden items-center border-b border-[var(--hairline)] bg-[var(--bg-elevated)] text-[12px] font-semibold tracking-wide text-[var(--text-secondary)] uppercase',
 				trackGridClass,
 			]"
 		>
-			<div class="p-3 text-center font-bold">Acciones</div>
-			<div class="p-3 font-bold">El Temón</div>
-			<div class="p-3 font-bold">De quién es</div>
-			<div class="hidden p-3 text-right font-bold sm:block">Duración</div>
+			<div class="p-3 text-center">Estado</div>
+			<div class="p-3">El Temón</div>
+			<div class="p-3">De quién es</div>
+			<div class="p-3 text-right">Acciones</div>
 		</div>
 
-		<div class="overflow-hidden">
+		<div class="overflow-hidden pt-1">
 			<!-- Lista única unificada de temas -->
 			<TransitionGroup name="list" tag="div" class="relative w-full">
 				<TrackRow
@@ -171,7 +178,7 @@
 					:id="item.status === 'current' ? 'current-queue-row' : undefined"
 					:key="item.id"
 					:class="[
-						item.status === 'history' ? 'opacity-70' : '',
+						item.status === 'history' ? 'opacity-[0.52] transition-opacity' : '',
 						item.status === 'queue' ? 'swipe-row' : '',
 						rowPos >= 12 ? 'deferred-row' : '',
 						trackGridClass,
@@ -218,106 +225,92 @@
 				>
 					<template #prefix>
 						<template v-if="item.status === 'history'">
-							<i class="material-icons text-carpincho-success text-sm">check</i>
+							<i class="material-icons !text-[18px] text-[var(--accent-mate)]">check</i>
 						</template>
 
 						<template v-else-if="item.status === 'current'">
-							<div class="flex items-center justify-center gap-1" @click.stop>
-								<div :class="['equalizer', isPaused ? 'paused' : '']">
-									<span />
-									<span />
-									<span />
-								</div>
-								<button
-									type="button"
-									:aria-label="
-										pauseAfterPath === currentTrackPath
-											? 'Cancelar pausa al terminar'
-											: 'Frenar tras este tema'
-									"
-									:title="
-										pauseAfterPath === currentTrackPath
-											? 'Cancelar pausa al terminar'
-											: 'Frenar tras este tema'
-									"
-									:class="[
-										'touch-target',
-										btnBaseClass,
-										'active:scale-90',
-										pauseAfterPath === currentTrackPath
-											? 'text-carpincho-warning drop-shadow-[0_0_8px_rgba(233,196,106,0.8)]'
-											: `hover:text-carpincho-warning text-gray-500 ${btnHoverClass}`,
-									]"
-									@click="
-										togglePauseAfterCurrent();
-										haptic();
-									"
-								>
-									<i class="material-icons text-lg" aria-hidden="true">timer</i>
-								</button>
+							<div :class="['equalizer', isPaused ? 'paused' : '']">
+								<span />
+								<span />
+								<span />
 							</div>
 						</template>
 
 						<template v-else-if="item.status === 'queue' && item.queueIndex !== undefined">
-							<div class="flex items-center justify-center gap-1" @click.stop>
-								<button
-									type="button"
-									aria-label="Subir a próximo"
-									:class="['touch-target', btnBaseClass, btnHoverClass]"
-									title="Subir a próximo"
-									@click="moveQueueItem(item.queueIndex, 'first')"
-								>
-									<i
-										class="material-icons text-carpincho-primary hover:text-carpincho-secondary transition"
-										aria-hidden="true"
-									>
-										vertical_align_top
-									</i>
-								</button>
-								<button
-									type="button"
-									aria-label="Mover al final"
-									:class="['touch-target', btnBaseClass, btnHoverClass]"
-									title="Mover al final"
-									@click="moveQueueItem(item.queueIndex, 'last')"
-								>
-									<i
-										class="material-icons text-carpincho-primary hover:text-carpincho-secondary transition"
-										aria-hidden="true"
-									>
-										vertical_align_bottom
-									</i>
-								</button>
-								<button
-									type="button"
-									aria-label="Sacar de la fila"
-									:class="[
-										'touch-target',
-										btnBaseClass,
-										'hidden hover:bg-red-500/20 active:bg-red-500/30 sm:flex',
-									]"
-									title="Sacar de la fila"
-									@click="onRemoveClick(item.queueIndex, $event)"
-								>
-									<i
-										class="material-icons text-carpincho-secondary transition hover:text-red-400"
-										aria-hidden="true"
-									>
-										delete
-									</i>
-								</button>
-							</div>
+							<span class="tabular-nums text-[12px] font-semibold text-[var(--text-tertiary)]">
+								{{ item.queueIndex + 1 }}
+							</span>
 						</template>
 					</template>
 
 					<template #title-extra>
 						<i
 							v-if="item.path === pauseAfterPath"
-							class="material-icons text-carpincho-warning shrink-0 text-sm"
+							class="material-icons shrink-0 !text-[15px] text-[var(--accent-primary)]"
 							title="Se frena acá"
 						>
 							timer
 						</i>
+					</template>
+
+					<template v-if="item.status === 'current' || (item.status === 'queue' && item.queueIndex !== undefined)" #suffix>
+						<div v-if="item.status === 'current'" class="flex items-center" @click.stop>
+							<button
+								type="button"
+								:aria-label="
+									pauseAfterPath === currentTrackPath
+										? 'Cancelar pausa al terminar'
+										: 'Frenar tras este tema'
+								"
+								:title="
+									pauseAfterPath === currentTrackPath
+										? 'Cancelar pausa al terminar'
+										: 'Frenar tras este tema'
+								"
+								:class="[
+									btnBaseClass,
+									pauseAfterPath === currentTrackPath
+										? 'bg-[var(--accent-primary-soft)] text-[var(--accent-primary)]'
+										: '',
+								]"
+								@click="
+									togglePauseAfterCurrent();
+									haptic();
+								"
+							>
+								<i class="material-icons !text-[18px]" aria-hidden="true">timer</i>
+							</button>
+						</div>
+
+						<div v-else-if="item.status === 'queue' && item.queueIndex !== undefined" class="flex items-center gap-1" @click.stop>
+							<button
+								type="button"
+								aria-label="Subir a próximo"
+								:class="btnBaseClass"
+								title="Subir a próximo"
+								@click="moveQueueItem(item.queueIndex, 'first')"
+							>
+								<i class="material-icons !text-[18px]" aria-hidden="true">vertical_align_top</i>
+							</button>
+							<button
+								type="button"
+								aria-label="Mover al final"
+								:class="btnBaseClass"
+								title="Mover al final"
+								@click="moveQueueItem(item.queueIndex, 'last')"
+							>
+								<i class="material-icons !text-[18px]" aria-hidden="true">vertical_align_bottom</i>
+							</button>
+							<button
+								type="button"
+								aria-label="Sacar de la fila"
+								:class="[btnBaseClass, 'hidden hover:bg-[var(--accent-danger)]/20 hover:text-[var(--accent-danger)] sm:flex']"
+								title="Sacar de la fila"
+								@click="onRemoveClick(item.queueIndex, $event)"
+							>
+								<i class="material-icons !text-[18px]" aria-hidden="true">delete</i>
+							</button>
+						</div>
 					</template>
 				</TrackRow>
 			</TransitionGroup>
@@ -335,11 +328,11 @@
 			<div
 				v-if="unifiedQueue.length === 0 && !djBaraEnabled"
 				id="empty-queue-full-state"
-				:class="['border-carpincho-border border-b', trackGridClass]"
+				class="border-b border-[var(--hairline)]"
 			>
-				<div class="col-span-4 p-12 text-center">
-					<div class="text-carpincho-primary flex flex-col items-center gap-4 opacity-80">
-						<p class="text-lg font-bold">El Carpincho está esperando el mate...</p>
+				<div class="p-12 text-center">
+					<div class="flex flex-col items-center gap-2 text-[var(--text-secondary)]">
+						<p class="text-base font-bold text-[var(--text-primary)]">El Carpincho está esperando el mate...</p>
 						<p class="text-sm">Agregá música para que empiece a cantar.</p>
 					</div>
 				</div>
@@ -369,11 +362,11 @@
 		}
 
 		20% {
-			background-color: rgba(239, 68, 68, 0.45);
+			background-color: rgba(217, 101, 91, 0.4);
 		}
 
 		60% {
-			background-color: rgba(239, 68, 68, 0.2);
+			background-color: rgba(217, 101, 91, 0.18);
 		}
 
 		100% {

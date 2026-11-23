@@ -98,7 +98,7 @@ describe('QueueTab.vue', () => {
 		currentTrackPath.value = '/music/current.mp3';
 		const wrapper = mount(QueueTab);
 
-		const timerBtn = wrapper.find('#current-queue-row button');
+		const timerBtn = wrapper.find('#current-queue-row button[title*="Frenar"], #current-queue-row button[aria-label*="pausa"]');
 		expect(timerBtn.exists()).toBe(true);
 
 		// 1. Enable pause after

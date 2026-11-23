@@ -50,17 +50,23 @@
 <template>
 	<div
 		:id="isCurrent ? 'current-library-row' : undefined"
-		class="border-carpincho-border hover:bg-carpincho-border grid h-[72px] cursor-pointer grid-cols-[5rem_minmax(0,1fr)_minmax(0,1fr)] items-center border-b transition-colors select-none active:scale-[0.98] sm:grid-cols-[5rem_minmax(0,1fr)_minmax(0,1fr)_5rem]"
+		class="tap-feedback relative flex h-[72px] cursor-pointer items-center gap-3 px-4 transition-colors select-none hover:bg-[var(--bg-surface-hover)] min-[720px]:grid min-[720px]:grid-cols-[5rem_minmax(0,1fr)_minmax(0,1fr)_5rem] min-[720px]:gap-0 min-[720px]:px-0"
+		:class="isCurrent ? 'bg-[var(--accent-primary-soft)]' : ''"
 		v-on="bindings"
 		@click="emit('click', track)"
 	>
-		<div class="relative flex items-center justify-center p-2">
-			<FavoritableCover :track="track" :size-px="128" />
+		<div class="relative flex shrink-0 items-center justify-center min-[720px]:p-2">
+			<FavoritableCover
+				:track="track"
+				size="h-12 w-12"
+				rounded="rounded-[var(--radius-sm)]"
+				:size-px="128"
+			/>
 
 			<!-- Indicador de tema sonando, superpuesto a la portada -->
 			<div
 				v-if="isCurrent"
-				class="bg-carpincho-panel absolute flex h-7 w-7 cursor-pointer items-center justify-center rounded-full shadow"
+				class="absolute flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border border-[var(--hairline)] bg-[var(--glass-bg-strong)] shadow"
 				@click.stop.prevent="toggleFavorite"
 			>
 				<div :class="['equalizer', isPaused ? 'paused' : '']">
@@ -73,7 +79,7 @@
 			<!-- Posición en la fila, superpuesta a la portada -->
 			<span
 				v-else-if="queuePosition !== -1"
-				class="bg-carpincho-panel text-carpincho-warning absolute flex h-7 w-7 cursor-pointer items-center justify-center rounded-full text-base font-bold shadow"
+				class="tabular-nums absolute flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border border-[var(--hairline)] bg-[var(--glass-bg-strong)] text-sm font-bold text-[var(--accent-primary)] shadow"
 				@click.stop.prevent="toggleFavorite"
 			>
 				{{ queuePosition + 1 }}
@@ -83,30 +89,45 @@
 			<span
 				v-else-if="hasPlayed"
 				title="Ya sonó"
-				class="bg-carpincho-panel/80 text-carpincho-muted played-indicator absolute flex h-6 w-6 items-center justify-center rounded-full shadow backdrop-blur-sm"
+				class="played-indicator absolute flex h-6 w-6 items-center justify-center rounded-full bg-[var(--glass-bg-strong)] text-[var(--text-secondary)] shadow backdrop-blur-sm"
 			>
 				<i class="material-icons !text-sm">history</i>
 			</span>
 		</div>
 
-		<div class="flex min-w-0 items-center gap-2 p-4 font-medium">
-			<span class="truncate">{{ displayTitle }}</span>
-			<span
-				v-if="track.is_duplicate"
-				class="duplicate-warning bg-carpincho-warning/15 text-carpincho-warning inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-semibold"
-				:title="`Archivo duplicado (${track.duplicate_count || 2} copias detectadas en la biblioteca)`"
-			>
-				<i class="material-icons !text-xs">warning_amber</i>
-				<span>Duplicado</span>
-			</span>
+		<div class="flex min-w-0 flex-1 flex-col justify-center min-[720px]:contents">
+			<div class="flex min-w-0 items-center gap-2 min-[720px]:px-4">
+				<span
+					class="truncate text-[15px] font-semibold min-[720px]:font-medium"
+					:class="isCurrent ? 'text-[var(--accent-primary)]' : 'text-[var(--text-primary)]'"
+				>
+					{{ displayTitle }}
+				</span>
+				<span
+					v-if="track.is_duplicate"
+					class="duplicate-warning inline-flex shrink-0 items-center gap-1 rounded bg-[var(--accent-primary-soft)] px-1.5 py-0.5 text-[11px] font-semibold text-[var(--accent-primary)]"
+					:title="`Archivo duplicado (${track.duplicate_count || 2} copias detectadas en la biblioteca)`"
+				>
+					<i class="material-icons !text-xs">warning_amber</i>
+					<span>Duplicado</span>
+				</span>
+			</div>
+
+			<div class="truncate text-[13px] text-[var(--text-secondary)] min-[720px]:px-4 min-[720px]:text-[14px]">
+				{{ displayArtist }}
+			</div>
 		</div>
 
-		<div class="text-carpincho-muted truncate p-4">
-			{{ displayArtist }}
-		</div>
-
-		<div class="text-carpincho-muted hidden p-4 text-right sm:block">
+		<div
+			class="tabular-nums shrink-0 text-[12px] text-[var(--text-tertiary)] min-[720px]:px-4 min-[720px]:text-right min-[720px]:text-[13px]"
+		>
 			{{ durationStr }}
 		</div>
+
+		<!-- Separador hairline inset estilo iOS -->
+		<div
+			class="pointer-events-none absolute right-0 bottom-0 left-[76px] h-[0.5px] bg-[var(--hairline)] min-[720px]:left-0"
+			aria-hidden="true"
+		/>
 	</div>
 </template>

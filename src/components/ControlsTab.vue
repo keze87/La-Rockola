@@ -442,40 +442,44 @@
 <template>
 	<section
 		id="controls-tab"
-		class="tab-content bg-carpincho-bg h-full overflow-y-auto px-6 pt-6"
+		class="tab-content h-full overflow-y-auto bg-[var(--bg-canvas)] px-4 pt-5 sm:px-6"
 		@scroll.passive="onTabScroll"
 	>
 		<!-- Control deslizante de volumen -->
-		<div class="text-carpincho-warning bg-carpincho-panel mb-8 flex items-center rounded-xl p-4 shadow">
+		<div
+			class="mx-auto mb-7 flex max-w-lg items-center gap-3 rounded-[var(--radius-lg)] border border-[var(--hairline)] bg-[var(--bg-grouped)] px-4 py-3 text-[var(--accent-primary)]"
+		>
 			<button
 				type="button"
 				:aria-label="serverMuted ? 'Desmutear audio' : 'Mutear audio'"
 				:title="serverMuted ? 'Desmutear' : 'Mutear'"
-				class="touch-target inline-flex cursor-pointer items-center justify-center rounded-full"
+				class="touch-target inline-flex shrink-0 cursor-pointer items-center justify-center rounded-full text-[var(--accent-primary)] transition-colors hover:text-[var(--text-primary)]"
 				@click="
 					setMute(!serverMuted);
 					haptic();
 				"
 			>
-				<i class="material-icons mr-3 cursor-pointer transition-colors hover:text-white" aria-hidden="true">
+				<i class="material-icons !text-[22px]" aria-hidden="true">
 					{{ volIcon }}
 				</i>
 			</button>
 			<div
-				class="no-tab-swipe group flex h-8 w-full cursor-pointer touch-none items-center"
-				:class="{ 'opacity-50': serverMuted }"
+				class="no-tab-swipe group flex h-9 w-full cursor-pointer touch-none items-center"
+				:class="{ 'opacity-45': serverMuted }"
 				@pointerdown="startVol"
 				@pointermove="moveVol"
 				@pointerup="endVol"
 				@pointercancel="endVol"
 			>
-				<div class="relative h-2 w-full rounded-full bg-gray-800">
+				<div
+					class="relative h-[6px] w-full rounded-full bg-[rgba(255,236,210,0.14)] transition-[height] duration-150 group-active:h-[10px]"
+				>
 					<div
-						class="bg-carpincho-warning absolute top-0 left-0 h-full rounded-full"
+						class="absolute top-0 left-0 h-full rounded-full bg-[var(--accent-primary)]"
 						:style="{ width: volPercent + '%' }"
 					/>
 					<div
-						class="bg-carpincho-warning absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full shadow transition-transform group-active:scale-125"
+						class="absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full bg-[#f5efe6] shadow-[0_2px_6px_rgba(0,0,0,0.45)] transition-transform group-active:scale-110"
 						:style="{ left: volPercent + '%', marginLeft: '-8px' }"
 					/>
 				</div>
@@ -483,15 +487,21 @@
 		</div>
 
 		<!-- Opciones de ordenamiento -->
-		<div class="text-carpincho-secondary mb-1 text-center text-sm font-bold tracking-wider uppercase">
-			<i class="material-icons mr-1 align-middle">sort</i>
-			Acomodando la gilada
+		<div class="mx-auto mb-2 max-w-lg px-1">
+			<div
+				class="flex items-center gap-1.5 text-[12px] font-semibold tracking-[0.06em] text-[var(--text-secondary)] uppercase"
+			>
+				<i class="material-icons !text-[16px] text-[var(--accent-primary)]" aria-hidden="true">sort</i>
+				<span>Acomodando la gilada</span>
+			</div>
+			<p class="mt-0.5 text-[12px] text-[var(--text-tertiary)]">
+				Tocá de nuevo el orden activo para fijarlo por defecto
+			</p>
 		</div>
-		<p class="text-carpincho-muted mb-4 text-center text-xs">
-			Tocá de nuevo el orden activo para fijarlo por defecto
-		</p>
 
-		<div class="mb-8 flex flex-wrap justify-center gap-3">
+		<div
+			class="mx-auto mb-7 flex max-w-lg flex-col gap-1 rounded-[var(--radius-lg)] border border-[var(--hairline)] bg-[var(--bg-grouped)] p-1.5"
+		>
 			<template v-for="opt in sortOptions" :key="opt.id">
 				<PillButton
 					v-if="opt.visible"
@@ -500,15 +510,16 @@
 					:disabled="opt.disabled"
 					:color-class="
 						activeSort === opt.id
-							? 'bg-amber-700 hover:bg-amber-600 ring-2 ring-carpincho-warning'
-							: 'bg-gray-800 hover:bg-gray-700'
+							? 'w-full justify-between !rounded-[11px] border-transparent bg-[var(--accent-primary)] text-[#120e0b] font-bold shadow-sm'
+							: 'w-full justify-between !rounded-[11px] border-transparent bg-transparent text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)]'
 					"
 					@click="handleSortClick(opt.id)"
 				>
-					{{ opt.label }}
+					<span class="flex-1 text-left">{{ opt.label }}</span>
 					<i
 						v-if="defaultSort === opt.id"
-						class="material-icons text-carpincho-warning ml-1 align-middle text-sm"
+						class="material-icons ml-1 !text-[18px]"
+						:class="activeSort === opt.id ? 'text-[#120e0b]' : 'text-[var(--accent-primary)]'"
 						aria-label="Orden por defecto"
 						title="Guardado como orden por defecto"
 					>
@@ -519,52 +530,63 @@
 		</div>
 
 		<!-- Interruptores de opciones -->
-		<div class="text-carpincho-secondary mb-4 text-center text-sm font-bold tracking-wider uppercase">
-			<i class="material-icons mr-1 align-middle">celebration</i>
-			La Joda
+		<div class="mx-auto mb-2 max-w-lg px-1">
+			<div
+				class="flex items-center gap-1.5 text-[12px] font-semibold tracking-[0.06em] text-[var(--text-secondary)] uppercase"
+			>
+				<i class="material-icons !text-[16px] text-[var(--accent-primary)]" aria-hidden="true">celebration</i>
+				<span>La Joda</span>
+			</div>
 		</div>
 
-		<!-- Interruptor para escuchar en el cliente -->
-		<ToggleRow
-			v-if="!isNativeAndroidHost() || isRemoteMode"
-			v-model="listenLocally"
-			icon="headphones"
-			title="Escuchar acá"
-			description="Stremea la música directo a tu celular o PC."
-		/>
+		<div
+			class="mx-auto mb-6 max-w-lg divide-y divide-[var(--hairline)] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--hairline)] bg-[var(--bg-grouped)]"
+		>
+			<!-- Interruptor para escuchar en el cliente -->
+			<ToggleRow
+				v-if="!isNativeAndroidHost() || isRemoteMode"
+				v-model="listenLocally"
+				icon="headphones"
+				title="Escuchar acá"
+				description="Stremea la música directo a tu celular o PC."
+			/>
 
-		<ToggleRow
-			v-if="hasEdgeTts"
-			:model-value="radioModeEnabled"
-			icon="record_voice_over"
-			title="Carpincho locutor"
-			description="Tira la hora, una fortuna y comenta entre temas"
-			active-class="bg-carpincho-success"
-			@update:model-value="toggleRadioMode"
-		/>
+			<ToggleRow
+				v-if="hasEdgeTts"
+				:model-value="radioModeEnabled"
+				icon="record_voice_over"
+				title="Carpincho locutor"
+				description="Tira la hora, una fortuna y comenta entre temas"
+				@update:model-value="toggleRadioMode"
+			/>
 
-		<ToggleRow
-			:model-value="djBaraEnabled"
-			icon="shuffle"
-			title="DJ Bara"
-			description="Continúa la música si se vacía la fila"
-			active-class="bg-carpincho-success"
-			@update:model-value="toggleDjBara"
-		/>
+			<ToggleRow
+				:model-value="djBaraEnabled"
+				icon="shuffle"
+				title="DJ Bara"
+				description="Continúa la música si se vacía la fila"
+				@update:model-value="toggleDjBara"
+			/>
+		</div>
 
 		<!-- Selector de modo para DJ Bara -->
-		<div v-show="djBaraEnabled" class="mb-4 flex flex-col items-center gap-2 pb-4">
-			<div class="text-carpincho-secondary mb-4 text-center text-sm font-bold tracking-wider uppercase">
-				<i class="material-icons mr-1 align-middle">auto_fix_high</i>
-				Modo del DJ Bara
+		<div
+			v-show="djBaraEnabled"
+			class="mx-auto mb-6 max-w-lg rounded-[var(--radius-lg)] border border-[var(--hairline)] bg-[var(--bg-grouped)] p-4"
+		>
+			<div
+				class="mb-3 flex items-center justify-center gap-1.5 text-[12px] font-semibold tracking-[0.06em] text-[var(--text-secondary)] uppercase"
+			>
+				<i class="material-icons !text-[16px] text-[var(--accent-primary)]" aria-hidden="true">auto_fix_high</i>
+				<span>Modo del DJ Bara</span>
 			</div>
 			<div class="flex flex-wrap justify-center gap-2">
 				<PillButton
 					icon="shuffle"
 					:color-class="
 						djMode === 'shuffle'
-							? 'bg-carpincho-primary text-carpincho-panel font-bold'
-							: 'bg-neutral-800 hover:bg-neutral-700 text-white'
+							? 'border-transparent bg-[var(--accent-primary)] text-[#120e0b] font-bold'
+							: 'border border-[var(--hairline)] bg-[var(--bg-input)] text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)]'
 					"
 					title="Elige temas al azar de la biblioteca"
 					@click="handleSetDjMode('shuffle')"
@@ -575,8 +597,8 @@
 					icon="favorite"
 					:color-class="
 						djMode === 'favorites'
-							? 'bg-carpincho-primary text-carpincho-panel font-bold'
-							: 'bg-neutral-800 hover:bg-neutral-700 text-white'
+							? 'border-transparent bg-[var(--accent-primary)] text-[#120e0b] font-bold'
+							: 'border border-[var(--hairline)] bg-[var(--bg-input)] text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)]'
 					"
 					title="Elige temas al azar priorizando tus favoritos"
 					@click="handleSetDjMode('favorites')"
@@ -587,8 +609,8 @@
 					icon="format_list_bulleted"
 					:color-class="
 						djMode === 'library'
-							? 'bg-carpincho-primary text-carpincho-panel font-bold'
-							: 'bg-neutral-800 hover:bg-neutral-700 text-white'
+							? 'border-transparent bg-[var(--accent-primary)] text-[#120e0b] font-bold'
+							: 'border border-[var(--hairline)] bg-[var(--bg-input)] text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)]'
 					"
 					title="Reproduce el siguiente tema respetando el orden y filtro de la biblioteca"
 					@click="handleSetDjMode('library')"
@@ -598,7 +620,10 @@
 			</div>
 		</div>
 
-		<div v-if="showRemoteServerSelector" class="mx-auto mb-6 max-w-md">
+		<div
+			v-if="showRemoteServerSelector"
+			class="mx-auto mb-6 max-w-lg overflow-hidden rounded-[var(--radius-lg)] border border-[var(--hairline)] bg-[var(--bg-grouped)]"
+		>
 			<ToggleRow
 				:model-value="isRemoteMode || isRemoteServerModalOpen"
 				title="Conectar a otro servidor"
@@ -612,17 +637,17 @@
 
 		<div
 			v-if="isNativeAndroidHost() && androidNotificationPermission === 'denied'"
-			class="border-carpincho-border bg-carpincho-panel mx-auto mb-6 flex max-w-md items-center justify-between gap-3 rounded-xl border px-4 py-3 text-xs"
+			class="mx-auto mb-6 flex max-w-lg items-center justify-between gap-3 rounded-[var(--radius-lg)] border border-[var(--hairline)] bg-[var(--bg-grouped)] px-4 py-3 text-xs"
 		>
 			<div class="min-w-0 flex-1">
-				<p class="text-carpincho-warning font-bold">Notificaciones desactivadas</p>
-				<p class="text-carpincho-muted mt-0.5">
+				<p class="font-bold text-[var(--accent-primary)]">Notificaciones desactivadas</p>
+				<p class="mt-0.5 text-[var(--text-secondary)]">
 					Habilitalas para manejar la Rockola desde la pantalla de bloqueo.
 				</p>
 			</div>
 			<button
 				type="button"
-				class="bg-carpincho-primary shrink-0 rounded-lg px-3 py-2 font-bold text-white"
+				class="tap-feedback shrink-0 rounded-[var(--radius-sm)] bg-[var(--accent-primary)] px-3 py-2 font-bold text-[#120e0b]"
 				@click="openAndroidNotificationSettings"
 			>
 				Ajustes
@@ -630,30 +655,42 @@
 		</div>
 
 		<!-- Botones de acción -->
-		<div class="text-carpincho-secondary mb-4 text-center text-sm font-bold tracking-wider uppercase">
-			<i class="material-icons mr-1 align-middle">settings</i>
-			Lo controle
+		<div class="mx-auto mb-2 max-w-lg px-1">
+			<div
+				class="flex items-center gap-1.5 text-[12px] font-semibold tracking-[0.06em] text-[var(--text-secondary)] uppercase"
+			>
+				<i class="material-icons !text-[16px] text-[var(--accent-primary)]" aria-hidden="true">settings</i>
+				<span>Lo controle</span>
+			</div>
 		</div>
 
-		<div v-if="hasEdgeTts" class="mb-4 flex flex-wrap justify-center gap-3">
-			<PillButton icon="map" color-class="bg-neutral-800 hover:bg-neutral-700" @click="isWeatherModalOpen = true">
+		<div v-if="hasEdgeTts" class="mx-auto mb-4 flex max-w-lg flex-wrap justify-center gap-2.5">
+			<PillButton
+				icon="map"
+				color-class="border border-[var(--hairline)] bg-[var(--bg-grouped)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-primary)]"
+				@click="isWeatherModalOpen = true"
+			>
 				{{ displayWeatherLocation ? `Ubicación del Clima: ${displayWeatherLocation}` : 'Configurar ubicación' }}
 			</PillButton>
 		</div>
 
-		<div v-if="hasMpv && hasLocalPlayer && !listenLocally" class="mb-4 flex flex-wrap justify-center gap-3">
-			<PillButton icon="volume_up" color-class="bg-amber-700 hover:bg-amber-600" @click="returnToServerSpeakers">
+		<div v-if="hasMpv && hasLocalPlayer && !listenLocally" class="mx-auto mb-4 flex max-w-lg flex-wrap justify-center gap-2.5">
+			<PillButton
+				icon="volume_up"
+				color-class="bg-[var(--accent-carpincho)] hover:bg-[var(--accent-carpincho-hover)] text-[#f5efe6]"
+				@click="returnToServerSpeakers"
+			>
 				Volver a parlantes del servidor
 			</PillButton>
 		</div>
 
 		<div
 			v-if="!hasMpv && !listenLocally && !hasLocalPlayer && (!isNativeAndroidHost() || isRemoteMode)"
-			class="mb-4 flex flex-wrap justify-center gap-3"
+			class="mx-auto mb-4 flex max-w-lg flex-wrap justify-center gap-2.5"
 		>
 			<PillButton
 				icon="headphones"
-				color-class="bg-carpincho-success hover:brightness-110 text-white font-bold"
+				color-class="bg-[var(--accent-mate)] hover:brightness-110 text-[#f5efe6] font-bold"
 				@click="
 					listenLocally = true;
 					haptic();
@@ -663,11 +700,15 @@
 			</PillButton>
 		</div>
 
-		<div v-if="showAndroidFolderPicker" class="mb-4 flex flex-col items-center gap-2">
-			<PillButton icon="sd_card" color-class="bg-amber-700 hover:bg-amber-600" @click="handlePickMusicFolder">
+		<div v-if="showAndroidFolderPicker" class="mx-auto mb-4 flex max-w-lg flex-col items-center gap-2">
+			<PillButton
+				icon="sd_card"
+				color-class="bg-[var(--accent-carpincho)] hover:bg-[var(--accent-carpincho-hover)] text-[#f5efe6]"
+				@click="handlePickMusicFolder"
+			>
 				Elegir carpeta de música
 			</PillButton>
-			<p v-if="androidServerStatus.musicDir" class="text-carpincho-muted max-w-xs truncate text-xs">
+			<p v-if="androidServerStatus.musicDir" class="max-w-xs truncate text-xs text-[var(--text-secondary)]">
 				{{ androidServerStatus.musicDir }}
 			</p>
 		</div>
@@ -675,7 +716,7 @@
 		<dialog
 			ref="remoteDialogRef"
 			aria-labelledby="remote-dialog-title"
-			class="border-carpincho-border bg-carpincho-panel text-carpincho-text m-auto w-[min(92vw,28rem)] rounded-2xl border p-5 shadow-2xl backdrop:bg-black/75 backdrop:backdrop-blur-sm"
+			class="m-auto w-[min(92vw,28rem)] rounded-[var(--radius-lg)] border border-[var(--glass-border)] bg-[var(--glass-bg-strong)] p-5 text-[var(--text-primary)] shadow-2xl [backdrop-filter:var(--glass-blur)] backdrop:bg-black/75 backdrop:backdrop-blur-sm"
 			@cancel.prevent="isRemoteServerModalOpen = false"
 			@close="isRemoteServerModalOpen = false"
 			@pointerdown="onRemoteDialogPointerDown"
@@ -684,7 +725,7 @@
 			<div class="mb-3 flex items-center justify-between gap-2">
 				<h3
 					id="remote-dialog-title"
-					class="text-carpincho-secondary flex items-center gap-2 text-base font-bold"
+					class="flex items-center gap-2 text-base font-bold text-[var(--accent-primary)]"
 				>
 					<i class="material-icons !text-lg" aria-hidden="true">dns</i>
 					<span>Conectar a otro servidor</span>
@@ -692,13 +733,13 @@
 				<button
 					type="button"
 					aria-label="Cerrar diálogo"
-					class="touch-target text-carpincho-muted hover:text-carpincho-text inline-flex cursor-pointer items-center justify-center rounded-full p-1"
+					class="touch-target inline-flex cursor-pointer items-center justify-center rounded-full p-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
 					@click="isRemoteServerModalOpen = false"
 				>
 					<i class="material-icons !text-lg" aria-hidden="true">close</i>
 				</button>
 			</div>
-			<label for="remote-server-input" class="text-carpincho-muted mb-3 block text-xs">
+			<label for="remote-server-input" class="mb-3 block text-xs text-[var(--text-secondary)]">
 				Ingresá la IP o URL de tu PC (ej: 192.168.0.55). Se guarda el último servidor para volver fácil.
 			</label>
 			<input
@@ -706,28 +747,28 @@
 				v-model="remoteServerInput"
 				type="text"
 				placeholder="IP de tu PC (ej: 192.168.0.55)"
-				class="border-carpincho-border bg-carpincho-bg text-carpincho-text placeholder:text-carpincho-muted/60 focus:border-carpincho-warning mb-4 w-full rounded-lg border px-3 py-2 text-sm outline-none"
+				class="mb-4 w-full rounded-[var(--radius-md)] border border-[var(--hairline)] bg-[var(--bg-input)] px-3 py-2.5 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:border-[var(--accent-primary)] outline-none"
 				@keyup.enter="handleConnectRemoteServer"
 			/>
 			<div class="flex flex-wrap justify-end gap-2">
 				<PillButton
 					v-if="isRemoteMode"
 					icon="smartphone"
-					color-class="bg-neutral-700 hover:bg-neutral-600"
+					color-class="border border-[var(--hairline)] bg-[var(--bg-input)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-primary)]"
 					@click="handleUseLocalServer"
 				>
 					Usar este teléfono
 				</PillButton>
 				<PillButton
 					icon="close"
-					color-class="bg-neutral-800 hover:bg-neutral-700"
+					color-class="border border-[var(--hairline)] bg-[var(--bg-input)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-secondary)]"
 					@click="isRemoteServerModalOpen = false"
 				>
 					Cancelar
 				</PillButton>
 				<PillButton
 					icon="link"
-					color-class="bg-amber-700 hover:bg-amber-600"
+					color-class="bg-[var(--accent-primary)] text-[#120e0b] font-bold hover:brightness-110"
 					:disabled="isConnectingRemote || !remoteServerInput.trim()"
 					@click="handleConnectRemoteServer"
 				>
@@ -736,27 +777,42 @@
 			</div>
 		</dialog>
 
-		<div class="mb-4 flex flex-wrap justify-center gap-3">
-			<PillButton icon="stop" color-class="bg-red-700 hover:bg-red-600" @click="stop">Cortala de una</PillButton>
+		<div class="mx-auto mb-3 flex max-w-lg flex-wrap justify-center gap-2.5">
+			<PillButton
+				icon="stop"
+				color-class="bg-[var(--accent-danger)] text-[#f5efe6] hover:brightness-110"
+				@click="stop"
+			>
+				Cortala de una
+			</PillButton>
 
-			<PillButton v-if="hasMpv" icon="fullscreen" color-class="bg-blue-700 hover:bg-blue-600" @click="fullscreen">
+			<PillButton
+				v-if="hasMpv"
+				icon="fullscreen"
+				color-class="border border-[var(--hairline)] bg-[var(--bg-grouped)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-primary)]"
+				@click="fullscreen"
+			>
 				Todo pantalla, ñeri
 			</PillButton>
 
 			<PillButton
 				v-if="hasMpv"
 				:icon="mpvVisible ? 'visibility_off' : 'visibility'"
-				color-class="bg-gray-700 hover:bg-gray-600"
+				color-class="border border-[var(--hairline)] bg-[var(--bg-grouped)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-primary)]"
 				@click="toggleMpvVisibility"
 			>
 				{{ mpvVisible ? 'Ocultar MPV' : 'Mostrar MPV' }}
 			</PillButton>
 		</div>
 
-		<div class="mb-8 flex flex-wrap justify-center gap-3">
+		<div class="mx-auto mb-8 flex max-w-lg flex-wrap justify-center gap-2.5">
 			<PillButton
 				:icon="serverMuted ? 'volume_off' : 'volume_up'"
-				:color-class="serverMuted ? 'bg-red-700 hover:bg-red-600' : 'bg-gray-700 hover:bg-gray-600'"
+				:color-class="
+					serverMuted
+						? 'bg-[var(--accent-danger)] text-[#f5efe6] hover:brightness-110'
+						: 'border border-[var(--hairline)] bg-[var(--bg-grouped)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-primary)]'
+				"
 				@click="
 					setMute(!serverMuted);
 					haptic();
@@ -769,8 +825,8 @@
 				:icon="isScanning ? 'sync' : 'refresh'"
 				:color-class="
 					isScanning || Boolean(scanStatus?.is_analyzing_mood)
-						? 'bg-gray-700'
-						: 'bg-green-700 hover:bg-green-600'
+						? 'border border-[var(--hairline)] bg-[var(--bg-input)] text-[var(--text-tertiary)]'
+						: 'bg-[var(--accent-mate)] text-[#f5efe6] hover:brightness-110'
 				"
 				:disabled="isScanning || Boolean(scanStatus?.is_analyzing_mood)"
 				@click="loadLibrary(true)"
@@ -784,7 +840,7 @@
 
 			<PillButton
 				:icon="isFullRockola ? 'fullscreen_exit' : 'open_in_full'"
-				color-class="bg-purple-700 hover:bg-purple-600"
+				color-class="bg-[var(--accent-carpincho)] hover:bg-[var(--accent-carpincho-hover)] text-[#f5efe6]"
 				@click="toggleFullRockola"
 			>
 				Full Rockola
@@ -792,16 +848,20 @@
 		</div>
 
 		<!-- Código QR -->
-		<div class="text-carpincho-secondary mb-4 text-center text-sm font-bold tracking-wider uppercase">
-			<i class="material-icons mr-1 align-middle">qr_code_2</i>
-			Sumate a la joda
+		<div class="mx-auto mb-3 max-w-lg px-1">
+			<div
+				class="flex items-center justify-center gap-1.5 text-[12px] font-semibold tracking-[0.06em] text-[var(--text-secondary)] uppercase"
+			>
+				<i class="material-icons !text-[16px] text-[var(--accent-primary)]" aria-hidden="true">qr_code_2</i>
+				<span>Sumate a la joda</span>
+			</div>
 		</div>
 
-		<div class="flex flex-col items-center pb-20">
+		<div class="flex flex-col items-center pb-6">
 			<!-- Clase 'relative' agregada para contener la imagen absoluta -->
-			<div class="relative flex items-center justify-center rounded-xl bg-white p-4 shadow-lg">
+			<div class="relative flex items-center justify-center rounded-[var(--radius-lg)] bg-[#f5efe6] p-4 shadow-lg">
 				<!-- Componente QR con los colores de la aplicación -->
-				<QRCode :value="currentUrl" :size="200" level="H" foreground="#2b2622" background="#ffffff" />
+				<QRCode :value="currentUrl" :size="200" level="H" foreground="#120e0b" background="#f5efe6" />
 
 				<!-- La impronta del carpincho -->
 				<img
@@ -810,43 +870,47 @@
 					class="absolute top-1/2 left-1/2 h-[88px] w-[88px] -translate-x-1/2 -translate-y-1/2 rounded-lg p-1"
 				/>
 			</div>
-			<p class="text-carpincho-muted mt-3 text-sm">Escaneá para entrar desde tu celu</p>
-			<PillButton icon="share" color-class="bg-amber-700 hover:bg-amber-600 mt-4" @click="handleShareUrl">
+			<p class="mt-3 text-sm text-[var(--text-secondary)]">Escaneá para entrar desde tu celu</p>
+			<PillButton
+				icon="share"
+				color-class="mt-4 bg-[var(--accent-primary)] text-[#120e0b] font-bold hover:brightness-110"
+				@click="handleShareUrl"
+			>
 				Compartir link
 			</PillButton>
 		</div>
 
 		<div
 			v-if="showRemoteServerSelector"
-			class="border-carpincho-border bg-carpincho-panel mx-auto mb-6 max-w-md rounded-xl border p-4 shadow"
+			class="mx-auto mb-6 max-w-lg rounded-[var(--radius-lg)] border border-[var(--hairline)] bg-[var(--bg-grouped)] p-4"
 		>
 			<div class="mb-2 flex items-center justify-between gap-2">
-				<span class="text-carpincho-secondary text-xs font-bold tracking-wider uppercase">
+				<span class="text-xs font-bold tracking-wider text-[var(--accent-primary)] uppercase">
 					{{ isRemoteMode ? 'Modo Cliente remoto' : 'Modo Host local' }}
 				</span>
 				<span
 					class="rounded-full px-2.5 py-0.5 text-xs font-bold"
 					:class="
 						isRemoteMode || localServerState === 'ready'
-							? 'bg-carpincho-success/25 text-carpincho-warning'
-							: 'text-carpincho-muted bg-neutral-800'
+							? 'bg-[var(--accent-mate)]/25 text-[var(--accent-primary)]'
+							: 'bg-[var(--bg-input)] text-[var(--text-secondary)]'
 					"
 				>
 					{{ isRemoteMode ? 'Conectado' : hostStateLabel }}
 				</span>
 			</div>
 
-			<div v-if="isHostMode" class="text-carpincho-muted space-y-1 text-xs">
+			<div v-if="isHostMode" class="space-y-1 text-xs text-[var(--text-secondary)]">
 				<p v-if="localServerState === 'ready'">
 					Dirección en tu Wi-Fi:
-					<span class="text-carpincho-text font-mono">{{ localServerLanUrl }}</span>
+					<span class="font-mono text-[var(--text-primary)]">{{ localServerLanUrl }}</span>
 				</p>
 				<p v-if="androidServerStatus.musicDir || libraryFolderStatus !== 'ok'">
 					Carpeta:
-					<span class="text-carpincho-text">
+					<span class="text-[var(--text-primary)]">
 						{{ localMusicDisplayName || androidServerStatus.musicDir || 'Sin elegir' }}
 					</span>
-					<span v-if="libraryFolderError" class="text-red-400">· {{ libraryFolderError }}</span>
+					<span v-if="libraryFolderError" class="text-[var(--accent-danger)]">· {{ libraryFolderError }}</span>
 				</p>
 				<p class="leading-relaxed">
 					El servidor embebido se mantiene activo mientras suena música o la app está abierta; Android puede
@@ -856,7 +920,7 @@
 					<button
 						v-if="localServerState === 'stopped' || localServerState === 'unavailable'"
 						type="button"
-						class="touch-target bg-carpincho-success cursor-pointer rounded-full px-3.5 py-1.5 text-xs font-bold text-white shadow transition hover:brightness-110"
+						class="touch-target tap-feedback cursor-pointer rounded-full bg-[var(--accent-mate)] px-3.5 py-1.5 text-xs font-bold text-[#f5efe6] shadow hover:brightness-110"
 						@click="handleStartLocalHost"
 					>
 						Prender servidor
@@ -864,7 +928,7 @@
 					<button
 						v-else
 						type="button"
-						class="touch-target cursor-pointer rounded-full bg-red-800 px-3.5 py-1.5 text-xs font-bold text-white shadow transition hover:bg-red-700"
+						class="touch-target tap-feedback cursor-pointer rounded-full bg-[var(--accent-danger)] px-3.5 py-1.5 text-xs font-bold text-[#f5efe6] shadow hover:brightness-110"
 						:disabled="localServerState === 'stopping'"
 						@click="handleStopLocalHost"
 					>
@@ -872,21 +936,21 @@
 					</button>
 				</div>
 			</div>
-			<p v-else class="text-carpincho-muted text-xs">
+			<p v-else class="text-xs text-[var(--text-secondary)]">
 				Controlando el servidor remoto
-				<span class="text-carpincho-text font-mono">{{ activeRemoteServerUrl }}</span>
+				<span class="font-mono text-[var(--text-primary)]">{{ activeRemoteServerUrl }}</span>
 			</p>
 
 			<div
 				v-if="lastServerError"
 				role="alert"
-				class="mt-3 flex items-start justify-between gap-2 rounded-lg border border-red-500/40 bg-red-950/50 px-3 py-2 text-xs text-red-200"
+				class="mt-3 flex items-start justify-between gap-2 rounded-[var(--radius-md)] border border-[var(--accent-danger)]/40 bg-[var(--accent-danger)]/15 px-3 py-2 text-xs text-[var(--text-primary)]"
 			>
 				<span>{{ lastServerError.message }}</span>
 				<button
 					type="button"
 					aria-label="Descartar aviso"
-					class="touch-target shrink-0 cursor-pointer rounded px-1.5 font-bold text-red-300 hover:text-white"
+					class="touch-target shrink-0 cursor-pointer rounded px-1.5 font-bold text-[var(--accent-danger)] hover:text-[var(--text-primary)]"
 					@click="clearServerError()"
 				>
 					✕

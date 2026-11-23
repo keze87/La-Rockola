@@ -111,7 +111,7 @@
 	<!-- Contenedor con scroll para la lista virtualizada -->
 	<section
 		v-bind="containerProps"
-		class="tab-content bg-carpincho-bg relative h-full overflow-y-auto"
+		class="tab-content relative h-full overflow-y-auto bg-[var(--bg-canvas)]"
 		@scroll.passive="onTabScroll"
 		@touchstart.passive="onPullTouchStart"
 		@touchmove="onPullTouchMove"
@@ -154,28 +154,30 @@
 			</div>
 		</div>
 
-		<!-- Encabezado fijo con buscador y filtros -->
-		<div class="bg-carpincho-bg sticky top-0 z-30 flex items-center gap-2 px-4 py-3 shadow-md">
+		<!-- Encabezado fijo con buscador iOS y filtros cálidos -->
+		<div
+			class="sticky top-0 z-30 flex items-center gap-2 border-b border-[var(--hairline)] bg-[var(--glass-bg)] px-3 py-2.5 [backdrop-filter:var(--glass-blur)] [-webkit-backdrop-filter:var(--glass-blur)]"
+		>
 			<button
 				type="button"
 				aria-label="Ir al tema actual"
-				class="touch-target tap-feedback hover:text-carpincho-warning flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-800 text-white shadow transition"
+				class="touch-target tap-feedback flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[var(--hairline)] bg-[var(--bg-input)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text-primary)]"
 				title="Ir al tema actual"
 				@click="
 					scrollToCurrent();
 					haptic();
 				"
 			>
-				<i class="material-icons">my_location</i>
+				<i class="material-icons !text-[20px]">my_location</i>
 			</button>
 			<button
 				type="button"
 				aria-label="Mostrar sólo favoritos"
 				:class="[
-					'touch-target tap-feedback flex h-10 w-10 shrink-0 items-center justify-center rounded-full shadow transition',
+					'touch-target tap-feedback flex h-10 w-10 shrink-0 items-center justify-center rounded-full border',
 					showFavoritesOnly
-						? 'bg-carpincho-warning text-carpincho-panel'
-						: 'hover:text-carpincho-warning bg-gray-800 text-white',
+						? 'border-[var(--accent-primary)]/40 bg-[var(--accent-primary-soft)] text-[var(--accent-primary)]'
+						: 'border-[var(--hairline)] bg-[var(--bg-input)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text-primary)]',
 				]"
 				title="Mostrar sólo favoritos"
 				@click="
@@ -184,26 +186,31 @@
 					scrollTo(0);
 				"
 			>
-				<i class="material-icons">{{ showFavoritesOnly ? 'favorite' : 'favorite_border' }}</i>
+				<i class="material-icons !text-[20px]">{{ showFavoritesOnly ? 'favorite' : 'favorite_border' }}</i>
 			</button>
 
-			<div class="relative flex-grow">
+			<div
+				class="flex h-[42px] min-w-0 flex-grow items-center rounded-[var(--radius-md)] border border-[var(--hairline)] bg-[var(--bg-input)] px-3 transition-colors focus-within:border-[rgba(212,150,66,0.45)]"
+			>
+				<i class="material-icons mr-2 shrink-0 !text-[18px] text-[var(--text-secondary)]" aria-hidden="true">
+					search
+				</i>
 				<input
 					id="library-search-input"
 					v-model="searchQuery"
 					type="text"
 					aria-label="Buscar canciones o artistas"
 					placeholder="Buscá un buen tema pa' acompañar los mates..."
-					class="border-carpincho-primary focus:border-carpincho-secondary text-carpincho-text w-full border-b bg-transparent py-2 pr-12 placeholder-gray-500 transition-colors outline-none"
+					class="min-w-0 flex-1 bg-transparent text-[14px] text-[var(--text-primary)] placeholder-[var(--text-tertiary)] outline-none"
 				/>
 				<button
 					v-show="searchQuery"
 					type="button"
 					aria-label="Limpiar búsqueda"
-					class="touch-target tap-feedback absolute top-1/2 right-0 inline-flex -translate-y-1/2 items-center justify-center rounded-full p-1"
+					class="tap-feedback ml-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--bg-surface-active)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
 					@click="clearSearch"
 				>
-					<i class="material-icons text-carpincho-secondary" aria-hidden="true">close</i>
+					<i class="material-icons !text-[15px]" aria-hidden="true">close</i>
 				</button>
 			</div>
 		</div>
@@ -211,10 +218,10 @@
 		<!-- Banner de estado del escaneo -->
 		<div
 			v-if="isScanning || scanStatus?.is_analyzing_mood"
-			class="bg-carpincho-panel border-carpincho-border text-carpincho-text flex items-center justify-between border-b px-4 py-2.5 text-xs font-semibold shadow-inner"
+			class="flex items-center justify-between border-b border-[var(--hairline)] bg-[var(--bg-elevated)] px-4 py-2.5 text-xs font-semibold text-[var(--text-primary)]"
 		>
 			<div class="flex items-center gap-2 truncate">
-				<i class="material-icons text-carpincho-warning animate-spin text-base">sync</i>
+				<i class="material-icons animate-spin text-base text-[var(--accent-primary)]">sync</i>
 				<span class="truncate">
 					{{
 						isScanning
@@ -229,19 +236,19 @@
 					}}
 				</span>
 			</div>
-			<div v-if="scanStatus?.total" class="text-carpincho-warning ml-2 shrink-0 font-bold">
+			<div v-if="scanStatus?.total" class="tabular-nums ml-2 shrink-0 font-bold text-[var(--accent-primary)]">
 				{{ Math.round((scanStatus.current / scanStatus.total) * 100) }}%
 			</div>
 		</div>
 
-		<!-- Encabezado de la tabla (con CSS Grid) -->
+		<!-- Encabezado de la tabla (solo pantallas anchas >= 720px) -->
 		<div
-			class="bg-carpincho-panel text-carpincho-primary border-carpincho-border grid grid-cols-[5rem_minmax(0,1fr)_minmax(0,1fr)] items-center border-b shadow-sm sm:grid-cols-[5rem_minmax(0,1fr)_minmax(0,1fr)_5.5rem]"
+			class="hidden border-b border-[var(--hairline)] bg-[var(--bg-elevated)] text-[12px] font-semibold tracking-wide text-[var(--text-secondary)] uppercase min-[720px]:grid min-[720px]:grid-cols-[5rem_minmax(0,1fr)_minmax(0,1fr)_5rem] min-[720px]:items-center"
 		>
-			<div class="p-3 text-center font-bold">Orden</div>
-			<div class="p-3 font-bold">El Temón</div>
-			<div class="p-3 font-bold">Artista</div>
-			<div class="hidden p-3 text-right font-bold sm:block">Duración</div>
+			<div class="p-3 text-center">Orden</div>
+			<div class="p-3">El Temón</div>
+			<div class="p-3">Artista</div>
+			<div class="p-3 text-right">Duración</div>
 		</div>
 
 		<!-- Filas virtualizadas de canciones -->

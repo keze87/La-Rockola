@@ -123,8 +123,8 @@ describe('LibraryTab.vue', () => {
 		expect(wrapper.text()).not.toContain('11 y 6');
 
 		// Clear search via close icon
-		const closeIcon = wrapper.find('.material-icons.text-carpincho-secondary');
-		await closeIcon.trigger('click');
+		const closeBtn = wrapper.find('button[aria-label="Limpiar búsqueda"]');
+		await closeBtn.trigger('click');
 		expect(librarySearchQuery.value).toBe('');
 	});
 

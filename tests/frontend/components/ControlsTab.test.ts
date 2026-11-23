@@ -88,7 +88,7 @@ describe('ControlsTab.vue', () => {
 	it('toggles mute when mute icon or button is clicked', async () => {
 		const wrapper = mount(ControlsTab);
 
-		const muteIcon = wrapper.find('.material-icons.mr-3');
+		const muteIcon = wrapper.find('button[aria-label*="audio"] .material-icons');
 		await muteIcon.trigger('click');
 
 		expect(fetchMock).toHaveBeenCalledWith(

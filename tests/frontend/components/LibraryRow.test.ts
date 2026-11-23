@@ -108,9 +108,9 @@ describe('LibraryRow.vue', () => {
 			},
 		});
 
-		const eqContainer = currentWrapper.find('.bg-carpincho-panel.absolute');
-		expect(eqContainer.exists()).toBe(true);
-		await eqContainer.trigger('click');
+		const eqContainer = currentWrapper.find('.equalizer').element.parentElement!;
+		expect(eqContainer).toBeTruthy();
+		await currentWrapper.find('.equalizer').trigger('click');
 		expect(fetchMock).toHaveBeenCalledWith(
 			'/command',
 			expect.objectContaining({
@@ -128,7 +128,7 @@ describe('LibraryRow.vue', () => {
 			},
 		});
 
-		const qBadge = queuedWrapper.find('.bg-carpincho-panel.text-carpincho-warning');
+		const qBadge = queuedWrapper.find('span.tabular-nums');
 		expect(qBadge.exists()).toBe(true);
 		await qBadge.trigger('click');
 		expect(fetchMock).toHaveBeenCalledWith(

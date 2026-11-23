@@ -40,7 +40,7 @@ describe('TopTab.vue', () => {
 	it('renders ranked top played tracks with play counts', () => {
 		topPlayedState.value = [
 			{ path: '/music/classic1.mp3', count: 42 },
-			{ path: '/music/classic2.mp3', count: 28 },
+			{ path: '/music/classic2.mp3', count: 1 },
 		];
 
 		const wrapper = mount(TopTab);
@@ -50,7 +50,8 @@ describe('TopTab.vue', () => {
 
 		expect(wrapper.text()).toContain('#2');
 		expect(wrapper.text()).toContain('De Música Ligera');
-		expect(wrapper.text()).toContain('Soda Stereo • Sonó 28 veces');
+		expect(wrapper.text()).toContain('Soda Stereo • Sonó 1 vez');
+		expect(wrapper.text()).not.toContain('Sonó 1 veces');
 
 		const rows = wrapper.findAll('li');
 		expect(rows[0].classes()).toContain('select-none');
