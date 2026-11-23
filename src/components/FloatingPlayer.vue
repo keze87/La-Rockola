@@ -225,7 +225,7 @@
 					haptic();
 				"
 			>
-				<i class="material-icons !text-[20px]" aria-hidden="true">timer</i>
+				<i class="material-icons !text-[20px] text-current" aria-hidden="true">timer</i>
 			</button>
 			<button
 				type="button"
@@ -247,7 +247,7 @@
 					haptic();
 				"
 			>
-				<i class="material-icons !text-[22px]" aria-hidden="true">skip_next</i>
+				<i class="material-icons !text-[22px] text-current" aria-hidden="true">skip_next</i>
 			</button>
 		</div>
 	</section>

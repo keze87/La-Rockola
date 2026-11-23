@@ -55,7 +55,7 @@
 
 <template>
 	<div
-		class="tap-feedback relative flex min-h-[72px] w-full cursor-pointer items-center gap-3 py-2.5 transition-colors select-none hover:bg-[var(--bg-surface-hover)] min-[720px]:grid min-[720px]:grid-cols-[5.5rem_minmax(0,1fr)_minmax(0,1fr)_auto] min-[720px]:gap-0 min-[720px]:px-0 min-[720px]:py-0"
+		class="tap-feedback relative flex min-h-[72px] w-full cursor-pointer items-center gap-3 py-2.5 transition-colors select-none hover:bg-[var(--bg-surface-hover)] min-[720px]:grid min-[720px]:grid-cols-[3.5rem_minmax(0,2fr)_minmax(0,1.1fr)_auto] min-[720px]:gap-0 min-[720px]:px-0 min-[720px]:py-0"
 		:class="
 			isPlaying || props.dataTrackStatus === 'current'
 				? 'mx-2 !w-[calc(100%-16px)] rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] px-1.5 min-[720px]:mx-0 min-[720px]:!w-full min-[720px]:rounded-none min-[720px]:px-0'

@@ -629,27 +629,34 @@
 				/>
 			</div>
 
-			<!-- Grabber pill centrado estilo iOS Sheet para cerrar el fogón -->
-			<button
-				type="button"
-				aria-label="Cerrar vista de fogón"
-				class="fogon-close-btn tap-feedback absolute top-[calc(0.5rem+var(--rockola-safe-top))] left-1/2 z-40 flex min-h-[36px] min-w-[72px] -translate-x-1/2 cursor-pointer items-center justify-center rounded-full"
-				@click="closeFogon"
+			<!-- Header unificado: grabber pill centrado y botón PiP alineados en el mismo eje horizontal -->
+			<header
+				class="fogon-header pointer-events-none absolute top-0 right-0 left-0 z-40 grid h-[calc(44px+var(--rockola-safe-top))] grid-cols-[1fr_auto_1fr] items-center px-4 pt-[var(--rockola-safe-top)]"
 			>
-				<span class="h-[5px] w-[36px] rounded-full bg-[rgba(255,240,220,0.28)]" aria-hidden="true" />
-			</button>
-
-			<!-- Botón nativo de Picture-in-Picture en Android (alineado con el grabber pill) -->
-			<button
-				v-if="canEnterAndroidPip"
-				type="button"
-				aria-label="Abrir en ventana flotante"
-				title="Ventana flotante (PiP)"
-				class="touch-target tap-feedback absolute top-[calc(0.5rem+var(--rockola-safe-top))] right-4 z-40 flex h-9 w-9 items-center justify-center rounded-full border border-[var(--hairline)] bg-[rgba(255,236,210,0.07)] text-[var(--text-primary)] opacity-[0.85] hover:bg-[var(--bg-surface-hover)] hover:opacity-100"
-				@click="openAndroidPip"
-			>
-				<i class="material-icons !text-[19px]" aria-hidden="true">picture_in_picture_alt</i>
-			</button>
+				<div aria-hidden="true" />
+				<button
+					type="button"
+					aria-label="Cerrar vista de fogón"
+					class="fogon-close-btn tap-feedback pointer-events-auto flex min-h-[36px] min-w-[72px] cursor-pointer items-center justify-center justify-self-center rounded-full"
+					@click="closeFogon"
+				>
+					<span class="h-[5px] w-[36px] rounded-full bg-[rgba(255,240,220,0.28)]" aria-hidden="true" />
+				</button>
+				<div class="flex justify-end">
+					<button
+						v-if="canEnterAndroidPip"
+						type="button"
+						aria-label="Abrir en ventana flotante"
+						title="Ventana flotante (PiP)"
+						class="fogon-pip-btn tap-feedback pointer-events-auto flex h-[34px] w-[34px] items-center justify-center rounded-full border-[0.5px] border-[var(--hairline)] bg-[rgba(255,236,210,0.06)] text-[var(--text-primary)] opacity-80 hover:bg-[var(--bg-surface-hover)] hover:opacity-100"
+						@click="openAndroidPip"
+					>
+						<i class="material-icons !text-[18px] text-current" aria-hidden="true">
+							picture_in_picture_alt
+						</i>
+					</button>
+				</div>
+			</header>
 
 			<!-- Capa para cerrar el popup de volumen al tocar afuera -->
 			<div
@@ -814,14 +821,16 @@
 									@pointercancel="endSeek"
 								>
 									<div
-										class="pointer-events-none relative h-[4px] w-full rounded-full bg-[rgba(255,236,210,0.16)] transition-[height] duration-150 group-active:h-[6px]"
+										class="pointer-events-none relative w-full rounded-full bg-[rgba(255,236,210,0.16)] transition-[height] duration-150 group-active:h-[6px]"
+										:class="isDraggingSeek ? 'h-[6px]' : 'h-[4px]'"
 									>
 										<div
 											class="absolute top-0 left-0 h-full rounded-full bg-[var(--accent-primary)]"
 											:style="{ width: progressPercent + '%' }"
 										/>
 										<div
-											class="absolute top-1/2 h-[11px] w-[11px] -translate-y-1/2 rounded-full bg-[var(--text-primary)] shadow-[0_1px_4px_rgba(0,0,0,0.4)] transition-transform group-active:scale-[1.45]"
+											class="absolute top-1/2 h-[11px] w-[11px] -translate-y-1/2 rounded-full bg-[var(--text-primary)] shadow-[0_2px_6px_rgba(0,0,0,0.45)] transition-transform group-active:scale-[1.45]"
+											:class="isDraggingSeek ? 'scale-[1.45]' : 'scale-100'"
 											:style="{ left: progressPercent + '%', marginLeft: '-5.5px' }"
 										/>
 									</div>
@@ -910,7 +919,7 @@
 									:aria-label="timerTitle"
 									@click="handleTimerToggle"
 								>
-									<i class="material-icons !text-[24px]" aria-hidden="true">timer</i>
+									<i class="material-icons !text-[22px] text-current" aria-hidden="true">timer</i>
 								</button>
 							</div>
 
@@ -1324,6 +1333,7 @@
 	.fogon-container.is-android-pip .fogon-lyrics-container,
 	.fogon-container.is-android-pip .lyrics-mask-vertical,
 	.fogon-container.is-android-pip .fogon-next-song,
+	.fogon-container.is-android-pip .fogon-header,
 	.fogon-container.is-android-pip .fogon-close-btn,
 	.fogon-container.is-android-pip .fogon-pip-btn {
 		display: none !important;
@@ -1372,7 +1382,8 @@
 	/* Soporte adaptativo para dispositivos móviles en apaisado / pantallas de altura reducida */
 	@media (min-height: 261px) and (max-height: 550px) {
 		.fogon-container {
-			padding: 0.5rem 1.25rem !important;
+			padding: calc(44px + var(--rockola-safe-top) + 6px) max(1.25rem, var(--rockola-safe-right))
+				calc(0.5rem + var(--rockola-safe-bottom)) max(1.25rem, var(--rockola-safe-left)) !important;
 		}
 
 		.fogon-main-layout {
@@ -1395,6 +1406,19 @@
 			flex-shrink: 0 !important;
 			margin-bottom: 0.35rem !important;
 			border-radius: 1rem !important;
+		}
+
+		:deep(.fogon-cover-wrapper button) {
+			height: 32px !important;
+			width: 32px !important;
+			min-height: 32px !important;
+			min-width: 32px !important;
+			bottom: 8px !important;
+			right: 8px !important;
+		}
+
+		:deep(.fogon-cover-wrapper button .material-icons) {
+			font-size: 17px !important;
 		}
 
 		.fogon-cover-wrapper i {

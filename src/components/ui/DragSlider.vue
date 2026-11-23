@@ -54,7 +54,7 @@
 			/>
 
 			<div
-				class="absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full bg-[#f5efe6] shadow-[0_2px_6px_rgba(0,0,0,0.45)] transition-transform group-active:scale-110"
+				class="absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full bg-[var(--text-primary)] shadow-[0_2px_6px_rgba(0,0,0,0.45)] transition-transform group-active:scale-110"
 				:style="{ left: progressPercent + '%', marginLeft: '-8px' }"
 			/>
 		</div>

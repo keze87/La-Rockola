@@ -320,14 +320,17 @@ dialog:modal {
 @media (min-width: 768px) {
 	.bottom-dock-scrim {
 		left: var(--rail-w);
-		height: calc(var(--floating-player-h) + var(--safe-bottom) + 28px);
+		right: 0;
+		bottom: 0;
+		height: calc(var(--floating-player-h) + var(--safe-bottom) + 32px);
 	}
 
 	.floating-player {
 		bottom: calc(12px + var(--safe-bottom));
-		left: calc(var(--rail-w) + max(16px, var(--rockola-safe-left)));
-		right: max(16px, var(--rockola-safe-right));
+		left: calc(var(--rail-w) + 16px);
+		right: 16px;
 		max-width: none;
+		width: auto;
 	}
 
 	[data-sonner-toaster] {
