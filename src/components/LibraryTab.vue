@@ -1,8 +1,9 @@
 <script setup lang="ts">
-	import { computed, ref, watch } from 'vue';
+	import { computed, watch } from 'vue';
 	import { useVirtualList } from '@vueuse/core';
 	import { isNativeAndroidHost, pickAndApplyMusicFolder } from '../composables/useAndroidHost';
 	import { usePlayer } from '../composables/usePlayer';
+	import { usePullToRefresh } from '../composables/usePullToRefresh';
 	import {
 		isHostMode,
 		libraryFolderError,
@@ -29,90 +30,19 @@
 	} = usePlayer();
 
 	// Pull-to-refresh cuando el listado está bien arriba
-	const PULL_THRESHOLD = 64;
-	const MAX_PULL_PX = 108;
-	const pullDistance = ref(0);
-	const isPulling = ref(false);
-	let pullStartX = 0;
-	let pullStartY = 0;
-	let pullAxis: 'vertical' | 'horizontal' | null = null;
-
-	function resetPull() {
-		isPulling.value = false;
-		pullDistance.value = 0;
-		pullAxis = null;
-	}
-
-	function onPullTouchStart(e: TouchEvent) {
-		const section = e.currentTarget as HTMLElement | null;
-		const target = e.target as HTMLElement | null;
-		if (!section || section.scrollTop > 0) return;
-		if (isScanning.value || scanStatus.value?.is_analyzing_mood) return;
-		if (target?.closest('input, textarea')) return;
-
-		const touch = e.touches[0];
-		if (!touch) return;
-		pullStartX = touch.clientX;
-		pullStartY = touch.clientY;
-		pullAxis = null;
-		isPulling.value = true;
-		pullDistance.value = 0;
-	}
-
-	function onPullTouchMove(e: TouchEvent) {
-		if (!isPulling.value) return;
-		const section = e.currentTarget as HTMLElement | null;
-		if (section && section.scrollTop > 0) {
-			resetPull();
-			return;
-		}
-		const touch = e.touches[0];
-		if (!touch) return;
-
-		const dx = touch.clientX - pullStartX;
-		const dy = touch.clientY - pullStartY;
-
-		if (!pullAxis && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
-			if (Math.abs(dx) > Math.abs(dy)) {
-				// Es un swipe horizontal de pestañas: soltamos el pull para no interferir
-				resetPull();
-				return;
-			}
-			pullAxis = dy > 0 ? 'vertical' : null;
-			if (!pullAxis) {
-				resetPull();
-				return;
-			}
-		}
-
-		if (pullAxis === 'vertical') {
-			pullDistance.value = Math.max(0, Math.min(MAX_PULL_PX, Math.round(dy * 0.6)));
-			if (pullDistance.value > 0 && e.cancelable) {
-				e.preventDefault();
-			}
-		}
-	}
-
-	const PULL_COOLDOWN_MS = 5000;
-	let lastPullRefreshAt = 0;
-
-	function onPullTouchEnd() {
-		if (!isPulling.value) return;
-		const ready = pullDistance.value >= PULL_THRESHOLD;
-		resetPull();
-		const now = Date.now();
-		if (
-			ready &&
-			!isScanning.value &&
-			!scanStatus.value?.is_analyzing_mood &&
-			now - lastPullRefreshAt >= PULL_COOLDOWN_MS
-		) {
-			lastPullRefreshAt = now;
-			haptic();
-			// Pull-to-refresh recarga la lista liviana (/library); el re-escaneo completo (/scan) es explícito
-			void loadLibrary(false);
-		}
-	}
+	const {
+		pullThreshold: PULL_THRESHOLD,
+		pullDistance,
+		onPullTouchStart,
+		onPullTouchMove,
+		onPullTouchEnd,
+		resetPull,
+	} = usePullToRefresh({
+		canRefresh: () => !isScanning.value && !scanStatus.value?.is_analyzing_mood,
+		onHaptic: haptic,
+		// Pull-to-refresh recarga la lista liviana (/library); el re-escaneo completo (/scan) es explícito
+		onRefresh: () => loadLibrary(false),
+	});
 
 	// Conjunto de temas que ya sonaron en la sesión para lookup O(1)
 	const historyPathsSet = computed(() => new Set(historyState.value));

@@ -1,9 +1,23 @@
 <script setup lang="ts">
 	import { usePlayer } from '../composables/usePlayer';
 	import { useContextMenuBindings } from '../composables/useContextMenu';
+	import { usePullToRefresh } from '../composables/usePullToRefresh';
 	import FavoritableCover from './ui/FavoritableCover.vue';
 
-	const { topPlayedState, getTrackInfo, toggleQueue, handleScroll } = usePlayer();
+	const { topPlayedState, getTrackInfo, toggleQueue, handleScroll, loadLibrary, haptic, isScanning } = usePlayer();
+
+	const {
+		pullThreshold: PULL_THRESHOLD,
+		pullDistance,
+		onPullTouchStart,
+		onPullTouchMove,
+		onPullTouchEnd,
+		resetPull,
+	} = usePullToRefresh({
+		canRefresh: () => !isScanning.value,
+		onHaptic: haptic,
+		onRefresh: () => loadLibrary(false),
+	});
 
 	function onTabScroll(e: Event) {
 		const target = e.target as HTMLElement;
@@ -14,7 +28,33 @@
 </script>
 
 <template>
-	<section class="tab-content bg-carpincho-bg h-full overflow-y-auto px-4 pt-4" @scroll.passive="onTabScroll">
+	<section
+		class="tab-content bg-carpincho-bg h-full overflow-y-auto px-4 pt-4"
+		@scroll.passive="onTabScroll"
+		@touchstart.passive="onPullTouchStart"
+		@touchmove="onPullTouchMove"
+		@touchend="onPullTouchEnd"
+		@touchcancel="resetPull"
+	>
+		<!-- Indicador pull-to-refresh -->
+		<div
+			v-if="pullDistance > 0"
+			class="bg-carpincho-panel/90 text-carpincho-warning mb-2 flex items-center justify-center gap-2 overflow-hidden rounded-lg text-xs font-bold transition-[height] duration-150"
+			:style="{ height: pullDistance + 'px' }"
+		>
+			<i
+				class="material-icons text-base transition-transform duration-150"
+				:class="{ 'animate-spin': pullDistance >= PULL_THRESHOLD }"
+				aria-hidden="true"
+			>
+				refresh
+			</i>
+			<span>
+				{{
+					pullDistance >= PULL_THRESHOLD ? 'Soltá para actualizar los tops 🧉' : 'Deslizá para actualizar...'
+				}}
+			</span>
+		</div>
 		<ul v-if="topPlayedState.length > 0" class="flex flex-col">
 			<li
 				v-for="(t, i) in topPlayedState"
