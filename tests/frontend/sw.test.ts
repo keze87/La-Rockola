@@ -91,8 +91,8 @@ describe('public/sw.js lifecycle & offline resilience', () => {
 		expect(waitPromises.length).toBe(1);
 		await Promise.all(waitPromises);
 
-		expect(cachesMock.open).toHaveBeenCalledWith('rockola-shell-v2');
-		const shellCache = await cachesMock.open('rockola-shell-v2');
+		expect(cachesMock.open).toHaveBeenCalledWith('rockola-shell-v3');
+		const shellCache = await cachesMock.open('rockola-shell-v3');
 		expect(shellCache.addAll).toHaveBeenCalled();
 		expect(selfObj.skipWaiting).toHaveBeenCalledTimes(1);
 	});
@@ -103,14 +103,16 @@ describe('public/sw.js lifecycle & offline resilience', () => {
 		store.set('rockola-shell-v1', new Map());
 		store.set('obsolete-v0', new Map());
 		store.set('rockola-shell-v2', new Map());
+		store.set('rockola-shell-v3', new Map());
 
 		const waitPromises: Promise<unknown>[] = [];
 		listeners.get('activate')!({ waitUntil: (p: Promise<unknown>) => waitPromises.push(p) });
 		await Promise.all(waitPromises);
 
 		expect(cachesMock.delete).toHaveBeenCalledWith('rockola-shell-v1');
+		expect(cachesMock.delete).toHaveBeenCalledWith('rockola-shell-v2');
 		expect(cachesMock.delete).toHaveBeenCalledWith('obsolete-v0');
-		expect(cachesMock.delete).not.toHaveBeenCalledWith('rockola-shell-v2');
+		expect(cachesMock.delete).not.toHaveBeenCalledWith('rockola-shell-v3');
 		expect(selfObj.clients.claim).toHaveBeenCalledTimes(1);
 	});
 
@@ -140,7 +142,7 @@ describe('public/sw.js lifecycle & offline resilience', () => {
 		expect(waitPromises.length).toBeGreaterThan(0);
 		await Promise.all(waitPromises);
 
-		expect(cacheObjects.get('rockola-shell-v2')?.put).toHaveBeenCalled();
+		expect(cacheObjects.get('rockola-shell-v3')?.put).toHaveBeenCalled();
 
 		// Segundo pedido en modo avión (network rejects) -> responde desde caché
 		fetchMock.mockRejectedValueOnce(new Error('Offline'));
@@ -179,7 +181,7 @@ describe('public/sw.js lifecycle & offline resilience', () => {
 	it('returns network response cleanly even when cache.put fails with QuotaExceededError', async () => {
 		const fetchMock = vi.fn().mockResolvedValue(new Response('console.log("asset")', { status: 200 }));
 		const { listeners, cachesMock } = loadServiceWorkerEnv(fetchMock);
-		const c = await cachesMock.open('rockola-shell-v2');
+		const c = await cachesMock.open('rockola-shell-v3');
 		c.put.mockRejectedValue(new DOMException('Quota exceeded', 'QuotaExceededError'));
 
 		const waitPromises: Promise<unknown>[] = [];

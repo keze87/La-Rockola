@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rockola-shell-v2';
+const CACHE_NAME = 'rockola-shell-v3';
 const SHELL_ASSETS = ['./', './index.html', './manifest.webmanifest', './favicon.png', './icon-192.png'];
 const BYPASS_SEGMENTS = [
 	'api',
