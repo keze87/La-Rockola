@@ -2,6 +2,7 @@ package ar.carpincho.rockola
 
 import android.app.Application
 import android.util.Log
+import androidx.appcompat.app.AppCompatDelegate
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
 
@@ -24,6 +25,7 @@ class RockolaApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
         Thread(
             {
                 try {

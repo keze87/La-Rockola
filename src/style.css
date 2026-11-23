@@ -30,6 +30,8 @@
 }
 
 :root {
+	color-scheme: dark;
+	accent-color: var(--color-carpincho-primary);
 	--target-size: 24px;
 	--rockola-ime-height: 0px;
 	--rockola-safe-top: max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px));
