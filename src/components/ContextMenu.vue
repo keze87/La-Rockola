@@ -135,7 +135,7 @@
 
 		closeCtxMenu();
 		await toggleFavorite(track.path);
-		haptic();
+		haptic('confirm');
 	}
 
 	async function ctxPauseAfter() {
@@ -185,7 +185,7 @@
 			if (newIndex > 0) await moveQueueItem(newIndex, 0);
 		}
 
-		haptic();
+		haptic('confirm');
 	}
 
 	async function ctxAddToQueue() {
@@ -199,7 +199,7 @@
 			await toggleQueue(track.path);
 		}
 
-		haptic();
+		haptic('confirm');
 	}
 
 	// --- Acciones desde la Fila ---

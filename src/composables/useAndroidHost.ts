@@ -71,6 +71,9 @@ export interface MediaPositionPayload {
 	paused: boolean;
 }
 
+export type HapticKind =
+	'tap' | 'long_press' | 'confirm' | 'reject' | 'gesture_start' | 'gesture_end' | 'toggle_on' | 'toggle_off' | 'tick';
+
 export interface MediaTargetPayload {
 	mode: 'host' | 'remote';
 	origin: string;
@@ -98,7 +101,7 @@ export interface RockolaServerPlugin {
 	updateMediaNotification(options: MediaNotificationPayload): Promise<{ updated: boolean }>;
 	updateMediaPosition(options: MediaPositionPayload): Promise<{ updated: boolean }>;
 	setMediaTarget?(options: MediaTargetPayload): Promise<{ updated: boolean }>;
-	hapticFeedback(options?: { heavy?: boolean }): Promise<{ performed: boolean }>;
+	hapticFeedback(options?: { kind?: HapticKind; heavy?: boolean }): Promise<{ performed: boolean }>;
 	setKeepScreenOn(options: { enabled: boolean }): Promise<{ enabled: boolean }>;
 	shareUrl(options: { url: string; title?: string; text?: string }): Promise<{ shared: boolean }>;
 	consumePendingShortcut(): Promise<{ action: string | null }>;
@@ -243,9 +246,10 @@ export function setAndroidBackHandlerEnabled(enabled: boolean): void {
 	});
 }
 
-export function triggerAndroidHaptic(heavy = false): void {
+export function triggerAndroidHaptic(kindOrHeavy: HapticKind | boolean = 'tap'): void {
 	if (!isNativeAndroidHost()) return;
-	void RockolaServer.hapticFeedback({ heavy }).catch(() => {
+	const kind: HapticKind = typeof kindOrHeavy === 'boolean' ? (kindOrHeavy ? 'long_press' : 'tap') : kindOrHeavy;
+	void Promise.resolve(RockolaServer.hapticFeedback({ kind })).catch(() => {
 		// Fallamos silenciosamente si el puente nativo todavía no está listo
 	});
 }

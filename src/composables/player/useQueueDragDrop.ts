@@ -3,6 +3,7 @@
 
 import { computed, ref, type Ref } from 'vue';
 import type { Track } from '../../types';
+import type { HapticKind } from './useHaptics';
 
 export interface UnifiedTrackItem {
 	id: string;
@@ -18,7 +19,7 @@ export interface UseQueueDragDropOptions {
 	currentTrackPath: Ref<string | null>;
 	queueState: Ref<string[]>;
 	getTrackInfo: (path: string) => Track;
-	haptic: (heavy?: boolean) => void;
+	haptic: (kindOrHeavy?: HapticKind | boolean) => void;
 	openCtxMenu: (e: MouseEvent | TouchEvent, track: Track, source: string, index: number | null) => void;
 	moveInPlaylist: (fromIndex: number, toIndex: number) => void;
 	moveQueueItem: (index: number, target: 'first' | 'last' | number) => void;
@@ -135,6 +136,7 @@ export function useQueueDragDrop(options: UseQueueDragDropOptions) {
 
 	function dragStart(e: DragEvent, index: number) {
 		dragFromIndex.value = index;
+		haptic('gesture_start');
 		(e.currentTarget as HTMLElement)?.classList?.add('opacity-40');
 
 		if (e.dataTransfer) {
@@ -182,6 +184,7 @@ export function useQueueDragDrop(options: UseQueueDragDropOptions) {
 		if (finalIndex > dragFromIndex.value) finalIndex--;
 
 		if (finalIndex !== dragFromIndex.value) {
+			haptic('gesture_end');
 			moveInPlaylist(dragFromIndex.value, finalIndex);
 		}
 
@@ -198,6 +201,7 @@ export function useQueueDragDrop(options: UseQueueDragDropOptions) {
 		if (dragFromIndex.value === null) return;
 		const lastIndex = unifiedQueue.value.length - 1;
 		if (lastIndex >= 0 && dragFromIndex.value !== lastIndex) {
+			haptic('gesture_end');
 			moveInPlaylist(dragFromIndex.value, lastIndex);
 		}
 		dragFromIndex.value = null;

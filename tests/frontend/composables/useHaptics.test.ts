@@ -138,8 +138,15 @@ describe('useHaptics.ts', () => {
 			haptic(false);
 			haptic(true);
 
-			expect(nativeHapticSpy).toHaveBeenNthCalledWith(1, false);
-			expect(nativeHapticSpy).toHaveBeenNthCalledWith(2, true);
+			expect(nativeHapticSpy).toHaveBeenNthCalledWith(1, 'tap');
+			expect(nativeHapticSpy).toHaveBeenNthCalledWith(2, 'long_press');
+
+			haptic('confirm');
+			haptic('reject');
+			haptic('tick');
+			expect(nativeHapticSpy).toHaveBeenNthCalledWith(3, 'confirm');
+			expect(nativeHapticSpy).toHaveBeenNthCalledWith(4, 'reject');
+			expect(nativeHapticSpy).toHaveBeenNthCalledWith(5, 'tick');
 			expect(mockVibrate).not.toHaveBeenCalled();
 			expect(audioCtorSpy).not.toHaveBeenCalled();
 		} finally {

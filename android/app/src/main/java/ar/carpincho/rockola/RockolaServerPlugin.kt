@@ -11,11 +11,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.os.VibratorManager
 import android.provider.Settings
-import android.view.HapticFeedbackConstants
 import android.view.WindowManager
 import androidx.activity.result.ActivityResult
 import androidx.core.app.ActivityCompat
@@ -121,16 +117,6 @@ class RockolaServerPlugin : Plugin() {
         val percent = ((curVol * 100f) / maxVol).roundToInt().coerceIn(0, 100)
         val muted = am.isStreamMute(AudioManager.STREAM_MUSIC) || curVol == 0
         return Pair(percent, muted)
-    }
-
-    private fun getSystemVibrator(): Vibrator? {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val vm = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
-            vm?.defaultVibrator
-        } else {
-            @Suppress("DEPRECATION")
-            context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-        }
     }
 
     private fun resolveConfiguredMusicDir(): String? {
@@ -468,41 +454,19 @@ class RockolaServerPlugin : Plugin() {
 
     @PluginMethod
     fun hapticFeedback(call: PluginCall) {
-        val heavy = call.getBoolean("heavy") ?: false
-        val vibrator = getSystemVibrator()
-        if (vibrator?.hasVibrator() == true) {
-            try {
-                val durationMs = if (heavy) 36L else 14L
-                val amplitude = if (heavy) 210 else 110
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    vibrator.vibrate(VibrationEffect.createOneShot(durationMs, amplitude))
-                } else {
-                    @Suppress("DEPRECATION")
-                    vibrator.vibrate(durationMs)
-                }
-                call.resolve(JSObject().apply { put("performed", true) })
-                return
-            } catch (_: Exception) {
-                // Caemos al feedback táctil del WebView si el dispositivo restringe Vibrator
-            }
-        }
-
+        val kind = HapticPolicy.normalizeKind(
+            kind = call.getString("kind"),
+            heavy = call.getBoolean("heavy") ?: false,
+        )
         val webView = bridge?.webView
         if (webView == null) {
             call.resolve(JSObject().apply { put("performed", false) })
             return
         }
-        val constant = if (heavy) {
-            HapticFeedbackConstants.LONG_PRESS
-        } else {
-            HapticFeedbackConstants.VIRTUAL_KEY
-        }
+        val constant = HapticPolicy.resolveConstant(kind)
         webView.post {
-            @Suppress("DEPRECATION")
-            val performed = webView.performHapticFeedback(
-                constant,
-                HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING,
-            )
+            // Sin FLAG_IGNORE_VIEW_SETTING ni FLAG_IGNORE_GLOBAL_SETTING: respeta los ajustes del sistema
+            val performed = webView.performHapticFeedback(constant)
             call.resolve(JSObject().apply { put("performed", performed) })
         }
     }

@@ -271,7 +271,7 @@
 	}
 
 	function handleToggleRemoteServerSwitch(next: boolean) {
-		haptic();
+		haptic(next ? 'toggle_on' : 'toggle_off');
 		if (next) {
 			remoteServerInput.value = activeRemoteServerUrl.value ?? lastRemoteServerUrl.value ?? '';
 			isRemoteServerModalOpen.value = true;
@@ -292,11 +292,12 @@
 			const url = await connectToRemoteServer(remoteServerInput.value);
 			isRemoteServerModalOpen.value = false;
 			showToast(`Conectado al servidor ${url}`, 'success');
-			haptic();
+			haptic('confirm');
 			void loadLibrary(false);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : 'No se pudo conectar al servidor';
 			showToast(msg, 'error');
+			haptic('reject');
 		} finally {
 			isConnectingRemote.value = false;
 		}

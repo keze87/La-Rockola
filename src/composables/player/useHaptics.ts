@@ -1,14 +1,22 @@
 import { useVibrate } from '@vueuse/core';
-import { isNativeAndroidHost, triggerAndroidHaptic } from '../useAndroidHost';
+import { type HapticKind, isNativeAndroidHost, triggerAndroidHaptic } from '../useAndroidHost';
+
+export type { HapticKind };
 
 const { vibrate } = useVibrate();
 
+function isHeavyHapticKind(kind: HapticKind): boolean {
+	return kind === 'long_press' || kind === 'reject' || kind === 'confirm';
+}
+
 export function useHaptics() {
-	function haptic(heavy: boolean = false) {
+	function haptic(kindOrHeavy: HapticKind | boolean = 'tap') {
+		const kind: HapticKind = typeof kindOrHeavy === 'boolean' ? (kindOrHeavy ? 'long_press' : 'tap') : kindOrHeavy;
 		if (isNativeAndroidHost()) {
-			triggerAndroidHaptic(heavy);
+			triggerAndroidHaptic(kind);
 			return;
 		}
+		const heavy = typeof kindOrHeavy === 'boolean' ? kindOrHeavy : isHeavyHapticKind(kind);
 		if ('vibrate' in navigator && typeof navigator.vibrate === 'function') {
 			vibrate(heavy ? [10, 30, 20] : 10);
 			return;
