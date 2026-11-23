@@ -205,7 +205,7 @@
 			<button
 				type="button"
 				:class="[
-					'touch-target hidden h-10 w-10 items-center justify-center rounded-full transition active:scale-90 sm:flex',
+					'touch-target tap-feedback hidden h-10 w-10 items-center justify-center rounded-full transition sm:flex',
 					pauseAfterPath === currentTrackPath && currentTrackPath
 						? 'text-carpincho-warning'
 						: 'text-gray-400 hover:text-white',
@@ -231,7 +231,7 @@
 				type="button"
 				:aria-label="isPlaying ? 'Pausar' : 'Reproducir'"
 				:class="[
-					'flex h-14 w-14 items-center justify-center rounded-full text-white shadow-lg transition active:scale-90',
+					'touch-target tap-feedback flex h-14 w-14 items-center justify-center rounded-full text-white shadow-lg transition',
 					isPlaying ? 'bg-orange-600 hover:bg-orange-500' : 'bg-green-600 hover:bg-green-500',
 				]"
 				@click="
@@ -244,7 +244,7 @@
 			<button
 				type="button"
 				aria-label="Siguiente tema"
-				class="touch-target flex h-10 w-10 items-center justify-center rounded-full bg-gray-700 text-white shadow transition hover:bg-gray-600 active:scale-90"
+				class="touch-target tap-feedback flex h-10 w-10 items-center justify-center rounded-full bg-gray-700 text-white shadow transition hover:bg-gray-600"
 				@click="
 					skip();
 					haptic();

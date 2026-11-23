@@ -45,6 +45,27 @@
 	min-width: var(--target-size);
 }
 
+.tap-feedback {
+	position: relative;
+	transition: background-color 0.15s ease-out;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	.tap-feedback {
+		transition:
+			background-color 0.15s ease-out,
+			transform 0.12s ease-out;
+	}
+
+	.tap-feedback:active {
+		transform: scale(0.95);
+	}
+}
+
+.tap-feedback:active {
+	background-color: color-mix(in srgb, currentColor 14%, transparent);
+}
+
 dialog:modal {
 	overscroll-behavior: contain;
 }
@@ -202,16 +223,6 @@ button,
 	touch-action: manipulation;
 }
 
-@media (pointer: coarse) {
-	.tab-content {
-		scrollbar-width: none;
-	}
-
-	.tab-content::-webkit-scrollbar {
-		display: none;
-	}
-}
-
 #app {
 	display: flex;
 	flex-direction: column;
@@ -244,10 +255,22 @@ button,
 	}
 }
 
-/* En pantallas táctiles ampliamos el mínimo táctil y ocultamos scrollbars de escritorio */
+/* En pantallas táctiles ampliamos el mínimo táctil a 48px, ocultamos scrollbars y quitamos cursor-pointer */
 @media (pointer: coarse) {
 	:root {
-		--target-size: 44px;
+		--target-size: 48px;
+	}
+
+	button,
+	[role='button'],
+	[role='tab'] {
+		cursor: default;
+	}
+
+	.touch-target-hit::after {
+		content: '';
+		position: absolute;
+		inset: -12px;
 	}
 
 	.tab-content {

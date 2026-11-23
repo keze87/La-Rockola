@@ -47,7 +47,7 @@
 		<button
 			v-if="showFavorite"
 			type="button"
-			class="bg-carpincho-panel absolute z-20 flex cursor-pointer items-center justify-center rounded-full shadow transition select-none active:scale-90"
+			class="touch-target-hit tap-feedback bg-carpincho-panel absolute z-20 flex cursor-pointer items-center justify-center rounded-full shadow transition select-none"
 			:class="[buttonPosition, buttonSize]"
 			:aria-label="isFavorite ? 'Quitar de favoritos' : 'Agregar a favoritos'"
 			@click.stop.prevent="toggleFavorite"

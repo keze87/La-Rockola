@@ -12,7 +12,8 @@
 	// Clases de estructura y maquetado extraídas
 	const trackGridClass =
 		'grid grid-cols-[6.5rem_minmax(0,1fr)_minmax(0,1fr)] sm:grid-cols-[9rem_minmax(0,1fr)_minmax(0,1fr)_5.5rem]';
-	const btnBaseClass = 'flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full transition';
+	const btnBaseClass =
+		'touch-target tap-feedback flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full transition';
 	const btnHoverClass = 'hover:bg-black/20 active:bg-black/30';
 
 	const {

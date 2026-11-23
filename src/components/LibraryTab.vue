@@ -114,7 +114,9 @@
 		<!-- Encabezado fijo con buscador y filtros -->
 		<div class="bg-carpincho-bg sticky top-0 z-30 flex items-center gap-2 px-4 py-3 shadow-md">
 			<button
-				class="hover:text-carpincho-warning flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-800 text-white shadow transition active:scale-90"
+				type="button"
+				aria-label="Ir al tema actual"
+				class="touch-target tap-feedback hover:text-carpincho-warning flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-800 text-white shadow transition"
 				title="Ir al tema actual"
 				@click="
 					scrollToCurrent();
@@ -124,8 +126,10 @@
 				<i class="material-icons">my_location</i>
 			</button>
 			<button
+				type="button"
+				aria-label="Mostrar sólo favoritos"
 				:class="[
-					'flex h-10 w-10 shrink-0 items-center justify-center rounded-full shadow transition',
+					'touch-target tap-feedback flex h-10 w-10 shrink-0 items-center justify-center rounded-full shadow transition',
 					showFavoritesOnly
 						? 'bg-carpincho-warning text-carpincho-panel'
 						: 'hover:text-carpincho-warning bg-gray-800 text-white',
@@ -146,13 +150,13 @@
 					type="text"
 					aria-label="Buscar canciones o artistas"
 					placeholder="Buscá un buen tema pa' acompañar los mates..."
-					class="border-carpincho-primary focus:border-carpincho-secondary text-carpincho-text w-full border-b bg-transparent py-2 pr-10 placeholder-gray-500 transition-colors outline-none"
+					class="border-carpincho-primary focus:border-carpincho-secondary text-carpincho-text w-full border-b bg-transparent py-2 pr-12 placeholder-gray-500 transition-colors outline-none"
 				/>
 				<button
 					v-show="searchQuery"
 					type="button"
 					aria-label="Limpiar búsqueda"
-					class="touch-target absolute top-1/2 right-1 inline-flex -translate-y-1/2 cursor-pointer items-center justify-center rounded-full p-1"
+					class="touch-target tap-feedback absolute top-1/2 right-0 inline-flex -translate-y-1/2 items-center justify-center rounded-full p-1"
 					@click="clearSearch"
 				>
 					<i class="material-icons text-carpincho-secondary" aria-hidden="true">close</i>
