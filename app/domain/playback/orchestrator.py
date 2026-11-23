@@ -1015,6 +1015,8 @@ class PlaybackOrchestrator:
 									self.pause_after_path = self.radio_announcement_path
 								self.is_synthesizing_radio = False
 								await self.play_track(self.radio_announcement_path)
+								if next_track_path and hasattr(self.mpv, "start_radio_bed"):
+									await self.mpv.start_radio_bed(next_track_path, offset_sec=bg_offset, volume=0.1)
 								await broadcast_state()
 								return
 							logger.warning(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -312,3 +313,57 @@ async def test_consecutive_position_ticks_do_not_re_resolve_jclass(
 
 	assert jclass_calls == 1
 	assert active_instance_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_android_player_controller_delegates_radio_bed(monkeypatch: pytest.MonkeyPatch) -> None:
+	"""start_radio_bed y stop_radio_bed deben delegar en AndroidAudioPlayer para mezclar cortina en vivo."""
+	from app.infrastructure.mpv import android_controller
+
+	kotlin_player = MagicMock()
+	monkeypatch.setattr(android_controller, "resolve_native_android_player", lambda: kotlin_player)
+
+	ctrl = android_controller.AndroidPlayerController(native_player=kotlin_player)
+	await ctrl.start_radio_bed("content://music/next.mp3", offset_sec=42.5, volume=0.1)
+	kotlin_player.startRadioBed.assert_called_once_with("content://music/next.mp3", 42.5, 0.1)
+
+	await ctrl.stop_radio_bed()
+	kotlin_player.stopRadioBed.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_starts_radio_bed_when_playing_radio_announcement(
+	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+	"""Al reproducir locución radial con mpv.start_radio_bed disponible, debe iniciar la cortina del tema siguiente."""
+	from app.domain.playback import orchestrator as orch_mod
+	from app.domain.playback.orchestrator import PlaybackOrchestrator
+
+	orch = PlaybackOrchestrator(db_path=tmp_path / "rockola.db")
+	orch.radio_mode_enabled = True
+	orch.radio_service = MagicMock()
+	orch.radio_service.is_available = True
+	orch.radio_service.announcement_path = tmp_path / "radio_announcement.mp3"
+	orch.radio_service.pregenerated_announcement = None
+	orch.radio_service.pregeneration_task = None
+	orch.radio_service.get_or_synthesize = AsyncMock(return_value=(True, "Carpincho Locutor", "Hola", None, "Locutor"))
+
+	next_uri = "content://com.android.externalstorage.documents/tree/music/next.mp3"
+	orch.queue_manager.current_track = "content://com.android.externalstorage.documents/tree/music/prev.mp3"
+	orch.queue_manager.queue = [next_uri]
+	orch.tracks_cache = [{"path": next_uri, "duration_str": "2:00"}]
+	orch.last_radio_time = 0.0
+	orch.radio_time_until_next = 1.0
+
+	orch.mpv = MagicMock()
+	orch.mpv.start_radio_bed = AsyncMock()
+	orch.play_track = AsyncMock()
+	orch._archive_radio_announcement = MagicMock()
+
+	monkeypatch.setattr(orch_mod.radio_service_mod, "check_internet_async", AsyncMock(return_value=True), raising=False)
+	monkeypatch.setattr(orch_mod, "broadcast_state", AsyncMock())
+
+	await orch.play_next()
+
+	orch.play_track.assert_awaited_once_with(orch.radio_announcement_path)
+	orch.mpv.start_radio_bed.assert_awaited_once_with(next_uri, offset_sec=60.0, volume=0.1)

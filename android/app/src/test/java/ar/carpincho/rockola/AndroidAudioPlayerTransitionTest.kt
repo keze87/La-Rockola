@@ -87,4 +87,21 @@ class AndroidAudioPlayerTransitionTest {
         assertEquals(1.0f, AndroidAudioPlayer.computePlayerGain(150.0, muted = false), 0.001f)
         assertEquals(0.0f, AndroidAudioPlayer.computePlayerGain(-10.0, muted = false), 0.001f)
     }
+
+    @Test
+    fun `ganancia de cortina radial escala por volumen maestro, ratio, fade y mute`() {
+        assertEquals(0.05f, AndroidAudioPlayer.computeBedGain(50.0, muted = false, bedRatio = 0.1f, fadeEnvelope = 1.0f), 0.0001f)
+        assertEquals(0.025f, AndroidAudioPlayer.computeBedGain(50.0, muted = false, bedRatio = 0.1f, fadeEnvelope = 0.5f), 0.0001f)
+        assertEquals(0.0f, AndroidAudioPlayer.computeBedGain(80.0, muted = true, bedRatio = 0.1f, fadeEnvelope = 1.0f), 0.0001f)
+        assertEquals(0.0f, AndroidAudioPlayer.computeBedGain(80.0, muted = false, bedRatio = -0.2f, fadeEnvelope = 1.0f), 0.0001f)
+    }
+
+    @Test
+    fun `envolvente de fade de cortina sube en fade-in y baja al acercarse el fin del anuncio`() {
+        assertEquals(0.0f, AndroidAudioPlayer.computeBedFadeEnvelope(elapsedMs = 0L, durationMs = 10000L), 0.001f)
+        assertEquals(0.5f, AndroidAudioPlayer.computeBedFadeEnvelope(elapsedMs = 500L, durationMs = 10000L), 0.001f)
+        assertEquals(1.0f, AndroidAudioPlayer.computeBedFadeEnvelope(elapsedMs = 5000L, durationMs = 10000L), 0.001f)
+        assertEquals(0.5f, AndroidAudioPlayer.computeBedFadeEnvelope(elapsedMs = 9250L, durationMs = 10000L), 0.001f)
+        assertEquals(0.0f, AndroidAudioPlayer.computeBedFadeEnvelope(elapsedMs = 10000L, durationMs = 10000L), 0.001f)
+    }
 }

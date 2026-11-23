@@ -47,6 +47,9 @@ class AndroidAudioPlayer(
         private const val TAG = "RockolaExoPlayer"
         private const val POSITION_TICK_MS = 500L
         private const val MAX_CONSECUTIVE_ERRORS = 3
+        private const val BED_FADE_IN_MS = 1000L
+        private const val BED_FADE_OUT_MS = 1500L
+        private const val BED_FADE_TICK_MS = 50L
 
         @Volatile
         private var activeInstance: AndroidAudioPlayer? = null
@@ -71,6 +74,29 @@ class AndroidAudioPlayer(
             if (muted) return 0f
             return (volPercent.coerceIn(0.0, 100.0) / 100.0).toFloat()
         }
+
+        fun computeBedGain(
+            volPercent: Double,
+            muted: Boolean,
+            bedRatio: Float,
+            fadeEnvelope: Float,
+        ): Float {
+            val master = computePlayerGain(volPercent, muted)
+            val safeRatio = bedRatio.coerceIn(0f, 1f)
+            val safeEnv = fadeEnvelope.coerceIn(0f, 1f)
+            return master * safeRatio * safeEnv
+        }
+
+        fun computeBedFadeEnvelope(elapsedMs: Long, durationMs: Long): Float {
+            val safeElapsed = elapsedMs.coerceAtLeast(0L)
+            val fadeIn = (safeElapsed.toFloat() / BED_FADE_IN_MS.toFloat()).coerceIn(0f, 1f)
+            if (durationMs <= BED_FADE_IN_MS + BED_FADE_OUT_MS) {
+                return fadeIn
+            }
+            val remainingMs = (durationMs - safeElapsed).coerceAtLeast(0L)
+            val fadeOut = (remainingMs.toFloat() / BED_FADE_OUT_MS.toFloat()).coerceIn(0f, 1f)
+            return minOf(fadeIn, fadeOut)
+        }
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -78,10 +104,13 @@ class AndroidAudioPlayer(
         Thread(runnable, "RockolaPyCallback").apply { isDaemon = true }
     }
     private var player: ExoPlayer? = null
+    private var bedPlayer: ExoPlayer? = null
     @Volatile
     private var currentVolumePercent: Double = 100.0
     @Volatile
     private var isMuted: Boolean = false
+    private var bedTargetVolumeRatio: Float = 0.1f
+    private var bedFadeEnvelope: Float = 0f
     private var consecutiveErrors: Int = 0
     private var lastReportedPaused: Boolean? = null
     private var isLoadingMedia: Boolean = false
@@ -103,6 +132,41 @@ class AndroidAudioPlayer(
                 mainHandler.postDelayed(this, POSITION_TICK_MS)
             }
         }
+    }
+
+    private val bedFadeTicker = object : Runnable {
+        override fun run() {
+            val bp = bedPlayer ?: return
+            val p = player
+            if (p != null && bp.playbackState != Player.STATE_IDLE) {
+                val posMs = p.currentPosition.coerceAtLeast(0L)
+                val rawDur = p.duration
+                val durMs = if (rawDur > 0L && rawDur != C.TIME_UNSET) rawDur else 0L
+                bedFadeEnvelope = computeBedFadeEnvelope(posMs, durMs)
+                bp.volume = computeBedGain(currentVolumePercent, isMuted, bedTargetVolumeRatio, bedFadeEnvelope)
+                mainHandler.postDelayed(this, BED_FADE_TICK_MS)
+            }
+        }
+    }
+
+    private fun parseMediaUri(pathOrUrl: String): Uri {
+        return if (
+            pathOrUrl.startsWith("http://") ||
+            pathOrUrl.startsWith("https://") ||
+            pathOrUrl.startsWith("content://")
+        ) {
+            Uri.parse(pathOrUrl)
+        } else {
+            Uri.fromFile(File(pathOrUrl))
+        }
+    }
+
+    private fun stopBedInternal() {
+        mainHandler.removeCallbacks(bedFadeTicker)
+        bedFadeEnvelope = 0f
+        val bp = bedPlayer ?: return
+        bp.stop()
+        bp.clearMediaItems()
     }
 
     private fun emitPauseIfChanged(paused: Boolean) {
@@ -127,6 +191,11 @@ class AndroidAudioPlayer(
                 .apply {
                     addListener(object : Player.Listener {
                         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                            bedPlayer?.let { bp ->
+                                if (bp.playbackState != Player.STATE_IDLE) {
+                                    bp.playWhenReady = playWhenReady
+                                }
+                            }
                             emitPauseIfChanged(!playWhenReady)
                         }
 
@@ -158,6 +227,7 @@ class AndroidAudioPlayer(
                                 isLoadingMedia = false
                                 consecutiveErrors = 0
                                 mainHandler.removeCallbacks(positionTicker)
+                                stopBedInternal()
                                 dispatchToPython("on_eof")
                             }
                         }
@@ -181,6 +251,7 @@ class AndroidAudioPlayer(
     }
 
     private fun stopInternal() {
+        stopBedInternal()
         val p = player ?: return
         isLoadingMedia = false
         p.stop()
@@ -194,17 +265,10 @@ class AndroidAudioPlayer(
 
     fun loadFile(pathOrUrl: String) {
         mainHandler.post {
+            stopBedInternal()
             val p = player ?: return@post
             try {
-                val uri = if (
-                    pathOrUrl.startsWith("http://") ||
-                    pathOrUrl.startsWith("https://") ||
-                    pathOrUrl.startsWith("content://")
-                ) {
-                    Uri.parse(pathOrUrl)
-                } else {
-                    Uri.fromFile(File(pathOrUrl))
-                }
+                val uri = parseMediaUri(pathOrUrl)
                 lastReportedPaused = null
                 val shouldStartPaused = pendingPauseState == true
                 pendingPauseState = null
@@ -217,6 +281,50 @@ class AndroidAudioPlayer(
                 Log.e(TAG, "No pude cargar audio en ExoPlayer: $pathOrUrl", e)
                 dispatchToPython("on_eof")
             }
+        }
+    }
+
+    fun startRadioBed(pathOrUrl: String, offsetSec: Double = 0.0, volumeRatio: Double = 0.1) {
+        mainHandler.post {
+            try {
+                val bp = bedPlayer ?: ExoPlayer.Builder(context.applicationContext)
+                    .setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(C.USAGE_MEDIA)
+                            .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                            .build(),
+                        false,
+                    )
+                    .build()
+                    .apply {
+                        addListener(object : Player.Listener {
+                            override fun onPlayerError(error: PlaybackException) {
+                                Log.w(TAG, "Error en cortina radial ExoPlayer: ${error.message}")
+                                stopBedInternal()
+                            }
+                        })
+                    }
+                    .also { bedPlayer = it }
+
+                bedTargetVolumeRatio = volumeRatio.toFloat().coerceIn(0f, 1f)
+                bedFadeEnvelope = 0f
+                bp.volume = 0f
+                val startMs = (offsetSec * 1000.0).toLong().coerceAtLeast(0L)
+                bp.setMediaItem(MediaItem.fromUri(parseMediaUri(pathOrUrl)), startMs)
+                bp.prepare()
+                bp.playWhenReady = player?.playWhenReady ?: true
+                mainHandler.removeCallbacks(bedFadeTicker)
+                mainHandler.post(bedFadeTicker)
+            } catch (e: Exception) {
+                Log.w(TAG, "No pude iniciar cortina radial en ExoPlayer: $pathOrUrl", e)
+                stopBedInternal()
+            }
+        }
+    }
+
+    fun stopRadioBed() {
+        mainHandler.post {
+            stopBedInternal()
         }
     }
 
@@ -258,6 +366,7 @@ class AndroidAudioPlayer(
         mainHandler.post {
             val p = player ?: return@post
             p.volume = computePlayerGain(clamped, isMuted)
+            bedPlayer?.volume = computeBedGain(clamped, isMuted, bedTargetVolumeRatio, bedFadeEnvelope)
         }
     }
 
@@ -302,6 +411,7 @@ class AndroidAudioPlayer(
         mainHandler.post {
             val p = player ?: return@post
             p.volume = computePlayerGain(currentVolumePercent, muted)
+            bedPlayer?.volume = computeBedGain(currentVolumePercent, muted, bedTargetVolumeRatio, bedFadeEnvelope)
         }
     }
 
@@ -323,6 +433,9 @@ class AndroidAudioPlayer(
         pythonCallbackExecutor.shutdownNow()
         mainHandler.post {
             mainHandler.removeCallbacks(positionTicker)
+            mainHandler.removeCallbacks(bedFadeTicker)
+            bedPlayer?.release()
+            bedPlayer = null
             player?.release()
             player = null
         }

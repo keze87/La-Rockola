@@ -335,3 +335,15 @@ class AndroidPlayerController:
 		native = self._ensure_native()
 		if native is not None:
 			native.stopPlayback()
+
+	async def start_radio_bed(self, path: str | Path, offset_sec: float = 0.0, volume: float = 0.1) -> None:
+		"""Inicia una cortina musical en vivo con un segundo ExoPlayer sobre la locución radial."""
+		native = self._ensure_native()
+		if native is not None:
+			native.startRadioBed(str(path), float(offset_sec), float(volume))
+
+	async def stop_radio_bed(self) -> None:
+		"""Detiene la cortina musical radial en vivo."""
+		native = self._ensure_native()
+		if native is not None:
+			native.stopRadioBed()
