@@ -22,7 +22,8 @@
 </script>
 
 <script setup lang="ts">
-	import { ref, watch } from 'vue';
+	import { onUnmounted, ref, watch } from 'vue';
+	import { registerOpenModal, unregisterOpenModal } from '../../stores/useUiStore';
 
 	const props = defineProps<{
 		isOpen: boolean;
@@ -41,9 +42,19 @@
 	watch(
 		() => props.isOpen,
 		(open) => {
-			if (open) tokenInput.value = '';
-		}
+			if (open) {
+				tokenInput.value = '';
+				registerOpenModal('lyrics-token-modal', () => emit('close'));
+			} else {
+				unregisterOpenModal('lyrics-token-modal');
+			}
+		},
+		{ immediate: true }
 	);
+
+	onUnmounted(() => {
+		unregisterOpenModal('lyrics-token-modal');
+	});
 
 	function handleSave() {
 		const extracted = extractJwtToken(tokenInput.value);

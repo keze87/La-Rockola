@@ -80,6 +80,7 @@ export interface MediaTargetPayload {
 
 export interface RockolaServerPlugin {
 	markUiReady?(): Promise<{ ready: boolean }>;
+	setBackHandlerEnabled?(options: { enabled: boolean }): Promise<{ enabled: boolean }>;
 	startServer(options?: { port?: number; musicDir?: string }): Promise<AndroidServerInfo>;
 	stopServer(): Promise<{ stopped: boolean }>;
 	getStatus(): Promise<AndroidServerInfo>;
@@ -147,6 +148,13 @@ export function markAndroidUiReady(): void {
 	if (!isNativeAndroidHost() || typeof RockolaServer.markUiReady !== 'function') return;
 	void RockolaServer.markUiReady().catch(() => {
 		// El splash nativo tiene tope de seguridad si el plugin todavía no está listo
+	});
+}
+
+export function setAndroidBackHandlerEnabled(enabled: boolean): void {
+	if (!isNativeAndroidHost() || typeof RockolaServer.setBackHandlerEnabled !== 'function') return;
+	void Promise.resolve(RockolaServer.setBackHandlerEnabled({ enabled })).catch(() => {
+		// Ignoramos errores transitorios si el puente nativo todavía no está listo
 	});
 }
 

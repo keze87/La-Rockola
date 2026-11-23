@@ -1,6 +1,6 @@
 // Store de dominio para pestañas activas, Modo Fogón, red y puntero de transporte WebSocket.
 
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import type { Track } from '../types';
 
 export const activeTab = ref<string>('library');
@@ -11,6 +11,34 @@ export const lyricsEditorTrack = ref<Track | null>(null);
 export const showFogonVolume = ref<boolean>(false);
 export const serverUrl = ref<string | null>(null);
 export const localIp = ref<string | null>(null);
+
+interface OpenModalEntry {
+	id: string;
+	close: () => void;
+}
+
+export const activeModalStack = ref<OpenModalEntry[]>([]);
+export const hasOpenModal = computed(() => activeModalStack.value.length > 0);
+
+export function registerOpenModal(id: string, close: () => void): void {
+	const filtered = activeModalStack.value.filter((item) => item.id !== id);
+	filtered.push({ id, close });
+	activeModalStack.value = filtered;
+}
+
+export function unregisterOpenModal(id: string): void {
+	if (activeModalStack.value.some((item) => item.id === id)) {
+		activeModalStack.value = activeModalStack.value.filter((item) => item.id !== id);
+	}
+}
+
+export function closeTopModal(): boolean {
+	const top = activeModalStack.value[activeModalStack.value.length - 1];
+	if (!top) return false;
+	unregisterOpenModal(top.id);
+	top.close();
+	return true;
+}
 
 let wsSend: ((data: string) => void) | null = null;
 let wsClose: (() => void) | null = null;

@@ -5,6 +5,7 @@
 	import { usePlaybackControls } from '../composables/usePlaybackControls';
 	import { useToasts } from '../composables/player/useToasts';
 	import { apiUrl } from '../composables/useApi';
+	import { registerOpenModal, unregisterOpenModal } from '../stores/useUiStore';
 	import PillButton from './ui/PillButton.vue';
 
 	const props = defineProps<{
@@ -183,20 +184,26 @@
 		() => props.isOpen,
 		(open) => {
 			if (open) {
+				registerOpenModal('weather-location-modal', () => emit('close'));
 				parseLocationString(weatherLocation.value);
 				previewData.value = null;
 				nextTick(() => {
 					initMap();
 				});
-			} else if (leafletMap) {
-				leafletMap.remove();
-				leafletMap = null;
-				marker = null;
+			} else {
+				unregisterOpenModal('weather-location-modal');
+				if (leafletMap) {
+					leafletMap.remove();
+					leafletMap = null;
+					marker = null;
+				}
 			}
-		}
+		},
+		{ immediate: true }
 	);
 
 	onUnmounted(() => {
+		unregisterOpenModal('weather-location-modal');
 		if (leafletMap) {
 			leafletMap.remove();
 			leafletMap = null;

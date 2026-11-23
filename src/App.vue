@@ -1,5 +1,5 @@
 <script setup lang="ts">
-	import { computed, onMounted, onUnmounted, watch } from 'vue';
+	import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 	import { Toaster } from 'vue-sonner';
 	import { apiUrl } from './composables/useApi';
 	import {
@@ -13,6 +13,7 @@
 		isNativeAndroidHost,
 		markAndroidUiReady,
 		pickAndApplyMusicFolder,
+		setAndroidBackHandlerEnabled,
 	} from './composables/useAndroidHost';
 	import { hydrateFromBootSnapshot, isHydratedFromSnapshot } from './composables/player/useLocalSnapshot';
 	import {
@@ -32,7 +33,7 @@
 	import { useToasts } from './composables/player/useToasts';
 	import { useSliderFactory } from './composables/useSliderFactory';
 	import { useContextMenu } from './composables/useContextMenu';
-	import { isLyricsEditorOpen } from './stores/useUiStore';
+	import { closeTopModal, hasOpenModal, isLyricsEditorOpen } from './stores/useUiStore';
 
 	// Componentes aislados de la interfaz
 	import ContextMenu from './components/ContextMenu.vue';
@@ -232,8 +233,44 @@
 		() => isNativeAndroidHost() && isHostMode.value && androidServerStatus.value.needsFolder
 	);
 	const { ctxMenu, closeCtxMenu } = useContextMenu();
+	const isInputFocused = ref(false);
+
+	function isTextInputElement(el: Element | null): el is HTMLElement {
+		if (!(el instanceof HTMLElement)) return false;
+		const tag = el.tagName;
+		return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+	}
+
+	function syncInputFocusState(): void {
+		if (typeof document === 'undefined') return;
+		isInputFocused.value = isTextInputElement(document.activeElement);
+	}
+
+	function handleFocusOut(): void {
+		if (typeof window === 'undefined') return;
+		window.setTimeout(syncInputFocusState, 0);
+	}
 
 	function handleAndroidBack(): boolean {
+		if (typeof document !== 'undefined' && isTextInputElement(document.activeElement)) {
+			document.activeElement.blur();
+			isInputFocused.value = false;
+			return true;
+		}
+		if (closeTopModal()) {
+			return true;
+		}
+		if (typeof document !== 'undefined') {
+			const openDialog = document.querySelector<HTMLDialogElement>('dialog[open]');
+			if (openDialog) {
+				if (typeof openDialog.close === 'function') {
+					openDialog.close();
+				} else {
+					openDialog.removeAttribute('open');
+				}
+				return true;
+			}
+		}
 		if (ctxMenu.visible) {
 			closeCtxMenu();
 			return true;
@@ -251,6 +288,30 @@
 			return true;
 		}
 		return false;
+	}
+
+	const hasClosableBackLayer = computed(
+		() =>
+			isInputFocused.value ||
+			hasOpenModal.value ||
+			ctxMenu.visible ||
+			isLyricsEditorOpen.value ||
+			isFogonMode.value ||
+			activeTab.value !== 'library'
+	);
+
+	watch(
+		hasClosableBackLayer,
+		(enabled) => {
+			setAndroidBackHandlerEnabled(enabled);
+		},
+		{ immediate: true }
+	);
+
+	function handleAndroidBackProgress(progress: number): void {
+		if (typeof document === 'undefined') return;
+		const clamped = Number.isFinite(progress) ? Math.max(0, Math.min(1, progress)) : 0;
+		document.documentElement.style.setProperty('--rockola-back-progress', String(clamped));
 	}
 
 	// Swipe horizontal entre pestañas sin interferir con filas de cola ni sliders
@@ -378,6 +439,7 @@
 	onMounted(() => {
 		initRouter();
 		window.__rockolaHandleBack = handleAndroidBack;
+		window.__rockolaOnBackProgress = handleAndroidBackProgress;
 		window.__rockolaOpenFogon = openFogonFromAndroid;
 		window.__rockolaOpenLibrary = openLibraryFromAndroid;
 		window.__rockolaOpenQueue = openQueueFromAndroid;
@@ -385,6 +447,11 @@
 		window.__rockolaSetPipMode = handleAndroidPipMode;
 		window.__rockolaOnMediaVolumeChanged = handleAndroidMediaVolumeChanged;
 		window.__rockolaOnNativeCommandError = handleNativeCommandError;
+		if (typeof document !== 'undefined') {
+			document.addEventListener('focusin', syncInputFocusState);
+			document.addEventListener('focusout', handleFocusOut);
+			syncInputFocusState();
+		}
 		if (isNativeAndroidHost()) {
 			const snapshotKey = isHostMode.value ? 'host' : `remote:${activeRemoteServerUrl.value}`;
 			hydrateFromBootSnapshot(snapshotKey);
@@ -412,13 +479,19 @@
 
 	onUnmounted(() => {
 		if (typeof document !== 'undefined') {
+			document.removeEventListener('focusin', syncInputFocusState);
+			document.removeEventListener('focusout', handleFocusOut);
 			document.removeEventListener('visibilitychange', handleAndroidVisibilityChange);
 			document.documentElement.classList.remove('android-pip');
+			document.documentElement.style.removeProperty('--rockola-back-progress');
 		}
 		isAndroidPipMode.value = false;
 		if (typeof window === 'undefined') return;
 		if (window.__rockolaHandleBack === handleAndroidBack) {
 			delete window.__rockolaHandleBack;
+		}
+		if (window.__rockolaOnBackProgress === handleAndroidBackProgress) {
+			delete window.__rockolaOnBackProgress;
 		}
 		if (window.__rockolaOpenFogon === openFogonFromAndroid) {
 			delete window.__rockolaOpenFogon;

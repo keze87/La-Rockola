@@ -14,6 +14,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import android.util.Rational
+import androidx.activity.BackEventCompat
 import androidx.activity.OnBackPressedCallback
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AlertDialog
@@ -36,6 +37,13 @@ internal object SplashHoldPolicy {
         if (uiReady) return false
         return elapsedMs < maxHoldMs
     }
+}
+
+/**
+ * Política de atrás predictivo: el callback nativo solo se habilita si JS tiene capas cerrables.
+ */
+internal object BackNavigationPolicy {
+    fun shouldEnableCallback(hasClosableLayer: Boolean): Boolean = hasClosableLayer
 }
 
 /**
@@ -206,9 +214,17 @@ class MainActivity : BridgeActivity() {
     private var notificationPermissionRequested = false
     private val uiReady = AtomicBoolean(false)
     private var splashStartedAtMs: Long = 0L
+    private var backCallback: OnBackPressedCallback? = null
 
     fun markUiReady() {
         uiReady.set(true)
+    }
+
+    fun setBackHandlerEnabled(enabled: Boolean) {
+        val shouldEnable = BackNavigationPolicy.shouldEnableCallback(enabled)
+        runOnUiThread {
+            backCallback?.isEnabled = shouldEnable
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -324,20 +340,34 @@ class MainActivity : BridgeActivity() {
     }
 
     private fun registerBackNavigationHandler() {
-        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+        val callback = object : OnBackPressedCallback(false) {
+            override fun handleOnBackProgressed(backEvent: BackEventCompat) {
+                val p = backEvent.progress.coerceIn(0f, 1f)
+                evaluateJsSafely("window.__rockolaOnBackProgress && window.__rockolaOnBackProgress($p)")
+            }
+
+            override fun handleOnBackCancelled() {
+                evaluateJsSafely("window.__rockolaOnBackProgress && window.__rockolaOnBackProgress(0)")
+            }
+
             override fun handleOnBackPressed() {
+                evaluateJsSafely("window.__rockolaOnBackProgress && window.__rockolaOnBackProgress(0)")
                 val webView = bridge?.webView
                 if (webView == null) {
+                    isEnabled = false
                     moveTaskToBack(true)
                     return
                 }
                 webView.evaluateJavascript("Boolean(window.__rockolaHandleBack && window.__rockolaHandleBack())") { res ->
                     if (res != "true") {
+                        isEnabled = false
                         moveTaskToBack(true)
                     }
                 }
             }
-        })
+        }
+        backCallback = callback
+        onBackPressedDispatcher.addCallback(this, callback)
     }
 
     private fun applyHeadbarSystemBars() {

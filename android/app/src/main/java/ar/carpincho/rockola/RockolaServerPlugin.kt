@@ -206,6 +206,13 @@ class RockolaServerPlugin : Plugin() {
     }
 
     @PluginMethod
+    fun setBackHandlerEnabled(call: PluginCall) {
+        val enabled = call.getBoolean("enabled") ?: false
+        (activity as? MainActivity)?.setBackHandlerEnabled(enabled)
+        call.resolve(JSObject().apply { put("enabled", enabled) })
+    }
+
+    @PluginMethod
     fun startServer(call: PluginCall) {
         val port = call.getInt("port") ?: RockolaForegroundService.currentPort
         val musicDir = call.getString("musicDir")

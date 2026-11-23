@@ -49,4 +49,10 @@ class MainActivityPolicyTest {
         org.junit.Assert.assertEquals(50, BootProgressPolicy.computeExtractPercent(5, 10))
         org.junit.Assert.assertEquals(100, BootProgressPolicy.computeExtractPercent(15, 10))
     }
+
+    @Test
+    fun `callback nativo de back solo se habilita cuando hay una capa cerrable`() {
+        assertFalse(BackNavigationPolicy.shouldEnableCallback(false))
+        assertTrue(BackNavigationPolicy.shouldEnableCallback(true))
+    }
 }

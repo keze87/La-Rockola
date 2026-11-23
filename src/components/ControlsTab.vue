@@ -1,5 +1,6 @@
 <script setup lang="ts">
-	import { computed, nextTick, ref, watch } from 'vue';
+	import { computed, nextTick, onUnmounted, ref, watch } from 'vue';
+	import { registerOpenModal, unregisterOpenModal } from '../stores/useUiStore';
 	import { apiUrl } from '../composables/useApi';
 	import {
 		activeRemoteServerUrl,
@@ -200,6 +201,13 @@
 	});
 
 	watch(isRemoteServerModalOpen, async (open) => {
+		if (open) {
+			registerOpenModal('remote-server-modal', () => {
+				isRemoteServerModalOpen.value = false;
+			});
+		} else {
+			unregisterOpenModal('remote-server-modal');
+		}
 		await nextTick();
 		const dlg = remoteDialogRef.value;
 		if (!dlg) return;
@@ -217,6 +225,10 @@
 		} else {
 			dlg.removeAttribute('open');
 		}
+	});
+
+	onUnmounted(() => {
+		unregisterOpenModal('remote-server-modal');
 	});
 
 	function isPointerOutsideDialog(e: PointerEvent, dlg: HTMLDialogElement): boolean {

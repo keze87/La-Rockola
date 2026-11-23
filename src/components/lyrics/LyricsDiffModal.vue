@@ -51,7 +51,8 @@
 </script>
 
 <script setup lang="ts">
-	import { computed } from 'vue';
+	import { computed, onUnmounted, watch } from 'vue';
+	import { registerOpenModal, unregisterOpenModal } from '../../stores/useUiStore';
 
 	const props = defineProps<{
 		isOpen: boolean;
@@ -73,6 +74,22 @@
 		const added = diffLines.value.filter((d) => d.type === 'add').length;
 		const deleted = diffLines.value.filter((d) => d.type === 'delete').length;
 		return { added, deleted };
+	});
+
+	watch(
+		() => props.isOpen,
+		(open) => {
+			if (open) {
+				registerOpenModal('lyrics-diff-modal', () => emit('close'));
+			} else {
+				unregisterOpenModal('lyrics-diff-modal');
+			}
+		},
+		{ immediate: true }
+	);
+
+	onUnmounted(() => {
+		unregisterOpenModal('lyrics-diff-modal');
 	});
 </script>
 
