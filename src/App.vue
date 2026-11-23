@@ -341,14 +341,14 @@
 	}
 
 	function onTabContentTouchStart(e: TouchEvent) {
-		if (e.touches.length !== 1) {
+		if (hasOpenModal.value || e.touches.length !== 1) {
 			resetTabSwipe();
 			return;
 		}
 		const target = e.target as HTMLElement | null;
 		if (
 			target?.closest(
-				'[data-queue-index], [data-history-path], input, textarea, [role="slider"], .drag-slider, .no-tab-swipe'
+				'[data-queue-index], [data-history-path], input, textarea, [role="slider"], .drag-slider, .no-tab-swipe, .leaflet-container, dialog'
 			)
 		) {
 			resetTabSwipe();
@@ -609,11 +609,7 @@
 		<div
 			class="bg-carpincho-panel border-carpincho-border flex max-w-sm flex-col items-center rounded-2xl border p-6 shadow-xl"
 		>
-			<img
-				src="/favicon.png"
-				alt="La Rockola del Carpincho"
-				class="mb-4 h-20 w-20 rounded-2xl shadow"
-			/>
+			<img src="/favicon.png" alt="La Rockola del Carpincho" class="mb-4 h-20 w-20 rounded-2xl shadow" />
 			<h1 class="text-carpincho-warning mb-2 text-xl font-bold">Elegí tu carpeta de música</h1>
 			<p class="text-carpincho-muted mb-6 text-sm leading-relaxed">
 				Para arrancar la ronda en este celu, seleccioná la carpeta de tu memoria interna o tarjeta MicroSD donde
@@ -830,17 +826,17 @@
 
 		<!-- CUERPO PRINCIPAL: NAVEGACIÓN INFERIOR M3 EN MÓVIL / RIEL LATERAL Y DOS PANELES EN PANTALLAS GRANDES -->
 		<div class="flex min-h-0 w-full flex-1 flex-col overflow-hidden md:flex-row">
-			<!-- PESTAÑAS (barra inferior Material 3 en móvil, riel lateral desde md) -->
+			<!-- PESTAÑAS (barra flotante estilo iOS + Carpincho en móvil, riel lateral desde md) -->
 			<nav
 				aria-label="Secciones principales"
-				class="bg-carpincho-panel border-carpincho-border relative z-10 order-2 flex shrink-0 overflow-hidden border-t pb-[var(--rockola-safe-bottom)] shadow-[0_-4px_16px_rgba(0,0,0,0.35)] transition-all duration-300 ease-in-out md:order-1 md:w-24 md:flex-col md:border-t-0 md:border-r md:pb-0 md:shadow-md lg:w-28"
+				class="from-carpincho-panel/90 border-carpincho-border/80 relative z-30 order-2 mx-3 mb-[max(10px,var(--rockola-safe-bottom))] flex shrink-0 overflow-hidden rounded-full border bg-gradient-to-br to-[#2a2420]/90 px-1.5 py-1 shadow-[0_8px_24px_rgba(0,0,0,0.55)] backdrop-blur-xl transition-all duration-300 ease-in-out md:order-1 md:mx-0 md:mb-0 md:w-24 md:flex-col md:rounded-none md:border-t-0 md:border-r md:border-b-0 md:border-l-0 md:bg-none md:px-0 md:py-0 md:pb-0 md:shadow-md md:backdrop-blur-none lg:w-28"
 				:class="[
 					isTabsBarHidden && isShortScreen
-						? 'pointer-events-none max-h-0 translate-y-2 border-t-0 pb-0 opacity-0 md:max-h-none md:translate-y-0 md:opacity-100'
+						? 'pointer-events-none mb-0 max-h-0 translate-y-2 border-0 py-0 opacity-0 md:max-h-none md:translate-y-0 md:opacity-100'
 						: 'max-h-24 translate-y-0 opacity-100 md:max-h-none',
 				]"
 			>
-				<div role="tablist" class="flex w-full md:flex-col md:gap-2 md:px-2 md:py-4">
+				<div role="tablist" class="flex w-full items-center gap-1 md:flex-col md:gap-2 md:px-2 md:py-4">
 					<button
 						v-for="tab in tabs"
 						:key="tab.id"
@@ -849,18 +845,18 @@
 						:aria-selected="activeTab === tab.id"
 						:aria-label="tab.name"
 						:class="[
-							'touch-target tap-feedback flex flex-1 cursor-pointer touch-manipulation flex-col items-center justify-center gap-0.5 py-2 text-center transition-colors duration-150 md:flex-none md:rounded-xl md:py-3',
+							'touch-target tap-feedback flex flex-1 cursor-pointer touch-manipulation flex-col items-center justify-center gap-0.5 rounded-full py-1.5 text-center transition-all duration-150 md:w-full md:flex-none md:rounded-xl md:py-3',
 							activeTab === tab.id
-								? 'text-carpincho-warning'
+								? 'bg-carpincho-primary/25 ring-carpincho-primary/40 text-carpincho-warning shadow-sm ring-1 md:bg-transparent md:shadow-none md:ring-0'
 								: 'hover:bg-carpincho-border/40 text-carpincho-muted',
 						]"
 						@click="switchTab(tab.id)"
 					>
 						<div
-							class="relative flex items-center justify-center rounded-full px-4 py-0.5 transition-colors duration-150"
-							:class="activeTab === tab.id ? 'bg-carpincho-primary/25' : ''"
+							class="relative flex items-center justify-center rounded-full px-3 py-0.5 transition-colors duration-150 md:px-4"
+							:class="activeTab === tab.id ? 'md:bg-carpincho-primary/25' : ''"
 						>
-							<i class="material-icons !text-[22px]" aria-hidden="true">{{ tab.icon }}</i>
+							<i class="material-icons !text-[21px]" aria-hidden="true">{{ tab.icon }}</i>
 							<span
 								v-if="tab.id === 'queue' && queueState.length > 0"
 								class="bg-carpincho-primary absolute -top-1 -right-0.5 flex h-[14px] min-w-[14px] items-center justify-center rounded-full px-[3px] text-[0.55rem] leading-none font-bold text-white"

@@ -372,7 +372,7 @@ Dialogue: 0,0:00:20.00,0:00:24.00,Default,,0,0,0,,{\\kf100}Verso {\\kf100}tres
 		isTabsBarHidden.value = false;
 		await wrapper.vm.$nextTick();
 
-		const tabsBar = wrapper.find('.bg-carpincho-panel.border-carpincho-border.relative.z-10');
+		const tabsBar = wrapper.find('nav[aria-label="Secciones principales"]');
 		expect(tabsBar.classes()).not.toContain('max-h-0');
 
 		// En pantalla petiza con flag activo
@@ -469,6 +469,15 @@ Dialogue: 0,0:00:20.00,0:00:24.00,Default,,0,0,0,,{\\kf100}Verso {\\kf100}tres
 		await container.trigger('touchmove', { touches: [{ clientX: 240, clientY: 205 }] });
 		await container.trigger('touchend');
 		expect(activeTab.value).toBe('queue');
+
+		// Swipe ignorado cuando hay un modal abierto (ej. mapa del clima)
+		const { registerOpenModal, unregisterOpenModal } = await import('@/stores/useUiStore');
+		registerOpenModal('weather-location', () => {});
+		await container.trigger('touchstart', { touches: [{ clientX: 280, clientY: 200 }] });
+		await container.trigger('touchmove', { touches: [{ clientX: 140, clientY: 205 }] });
+		await container.trigger('touchend');
+		expect(activeTab.value).toBe('queue');
+		unregisterOpenModal('weather-location');
 	});
 
 	it('exposes launcher shortcut hooks (__rockolaOpenFogon, __rockolaOpenQueue) and consumes pending Android shortcut on mount', async () => {

@@ -147,11 +147,11 @@ dialog::backdrop {
 	}
 }
 
-/* Barra del reproductor flotante: arriba de la barra inferior Material 3 en móvil */
+/* Barra del reproductor flotante: arriba de la barra flotante inferior en móvil */
 .floating-player {
 	position: fixed;
 	z-index: 50;
-	bottom: calc(72px + var(--rockola-safe-bottom));
+	bottom: calc(82px + max(10px, var(--rockola-safe-bottom)));
 	left: max(12px, var(--rockola-safe-left));
 	right: max(12px, var(--rockola-safe-right));
 }
