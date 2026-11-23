@@ -39,7 +39,7 @@ describe('useUiPersistence', () => {
 		expect(activeTab.value).toBe('top');
 		expect(librarySearchQuery.value).toBe('pappo');
 		expect(showFavoritesOnly.value).toBe(true);
-		expect(isFogonMode.value).toBe(true);
+		expect(isFogonMode.value).toBe(false);
 		expect(restoreTabScroll('top')).toBe(420);
 		expect(restoreTabScroll('library')).toBe(0);
 	});

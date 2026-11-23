@@ -609,24 +609,26 @@ class RockolaServerPlugin : Plugin() {
             return
         }
 
-        AndroidStorageBridge.persistTreePermission(context, uri, result.data?.flags ?: 0)
-        val validation = AndroidStorageBridge.validateTreeUri(context, uri.toString())
-        if (validation.status == SafFolderStatus.OK) {
-            context.getSharedPreferences(RockolaForegroundService.PREFS_NAME, Context.MODE_PRIVATE)
-                .edit()
-                .putString(RockolaForegroundService.KEY_MUSIC_DIR, validation.uri)
-                .apply()
-            RockolaForegroundService.updateMusicDir(validation.uri)
-        }
+        Thread {
+            AndroidStorageBridge.persistTreePermission(context, uri, result.data?.flags ?: 0)
+            val validation = AndroidStorageBridge.validateTreeUri(context, uri.toString())
+            if (validation.status == SafFolderStatus.OK) {
+                context.getSharedPreferences(RockolaForegroundService.PREFS_NAME, Context.MODE_PRIVATE)
+                    .edit()
+                    .putString(RockolaForegroundService.KEY_MUSIC_DIR, validation.uri)
+                    .apply()
+                RockolaForegroundService.updateMusicDir(validation.uri)
+            }
 
-        call.resolve(
-            JSObject().apply {
-                put("path", if (validation.status == SafFolderStatus.OK) validation.uri else JSONObject.NULL)
-                put("uri", validation.uri)
-                put("displayName", validation.displayName ?: JSONObject.NULL)
-                put("status", validation.status.wireName())
-                put("error", validation.error ?: JSONObject.NULL)
-            },
-        )
+            call.resolve(
+                JSObject().apply {
+                    put("path", if (validation.status == SafFolderStatus.OK) validation.uri else JSONObject.NULL)
+                    put("uri", validation.uri)
+                    put("displayName", validation.displayName ?: JSONObject.NULL)
+                    put("status", validation.status.wireName())
+                    put("error", validation.error ?: JSONObject.NULL)
+                },
+            )
+        }.start()
     }
 }

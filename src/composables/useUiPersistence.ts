@@ -78,9 +78,6 @@ export function restoreUiState(): boolean {
 		if (typeof parsed.showFavoritesOnly === 'boolean') {
 			showFavoritesOnly.value = parsed.showFavoritesOnly;
 		}
-		if (typeof parsed.isFogonMode === 'boolean') {
-			isFogonMode.value = parsed.isFogonMode;
-		}
 		return true;
 	} catch {
 		return false;
