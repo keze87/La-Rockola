@@ -1,20 +1,25 @@
 <script setup lang="ts">
+	import { onMounted, ref } from 'vue';
 	import { usePlayer } from '../composables/usePlayer';
 	import { useContextMenuBindings } from '../composables/useContextMenu';
 	import { usePullToRefresh } from '../composables/usePullToRefresh';
+	import { restoreTabScroll, saveTabScroll } from '../composables/useUiPersistence';
 	import FavoritableCover from './ui/FavoritableCover.vue';
 
 	const { topPlayedState, getTrackInfo, toggleQueue, handleScroll, loadLibrary, haptic, isScanning } = usePlayer();
+	const sectionRef = ref<HTMLElement | null>(null);
 
 	const {
 		pullThreshold: PULL_THRESHOLD,
 		pullDistance,
+		pullProgress,
 		onPullTouchStart,
 		onPullTouchMove,
 		onPullTouchEnd,
 		resetPull,
 	} = usePullToRefresh({
 		canRefresh: () => !isScanning.value,
+		onThresholdCrossed: () => haptic('tick'),
 		onHaptic: haptic,
 		onRefresh: () => loadLibrary(false),
 	});
@@ -23,12 +28,21 @@
 		const target = e.target as HTMLElement;
 		if (target) {
 			handleScroll(target.scrollTop);
+			saveTabScroll('top', target.scrollTop);
 		}
 	}
+
+	onMounted(() => {
+		const savedTop = restoreTabScroll('top');
+		if (savedTop > 0 && sectionRef.value) {
+			sectionRef.value.scrollTop = savedTop;
+		}
+	});
 </script>
 
 <template>
 	<section
+		ref="sectionRef"
 		class="tab-content bg-carpincho-bg h-full overflow-y-auto px-4 pt-4"
 		@scroll.passive="onTabScroll"
 		@touchstart.passive="onPullTouchStart"
@@ -36,30 +50,49 @@
 		@touchend="onPullTouchEnd"
 		@touchcancel="resetPull"
 	>
-		<!-- Indicador pull-to-refresh -->
+		<!-- Indicador pull-to-refresh circular estilo Material -->
 		<div
 			v-if="pullDistance > 0"
-			class="bg-carpincho-panel/90 text-carpincho-warning mb-2 flex items-center justify-center gap-2 overflow-hidden rounded-lg text-xs font-bold transition-[height] duration-150"
+			class="mb-2 flex items-center justify-center overflow-hidden transition-[height] duration-150"
 			:style="{ height: pullDistance + 'px' }"
 		>
-			<i
-				class="material-icons text-base transition-transform duration-150"
-				:class="{ 'animate-spin': pullDistance >= PULL_THRESHOLD }"
-				aria-hidden="true"
+			<div
+				class="bg-carpincho-panel border-carpincho-border flex h-10 w-10 items-center justify-center rounded-full border shadow-lg"
+				:style="{ opacity: Math.max(0.35, pullProgress) }"
 			>
-				refresh
-			</i>
-			<span>
-				{{
-					pullDistance >= PULL_THRESHOLD ? 'Soltá para actualizar los tops 🧉' : 'Deslizá para actualizar...'
-				}}
-			</span>
+				<svg
+					viewBox="0 0 24 24"
+					class="text-carpincho-warning h-5 w-5"
+					:class="{ 'material-ptr-spin': pullDistance >= PULL_THRESHOLD }"
+					:style="
+						pullDistance < PULL_THRESHOLD
+							? { transform: `rotate(${Math.round(pullProgress * 270)}deg)` }
+							: undefined
+					"
+					aria-hidden="true"
+				>
+					<circle
+						cx="12"
+						cy="12"
+						r="9"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2.5"
+						stroke-linecap="round"
+						:stroke-dasharray="56"
+						:stroke-dashoffset="Math.round(56 * (1 - Math.max(0.2, pullProgress * 0.8)))"
+					/>
+				</svg>
+			</div>
 		</div>
 		<ul v-if="topPlayedState.length > 0" class="flex flex-col">
 			<li
 				v-for="(t, i) in topPlayedState"
 				:key="t.path"
-				class="border-carpincho-border hover:bg-carpincho-panel flex cursor-pointer items-center rounded-lg border-b p-4 transition select-none active:scale-[0.98]"
+				:class="[
+					'border-carpincho-border hover:bg-carpincho-panel flex cursor-pointer items-center rounded-lg border-b p-4 transition select-none active:scale-[0.98]',
+					i >= 10 ? 'deferred-row' : '',
+				]"
 				@click="toggleQueue(t.path)"
 				v-on="useContextMenuBindings(() => getTrackInfo(t.path), 'library')"
 			>

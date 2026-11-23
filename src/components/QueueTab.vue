@@ -1,11 +1,12 @@
 <script setup lang="ts">
-	import { ref } from 'vue';
+	import { onMounted, ref } from 'vue';
 	import { isNativeAndroidHost } from '../composables/useAndroidHost';
 	import { isRemoteMode } from '../stores/useServerConnectionStore';
 	import { useQueueDragDrop, type UnifiedTrackItem } from '../composables/player/useQueueDragDrop';
 	import { useContextMenu } from '../composables/useContextMenu';
 	import { usePlaybackControls } from '../composables/usePlaybackControls';
 	import { usePlayer } from '../composables/usePlayer';
+	import { restoreTabScroll, saveTabScroll } from '../composables/useUiPersistence';
 	import DjBanner from './queue/DjBanner.vue';
 	import TrackRow from './ui/TrackRow.vue';
 
@@ -43,6 +44,7 @@
 	} = usePlaybackControls();
 
 	const newUrl = ref('');
+	const queueSectionRef = ref<HTMLElement | null>(null);
 
 	async function addUrl() {
 		if (!newUrl.value.trim()) return;
@@ -113,12 +115,24 @@
 		const target = e.target as HTMLElement;
 		if (target) {
 			handleScroll(target.scrollTop);
+			saveTabScroll('queue', target.scrollTop);
 		}
 	}
+
+	onMounted(() => {
+		const savedTop = restoreTabScroll('queue');
+		if (savedTop > 0 && queueSectionRef.value) {
+			queueSectionRef.value.scrollTop = savedTop;
+		}
+	});
 </script>
 
 <template>
-	<section class="tab-content bg-carpincho-bg h-full overflow-y-auto" @scroll.passive="onTabScroll">
+	<section
+		ref="queueSectionRef"
+		class="tab-content bg-carpincho-bg h-full overflow-y-auto"
+		@scroll.passive="onTabScroll"
+	>
 		<!-- Agregador de URLs -->
 		<div
 			v-if="!isNativeAndroidHost() || isRemoteMode"
@@ -153,12 +167,13 @@
 			<!-- Lista única unificada de temas -->
 			<TransitionGroup name="list" tag="div" class="relative w-full">
 				<TrackRow
-					v-for="item in unifiedQueue"
+					v-for="(item, rowPos) in unifiedQueue"
 					:id="item.status === 'current' ? 'current-queue-row' : undefined"
 					:key="item.id"
 					:class="[
 						item.status === 'history' ? 'opacity-70' : '',
 						item.status === 'queue' ? 'swipe-row' : '',
+						rowPos >= 12 ? 'deferred-row' : '',
 						trackGridClass,
 					]"
 					:data-history-path="item.status === 'history' ? item.path : undefined"

@@ -38,6 +38,7 @@
 	import { useToasts } from './composables/player/useToasts';
 	import { useSliderFactory } from './composables/useSliderFactory';
 	import { useContextMenu } from './composables/useContextMenu';
+	import { initUiPersistence, restoreUiState } from './composables/useUiPersistence';
 	import { closeTopModal, hasOpenModal, isLyricsEditorOpen } from './stores/useUiStore';
 
 	// Componentes aislados de la interfaz
@@ -459,8 +460,14 @@
 		showToast(message || 'No se pudo ejecutar el control multimedia en el servidor.', 'error');
 	}
 
+	let stopUiPersistence: (() => void) | null = null;
+
 	onMounted(() => {
 		initRouter();
+		if (typeof window !== 'undefined' && extractSpaRoute(window.location.pathname) === '/') {
+			restoreUiState();
+		}
+		stopUiPersistence = initUiPersistence();
 		window.__rockolaHandleBack = handleAndroidBack;
 		window.__rockolaOnBackProgress = handleAndroidBackProgress;
 		window.__rockolaSetImeInsets = handleAndroidImeInsets;
@@ -510,6 +517,8 @@
 	});
 
 	onUnmounted(() => {
+		stopUiPersistence?.();
+		stopUiPersistence = null;
 		if (typeof document !== 'undefined') {
 			document.removeEventListener('focusin', syncInputFocusState);
 			document.removeEventListener('focusout', handleFocusOut);

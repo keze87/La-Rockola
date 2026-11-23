@@ -111,22 +111,41 @@ dialog::backdrop {
 	scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
 
-/* Utilidades para la transición fade entre pestañas */
-.tab-fade-enter-active,
-.tab-fade-leave-active {
-	transition:
-		opacity 0.2s ease-out,
-		transform 0.2s ease-out;
+/* Utilidades para la transición fade entre pestañas (respeta prefers-reduced-motion) */
+@media (prefers-reduced-motion: no-preference) {
+	.tab-fade-enter-active,
+	.tab-fade-leave-active {
+		transition:
+			opacity 0.2s ease-out,
+			transform 0.2s ease-out;
+	}
+
+	.tab-fade-enter-from {
+		opacity: 0;
+		transform: translateY(10px);
+	}
+
+	.tab-fade-leave-to {
+		opacity: 0;
+		transform: translateY(-10px);
+	}
 }
 
-.tab-fade-enter-from {
-	opacity: 0;
-	transform: translateY(10px);
+.deferred-row {
+	content-visibility: auto;
+	contain-intrinsic-size: auto none auto 72px;
 }
 
-.tab-fade-leave-to {
-	opacity: 0;
-	transform: translateY(-10px);
+@media (prefers-reduced-motion: no-preference) {
+	.material-ptr-spin {
+		animation: ptr-spin 0.9s linear infinite;
+	}
+}
+
+@keyframes ptr-spin {
+	to {
+		transform: rotate(360deg);
+	}
 }
 
 /* Barra del reproductor flotante: arriba de la barra inferior Material 3 en móvil */
@@ -158,24 +177,30 @@ dialog:modal {
 .equalizer span {
 	display: block;
 	width: 3px;
+	height: 10px;
 	border-radius: 2px 2px 0 0;
 	background-color: var(--color-carpincho-success);
-	animation: eq-bounce 0.8s ease-in-out infinite;
 }
 
-.equalizer span:nth-child(1) {
-	animation-delay: 0s;
-	animation-duration: 0.7s;
-}
+@media (prefers-reduced-motion: no-preference) {
+	.equalizer span {
+		animation: eq-bounce 0.8s ease-in-out infinite;
+	}
 
-.equalizer span:nth-child(2) {
-	animation-delay: 0.15s;
-	animation-duration: 0.9s;
-}
+	.equalizer span:nth-child(1) {
+		animation-delay: 0s;
+		animation-duration: 0.7s;
+	}
 
-.equalizer span:nth-child(3) {
-	animation-delay: 0.3s;
-	animation-duration: 0.75s;
+	.equalizer span:nth-child(2) {
+		animation-delay: 0.15s;
+		animation-duration: 0.9s;
+	}
+
+	.equalizer span:nth-child(3) {
+		animation-delay: 0.3s;
+		animation-duration: 0.75s;
+	}
 }
 
 .equalizer.paused span {
@@ -305,22 +330,36 @@ button,
 	}
 }
 
-/* Letras (Lyrics) Animation */
-.lyric-enter-active,
-.lyric-leave-active {
-	transition:
-		opacity 0.3s ease-out,
-		transform 0.3s ease-out;
-}
+/* Letras (Lyrics) y Listas (respetando prefers-reduced-motion) */
+@media (prefers-reduced-motion: no-preference) {
+	.lyric-enter-active,
+	.lyric-leave-active {
+		transition:
+			opacity 0.3s ease-out,
+			transform 0.3s ease-out;
+	}
 
-.lyric-enter-from {
-	opacity: 0;
-	transform: translateY(8px);
-}
+	.lyric-enter-from {
+		opacity: 0;
+		transform: translateY(8px);
+	}
 
-.lyric-leave-to {
-	opacity: 0;
-	transform: translateY(-8px);
+	.lyric-leave-to {
+		opacity: 0;
+		transform: translateY(-8px);
+	}
+
+	.list-move,
+	.list-enter-active,
+	.list-leave-active {
+		transition: all 0.3s ease-out;
+	}
+
+	.list-enter-from,
+	.list-leave-to {
+		opacity: 0;
+		transform: translateX(-30px);
+	}
 }
 
 /* Centrado absoluto para los elementos de las tablas (Horizontal y Vertical) */
@@ -328,18 +367,6 @@ th,
 td {
 	/* text-align: center !important; */
 	vertical-align: middle !important;
-}
-
-.list-move,
-.list-enter-active,
-.list-leave-active {
-	transition: all 0.3s ease-out;
-}
-
-.list-enter-from,
-.list-leave-to {
-	opacity: 0;
-	transform: translateX(-30px);
 }
 
 /* Evitamos que los elementos al salir rompan el layout de golpe */
