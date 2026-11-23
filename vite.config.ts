@@ -5,9 +5,16 @@ import vue from '@vitejs/plugin-vue';
 
 const apiPort = process.env.ROCKOLA_PORT || '8000';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
 	base: './',
 	plugins: [vue(), tailwindcss()],
+	esbuild:
+		mode === 'production'
+			? {
+					drop: ['debugger'],
+					pure: ['console.log', 'console.debug'],
+				}
+			: undefined,
 	resolve: {
 		alias: {
 			'@': fileURLToPath(new URL('./src', import.meta.url)),
@@ -28,4 +35,4 @@ export default defineConfig({
 			},
 		},
 	},
-});
+}));

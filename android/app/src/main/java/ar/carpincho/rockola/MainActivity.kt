@@ -14,6 +14,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import android.util.Rational
+import android.webkit.WebView
 import androidx.activity.BackEventCompat
 import androidx.activity.OnBackPressedCallback
 import androidx.annotation.RequiresApi
@@ -253,6 +254,7 @@ class MainActivity : BridgeActivity() {
         applyHeadbarSystemBars()
         registerImeInsetsObserver()
         registerBackNavigationHandler()
+        WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
         bridge?.webView?.apply {
             setBackgroundColor(ContextCompat.getColor(this@MainActivity, R.color.rockola_bg))
             settings.mediaPlaybackRequiresUserGesture = false

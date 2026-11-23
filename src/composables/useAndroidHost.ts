@@ -84,6 +84,7 @@ export interface MediaTargetPayload {
 export interface RockolaServerPlugin {
 	markUiReady?(): Promise<{ ready: boolean }>;
 	setBackHandlerEnabled?(options: { enabled: boolean }): Promise<{ enabled: boolean }>;
+	logWebError?(options: { message: string; source?: string }): Promise<{ logged: boolean }>;
 	getNotificationPermissionStatus?(): Promise<{ status: 'granted' | 'prompt' | 'denied'; granted: boolean }>;
 	requestNotificationPermission?(): Promise<{ status: 'granted' | 'prompt' | 'denied'; granted: boolean }>;
 	openNotificationSettings?(): Promise<{ opened: boolean }>;
@@ -243,6 +244,13 @@ export function setAndroidBackHandlerEnabled(enabled: boolean): void {
 	if (!isNativeAndroidHost() || typeof RockolaServer.setBackHandlerEnabled !== 'function') return;
 	void Promise.resolve(RockolaServer.setBackHandlerEnabled({ enabled })).catch(() => {
 		// Ignoramos errores transitorios si el puente nativo todavía no está listo
+	});
+}
+
+export function reportAndroidWebError(message: string, source?: string): void {
+	if (!isNativeAndroidHost() || typeof RockolaServer.logWebError !== 'function') return;
+	void Promise.resolve(RockolaServer.logWebError({ message, source })).catch(() => {
+		// Sin propagación para evitar bucles en errores no capturados
 	});
 }
 

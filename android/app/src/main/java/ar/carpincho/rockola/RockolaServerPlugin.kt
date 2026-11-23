@@ -204,6 +204,16 @@ class RockolaServerPlugin : Plugin() {
     }
 
     @PluginMethod
+    fun logWebError(call: PluginCall) {
+        val message = call.getString("message")?.trim().orEmpty().take(1000)
+        val source = call.getString("source")?.trim().orEmpty().take(200)
+        if (message.isNotEmpty()) {
+            android.util.Log.e("RockolaWebError", if (source.isNotEmpty()) "[$source] $message" else message)
+        }
+        call.resolve(JSObject().apply { put("logged", true) })
+    }
+
+    @PluginMethod
     fun startServer(call: PluginCall) {
         val port = call.getInt("port") ?: RockolaForegroundService.currentPort
         val musicDir = call.getString("musicDir")
