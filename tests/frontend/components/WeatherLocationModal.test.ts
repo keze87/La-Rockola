@@ -41,7 +41,7 @@ describe('WeatherLocationModal.vue', () => {
 		expect(wrapper.text()).toContain('Guardar ubicación');
 
 		// Verification of theme classes & icons
-		const dialog = wrapper.find('.bg-carpincho-panel.border-carpincho-border.text-carpincho-text');
+		const dialog = wrapper.find('[role="dialog"] > div');
 		expect(dialog.exists()).toBe(true);
 
 		const icons = wrapper.findAll('.material-icons');

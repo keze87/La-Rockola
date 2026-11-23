@@ -424,8 +424,8 @@
 					Editar letras
 				</button>
 				<button type="button" class="ctx-menu-item delete-item" role="menuitem" @click="ctxRemoveFromQueue">
-					<i class="material-icons text-red-400">delete</i>
-					<span class="text-red-400">Pegarle un voleo</span>
+					<i class="material-icons text-[var(--accent-danger)]">delete</i>
+					<span class="text-[var(--accent-danger)]">Pegarle un voleo</span>
 				</button>
 			</template>
 
@@ -456,8 +456,8 @@
 					Editar letras
 				</button>
 				<button type="button" class="ctx-menu-item delete-item" role="menuitem" @click="ctxRemoveFromHistory">
-					<i class="material-icons text-red-400">delete</i>
-					<span class="text-red-400">Borrar del historial</span>
+					<i class="material-icons text-[var(--accent-danger)]">delete</i>
+					<span class="text-[var(--accent-danger)]">Borrar del historial</span>
 				</button>
 			</template>
 		</div>
@@ -466,17 +466,19 @@
 
 <style scoped>
 	.ctx-menu {
-		background: var(--color-carpincho-panel);
-		border-radius: 12px;
-		border: 1px solid var(--color-carpincho-border);
-		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7);
+		background: var(--glass-bg-strong);
+		backdrop-filter: var(--glass-blur);
+		-webkit-backdrop-filter: var(--glass-blur);
+		border-radius: var(--radius-lg);
+		border: 1px solid var(--glass-border);
+		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.65);
 		min-width: 220px;
 		overflow: hidden;
 	}
 
 	.ctx-menu-header {
-		border-bottom: 1px solid var(--color-carpincho-border);
-		color: var(--color-carpincho-primary);
+		border-bottom: 0.5px solid var(--hairline);
+		color: var(--accent-primary);
 		font-size: 0.72rem;
 		font-weight: 700;
 		letter-spacing: 0.08em;
@@ -488,7 +490,7 @@
 		align-items: center;
 		background: none;
 		border: none;
-		color: var(--color-carpincho-text);
+		color: var(--text-primary);
 		cursor: pointer;
 		display: flex;
 		font: inherit;
@@ -496,13 +498,13 @@
 		gap: 10px;
 		padding: 12px 16px;
 		text-align: left;
-		transition: background 0.12s;
+		transition: background-color 0.15s var(--ease-ios);
 		width: 100%;
 	}
 
 	.ctx-menu-item:hover,
 	.ctx-menu-item:active {
-		background: var(--color-carpincho-bg);
+		background: var(--bg-surface-hover);
 	}
 
 	.ctx-menu-item:focus {
@@ -510,23 +512,23 @@
 	}
 
 	.ctx-menu.kbd-nav .ctx-menu-item:focus {
-		background: var(--color-carpincho-bg);
-		outline: 2px solid var(--color-carpincho-warning);
+		background: var(--bg-surface-hover);
+		outline: 2px solid var(--accent-primary);
 		outline-offset: -2px;
 	}
 
 	.ctx-menu-item i {
-		color: var(--color-carpincho-primary);
+		color: var(--accent-primary);
 		font-size: 1.1rem;
 	}
 
 	.ctx-menu-item.delete-item:hover,
 	.ctx-menu-item.delete-item:active {
-		background: rgba(239, 68, 68, 0.3) !important;
+		background: rgba(217, 101, 91, 0.2) !important;
 	}
 
 	.ctx-menu.kbd-nav .ctx-menu-item.delete-item:focus {
-		background: rgba(239, 68, 68, 0.3) !important;
+		background: rgba(217, 101, 91, 0.2) !important;
 	}
 
 	@keyframes ctx-sheet-up {

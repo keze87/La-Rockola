@@ -51,12 +51,12 @@
 	<button
 		type="button"
 		aria-label="Ver cola de reproducción"
-		class="fogon-next-song border-carpincho-border/60 from-carpincho-panel/90 hover:border-carpincho-warning/40 mt-4 hidden w-full cursor-pointer items-center justify-between rounded-xl border bg-gradient-to-br to-[#2a2420]/90 p-3 text-left shadow-lg backdrop-blur-sm transition select-none hover:scale-[1.01] active:scale-[0.99] md:flex"
+		class="fogon-next-song tap-feedback mt-4 hidden w-full cursor-pointer items-center justify-between rounded-[var(--radius-lg)] border border-[var(--glass-border)] bg-[var(--glass-bg-strong)] p-3 text-left shadow-lg [backdrop-filter:var(--glass-blur)] select-none hover:border-[var(--accent-primary)]/40 md:flex"
 		@click="emit('select')"
 	>
 		<div class="flex w-full items-center overflow-hidden">
 			<div
-				class="bg-carpincho-bg border-carpincho-border/40 relative mr-3 flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg border"
+				class="relative mr-3 flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-[var(--radius-sm)] border border-[var(--hairline)] bg-[var(--bg-input)]"
 			>
 				<img
 					v-if="upNextCoverUrl"
@@ -66,22 +66,22 @@
 				/>
 				<i
 					v-else-if="djBaraEnabled && queueState.length === 0"
-					class="material-icons text-carpincho-warning animate-pulse text-[1.75rem]"
+					class="material-icons animate-pulse !text-[24px] text-[var(--accent-primary)]"
 				>
 					auto_awesome
 				</i>
-				<i v-else class="material-icons text-carpincho-warning text-[1.75rem]">album</i>
+				<i v-else class="material-icons !text-[24px] text-[var(--accent-primary)]">album</i>
 			</div>
 
-			<div class="flex grow flex-col justify-center overflow-hidden">
-				<div class="text-carpincho-primary text-[0.65rem] font-bold tracking-wider uppercase">
+			<div class="flex min-w-0 grow flex-col justify-center overflow-hidden">
+				<div class="text-[10px] font-semibold tracking-[0.06em] text-[var(--accent-primary)]/90 uppercase">
 					{{ upNextBadge }}
 				</div>
-				<div class="text-carpincho-text truncate text-sm font-bold">
+				<div class="truncate text-sm font-semibold text-[var(--text-primary)]">
 					{{ upNextTitle }}
 				</div>
 			</div>
-			<i class="material-icons text-carpincho-text/40 ml-2 shrink-0 text-lg">chevron_right</i>
+			<i class="material-icons ml-2 shrink-0 text-lg text-[var(--text-tertiary)]">chevron_right</i>
 		</div>
 	</button>
 </template>

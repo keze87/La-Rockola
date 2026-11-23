@@ -221,18 +221,18 @@
 		@click.self="emit('close')"
 	>
 		<div
-			class="border-carpincho-border bg-carpincho-panel text-carpincho-text relative flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl border shadow-2xl"
+			class="relative flex max-h-[90vh] w-full max-w-2xl flex-col rounded-[var(--radius-lg)] border border-[var(--glass-border)] bg-[var(--glass-bg-strong)] text-[var(--text-primary)] shadow-2xl [backdrop-filter:var(--glass-blur)]"
 		>
 			<!-- Encabezado -->
-			<div class="border-carpincho-border flex items-center justify-between border-b px-6 py-4">
+			<div class="flex items-center justify-between border-b border-[var(--hairline)] px-6 py-4">
 				<div class="flex items-center gap-2">
-					<i class="material-icons text-carpincho-warning text-2xl">wb_sunny</i>
-					<h3 id="weather-modal-title" class="text-carpincho-secondary text-lg font-bold">
+					<i class="material-icons text-2xl text-[var(--accent-primary)]">wb_sunny</i>
+					<h3 id="weather-modal-title" class="text-lg font-bold text-[var(--text-primary)]">
 						Ubicación del clima radial
 					</h3>
 				</div>
 				<button
-					class="text-carpincho-muted hover:bg-carpincho-bg hover:text-carpincho-warning cursor-pointer rounded-lg p-1.5 transition"
+					class="tap-feedback cursor-pointer rounded-full p-1.5 text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text-primary)]"
 					aria-label="Cerrar modal"
 					@click="emit('close')"
 				>
@@ -317,10 +317,10 @@
 			</div>
 
 			<!-- Pie de modal -->
-			<div class="border-carpincho-border flex items-center justify-between border-t px-6 py-4">
+			<div class="flex items-center justify-between border-t border-[var(--hairline)] px-6 py-4">
 				<PillButton
 					icon="sync"
-					color-class="bg-gray-700 hover:bg-gray-600 text-carpincho-text"
+					color-class="border border-[var(--hairline)] bg-[var(--bg-input)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-primary)]"
 					:disabled="isPreviewing"
 					@click="testWeatherPreview"
 				>
@@ -330,14 +330,14 @@
 				<div class="flex items-center gap-2">
 					<button
 						type="button"
-						class="text-carpincho-muted hover:bg-carpincho-bg hover:text-carpincho-text cursor-pointer rounded-full px-4 py-2 text-xs font-medium transition"
+						class="tap-feedback cursor-pointer rounded-full px-4 py-2 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text-primary)]"
 						@click="emit('close')"
 					>
 						Cancelar
 					</button>
 					<PillButton
 						icon="check"
-						color-class="bg-carpincho-success hover:bg-green-700"
+						color-class="bg-[var(--accent-mate)] text-[#f5efe6] font-bold hover:brightness-110"
 						@click="saveLocation"
 					>
 						Guardar ubicación

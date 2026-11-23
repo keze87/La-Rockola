@@ -269,8 +269,8 @@ Dialogue: 0,0:00:06.00,0:00:10.00,Default,,0,0,0,,{\\kf100}Segunda {\\kf100}fras
 		await wrapper.vm.$nextTick();
 
 		const container = wrapper.find('.fogon-container');
-		expect(container.classes()).toContain('bg-carpincho-panel');
-		expect(container.classes()).toContain('text-carpincho-text');
+		expect(container.classes()).toContain('bg-[var(--bg-canvas)]');
+		expect(container.classes()).toContain('text-[var(--text-primary)]');
 		expect(container.classes()).toContain('overscroll-contain');
 		expect(wrapper.find('.backdrop-blur-xl').exists()).toBe(false);
 
@@ -280,7 +280,7 @@ Dialogue: 0,0:00:06.00,0:00:10.00,Default,,0,0,0,,{\\kf100}Segunda {\\kf100}fras
 
 		// Línea inactiva: jerarquía de opacidad cálida sin filtro blur pesado por línea
 		expect(lines[1].classes()).not.toContain('blur-[1.5px]');
-		expect(lines[1].classes()).toContain('text-carpincho-text/35');
+		expect(lines[1].classes()).toContain('opacity-[0.42]');
 
 		// Primera sílaba ya cantada: dorado mate carpincho
 		const syllables = lines[0].findAll('span');
@@ -374,7 +374,7 @@ Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Hola
 		expect(playerColumn.classes()).not.toContain('justify-between');
 
 		// En pantallas estrechas, la carátula usa el 90% del ancho y las letras ocupan el 100% del ancho y toda la altura debajo de los controles
-		const coverWrapper = wrapper.find('.bg-carpincho-bg');
+		const coverWrapper = wrapper.find('.fogon-cover-wrapper');
 		expect(coverWrapper.classes()).toContain('w-[90vw]');
 		expect(coverWrapper.classes()).toContain('h-[90vw]');
 
@@ -576,7 +576,7 @@ Dialogue: 0,0:00:20.00,0:00:25.00,Default,,0,0,0,,{\\kf100}Ultimo {\\kf100}verso
 		localTimePos.value = 250;
 		duration.value = 100;
 		await wrapper.vm.$nextTick();
-		const progressFill = wrapper.find('.bg-carpincho-warning.absolute.top-0.left-0.h-full');
+		const progressFill = wrapper.find('.fogon-seekbar-wrapper .absolute.top-0.left-0.h-full');
 		expect(progressFill.attributes('style')).toContain('width: 100%');
 	});
 
