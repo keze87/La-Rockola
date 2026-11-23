@@ -1,10 +1,13 @@
+import { ref } from 'vue';
 import type { ApiResponse, CommandName, CommandPayloads, Track } from '../types';
 
 let apiOrigin = '';
+export const apiOriginRef = ref('');
 
 export function setApiOrigin(origin: string | null): void {
 	const cleaned = (origin ?? '').trim().replace(/\/+$/, '');
 	apiOrigin = cleaned;
+	apiOriginRef.value = cleaned;
 }
 
 export function getApiOrigin(): string {
@@ -13,6 +16,7 @@ export function getApiOrigin(): string {
 
 export function clearApiOrigin(): void {
 	apiOrigin = '';
+	apiOriginRef.value = '';
 }
 
 /**

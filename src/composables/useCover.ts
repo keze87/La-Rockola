@@ -1,9 +1,15 @@
-import { ref, computed, toValue, type MaybeRefOrGetter } from 'vue';
-import { apiUrl } from './useApi';
+import { ref, computed, toValue, watch, type MaybeRefOrGetter } from 'vue';
+import { apiOriginRef, apiUrl } from './useApi';
+import { isNativeAndroidHost } from './useAndroidHost';
 import type { Track } from '../types';
 
 // Caché global compartida en toda la app para portadas no encontradas
 const brokenCoversCache = ref<Set<string>>(new Set());
+
+watch(apiOriginRef, () => {
+	// Al conectarse o cambiar de origen (p. ej. tras el snapshot inicial), reintentar portadas
+	brokenCoversCache.value.clear();
+});
 
 export interface UseCoverOptions {
 	size?: MaybeRefOrGetter<number | null | undefined>;
@@ -19,6 +25,9 @@ export function useCover(trackOrPath: MaybeRefOrGetter<Track | string | null>, o
 		const currentPath = path.value;
 
 		if (!currentPath || currentPath.startsWith('http')) return null;
+
+		// En Android nativo durante el snapshot local todavía no hay origen de servidor
+		if (isNativeAndroidHost() && !apiOriginRef.value) return null;
 
 		if (brokenCoversCache.value.has(currentPath)) return null;
 

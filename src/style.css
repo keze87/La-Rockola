@@ -51,7 +51,6 @@
 }
 
 .tap-feedback {
-	position: relative;
 	transition: background-color 0.15s ease-out;
 }
 
