@@ -137,3 +137,18 @@ def test_verify_android_archive_checks_apk_16kb_zip_alignment(tmp_path: Path) ->
 
 	res_aligned = verify_android_archive(apk_aligned)
 	assert res_aligned.ok, res_aligned.errors
+
+
+def test_build_android_fails_without_sdk_unless_sync_only(tmp_path: Path, monkeypatch) -> None:
+	"""build_android sin --sync-only debe fallar (exit != 0) si falta el Android SDK."""
+	from scripts import build_android as build_mod
+
+	(tmp_path / "app").mkdir()
+	(tmp_path / "dist").mkdir()
+	(tmp_path / "android").mkdir()
+	monkeypatch.setattr(build_mod, "stage_android_assets", lambda *_a, **_k: tmp_path / "android")
+	monkeypatch.setattr(build_mod.subprocess, "run", lambda *_a, **_k: None)
+	monkeypatch.setattr(build_mod, "has_android_sdk", lambda *_a, **_k: False)
+
+	assert build_mod.build_android(root_dir=tmp_path, skip_frontend=True, sync_only=True) == 0
+	assert build_mod.build_android(root_dir=tmp_path, skip_frontend=True, sync_only=False) == 1

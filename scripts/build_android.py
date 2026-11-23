@@ -174,12 +174,12 @@ def build_android(
 	android_dir = base_dir / "android"
 	if not has_android_sdk(android_dir):
 		print(
-			"⚠️ Ojo al piojo: no detecté ANDROID_HOME / ANDROID_SDK_ROOT ni android/local.properties.\n"
-			"   Los assets de Python y Vue ya quedaron sincronizados en android/.\n"
-			"   Para generar el APK, abrí la carpeta 'android/' en Android Studio o exportá ANDROID_HOME y corré:\n"
-			"   cd android && ./gradlew assembleArm64Debug"
+			"❌ No detecté ANDROID_HOME / ANDROID_SDK_ROOT ni android/local.properties.\n"
+			"   Los assets de Python y Vue quedaron sincronizados en android/, pero no se generó ningún APK/AAB.\n"
+			"   Si solo querés sincronizar assets, pasá --sync-only; para compilar, exportá ANDROID_HOME.",
+			file=sys.stderr,
 		)
-		return 0
+		return 1
 
 	ensure_jdk_env()
 	gradlew = android_dir / ("gradlew.bat" if os.name == "nt" else "gradlew")
