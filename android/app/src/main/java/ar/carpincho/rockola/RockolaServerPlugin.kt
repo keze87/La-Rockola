@@ -609,26 +609,22 @@ class RockolaServerPlugin : Plugin() {
             return
         }
 
-        Thread {
-            AndroidStorageBridge.persistTreePermission(context, uri, result.data?.flags ?: 0)
-            val validation = AndroidStorageBridge.validateTreeUri(context, uri.toString())
-            if (validation.status == SafFolderStatus.OK) {
-                context.getSharedPreferences(RockolaForegroundService.PREFS_NAME, Context.MODE_PRIVATE)
-                    .edit()
-                    .putString(RockolaForegroundService.KEY_MUSIC_DIR, validation.uri)
-                    .apply()
-                RockolaForegroundService.updateMusicDir(validation.uri)
-            }
+        val uriStr = uri.toString()
+        AndroidStorageBridge.persistTreePermission(context, uri, result.data?.flags ?: 0)
+        context.getSharedPreferences(RockolaForegroundService.PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(RockolaForegroundService.KEY_MUSIC_DIR, uriStr)
+            .apply()
+        RockolaForegroundService.updateMusicDir(uriStr)
 
-            call.resolve(
-                JSObject().apply {
-                    put("path", if (validation.status == SafFolderStatus.OK) validation.uri else JSONObject.NULL)
-                    put("uri", validation.uri)
-                    put("displayName", validation.displayName ?: JSONObject.NULL)
-                    put("status", validation.status.wireName())
-                    put("error", validation.error ?: JSONObject.NULL)
-                },
-            )
-        }.start()
+        call.resolve(
+            JSObject().apply {
+                put("path", uriStr)
+                put("uri", uriStr)
+                put("displayName", uri.lastPathSegment ?: JSONObject.NULL)
+                put("status", SafFolderStatus.OK.wireName())
+                put("error", JSONObject.NULL)
+            },
+        )
     }
 }
