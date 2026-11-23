@@ -12,12 +12,60 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
+import android.view.KeyEvent
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.IntentCompat
 import androidx.media.app.NotificationCompat.MediaStyle
+
+/**
+ * Reglas puras para las acciones expuestas en MediaSession (testeables en JVM).
+ */
+internal object MediaSessionPolicy {
+    fun computePlaybackActions(hasTrack: Boolean, durationMs: Long): Long {
+        val base = PlaybackStateCompat.ACTION_PLAY or
+            PlaybackStateCompat.ACTION_PAUSE or
+            PlaybackStateCompat.ACTION_PLAY_PAUSE or
+            PlaybackStateCompat.ACTION_STOP or
+            PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
+            PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
+        return if (hasTrack && durationMs > 0L) {
+            base or PlaybackStateCompat.ACTION_SEEK_TO
+        } else {
+            base
+        }
+    }
+}
+
+/**
+ * Detector de doble toque para botones de auriculares / Bluetooth (play/pausa -> siguiente).
+ */
+internal class HeadsetDoubleTapDetector(
+    private val doubleTapWindowMs: Long = 350L,
+) {
+    private var lastTapAtMs: Long = -1L
+
+    @Synchronized
+    fun isDoubleTap(keyCode: Int, nowMs: Long): Boolean {
+        if (keyCode != KeyEvent.KEYCODE_HEADSETHOOK && keyCode != KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) {
+            return false
+        }
+        val prev = lastTapAtMs
+        return if (prev >= 0L && (nowMs - prev) in 0..doubleTapWindowMs) {
+            lastTapAtMs = -1L
+            true
+        } else {
+            lastTapAtMs = nowMs
+            false
+        }
+    }
+}
 
 /**
  * Administra la MediaSession, los metadatos, el progreso en vivo (seekbar),
@@ -58,6 +106,9 @@ class MediaNotificationManager(
     private var currentIsPauseAfter: Boolean = false
     private var currentServerUrl: String = "http://127.0.0.1:1729"
     private var currentTarget: MediaTarget = MediaTarget(MediaTargetMode.HOST, "http://127.0.0.1:1729")
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val headsetDetector = HeadsetDoubleTapDetector()
+    private var pendingHeadsetSingleTap: Runnable? = null
 
     private val defaultArtwork: Bitmap? by lazy {
         BitmapFactory.decodeResource(service.resources, R.mipmap.ic_launcher)
@@ -77,10 +128,52 @@ class MediaNotificationManager(
     val hasActiveTrack: Boolean
         get() = !currentTrackPath.isNullOrBlank()
 
+    private fun buildOpenAppPendingIntent(): PendingIntent {
+        val openIntent = Intent(service, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        return PendingIntent.getActivity(
+            service,
+            0,
+            openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
     fun initialize() {
         createNotificationChannel()
+        val sessionActivityIntent = buildOpenAppPendingIntent()
         mediaSession = MediaSessionCompat(service, "RockolaMediaSession").apply {
+            setSessionActivity(sessionActivityIntent)
             setCallback(object : MediaSessionCompat.Callback() {
+                override fun onMediaButtonEvent(mediaButtonEvent: Intent?): Boolean {
+                    val keyEvent = mediaButtonEvent?.let {
+                        IntentCompat.getParcelableExtra(it, Intent.EXTRA_KEY_EVENT, KeyEvent::class.java)
+                    }
+                    if (keyEvent != null &&
+                        keyEvent.action == KeyEvent.ACTION_DOWN &&
+                        keyEvent.repeatCount == 0 &&
+                        (keyEvent.keyCode == KeyEvent.KEYCODE_HEADSETHOOK ||
+                            keyEvent.keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
+                    ) {
+                        val isDouble = headsetDetector.isDoubleTap(keyEvent.keyCode, SystemClock.elapsedRealtime())
+                        pendingHeadsetSingleTap?.let { mainHandler.removeCallbacks(it) }
+                        if (isDouble) {
+                            pendingHeadsetSingleTap = null
+                            dispatchAction("skip", emptyMap())
+                        } else {
+                            val singleTapTask = Runnable {
+                                pendingHeadsetSingleTap = null
+                                dispatchAction("pause", mapOf("state" to !currentPaused))
+                            }
+                            pendingHeadsetSingleTap = singleTapTask
+                            mainHandler.postDelayed(singleTapTask, 360L)
+                        }
+                        return true
+                    }
+                    return super.onMediaButtonEvent(mediaButtonEvent)
+                }
+
                 override fun onPlay() {
                     dispatchAction("pause", mapOf("state" to false))
                 }
@@ -329,15 +422,7 @@ class MediaNotificationManager(
 
     @Synchronized
     fun buildNotification(contentText: String): Notification {
-        val openIntent = Intent(service, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        val openPending = PendingIntent.getActivity(
-            service,
-            0,
-            openIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
+        val openPending = buildOpenAppPendingIntent()
 
         val favPending = serviceActionPendingIntent(RockolaForegroundService.ACTION_MEDIA_FAVORITE, 5)
         val prevPending = serviceActionPendingIntent(RockolaForegroundService.ACTION_MEDIA_PREV, 2)
@@ -422,6 +507,8 @@ class MediaNotificationManager(
     }
 
     fun release() {
+        pendingHeadsetSingleTap?.let { mainHandler.removeCallbacks(it) }
+        pendingHeadsetSingleTap = null
         isNotificationVisible = false
         mediaSession?.isActive = false
         mediaSession?.release()
@@ -431,19 +518,17 @@ class MediaNotificationManager(
     @Synchronized
     private fun syncMediaSessionState() {
         val session = mediaSession ?: return
+        val hasTrack = !currentTrackPath.isNullOrBlank()
         val stateCode = when {
-            currentTrackPath.isNullOrBlank() -> PlaybackStateCompat.STATE_STOPPED
+            !hasTrack -> PlaybackStateCompat.STATE_STOPPED
             currentPaused -> PlaybackStateCompat.STATE_PAUSED
             else -> PlaybackStateCompat.STATE_PLAYING
         }
-        val speed = if (currentPaused || currentTrackPath.isNullOrBlank()) 0.0f else 1.0f
-        val actions = PlaybackStateCompat.ACTION_PLAY or
-            PlaybackStateCompat.ACTION_PAUSE or
-            PlaybackStateCompat.ACTION_PLAY_PAUSE or
-            PlaybackStateCompat.ACTION_STOP or
-            PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
-            PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
-            PlaybackStateCompat.ACTION_SEEK_TO
+        val speed = if (currentPaused || !hasTrack) 0.0f else 1.0f
+        val actions = MediaSessionPolicy.computePlaybackActions(
+            hasTrack = hasTrack,
+            durationMs = currentDurationMs,
+        )
 
         val stateBuilder = PlaybackStateCompat.Builder()
             .setActions(actions)
