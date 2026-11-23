@@ -150,7 +150,7 @@
 
 <template>
 	<section
-		class="floating-player from-carpincho-panel/85 border-carpincho-border/80 flex items-center justify-between rounded-[24px] border bg-gradient-to-br to-[#2a2420]/85 p-3 shadow-[0_8px_24px_rgba(0,0,0,0.55)] backdrop-blur-xl transition-transform duration-200"
+		class="floating-player bg-carpincho-panel/85 border-carpincho-border/80 flex items-center justify-between rounded-t-[26px] rounded-b-none border border-b-0 p-3 shadow-[0_-4px_20px_rgba(0,0,0,0.4)] backdrop-blur-xl transition-transform duration-200 md:rounded-[24px] md:border-b md:shadow-[0_8px_24px_rgba(0,0,0,0.55)]"
 		:style="swipeStyle"
 		@touchstart.passive="onTouchStart"
 		@touchmove="onTouchMove"

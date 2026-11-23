@@ -826,13 +826,13 @@
 
 		<!-- CUERPO PRINCIPAL: NAVEGACIÓN INFERIOR M3 EN MÓVIL / RIEL LATERAL Y DOS PANELES EN PANTALLAS GRANDES -->
 		<div class="flex min-h-0 w-full flex-1 flex-col overflow-hidden md:flex-row">
-			<!-- PESTAÑAS (barra flotante estilo iOS + Carpincho acoplada abajo en móvil, riel lateral desde md) -->
+			<!-- PESTAÑAS (mitad inferior del dock flotante unificado en móvil, riel lateral desde md) -->
 			<nav
 				aria-label="Secciones principales"
-				class="floating-tab-bar from-carpincho-panel/85 border-carpincho-border/80 fixed inset-x-0 bottom-0 z-40 order-2 mx-3 mb-[max(10px,var(--rockola-safe-bottom))] flex shrink-0 overflow-hidden rounded-full border bg-gradient-to-br to-[#2a2420]/85 px-1.5 py-1 shadow-[0_8px_24px_rgba(0,0,0,0.55)] backdrop-blur-xl transition-all duration-300 ease-in-out md:static md:inset-auto md:z-10 md:order-1 md:mx-0 md:mb-0 md:w-24 md:flex-col md:rounded-none md:border-t-0 md:border-r md:border-b-0 md:border-l-0 md:bg-none md:px-0 md:py-0 md:pb-0 md:shadow-md md:backdrop-blur-none lg:w-28"
+				class="floating-tab-bar bg-carpincho-panel/85 border-carpincho-border/80 border-t-carpincho-border/35 fixed z-40 order-2 flex h-[62px] shrink-0 items-center overflow-hidden rounded-t-none rounded-b-[26px] border border-t px-1.5 py-1 shadow-[0_10px_28px_rgba(0,0,0,0.6)] backdrop-blur-xl transition-all duration-300 ease-in-out md:static md:inset-auto md:z-10 md:order-1 md:mx-0 md:mb-0 md:h-auto md:w-24 md:flex-col md:items-stretch md:rounded-none md:border-t-0 md:border-r md:border-b-0 md:border-l-0 md:px-0 md:py-0 md:pb-0 md:shadow-md md:backdrop-blur-none lg:w-28"
 				:class="[
 					isTabsBarHidden && isShortScreen
-						? 'pointer-events-none mb-0 max-h-0 translate-y-2 border-0 py-0 opacity-0 md:max-h-none md:translate-y-0 md:opacity-100'
+						? 'pointer-events-none max-h-0 translate-y-2 border-0 py-0 opacity-0 md:max-h-none md:translate-y-0 md:opacity-100'
 						: 'max-h-24 translate-y-0 opacity-100 md:max-h-none',
 				]"
 			>
