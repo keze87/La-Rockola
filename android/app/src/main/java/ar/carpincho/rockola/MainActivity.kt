@@ -9,17 +9,20 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.Icon
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import android.util.Rational
 import androidx.activity.OnBackPressedCallback
 import androidx.annotation.RequiresApi
+import androidx.appcompat.app.AlertDialog
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.webkit.WebViewCompat
 import com.getcapacitor.BridgeActivity
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -232,6 +235,45 @@ class MainActivity : BridgeActivity() {
         }
         if (MainActivityPolicy.shouldHandleShortcutOnCreate(savedInstanceState != null, intent?.action)) {
             handleShortcutIntent(intent)
+        }
+        checkWebViewCompatibility()
+    }
+
+    private fun checkWebViewCompatibility() {
+        val webViewPkg = try {
+            WebViewCompat.getCurrentWebViewPackage(this)
+        } catch (_: Exception) {
+            null
+        }
+        val versionName = webViewPkg?.versionName
+        if (!WebViewVersionPolicy.isSupported(versionName)) {
+            markUiReady()
+            val pkgId = webViewPkg?.packageName ?: "com.google.android.webview"
+            AlertDialog.Builder(this)
+                .setTitle("Actualizá Android System WebView")
+                .setMessage(
+                    "Tu versión de WebView (${versionName ?: "antigua"}) es muy vieja para mostrar La Rockola correctamente. " +
+                        "Actualizala desde la tienda para evitar fallas visuales.",
+                )
+                .setPositiveButton("Actualizar en la tienda") { _, _ ->
+                    openWebViewStore(pkgId)
+                }
+                .setNegativeButton("Seguir igual", null)
+                .show()
+        }
+    }
+
+    private fun openWebViewStore(packageName: String) {
+        val marketIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$packageName"))
+        val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$packageName"))
+        try {
+            startActivity(marketIntent)
+        } catch (_: Exception) {
+            try {
+                startActivity(webIntent)
+            } catch (_: Exception) {
+                // Sin tienda o navegador disponible
+            }
         }
     }
 
