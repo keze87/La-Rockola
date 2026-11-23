@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import random
 import subprocess
 import sys
 import time
@@ -179,7 +180,7 @@ def _run_server_mode_checks(serial: str, base_url: str, screen_awake: bool) -> l
 	results.append(E2EResult(f"server_{label}_http", True, f"tracks={len(tracks)} en {lib_ms:.1f}ms"))
 
 	if tracks:
-		track_path = tracks[0]["path"]
+		track_path = random.choice(tracks)["path"]
 		st_rng, body = _http_bytes(
 			f"{base_url}/stream?path={quote(track_path, safe='')}", headers={"Range": "bytes=0-1023"}
 		)
@@ -215,7 +216,7 @@ def _run_client_mode_checks(serial: str, base_url: str, screen_awake: bool) -> l
 			f"Se necesitan al menos 2 pistas en biblioteca para probar reproducción/skip (hay {len(tracks)})"
 		)
 
-	t1, t2 = tracks[0], tracks[1]
+	t1, t2 = random.sample(tracks, 2)
 	_http_json(f"{base_url}/command", "POST", {"cmd": "play", "path": t1["path"]})
 	time.sleep(1.5)
 	_http_json(f"{base_url}/command", "POST", {"cmd": "toggle_queue", "path": t2["path"]})
@@ -323,7 +324,7 @@ def _run_screen_off_soak_check(serial: str, base_url: str, soak_seconds: int) ->
 		raise RuntimeError("No hay pistas en biblioteca para ejecutar la prueba prolongada con pantalla apagada")
 
 	initial_pid = _assert_process_and_foreground(serial)
-	_http_json(f"{base_url}/command", "POST", {"cmd": "play", "path": tracks[0]["path"]})
+	_http_json(f"{base_url}/command", "POST", {"cmd": "play", "path": random.choice(tracks)["path"]})
 	_set_screen_state(serial, awake=False)
 
 	print(f"⏳ Iniciando soak con cliente activo y pantalla apagada ({soak_seconds}s, pid={initial_pid})...")
@@ -338,6 +339,23 @@ def _run_screen_off_soak_check(serial: str, base_url: str, soak_seconds: int) ->
 			f"{soak_seconds}s vivo sin reinicios (pid={initial_pid}, {ws_label}, checks={checks})",
 		)
 	]
+
+
+def _run_shortcut_checks(serial: str) -> list[E2EResult]:
+	"""Dispara todos los shortcuts de Android con pantalla encendida y verifica estabilidad."""
+	_set_screen_state(serial, awake=True)
+	shortcuts = (
+		("library", f"{PACKAGE_NAME}.ACTION_OPEN_LIBRARY"),
+		("queue", f"{PACKAGE_NAME}.ACTION_OPEN_QUEUE"),
+		("tops", f"{PACKAGE_NAME}.ACTION_OPEN_TOPS"),
+		("fogon", f"{PACKAGE_NAME}.ACTION_OPEN_FOGON"),
+	)
+	for _, action in shortcuts:
+		_run_adb(serial, ["shell", "am", "start", "-W", "-a", action, "-n", MAIN_ACTIVITY], timeout=20.0)
+		time.sleep(0.5)
+	pid = _assert_process_and_foreground(serial)
+	_assert_no_fatal_logcat(serial)
+	return [E2EResult("shortcuts_pantalla_prendida", True, f"4/4 shortcuts OK (pid={pid})")]
 
 
 def _run_idle_paused_soak_check(serial: str, base_url: str, idle_seconds: int) -> list[E2EResult]:
@@ -430,6 +448,7 @@ def run_e2e(
 
 	try:
 		_wait_health(base_url, timeout_sec=20.0)
+		all_results.extend(_run_shortcut_checks(serial))
 		if mode in ("server", "all"):
 			all_results.extend(_run_server_mode_checks(serial, base_url, screen_awake=True))
 			all_results.extend(_run_server_mode_checks(serial, base_url, screen_awake=False))
