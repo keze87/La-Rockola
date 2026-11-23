@@ -21,11 +21,14 @@ import androidx.appcompat.app.AlertDialog
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.webkit.WebViewCompat
 import com.getcapacitor.BridgeActivity
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.roundToInt
 
 /**
  * Política de retención del splash nativo hasta el primer frame útil de Vue.
@@ -215,6 +218,7 @@ class MainActivity : BridgeActivity() {
     private val uiReady = AtomicBoolean(false)
     private var splashStartedAtMs: Long = 0L
     private var backCallback: OnBackPressedCallback? = null
+    private var lastImeBottomCssPx: Int = -1
 
     fun markUiReady() {
         uiReady.set(true)
@@ -244,6 +248,7 @@ class MainActivity : BridgeActivity() {
         super.onCreate(savedInstanceState)
 
         applyHeadbarSystemBars()
+        registerImeInsetsObserver()
         registerBackNavigationHandler()
         bridge?.webView?.apply {
             setBackgroundColor(ContextCompat.getColor(this@MainActivity, R.color.rockola_bg))
@@ -368,6 +373,19 @@ class MainActivity : BridgeActivity() {
         }
         backCallback = callback
         onBackPressedDispatcher.addCallback(this, callback)
+    }
+
+    private fun registerImeInsetsObserver() {
+        ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { view, insets ->
+            val imeBottomPx = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+            val density = resources.displayMetrics.density.coerceAtLeast(1f)
+            val imeCssPx = (imeBottomPx / density).roundToInt().coerceAtLeast(0)
+            if (imeCssPx != lastImeBottomCssPx) {
+                lastImeBottomCssPx = imeCssPx
+                evaluateJsSafely("window.__rockolaSetImeInsets && window.__rockolaSetImeInsets($imeCssPx)")
+            }
+            ViewCompat.onApplyWindowInsets(view, insets)
+        }
     }
 
     private fun applyHeadbarSystemBars() {

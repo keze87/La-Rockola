@@ -31,6 +31,7 @@
 
 :root {
 	--target-size: 24px;
+	--rockola-ime-height: 0px;
 	--rockola-safe-top: max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px));
 	--rockola-safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px));
 	--rockola-safe-left: max(env(safe-area-inset-left, 0px), var(--safe-area-inset-left, 0px));
@@ -74,8 +75,8 @@ dialog::backdrop {
 	min-height: 0;
 	overflow-y: auto;
 	overscroll-behavior-y: contain;
-	padding-bottom: calc(100px + var(--rockola-safe-bottom)) !important;
-	scroll-padding-bottom: calc(108px + var(--rockola-safe-bottom));
+	padding-bottom: calc(100px + var(--rockola-safe-bottom) + var(--rockola-ime-height)) !important;
+	scroll-padding-bottom: calc(108px + var(--rockola-safe-bottom) + var(--rockola-ime-height));
 	--scrollbar-thumb: var(--color-carpincho-border);
 	--scrollbar-track: var(--color-carpincho-panel);
 	scrollbar-width: thin;
@@ -107,6 +108,14 @@ dialog::backdrop {
 	bottom: calc(5px + var(--rockola-safe-bottom));
 	left: max(15px, var(--rockola-safe-left));
 	right: max(15px, var(--rockola-safe-right));
+}
+
+html.ime-open .floating-player {
+	display: none;
+}
+
+dialog:modal {
+	max-height: calc(100dvh - 32px - var(--rockola-ime-height));
 }
 
 /* Animación de ecualizador para la fila en reproducción */

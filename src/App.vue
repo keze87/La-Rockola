@@ -314,6 +314,13 @@
 		document.documentElement.style.setProperty('--rockola-back-progress', String(clamped));
 	}
 
+	function handleAndroidImeInsets(bottomCssPx: number): void {
+		if (typeof document === 'undefined') return;
+		const px = Number.isFinite(bottomCssPx) ? Math.max(0, Math.round(bottomCssPx)) : 0;
+		document.documentElement.style.setProperty('--rockola-ime-height', `${px}px`);
+		document.documentElement.classList.toggle('ime-open', px > 0);
+	}
+
 	// Swipe horizontal entre pestañas sin interferir con filas de cola ni sliders
 	const TAB_SWIPE_MIN_PX = 72;
 	let tabTouchStartX = 0;
@@ -440,6 +447,7 @@
 		initRouter();
 		window.__rockolaHandleBack = handleAndroidBack;
 		window.__rockolaOnBackProgress = handleAndroidBackProgress;
+		window.__rockolaSetImeInsets = handleAndroidImeInsets;
 		window.__rockolaOpenFogon = openFogonFromAndroid;
 		window.__rockolaOpenLibrary = openLibraryFromAndroid;
 		window.__rockolaOpenQueue = openQueueFromAndroid;
@@ -482,8 +490,9 @@
 			document.removeEventListener('focusin', syncInputFocusState);
 			document.removeEventListener('focusout', handleFocusOut);
 			document.removeEventListener('visibilitychange', handleAndroidVisibilityChange);
-			document.documentElement.classList.remove('android-pip');
+			document.documentElement.classList.remove('android-pip', 'ime-open');
 			document.documentElement.style.removeProperty('--rockola-back-progress');
+			document.documentElement.style.removeProperty('--rockola-ime-height');
 		}
 		isAndroidPipMode.value = false;
 		if (typeof window === 'undefined') return;
@@ -492,6 +501,9 @@
 		}
 		if (window.__rockolaOnBackProgress === handleAndroidBackProgress) {
 			delete window.__rockolaOnBackProgress;
+		}
+		if (window.__rockolaSetImeInsets === handleAndroidImeInsets) {
+			delete window.__rockolaSetImeInsets;
 		}
 		if (window.__rockolaOpenFogon === openFogonFromAndroid) {
 			delete window.__rockolaOpenFogon;
