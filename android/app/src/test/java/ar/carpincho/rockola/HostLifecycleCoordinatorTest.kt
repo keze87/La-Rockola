@@ -448,4 +448,29 @@ class HostLifecycleCoordinatorTest {
             ),
         )
     }
+
+    @Test
+    fun `resolveTimeout degrada a mediaPlayback si hay reproduccion activa y detiene si es dataSync sin musica`() {
+        assertEquals(
+            TimeoutResolution.DEGRADE_TO_MEDIA_PLAYBACK,
+            ServicePowerPolicy.resolveTimeout(
+                fgsType = android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+                isMediaPlaying = true,
+            ),
+        )
+        assertEquals(
+            TimeoutResolution.STOP_SERVICE,
+            ServicePowerPolicy.resolveTimeout(
+                fgsType = android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+                isMediaPlaying = false,
+            ),
+        )
+        assertEquals(
+            TimeoutResolution.STOP_SERVICE,
+            ServicePowerPolicy.resolveTimeout(
+                fgsType = android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
+                isMediaPlaying = true,
+            ),
+        )
+    }
 }

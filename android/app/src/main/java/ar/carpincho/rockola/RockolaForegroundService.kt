@@ -15,6 +15,14 @@ import android.os.PowerManager
 import android.util.Log
 
 /**
+ * Resolución ante el callback `Service.onTimeout` introducido en Android 14/15.
+ */
+internal enum class TimeoutResolution {
+    DEGRADE_TO_MEDIA_PLAYBACK,
+    STOP_SERVICE,
+}
+
+/**
  * Reglas puras de energía y ciclo de vida en segundo plano (testeables en JVM).
  */
 internal object ServicePowerPolicy {
@@ -40,6 +48,14 @@ internal object ServicePowerPolicy {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
         } else {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+        }
+    }
+
+    fun resolveTimeout(fgsType: Int, isMediaPlaying: Boolean): TimeoutResolution {
+        return if (fgsType == ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC && isMediaPlaying) {
+            TimeoutResolution.DEGRADE_TO_MEDIA_PLAYBACK
+        } else {
+            TimeoutResolution.STOP_SERVICE
         }
     }
 
@@ -668,6 +684,51 @@ class RockolaForegroundService : Service() {
             mainHandler.postDelayed(remoteIdleCheckRunnable, 15_000L)
         }
         super.onTaskRemoved(rootIntent)
+    }
+
+    override fun onTimeout(startId: Int) {
+        handleServiceTimeout(startId, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+    }
+
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        handleServiceTimeout(startId, fgsType)
+    }
+
+    private fun handleServiceTimeout(startId: Int, fgsType: Int) {
+        Log.w("RockolaService", "onTimeout recibido (startId=$startId, fgsType=$fgsType, isMediaPlaying=$isMediaPlaying)")
+        when (ServicePowerPolicy.resolveTimeout(fgsType = fgsType, isMediaPlaying = isMediaPlaying)) {
+            TimeoutResolution.DEGRADE_TO_MEDIA_PLAYBACK -> {
+                val notification = notificationManager.buildNotification("Reproduciendo")
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        startForeground(
+                            NOTIFICATION_ID,
+                            notification,
+                            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
+                        )
+                    } else {
+                        startForeground(NOTIFICATION_ID, notification)
+                    }
+                    isInForeground = true
+                } catch (e: Exception) {
+                    Log.w("RockolaService", "No se pudo migrar a mediaPlayback tras onTimeout: ${e.message}")
+                    stopOnTimeout(startId)
+                }
+            }
+            TimeoutResolution.STOP_SERVICE -> {
+                stopOnTimeout(startId)
+            }
+        }
+    }
+
+    private fun stopOnTimeout(startId: Int) {
+        onNativeCommandError?.invoke(
+            "host_server",
+            "FGS_TIMEOUT",
+            "Android detuvo el servidor en segundo plano porque expiró el límite de sincronización sin música sonando.",
+        )
+        stopServerAndService()
+        stopSelf(startId)
     }
 
     private fun syncCoordinatorSnapshot() {
