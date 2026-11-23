@@ -81,6 +81,9 @@ export interface MediaTargetPayload {
 export interface RockolaServerPlugin {
 	markUiReady?(): Promise<{ ready: boolean }>;
 	setBackHandlerEnabled?(options: { enabled: boolean }): Promise<{ enabled: boolean }>;
+	getNotificationPermissionStatus?(): Promise<{ status: 'granted' | 'prompt' | 'denied'; granted: boolean }>;
+	requestNotificationPermission?(): Promise<{ status: 'granted' | 'prompt' | 'denied'; granted: boolean }>;
+	openNotificationSettings?(): Promise<{ opened: boolean }>;
 	startServer(options?: { port?: number; musicDir?: string }): Promise<AndroidServerInfo>;
 	stopServer(): Promise<{ stopped: boolean }>;
 	getStatus(): Promise<AndroidServerInfo>;
@@ -139,6 +142,88 @@ export const isAndroidFullscreen = ref<boolean>(false);
 export const isAndroidPipMode = ref<boolean>(false);
 export const androidBootStage = ref<string>('idle');
 export const androidExtractProgress = ref<number>(0);
+export const androidNotificationPermission = ref<'unknown' | 'granted' | 'prompt' | 'denied'>('unknown');
+export const showNotificationPermissionRationale = ref<boolean>(false);
+
+const STORAGE_KEY_NOTIF_DISMISSED = 'rockola_notif_prompt_dismissed';
+
+export async function refreshAndroidNotificationPermission(): Promise<'unknown' | 'granted' | 'prompt' | 'denied'> {
+	if (!isNativeAndroidHost() || typeof RockolaServer.getNotificationPermissionStatus !== 'function') {
+		return androidNotificationPermission.value;
+	}
+	try {
+		const res = await RockolaServer.getNotificationPermissionStatus();
+		const status = res?.granted ? 'granted' : (res?.status ?? 'prompt');
+		androidNotificationPermission.value = status;
+		return status;
+	} catch {
+		return androidNotificationPermission.value;
+	}
+}
+
+export async function prepareContextualNotificationPrompt(): Promise<void> {
+	if (!isNativeAndroidHost()) return;
+	const status = await refreshAndroidNotificationPermission();
+	if (status !== 'prompt') {
+		showNotificationPermissionRationale.value = false;
+		return;
+	}
+	try {
+		if (typeof localStorage !== 'undefined' && localStorage.getItem(STORAGE_KEY_NOTIF_DISMISSED) === '1') {
+			return;
+		}
+	} catch {
+		// Sin acceso a localStorage
+	}
+	showNotificationPermissionRationale.value = true;
+}
+
+export function dismissNotificationPermissionPrompt(): void {
+	showNotificationPermissionRationale.value = false;
+	try {
+		if (typeof localStorage !== 'undefined') {
+			localStorage.setItem(STORAGE_KEY_NOTIF_DISMISSED, '1');
+		}
+	} catch {
+		// Sin acceso a localStorage
+	}
+}
+
+export async function requestAndroidNotificationPermission(): Promise<boolean> {
+	showNotificationPermissionRationale.value = false;
+	if (!isNativeAndroidHost() || typeof RockolaServer.requestNotificationPermission !== 'function') {
+		return true;
+	}
+	try {
+		const res = await RockolaServer.requestNotificationPermission();
+		const granted = Boolean(res?.granted);
+		androidNotificationPermission.value = granted ? 'granted' : (res?.status ?? 'denied');
+		if (!granted) {
+			try {
+				if (typeof localStorage !== 'undefined') {
+					localStorage.setItem(STORAGE_KEY_NOTIF_DISMISSED, '1');
+				}
+			} catch {
+				// Ignorar
+			}
+		}
+		return granted;
+	} catch {
+		return false;
+	}
+}
+
+export async function openAndroidNotificationSettings(): Promise<boolean> {
+	if (!isNativeAndroidHost() || typeof RockolaServer.openNotificationSettings !== 'function') {
+		return false;
+	}
+	try {
+		const res = await RockolaServer.openNotificationSettings();
+		return Boolean(res?.opened);
+	} catch {
+		return false;
+	}
+}
 
 export function isNativeAndroidHost(): boolean {
 	return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
@@ -641,6 +726,7 @@ export async function pickAndApplyMusicFolder(): Promise<string | null> {
 	localMusicDisplayName.value = res?.displayName ?? null;
 	libraryFolderStatus.value = 'ok';
 	libraryFolderError.value = null;
+	void prepareContextualNotificationPrompt();
 	return selectedPath;
 }
 

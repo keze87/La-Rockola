@@ -4,6 +4,7 @@
 	import { apiUrl } from '../composables/useApi';
 	import {
 		activeRemoteServerUrl,
+		androidNotificationPermission,
 		androidServerStatus,
 		connectToRemoteServer,
 		disconnectFromRemoteServer,
@@ -11,6 +12,7 @@
 		isAndroidFullscreen,
 		isNativeAndroidHost,
 		lastRemoteServerUrl,
+		openAndroidNotificationSettings,
 		pickAndApplyMusicFolder,
 		shareAndroidUrl,
 		stopAndroidServer,
@@ -605,6 +607,25 @@
 				icon="dns"
 				@update:model-value="handleToggleRemoteServerSwitch"
 			/>
+		</div>
+
+		<div
+			v-if="isNativeAndroidHost() && androidNotificationPermission === 'denied'"
+			class="border-carpincho-border bg-carpincho-panel mx-auto mb-6 flex max-w-md items-center justify-between gap-3 rounded-xl border px-4 py-3 text-xs"
+		>
+			<div class="min-w-0 flex-1">
+				<p class="text-carpincho-warning font-bold">Notificaciones desactivadas</p>
+				<p class="text-carpincho-muted mt-0.5">
+					Habilitalas para manejar la Rockola desde la pantalla de bloqueo.
+				</p>
+			</div>
+			<button
+				type="button"
+				class="bg-carpincho-primary shrink-0 rounded-lg px-3 py-2 font-bold text-white"
+				@click="openAndroidNotificationSettings"
+			>
+				Ajustes
+			</button>
 		</div>
 
 		<!-- Botones de acción -->

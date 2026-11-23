@@ -215,6 +215,7 @@ class MainActivity : BridgeActivity() {
     }
 
     private var notificationPermissionRequested = false
+    private var pendingNotificationPermissionCallback: ((Boolean) -> Unit)? = null
     private val uiReady = AtomicBoolean(false)
     private var splashStartedAtMs: Long = 0L
     private var backCallback: OnBackPressedCallback? = null
@@ -406,21 +407,47 @@ class MainActivity : BridgeActivity() {
         }
     }
 
-    internal fun requestNotificationPermissionIfNeeded() {
-        if (notificationPermissionRequested || isFinishing || isDestroyed) return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val granted = ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED
-            if (!granted) {
-                notificationPermissionRequested = true
-                ActivityCompat.requestPermissions(
-                    this,
-                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
-                    REQ_POST_NOTIFICATIONS
-                )
-            }
+    internal fun requestNotificationPermissionWithResult(onResult: (Boolean) -> Unit) {
+        if (isFinishing || isDestroyed) {
+            onResult(false)
+            return
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            onResult(true)
+            return
+        }
+        val granted = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.POST_NOTIFICATIONS,
+        ) == PackageManager.PERMISSION_GRANTED
+        if (granted) {
+            onResult(true)
+            return
+        }
+        notificationPermissionRequested = true
+        pendingNotificationPermissionCallback = onResult
+        getSharedPreferences(RockolaForegroundService.PREFS_NAME, MODE_PRIVATE)
+            .edit()
+            .putBoolean("notif_permission_asked", true)
+            .apply()
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+            REQ_POST_NOTIFICATIONS,
+        )
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQ_POST_NOTIFICATIONS) {
+            val granted = grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED
+            val cb = pendingNotificationPermissionCallback
+            pendingNotificationPermissionCallback = null
+            cb?.invoke(granted)
         }
     }
 

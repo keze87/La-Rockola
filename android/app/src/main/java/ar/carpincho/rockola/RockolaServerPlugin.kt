@@ -1,10 +1,13 @@
 package ar.carpincho.rockola
 
+import android.Manifest
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.database.ContentObserver
 import android.media.AudioManager
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -15,6 +18,8 @@ import android.provider.Settings
 import android.view.HapticFeedbackConstants
 import android.view.WindowManager
 import androidx.activity.result.ActivityResult
+import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
@@ -230,8 +235,90 @@ class RockolaServerPlugin : Plugin() {
             call.reject(err, "SERVICE_START_NOT_ALLOWED")
             return
         }
-        (activity as? MainActivity)?.requestNotificationPermissionIfNeeded()
         call.resolve(buildStatusObject())
+    }
+
+    private fun resolveNotificationPermissionStatus(): Pair<String, Boolean> {
+        val enabledInSystem = NotificationManagerCompat.from(context).areNotificationsEnabled()
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            return if (enabledInSystem) Pair("granted", true) else Pair("denied", false)
+        }
+        val granted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.POST_NOTIFICATIONS,
+        ) == PackageManager.PERMISSION_GRANTED
+        if (granted && enabledInSystem) {
+            return Pair("granted", true)
+        }
+        val prefs = context.getSharedPreferences(RockolaForegroundService.PREFS_NAME, Context.MODE_PRIVATE)
+        val askedBefore = prefs.getBoolean("notif_permission_asked", false)
+        val hostAct = activity
+        val shouldShowRationale = hostAct != null &&
+            ActivityCompat.shouldShowRequestPermissionRationale(hostAct, Manifest.permission.POST_NOTIFICATIONS)
+        val status = if (!granted && askedBefore && !shouldShowRationale) {
+            "denied"
+        } else if (granted && !enabledInSystem) {
+            "denied"
+        } else {
+            "prompt"
+        }
+        return Pair(status, false)
+    }
+
+    @PluginMethod
+    fun getNotificationPermissionStatus(call: PluginCall) {
+        val (status, granted) = resolveNotificationPermissionStatus()
+        call.resolve(
+            JSObject().apply {
+                put("status", status)
+                put("granted", granted)
+            },
+        )
+    }
+
+    @PluginMethod
+    fun requestNotificationPermission(call: PluginCall) {
+        val mainActivity = activity as? MainActivity
+        if (mainActivity == null) {
+            val (status, granted) = resolveNotificationPermissionStatus()
+            call.resolve(JSObject().apply { put("status", status); put("granted", granted) })
+            return
+        }
+        mainActivity.requestNotificationPermissionWithResult { granted ->
+            val (status, resolvedGranted) = resolveNotificationPermissionStatus()
+            val finalStatus = if (granted && resolvedGranted) "granted" else if (granted) "granted" else status
+            call.resolve(
+                JSObject().apply {
+                    put("status", finalStatus)
+                    put("granted", granted)
+                },
+            )
+        }
+    }
+
+    @PluginMethod
+    fun openNotificationSettings(call: PluginCall) {
+        val hostActivity = activity ?: run {
+            call.resolve(JSObject().apply { put("opened", false) })
+            return
+        }
+        hostActivity.runOnUiThread {
+            val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                    putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                }
+            } else {
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.fromParts("package", context.packageName, null)
+                }
+            }
+            try {
+                hostActivity.startActivity(intent)
+                call.resolve(JSObject().apply { put("opened", true) })
+            } catch (_: Exception) {
+                call.resolve(JSObject().apply { put("opened", false) })
+            }
+        }
     }
 
     @PluginMethod

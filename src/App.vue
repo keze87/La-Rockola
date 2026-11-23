@@ -7,13 +7,18 @@
 		androidExtractProgress,
 		androidServerStatus,
 		consumeAndroidPendingShortcut,
+		dismissNotificationPermissionPrompt,
 		ensureLocalAndroidServerAlive,
 		initAndroidServer,
 		isAndroidPipMode,
 		isNativeAndroidHost,
 		markAndroidUiReady,
 		pickAndApplyMusicFolder,
+		prepareContextualNotificationPrompt,
+		refreshAndroidNotificationPermission,
+		requestAndroidNotificationPermission,
 		setAndroidBackHandlerEnabled,
+		showNotificationPermissionRationale,
 	} from './composables/useAndroidHost';
 	import { hydrateFromBootSnapshot, isHydratedFromSnapshot } from './composables/player/useLocalSnapshot';
 	import {
@@ -482,8 +487,15 @@
 	function handleAndroidVisibilityChange() {
 		if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
 			void ensureLocalAndroidServerAlive();
+			void refreshAndroidNotificationPermission();
 		}
 	}
+
+	watch(isPlaying, (playing) => {
+		if (playing && isNativeAndroidHost()) {
+			void prepareContextualNotificationPrompt();
+		}
+	});
 
 	onUnmounted(() => {
 		if (typeof document !== 'undefined') {
@@ -700,6 +712,35 @@
 		>
 			<i class="material-icons text-sm" aria-hidden="true">sync</i>
 			<span>Actualizando lista...</span>
+		</div>
+		<div
+			v-if="isNativeAndroidHost() && showNotificationPermissionRationale"
+			role="region"
+			aria-label="Permiso de notificaciones"
+			class="bg-carpincho-panel border-carpincho-border flex w-full shrink-0 flex-wrap items-center justify-between gap-2 border-b px-4 py-2 text-xs"
+		>
+			<div class="flex min-w-0 flex-1 items-center gap-2">
+				<i class="material-icons text-carpincho-warning text-base" aria-hidden="true">notifications_active</i>
+				<span class="text-carpincho-text">
+					Activá las notificaciones para ver y controlar la música desde la pantalla de bloqueo.
+				</span>
+			</div>
+			<div class="flex shrink-0 items-center gap-2">
+				<button
+					type="button"
+					class="text-carpincho-muted hover:text-carpincho-text rounded-lg px-2.5 py-1.5 font-semibold"
+					@click="dismissNotificationPermissionPrompt"
+				>
+					Ahora no
+				</button>
+				<button
+					type="button"
+					class="bg-carpincho-primary rounded-lg px-3 py-1.5 font-bold text-white shadow-sm"
+					@click="requestAndroidNotificationPermission"
+				>
+					Activar
+				</button>
+			</div>
 		</div>
 		<div
 			v-if="isNativeAndroidHost() && isRemoteMode"
