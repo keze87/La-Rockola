@@ -288,7 +288,7 @@
 <template>
 	<div
 		v-if="ctxMenu.visible"
-		class="fixed inset-0 z-[11000]"
+		class="fixed inset-0 z-[11000] max-sm:bg-black/55 max-sm:backdrop-blur-[2px]"
 		@pointerdown.self="onBackdropPointerDown"
 		@touchstart.self.passive="onBackdropPointerDown"
 		@click.self="dismissFromBackdrop"
@@ -304,6 +304,7 @@
 			@keydown="ctxMenuKeydown"
 			@pointerdown="keyboardNav = false"
 		>
+			<div class="bg-carpincho-border mx-auto mt-2.5 mb-1 h-1 w-10 rounded-full sm:hidden" aria-hidden="true" />
 			<div id="ctx-menu-title" class="ctx-menu-header truncate">
 				🦦 {{ ctxMenu.track?.title || ctxMenu.track?.display_title }}
 			</div>
@@ -526,5 +527,46 @@
 
 	.ctx-menu.kbd-nav .ctx-menu-item.delete-item:focus {
 		background: rgba(239, 68, 68, 0.3) !important;
+	}
+
+	@keyframes ctx-sheet-up {
+		from {
+			opacity: 0.75;
+			transform: translateY(100%);
+		}
+
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+
+	@media (max-width: 639px) {
+		.ctx-menu {
+			animation: ctx-sheet-up 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+			border-bottom: none;
+			border-left: none;
+			border-radius: 18px 18px 0 0;
+			border-right: none;
+			bottom: 0 !important;
+			left: 0 !important;
+			max-height: 82dvh;
+			overflow-y: auto;
+			padding-bottom: calc(0.75rem + var(--rockola-safe-bottom, 0px));
+			position: fixed;
+			right: 0 !important;
+			top: auto !important;
+			width: 100%;
+		}
+
+		.ctx-menu-item {
+			padding: 14px 20px;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.ctx-menu {
+			animation: none !important;
+		}
 	}
 </style>
