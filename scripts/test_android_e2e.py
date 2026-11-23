@@ -12,6 +12,7 @@ Cubre:
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import subprocess
 import sys
@@ -21,6 +22,11 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote
+
+try:
+	import websockets
+except ImportError:  # pragma: no cover - fallback si no está instalado websockets
+	websockets = None
 
 PACKAGE_NAME = "ar.carpincho.rockola"
 MAIN_ACTIVITY = f"{PACKAGE_NAME}/.MainActivity"
@@ -94,13 +100,29 @@ def _wait_health(base_url: str, timeout_sec: float = 15.0) -> None:
 	raise RuntimeError(f"El servidor embebido no respondió /health en {timeout_sec:.0f}s: {last_err}")
 
 
+def _is_screen_awake(serial: str) -> bool:
+	power_dump = _run_adb(serial, ["shell", "dumpsys", "power"], check=False)
+	for line in power_dump.splitlines():
+		if "mWakefulness=" in line:
+			return "mWakefulness=Awake" in line
+	return "Display Power: state=ON" in power_dump
+
+
 def _set_screen_state(serial: str, awake: bool) -> None:
-	if awake:
+	if _is_screen_awake(serial) == awake:
+		return
+	keycode = "KEYCODE_WAKEUP" if awake else "KEYCODE_SLEEP"
+	_run_adb(serial, ["shell", "input", "keyevent", keycode], check=False)
+	deadline = time.monotonic() + 5.0
+	while time.monotonic() < deadline:
+		if _is_screen_awake(serial) == awake:
+			return
+		time.sleep(0.3)
+	if awake and not _is_screen_awake(serial):
 		_run_adb(serial, ["shell", "input", "keyevent", "KEYCODE_WAKEUP"], check=False)
-		time.sleep(0.4)
-	else:
-		_run_adb(serial, ["shell", "input", "keyevent", "KEYCODE_SLEEP"], check=False)
 		time.sleep(0.8)
+		if not _is_screen_awake(serial):
+			raise RuntimeError("No se pudo encender la pantalla del dispositivo antes de la prueba")
 
 
 def _assert_process_and_foreground(serial: str) -> str:
@@ -225,8 +247,73 @@ def _run_client_mode_checks(serial: str, base_url: str, screen_awake: bool) -> l
 	return results
 
 
+def _ws_url_from_http(base_url: str) -> str:
+	if base_url.startswith("https://"):
+		return "wss://" + base_url[len("https://") :] + "/ws"
+	if base_url.startswith("http://"):
+		return "ws://" + base_url[len("http://") :] + "/ws"
+	return base_url.rstrip("/") + "/ws"
+
+
+async def _active_client_soak_async(
+	serial: str,
+	base_url: str,
+	initial_pid: str,
+	soak_seconds: int,
+	poll_interval: float = 10.0,
+) -> tuple[int, int]:
+	ws_url = _ws_url_from_http(base_url)
+	deadline = time.monotonic() + soak_seconds
+	checks = 0
+	ws_msgs = 0
+
+	async def _loop(ws_conn: object | None) -> None:
+		nonlocal checks, ws_msgs
+		while True:
+			remaining = deadline - time.monotonic()
+			if remaining <= 0:
+				break
+			step = min(poll_interval, remaining)
+			if ws_conn is not None:
+				step_end = time.monotonic() + step
+				while time.monotonic() < step_end:
+					wait_left = max(0.05, step_end - time.monotonic())
+					try:
+						await asyncio.wait_for(ws_conn.recv(), timeout=wait_left)
+						ws_msgs += 1
+					except TimeoutError:
+						break
+			else:
+				await asyncio.sleep(step)
+
+			checks += 1
+			current_pid = _assert_process_and_foreground(serial)
+			if current_pid != initial_pid:
+				raise RuntimeError(
+					f"El proceso cambió de PID durante soak con cliente activo ({initial_pid} -> {current_pid})"
+				)
+			st_h, health = _http_json(f"{base_url}/health", timeout=5.0)
+			if st_h != 200 or health.get("status") != "ok":
+				raise RuntimeError(f"/health falló durante soak: status={st_h}, body={health}")
+			# Simulamos tráfico de cliente activo (consulta de estado + comando liviano)
+			_http_json(f"{base_url}/api/system/info", timeout=5.0)
+			_http_json(f"{base_url}/command", "POST", {"cmd": "set_volume", "value": 65}, timeout=5.0)
+			session_dump = _get_media_session_state(serial)
+			if "RockolaMediaSession" not in session_dump:
+				raise RuntimeError("RockolaMediaSession desapareció durante soak con cliente activo")
+			_assert_no_fatal_logcat(serial)
+
+	if websockets is not None:
+		async with websockets.connect(ws_url, open_timeout=10, ping_interval=20, ping_timeout=10) as ws_conn:
+			await _loop(ws_conn)
+	else:
+		await _loop(None)
+
+	return checks, ws_msgs
+
+
 def _run_screen_off_soak_check(serial: str, base_url: str, soak_seconds: int) -> list[E2EResult]:
-	"""Verifica durante un período prolongado con pantalla apagada que Android no mate ni reinicie el servicio."""
+	"""Simula un cliente activo conectado (WS + polling/comandos) con pantalla apagada y verifica que no muera."""
 	if soak_seconds <= 0:
 		return []
 
@@ -239,38 +326,55 @@ def _run_screen_off_soak_check(serial: str, base_url: str, soak_seconds: int) ->
 	_http_json(f"{base_url}/command", "POST", {"cmd": "play", "path": tracks[0]["path"]})
 	_set_screen_state(serial, awake=False)
 
-	print(f"⏳ Iniciando soak con pantalla apagada ({soak_seconds}s, pid={initial_pid})...")
-	deadline = time.monotonic() + soak_seconds
-	checks = 0
-	poll_interval = 10.0
-
-	while True:
-		remaining = deadline - time.monotonic()
-		if remaining <= 0:
-			break
-		time.sleep(min(poll_interval, remaining))
-		checks += 1
-		current_pid = _assert_process_and_foreground(serial)
-		if current_pid != initial_pid:
-			raise RuntimeError(
-				f"El proceso cambió de PID durante la prueba con pantalla apagada ({initial_pid} -> {current_pid})"
-			)
-		st_h, health = _http_json(f"{base_url}/health", timeout=5.0)
-		if st_h != 200 or health.get("status") != "ok":
-			raise RuntimeError(f"/health falló durante soak: status={st_h}, body={health}")
-		session_dump = _get_media_session_state(serial)
-		if "RockolaMediaSession" not in session_dump:
-			raise RuntimeError("RockolaMediaSession desapareció durante soak con pantalla apagada")
-		_assert_no_fatal_logcat(serial)
+	print(f"⏳ Iniciando soak con cliente activo y pantalla apagada ({soak_seconds}s, pid={initial_pid})...")
+	checks, ws_msgs = asyncio.run(_active_client_soak_async(serial, base_url, initial_pid, soak_seconds))
 
 	_http_json(f"{base_url}/command", "POST", {"cmd": "pause", "state": True})
+	ws_label = f"ws_msgs={ws_msgs}" if websockets is not None else "sin_ws(http_polling)"
 	return [
 		E2EResult(
-			"soak_pantalla_apagada_estabilidad",
+			"soak_cliente_activo_pantalla_apagada",
 			True,
-			f"{soak_seconds}s vivo sin reinicios (pid={initial_pid}, checks={checks})",
+			f"{soak_seconds}s vivo sin reinicios (pid={initial_pid}, {ws_label}, checks={checks})",
 		)
 	]
+
+
+def _run_idle_paused_soak_check(serial: str, base_url: str, idle_seconds: int) -> list[E2EResult]:
+	"""Observa qué ocurre sin clientes conectados y el servidor en pausa (informativo: no falla si Android lo mata)."""
+	if idle_seconds <= 0:
+		return []
+
+	initial_pid = _assert_process_and_foreground(serial)
+	_http_json(f"{base_url}/command", "POST", {"cmd": "pause", "state": True})
+	_set_screen_state(serial, awake=False)
+
+	print(f"⏳ Observando servidor en pausa sin clientes ({idle_seconds}s, pid={initial_pid})...")
+	time.sleep(idle_seconds)
+
+	end_pid = _run_adb(serial, ["shell", "pidof", PACKAGE_NAME], check=False).strip()
+	svc_dump = _run_adb(serial, ["shell", "dumpsys", "activity", "services", PACKAGE_NAME], check=False)
+	is_fg = "isForeground=true" in svc_dump
+	health_ok = False
+	try:
+		st_h, health = _http_json(f"{base_url}/health", timeout=4.0)
+		health_ok = st_h == 200 and health.get("status") == "ok"
+	except Exception:
+		health_ok = False
+
+	if end_pid == initial_pid and is_fg and health_ok:
+		detail = f"{idle_seconds}s en pausa sin cliente: SIGUE VIVO (pid={end_pid}, isForeground=true, health=200)"
+	elif not end_pid:
+		detail = (
+			f"{idle_seconds}s en pausa sin cliente: Android mató el proceso (pid inicial={initial_pid}) [informativo]"
+		)
+	else:
+		detail = (
+			f"{idle_seconds}s en pausa sin cliente: estado cambiado "
+			f"(pid={initial_pid}->{end_pid}, isForeground={is_fg}, health={health_ok}) [informativo]"
+		)
+
+	return [E2EResult("soak_pausa_sin_cliente_observacion", True, detail)]
 
 
 def run_e2e(
@@ -282,6 +386,7 @@ def run_e2e(
 	server_url: str | None = None,
 	if_available: bool = False,
 	soak_seconds: int = 90,
+	idle_soak_seconds: int = 30,
 ) -> int:
 	"""Orquesta la batería E2E sobre el dispositivo Android conectado por ADB."""
 	devices = detect_adb_devices()
@@ -308,7 +413,11 @@ def run_e2e(
 
 	_run_adb(serial, ["logcat", "-c"], check=False)
 	_run_adb(serial, ["shell", "am", "force-stop", PACKAGE_NAME], check=False)
+	# Primero verificamos que la pantalla esté efectivamente encendida antes de arrancar
 	_set_screen_state(serial, awake=True)
+	if not _is_screen_awake(serial):
+		raise RuntimeError("La pantalla del dispositivo no quedó encendida al iniciar la prueba")
+	all_results: list[E2EResult] = [E2EResult("pantalla_inicial_encendida", True, "mWakefulness=Awake")]
 	_run_adb(serial, ["shell", "am", "start", "-W", "-n", MAIN_ACTIVITY], timeout=30.0)
 
 	forwarded = False
@@ -319,7 +428,6 @@ def run_e2e(
 		forwarded = True
 		base_url = f"http://127.0.0.1:{local_port}"
 
-	all_results: list[E2EResult] = []
 	try:
 		_wait_health(base_url, timeout_sec=20.0)
 		if mode in ("server", "all"):
@@ -329,6 +437,7 @@ def run_e2e(
 			all_results.extend(_run_client_mode_checks(serial, base_url, screen_awake=True))
 			all_results.extend(_run_client_mode_checks(serial, base_url, screen_awake=False))
 		all_results.extend(_run_screen_off_soak_check(serial, base_url, soak_seconds=soak_seconds))
+		all_results.extend(_run_idle_paused_soak_check(serial, base_url, idle_seconds=idle_soak_seconds))
 	finally:
 		_set_screen_state(serial, awake=True)
 		if forwarded:
@@ -357,7 +466,13 @@ def main(argv: list[str] | None = None) -> int:
 		"--soak-seconds",
 		type=int,
 		default=90,
-		help="Segundos sostenidos con pantalla apagada reproduciendo para verificar que Android no mate el servicio (default: 90, 0 desactiva).",
+		help="Segundos sostenidos con pantalla apagada reproduciendo y cliente activo (default: 90, 0 desactiva).",
+	)
+	parser.add_argument(
+		"--idle-soak-seconds",
+		type=int,
+		default=30,
+		help="Segundos en pausa sin cliente para observar comportamiento de Android (default: 30, 0 desactiva).",
 	)
 	args = parser.parse_args(argv)
 
@@ -369,6 +484,7 @@ def main(argv: list[str] | None = None) -> int:
 			server_url=args.server_url,
 			if_available=args.if_available,
 			soak_seconds=args.soak_seconds,
+			idle_soak_seconds=args.idle_soak_seconds,
 		)
 	except Exception as exc:
 		print(f"❌ Falló E2E Android: {exc}", file=sys.stderr)
