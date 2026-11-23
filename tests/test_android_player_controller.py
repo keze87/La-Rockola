@@ -413,3 +413,21 @@ async def test_radio_test_endpoint_synthesizes_plays_and_starts_bed(
 	assert data["bg_offset"] == 60.0
 	orch.play_track.assert_awaited_once_with(orch.radio_announcement_path)
 	orch.mpv.start_radio_bed.assert_awaited_once_with("content://music/song.mp3", offset_sec=60.0, volume=0.1)
+
+
+@pytest.mark.asyncio
+async def test_play_track_clears_is_playing_radio_announcement_for_normal_songs(tmp_path: Path) -> None:
+	"""Reproducir un tema normal debe limpiar is_playing_radio_announcement para no clavar el título de cabina."""
+	from app.domain.playback.orchestrator import PlaybackOrchestrator
+
+	orch = PlaybackOrchestrator(db_path=tmp_path / "rockola.db")
+	orch.mpv = MagicMock()
+	orch.mpv.set_force_window = AsyncMock()
+	orch.mpv.load_file = AsyncMock()
+	orch.mpv.set_pause = AsyncMock()
+	orch.mpv.set_mute = AsyncMock()
+	orch.radio_mode_enabled = False
+	orch.is_playing_radio_announcement = True
+
+	await orch.play_track("content://music/normal_song.mp3")
+	assert orch.is_playing_radio_announcement is False

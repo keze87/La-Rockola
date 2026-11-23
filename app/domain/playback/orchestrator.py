@@ -792,6 +792,7 @@ class PlaybackOrchestrator:
 
 		str_path = str(path)
 		self.current_track = str_path
+		self.is_playing_radio_announcement = self.is_radio_announcement(str_path)
 		self.mpv_paused = False
 		self.time_pos = 0
 		self.last_seek_drift = None
