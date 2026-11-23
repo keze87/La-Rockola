@@ -819,19 +819,19 @@
 			</div>
 		</div>
 
-		<!-- CUERPO PRINCIPAL: NAVEGACIÓN INFERIOR M3 EN MÓVIL -->
-		<div class="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
-			<!-- PESTAÑAS (barra inferior Material 3 en móvil con etiquetas visibles) -->
+		<!-- CUERPO PRINCIPAL: NAVEGACIÓN INFERIOR M3 EN MÓVIL / RIEL LATERAL Y DOS PANELES EN PANTALLAS GRANDES -->
+		<div class="flex min-h-0 w-full flex-1 flex-col overflow-hidden md:flex-row">
+			<!-- PESTAÑAS (barra inferior Material 3 en móvil, riel lateral desde md) -->
 			<nav
 				aria-label="Secciones principales"
-				class="bg-carpincho-panel border-carpincho-border relative z-10 order-2 flex shrink-0 overflow-hidden border-t pb-[var(--rockola-safe-bottom)] shadow-[0_-4px_16px_rgba(0,0,0,0.35)] transition-all duration-300 ease-in-out"
+				class="bg-carpincho-panel border-carpincho-border relative z-10 order-2 flex shrink-0 overflow-hidden border-t pb-[var(--rockola-safe-bottom)] shadow-[0_-4px_16px_rgba(0,0,0,0.35)] transition-all duration-300 ease-in-out md:order-1 md:w-24 md:flex-col md:border-t-0 md:border-r md:pb-0 md:shadow-md lg:w-28"
 				:class="[
 					isTabsBarHidden && isShortScreen
-						? 'pointer-events-none max-h-0 translate-y-2 border-t-0 pb-0 opacity-0'
-						: 'max-h-24 translate-y-0 opacity-100',
+						? 'pointer-events-none max-h-0 translate-y-2 border-t-0 pb-0 opacity-0 md:max-h-none md:translate-y-0 md:opacity-100'
+						: 'max-h-24 translate-y-0 opacity-100 md:max-h-none',
 				]"
 			>
-				<div role="tablist" class="flex w-full">
+				<div role="tablist" class="flex w-full md:flex-col md:gap-2 md:px-2 md:py-4">
 					<button
 						v-for="tab in tabs"
 						:key="tab.id"
@@ -840,7 +840,7 @@
 						:aria-selected="activeTab === tab.id"
 						:aria-label="tab.name"
 						:class="[
-							'touch-target tap-feedback flex flex-1 cursor-pointer touch-manipulation flex-col items-center justify-center gap-0.5 py-2 text-center transition-colors duration-150',
+							'touch-target tap-feedback flex flex-1 cursor-pointer touch-manipulation flex-col items-center justify-center gap-0.5 py-2 text-center transition-colors duration-150 md:flex-none md:rounded-xl md:py-3',
 							activeTab === tab.id
 								? 'text-carpincho-warning'
 								: 'hover:bg-carpincho-border/40 text-carpincho-muted',
@@ -868,30 +868,45 @@
 				</div>
 			</nav>
 
-			<!-- CONTENIDO DE PESTAÑAS -->
-			<!-- Ojo: Usamos v-show para mantener los componentes vivos en el DOM y no perder la posición de scroll ni el estado local al cambiar de pestaña -->
+			<!-- CONTENIDO DE PESTAÑAS (dos paneles en >= lg para biblioteca/tops + cola lateral) -->
 			<div
-				class="tab-swipe-container relative order-1 min-h-0 w-full flex-1 overflow-hidden"
+				class="tab-swipe-container relative order-1 min-h-0 w-full flex-1 overflow-hidden md:order-2"
+				:class="
+					activeTab === 'library' || activeTab === 'top'
+						? 'lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(21rem,26rem)]'
+						: ''
+				"
 				@touchstart.passive="onTabContentTouchStart"
 				@touchmove.passive="onTabContentTouchMove"
 				@touchend="onTabContentTouchEnd"
 				@touchcancel="resetTabSwipe"
 			>
-				<Transition name="tab-fade">
-					<LibraryTab v-show="activeTab === 'library'" />
-				</Transition>
+				<div v-show="activeTab !== 'queue'" class="relative h-full min-h-0 w-full overflow-hidden">
+					<Transition name="tab-fade">
+						<LibraryTab v-show="activeTab === 'library'" />
+					</Transition>
 
-				<Transition name="tab-fade">
-					<QueueTab v-show="activeTab === 'queue'" />
-				</Transition>
+					<Transition name="tab-fade">
+						<TopTab v-show="activeTab === 'top'" />
+					</Transition>
 
-				<Transition name="tab-fade">
-					<TopTab v-show="activeTab === 'top'" />
-				</Transition>
+					<Transition name="tab-fade">
+						<ControlsTab v-show="activeTab === 'controls'" />
+					</Transition>
+				</div>
 
-				<Transition name="tab-fade">
-					<ControlsTab v-show="activeTab === 'controls'" />
-				</Transition>
+				<div
+					:class="[
+						'border-carpincho-border relative h-full min-h-0 w-full overflow-hidden',
+						activeTab === 'queue'
+							? 'block'
+							: activeTab === 'library' || activeTab === 'top'
+								? 'hidden lg:block lg:border-l'
+								: 'hidden',
+					]"
+				>
+					<QueueTab v-show="activeTab === 'queue' || activeTab === 'library' || activeTab === 'top'" />
+				</div>
 			</div>
 		</div>
 	</div>

@@ -161,4 +161,33 @@ describe('useKeyboardShortcuts.ts', () => {
 		expect(fetchMock).not.toHaveBeenCalled();
 		input.remove();
 	});
+
+	it('focuses library search on / key and handles hardware media keys', async () => {
+		const searchInput = document.createElement('input');
+		searchInput.id = 'library-search-input';
+		document.body.appendChild(searchInput);
+
+		dispatchKey('/');
+		await Promise.resolve();
+		expect(document.activeElement).toBe(searchInput);
+		searchInput.remove();
+
+		dispatchKey('MediaPlayPause');
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({ body: JSON.stringify({ cmd: 'pause' }) })
+		);
+
+		dispatchKey('MediaTrackNext');
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({ body: JSON.stringify({ cmd: 'skip' }) })
+		);
+
+		dispatchKey('MediaTrackPrevious');
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({ body: JSON.stringify({ cmd: 'prev' }) })
+		);
+	});
 });

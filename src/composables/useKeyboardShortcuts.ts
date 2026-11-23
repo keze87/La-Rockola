@@ -1,3 +1,4 @@
+import { nextTick } from 'vue';
 import { onKeyStroke } from '@vueuse/core';
 import { useContextMenu } from './useContextMenu';
 import { usePlaybackControls } from './usePlaybackControls';
@@ -165,5 +166,33 @@ export function useKeyboardShortcuts() {
 
 		prev();
 		player.haptic();
+	});
+
+	onKeyStroke('/', (e: KeyboardEvent) => {
+		if (shouldIgnore(e)) return;
+
+		e.preventDefault();
+		player.isFogonMode.value = false;
+		player.switchTab('library');
+		void nextTick(() => {
+			const input = document.getElementById('library-search-input') as HTMLInputElement | null;
+			input?.focus();
+			input?.select();
+		});
+	});
+
+	onKeyStroke('MediaPlayPause', (e: KeyboardEvent) => {
+		e.preventDefault();
+		pause();
+	});
+
+	onKeyStroke('MediaTrackNext', (e: KeyboardEvent) => {
+		e.preventDefault();
+		skip();
+	});
+
+	onKeyStroke('MediaTrackPrevious', (e: KeyboardEvent) => {
+		e.preventDefault();
+		prev();
 	});
 }

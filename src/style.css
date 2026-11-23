@@ -45,6 +45,11 @@
 	min-width: var(--target-size);
 }
 
+:focus-visible {
+	outline: 2px solid var(--color-carpincho-warning);
+	outline-offset: 2px;
+}
+
 .tap-feedback {
 	position: relative;
 	transition: background-color 0.15s ease-out;
@@ -191,6 +196,23 @@ dialog:modal {
 /* Apilamos las notificaciones justo arriba del reproductor flotante */
 [data-sonner-toaster] {
 	bottom: calc(168px + var(--rockola-safe-bottom)) !important;
+}
+
+@media (min-width: 768px) {
+	.floating-player {
+		bottom: calc(10px + var(--rockola-safe-bottom));
+		left: calc(6rem + max(12px, var(--rockola-safe-left)));
+	}
+
+	[data-sonner-toaster] {
+		bottom: calc(104px + var(--rockola-safe-bottom)) !important;
+	}
+}
+
+@media (min-width: 1024px) {
+	.floating-player {
+		left: calc(7rem + max(12px, var(--rockola-safe-left)));
+	}
 }
 
 html,

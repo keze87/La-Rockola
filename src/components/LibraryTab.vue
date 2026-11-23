@@ -146,6 +146,7 @@
 
 			<div class="relative flex-grow">
 				<input
+					id="library-search-input"
 					v-model="searchQuery"
 					type="text"
 					aria-label="Buscar canciones o artistas"
