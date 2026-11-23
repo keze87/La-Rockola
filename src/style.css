@@ -98,8 +98,8 @@ dialog::backdrop {
 	min-height: 0;
 	overflow-y: auto;
 	overscroll-behavior-y: contain;
-	padding-bottom: calc(100px + var(--rockola-safe-bottom) + var(--rockola-ime-height)) !important;
-	scroll-padding-bottom: calc(108px + var(--rockola-safe-bottom) + var(--rockola-ime-height));
+	padding-bottom: calc(96px + var(--rockola-ime-height)) !important;
+	scroll-padding-bottom: calc(104px + var(--rockola-ime-height));
 	--scrollbar-thumb: var(--color-carpincho-border);
 	--scrollbar-track: var(--color-carpincho-panel);
 	scrollbar-width: thin;
@@ -124,13 +124,13 @@ dialog::backdrop {
 	transform: translateY(-10px);
 }
 
-/* Barra del reproductor flotante */
+/* Barra del reproductor flotante: arriba de la barra inferior Material 3 en móvil */
 .floating-player {
 	position: fixed;
 	z-index: 50;
-	bottom: calc(5px + var(--rockola-safe-bottom));
-	left: max(15px, var(--rockola-safe-left));
-	right: max(15px, var(--rockola-safe-right));
+	bottom: calc(72px + var(--rockola-safe-bottom));
+	left: max(12px, var(--rockola-safe-left));
+	right: max(12px, var(--rockola-safe-right));
 }
 
 html.ime-open .floating-player {
@@ -190,7 +190,7 @@ dialog:modal {
 
 /* Apilamos las notificaciones justo arriba del reproductor flotante */
 [data-sonner-toaster] {
-	bottom: calc(100px + var(--rockola-safe-bottom)) !important;
+	bottom: calc(168px + var(--rockola-safe-bottom)) !important;
 }
 
 html,

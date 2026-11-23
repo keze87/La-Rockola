@@ -819,73 +819,80 @@
 			</div>
 		</div>
 
-		<!-- PESTAÑAS -->
-		<nav
-			aria-label="Secciones principales"
-			class="bg-carpincho-panel border-carpincho-border relative z-10 flex shrink-0 overflow-hidden border-b shadow-md transition-all duration-300 ease-in-out"
-			:class="[
-				isTabsBarHidden && isShortScreen
-					? 'pointer-events-none max-h-0 -translate-y-2 border-b-0 opacity-0'
-					: 'max-h-16 translate-y-0 opacity-100',
-			]"
-		>
-			<div role="tablist" class="flex w-full">
-				<button
-					v-for="tab in tabs"
-					:key="tab.id"
-					type="button"
-					role="tab"
-					:aria-selected="activeTab === tab.id"
-					:aria-label="tab.name"
-					:class="[
-						'touch-target flex flex-1 cursor-pointer touch-manipulation items-center justify-center gap-1.5 py-2.5 text-center text-sm font-medium tracking-wide uppercase transition-all duration-150 active:scale-95',
-						activeTab === tab.id
-							? 'text-carpincho-warning border-carpincho-primary border-b-2'
-							: 'hover:bg-carpincho-border/50 text-carpincho-muted border-b-2 border-transparent',
-					]"
-					@click="switchTab(tab.id)"
-				>
-					<div
-						class="relative flex items-center justify-center rounded-full px-3 py-0.5 transition-colors duration-150"
-						:class="activeTab === tab.id ? 'bg-carpincho-primary/20' : ''"
+		<!-- CUERPO PRINCIPAL: NAVEGACIÓN INFERIOR M3 EN MÓVIL -->
+		<div class="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
+			<!-- PESTAÑAS (barra inferior Material 3 en móvil con etiquetas visibles) -->
+			<nav
+				aria-label="Secciones principales"
+				class="bg-carpincho-panel border-carpincho-border relative z-10 order-2 flex shrink-0 overflow-hidden border-t pb-[var(--rockola-safe-bottom)] shadow-[0_-4px_16px_rgba(0,0,0,0.35)] transition-all duration-300 ease-in-out"
+				:class="[
+					isTabsBarHidden && isShortScreen
+						? 'pointer-events-none max-h-0 translate-y-2 border-t-0 pb-0 opacity-0'
+						: 'max-h-24 translate-y-0 opacity-100',
+				]"
+			>
+				<div role="tablist" class="flex w-full">
+					<button
+						v-for="tab in tabs"
+						:key="tab.id"
+						type="button"
+						role="tab"
+						:aria-selected="activeTab === tab.id"
+						:aria-label="tab.name"
+						:class="[
+							'touch-target tap-feedback flex flex-1 cursor-pointer touch-manipulation flex-col items-center justify-center gap-0.5 py-2 text-center transition-colors duration-150',
+							activeTab === tab.id
+								? 'text-carpincho-warning'
+								: 'hover:bg-carpincho-border/40 text-carpincho-muted',
+						]"
+						@click="switchTab(tab.id)"
 					>
-						<i class="material-icons" aria-hidden="true">{{ tab.icon }}</i>
-						<span
-							v-if="tab.id === 'queue' && queueState.length > 0"
-							class="bg-carpincho-primary absolute -top-1 -right-0.5 flex h-[14px] min-w-[14px] items-center justify-center rounded-full px-[3px] text-[0.55rem] leading-none font-bold text-white"
+						<div
+							class="relative flex items-center justify-center rounded-full px-4 py-0.5 transition-colors duration-150"
+							:class="activeTab === tab.id ? 'bg-carpincho-primary/25' : ''"
 						>
-							{{ queueState.length > 99 ? '99+' : queueState.length }}
+							<i class="material-icons !text-[22px]" aria-hidden="true">{{ tab.icon }}</i>
+							<span
+								v-if="tab.id === 'queue' && queueState.length > 0"
+								class="bg-carpincho-primary absolute -top-1 -right-0.5 flex h-[14px] min-w-[14px] items-center justify-center rounded-full px-[3px] text-[0.55rem] leading-none font-bold text-white"
+							>
+								{{ queueState.length > 99 ? '99+' : queueState.length }}
+							</span>
+						</div>
+						<span
+							class="max-w-full truncate px-1 text-[0.65rem] leading-tight font-bold tracking-wide sm:text-xs"
+						>
+							{{ tab.name }}
 						</span>
-					</div>
-					<span class="hidden sm:inline">{{ tab.name }}</span>
-				</button>
+					</button>
+				</div>
+			</nav>
+
+			<!-- CONTENIDO DE PESTAÑAS -->
+			<!-- Ojo: Usamos v-show para mantener los componentes vivos en el DOM y no perder la posición de scroll ni el estado local al cambiar de pestaña -->
+			<div
+				class="tab-swipe-container relative order-1 min-h-0 w-full flex-1 overflow-hidden"
+				@touchstart.passive="onTabContentTouchStart"
+				@touchmove.passive="onTabContentTouchMove"
+				@touchend="onTabContentTouchEnd"
+				@touchcancel="resetTabSwipe"
+			>
+				<Transition name="tab-fade">
+					<LibraryTab v-show="activeTab === 'library'" />
+				</Transition>
+
+				<Transition name="tab-fade">
+					<QueueTab v-show="activeTab === 'queue'" />
+				</Transition>
+
+				<Transition name="tab-fade">
+					<TopTab v-show="activeTab === 'top'" />
+				</Transition>
+
+				<Transition name="tab-fade">
+					<ControlsTab v-show="activeTab === 'controls'" />
+				</Transition>
 			</div>
-		</nav>
-
-		<!-- CONTENIDO DE PESTAÑAS -->
-		<!-- Ojo: Usamos v-show para mantener los componentes vivos en el DOM y no perder la posición de scroll ni el estado local al cambiar de pestaña -->
-		<div
-			class="tab-swipe-container relative min-h-0 w-full flex-1 overflow-hidden"
-			@touchstart.passive="onTabContentTouchStart"
-			@touchmove.passive="onTabContentTouchMove"
-			@touchend="onTabContentTouchEnd"
-			@touchcancel="resetTabSwipe"
-		>
-			<Transition name="tab-fade">
-				<LibraryTab v-show="activeTab === 'library'" />
-			</Transition>
-
-			<Transition name="tab-fade">
-				<QueueTab v-show="activeTab === 'queue'" />
-			</Transition>
-
-			<Transition name="tab-fade">
-				<TopTab v-show="activeTab === 'top'" />
-			</Transition>
-
-			<Transition name="tab-fade">
-				<ControlsTab v-show="activeTab === 'controls'" />
-			</Transition>
 		</div>
 	</div>
 
