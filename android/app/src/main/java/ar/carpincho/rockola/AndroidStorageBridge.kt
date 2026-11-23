@@ -329,6 +329,8 @@ class SafTreeBrowser(
 
         val hasMore = session.pendingBuffer.isNotEmpty() || session.queue.isNotEmpty()
         val status = when {
+            session.failedDirs.isNotEmpty() && !hasMore && out.isEmpty() && session.seenFiles.isEmpty() ->
+                SafScanStatus.PROVIDER_ERROR
             session.failedDirs.isNotEmpty() -> SafScanStatus.PARTIAL_FAILURE
             out.isNotEmpty() || session.seenFiles.isNotEmpty() -> SafScanStatus.SUCCESS_WITH_FILES
             else -> SafScanStatus.SUCCESS_EMPTY
@@ -471,6 +473,7 @@ class SafTreeBrowser(
             }
         }
         val status = when {
+            failedDirs.isNotEmpty() && collected.isEmpty() -> SafScanStatus.PROVIDER_ERROR
             failedDirs.isNotEmpty() -> SafScanStatus.PARTIAL_FAILURE
             collected.isEmpty() -> SafScanStatus.SUCCESS_EMPTY
             else -> SafScanStatus.SUCCESS_WITH_FILES
@@ -622,16 +625,11 @@ private class AndroidSafTreeProvider(private val context: Context) : SafTreeProv
 
     override fun queryDocumentInfo(treeUri: String, docUri: String): SafDocumentEntry? {
         return try {
-            resolver.query(Uri.parse(docUri), projection, null, null, null)?.use { cursor ->
+            val parsedTree = Uri.parse(treeUri)
+            val parsedDoc = Uri.parse(docUri)
+            resolver.query(parsedDoc, projection, null, null, null)?.use { cursor ->
                 if (!cursor.moveToFirst()) return null
-                SafDocumentEntry(
-                    documentId = cursor.getString(0) ?: "",
-                    name = cursor.getString(1) ?: "",
-                    mimeType = cursor.getString(2) ?: "application/octet-stream",
-                    size = if (cursor.isNull(3)) -1L else cursor.getLong(3),
-                    lastModifiedMs = if (cursor.isNull(4)) 0L else cursor.getLong(4),
-                    uri = docUri,
-                )
+                readCursorRow(parsedTree, parsedDoc, cursor)
             }
         } catch (_: Exception) {
             null
@@ -648,22 +646,25 @@ private class AndroidSafTreeProvider(private val context: Context) : SafTreeProv
         val parsedTree = Uri.parse(treeUri)
         val rootDocId = DocumentsContract.getTreeDocumentId(parsedTree)
         val rootDocUri = DocumentsContract.buildDocumentUriUsingTree(parsedTree, rootDocId)
-        resolver.query(rootDocUri, projection, null, null, null)?.use { cursor ->
-            if (!cursor.moveToFirst()) return null
-            return readCursorRow(parsedTree, rootDocUri, cursor)
+        val cursor = resolver.query(rootDocUri, projection, null, null, null)
+            ?: throw IllegalStateException("El proveedor devolvió cursor nulo al consultar la raíz")
+        cursor.use {
+            if (!it.moveToFirst()) return null
+            return readCursorRow(parsedTree, rootDocUri, it)
         }
-        return null
     }
 
     override fun listChildren(treeUri: String, parentDocumentId: String): List<SafDocumentEntry> {
         val parsedTree = Uri.parse(treeUri)
         val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(parsedTree, parentDocumentId)
+        val cursor = resolver.query(childrenUri, projection, null, null, null)
+            ?: throw IllegalStateException("El proveedor devolvió cursor nulo al listar $parentDocumentId")
         val entries = ArrayList<SafDocumentEntry>()
-        resolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
-            while (cursor.moveToNext()) {
-                val docId = cursor.getString(0) ?: continue
+        cursor.use {
+            while (it.moveToNext()) {
+                val docId = it.getString(0) ?: continue
                 val docUri = DocumentsContract.buildDocumentUriUsingTree(parsedTree, docId)
-                entries.add(readCursorRow(parsedTree, docUri, cursor))
+                entries.add(readCursorRow(parsedTree, docUri, it))
             }
         }
         return entries

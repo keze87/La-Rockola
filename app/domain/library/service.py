@@ -325,7 +325,7 @@ class LibraryService:
 
 		logger.info(f"Pegando una ojeada por estas carpetas: {target_dirs}")
 		audio_extensions = {".flac", ".m4a", ".mp3", ".ogg", ".wav", ".mp4", ".mkv", ".avi", ".webm"}
-		raw_entries: list[tuple[str | Path, float, int]] = []
+		raw_entries: list[tuple[str | Path, float | None, int | None]] = []
 
 		if state:
 			state.scan_phase = "discovering"
@@ -412,7 +412,7 @@ class LibraryService:
 				f"Encontré {len(raw_entries)} archivos en total. Revisando cuáles son nuevos o cambiaron..."
 			)
 
-		raw_entries.sort(key=lambda item: item[1], reverse=True)
+		raw_entries.sort(key=lambda item: (item[1] is not None, item[1] or 0.0, str(item[0])), reverse=True)
 		has_ffmpeg = is_mood_available()
 		has_fpcalc = bool(find_binary("fpcalc"))
 
@@ -447,14 +447,15 @@ class LibraryService:
 		seen_track_ids: set[str] = set()
 		new_tracks_for_reconciliation: list[dict[str, Any]] = []
 
-		cache_hits: dict[str, tuple[float, dict[str, Any], str]] = {}
-		miss_files: list[tuple[str | Path, float, int]] = []
+		cache_hits: dict[str, tuple[float | None, dict[str, Any], str]] = {}
+		miss_files: list[tuple[str | Path, float | None, int | None]] = []
 
 		for f_ref, current_mtime, current_size in raw_entries:
 			file_str = str(f_ref)
 
 			if (
-				file_str in track_cache_by_path
+				current_mtime is not None
+				and file_str in track_cache_by_path
 				and track_cache_by_path[file_str]["mtime"] == current_mtime
 				and (track_cache_by_path[file_str]["data"].get("bpm", 0.0) != 0.0 or not has_ffmpeg or not extract_mood)
 			):
@@ -462,7 +463,9 @@ class LibraryService:
 				th = td.get("track_hash")
 				cache_hits[file_str] = (current_mtime, td, th)
 			elif (
-				file_str in db_cache
+				current_mtime is not None
+				and current_size is not None
+				and file_str in db_cache
 				and db_cache[file_str]["mtime"] == current_mtime
 				and db_cache[file_str]["file_size"] == current_size
 				and (db_cache[file_str].get("bpm", 0.0) != 0.0 or not has_ffmpeg or not extract_mood)
@@ -503,8 +506,8 @@ class LibraryService:
 			t_meta = time.perf_counter()
 
 			def _process_single_file(
-				item: tuple[str | Path, float, int],
-			) -> tuple[str, float, dict[str, Any], str, tuple[Any, ...], str | None]:
+				item: tuple[str | Path, float | None, int | None],
+			) -> tuple[str, float | None, dict[str, Any], str, tuple[Any, ...], str | None]:
 				target_f, mtime, size = item
 				track_hash, audio_hash = generate_track_hashes(target_f, file_size=size)
 				track_obj = Track(

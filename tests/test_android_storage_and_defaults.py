@@ -382,3 +382,84 @@ def test_saf_scan_outcome_distinguishes_empty_from_provider_error_and_unknown_si
 	assert len(ok_outcome.files) == 1
 	assert ok_outcome.files[0].size is None
 	assert ok_outcome.files[0].mtime is None
+
+
+def test_scan_saf_handles_optional_mtime_and_size_without_type_error_or_false_cache_hit(
+	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+	"""Mezcla de mtime/size conocidos y None no debe romper sort ni validar caché con None."""
+	from app.domain.library.service import LibraryService
+	from app.infrastructure.db.migrations import apply_migrations
+	from app.infrastructure.db.repositories import TrackRepository
+	from app.infrastructure.storage import backend as storage_mod
+	from app.infrastructure.storage.backend import SafScanOutcome, ScannedAudioFile
+
+	db_path = tmp_path / "opt_meta.db"
+	apply_migrations(db_path)
+	tree = "content://com.android.externalstorage.documents/tree/primary%3AMusic"
+	audio_bytes = _build_minimal_mp3_with_id3(tmp_path / "base.mp3", "Zamba", "Carpincho").read_bytes()
+	real_a = tmp_path / "a.mp3"
+	real_b = tmp_path / "b.mp3"
+	real_c = tmp_path / "c.mp3"
+	real_d = tmp_path / "d.mp3"
+	for p in (real_a, real_b, real_c, real_d):
+		p.write_bytes(audio_bytes)
+
+	uri_a = f"{tree}/document/a.mp3"
+	uri_b = f"{tree}/document/b.mp3"
+	uri_c = f"{tree}/document/c.mp3"
+	uri_d = f"{tree}/document/d.mp3"
+	path_map = {uri_a: real_a, uri_b: real_b, uri_c: real_c, uri_d: real_d}
+
+	class OptMetaBackend:
+		def validate_root(self, _root):
+			return storage_mod.FolderValidationResult(status="ok", path=tree, display_name="Music")
+
+		def scan_audio_files(self, _root, _exts):
+			return SafScanOutcome(
+				status="success_with_files",
+				files=[
+					ScannedAudioFile(path=uri_a, name="a.mp3", mtime=None, size=None),
+					ScannedAudioFile(path=uri_b, name="b.mp3", mtime=None, size=len(audio_bytes)),
+					ScannedAudioFile(path=uri_c, name="c.mp3", mtime=200.0, size=None),
+					ScannedAudioFile(path=uri_d, name="d.mp3", mtime=100.0, size=len(audio_bytes)),
+				],
+				failed_dirs=[],
+			)
+
+		def stat_file(self, ref):
+			p = path_map[str(ref)]
+			return (None, p.stat().st_size)
+
+		def open_binary(self, ref):
+			return path_map[str(ref)].open("rb")
+
+	TrackRepository(db_path).save_many(
+		[("stale-id", uri_a, "Viejo", "Album", "Viejo", "01:00", None, None, 0.0, 0.0, 0.0, None, None)]
+	)
+
+	monkeypatch.setattr("app.domain.library.service.is_saf_uri", lambda p: str(p).startswith("content://"))
+	monkeypatch.setattr("app.domain.library.service.get_storage_backend", lambda _p: OptMetaBackend())
+	monkeypatch.setattr("app.domain.library.hasher.get_storage_backend", lambda _p: OptMetaBackend())
+	monkeypatch.setattr("app.infrastructure.storage.backend.get_storage_backend", lambda _p: OptMetaBackend())
+	monkeypatch.setattr(
+		"app.domain.library.models.open_mutagen_file", lambda p, easy=False: _open_mutagen_from_map(path_map, p, easy)
+	)
+	monkeypatch.setattr("app.domain.library.service.is_mood_available", lambda: False)
+	monkeypatch.setattr("app.domain.library.service.find_binary", lambda _b: None)
+
+	tracks = LibraryService(db_path=db_path).scan_directory([tree], extract_mood=False, extract_fingerprint=False)
+	assert len(tracks) == 4
+	by_path = {t["path"]: t for t in tracks}
+	assert by_path[uri_a]["title"] == "Zamba"
+
+
+from contextlib import contextmanager as _cm
+
+
+@_cm
+def _open_mutagen_from_map(path_map, p, easy=False):
+	from mutagen import File as MutagenFile
+
+	with path_map[str(p)].open("rb") as f:
+		yield MutagenFile(f, easy=easy)

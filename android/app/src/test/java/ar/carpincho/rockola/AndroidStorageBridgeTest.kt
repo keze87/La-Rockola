@@ -412,4 +412,49 @@ class AndroidStorageBridgeTest {
         assertEquals(1, listCalls)
         assertEquals(0, queryDocCalls)
     }
+
+    @Test
+    fun `error en subcarpeta reporta PARTIAL_FAILURE y error en raiz reporta PROVIDER_ERROR sin fingir carpeta vacia`() {
+        val treeUri = "content://com.android.externalstorage.documents/tree/primary%3AMusic"
+        val rootDocId = "primary:Music"
+        val subBadId = "primary:Music/Corrupta"
+        val subOkId = "primary:Music/Buena"
+        val songOk = "$treeUri/document/primary%3AMusic%2FBuena%2Ftema.mp3"
+
+        val partialProvider = FakeSafProvider(
+            validTreeUris = setOf(treeUri),
+            persistedTrees = setOf(treeUri),
+            roots = mapOf(
+                treeUri to SafDocumentEntry(rootDocId, "Music", SafTreeBrowser.MIME_TYPE_DIR, 0L, -1L, "$treeUri/document/$rootDocId"),
+            ),
+            throwIoOnDir = setOf(subBadId),
+            treeChildren = mapOf(
+                Pair(treeUri, rootDocId) to listOf(
+                    SafDocumentEntry(subBadId, "Corrupta", SafTreeBrowser.MIME_TYPE_DIR, 0L, -1L, "$treeUri/document/bad"),
+                    SafDocumentEntry(subOkId, "Buena", SafTreeBrowser.MIME_TYPE_DIR, 0L, -1L, "$treeUri/document/ok"),
+                ),
+                Pair(treeUri, subOkId) to listOf(
+                    SafDocumentEntry("primary:Music/Buena/tema.mp3", "tema.mp3", "audio/mpeg", -1L, -1L, songOk),
+                ),
+            ),
+        )
+        val browser = SafTreeBrowser(partialProvider)
+        val partialRes = browser.scanAudioFiles(treeUri)
+        assertEquals(SafScanStatus.PARTIAL_FAILURE, partialRes.status)
+        assertEquals(1, partialRes.files.size)
+        assertEquals(listOf(subBadId), partialRes.failedDirs)
+
+        // Si falla directamente la raíz (ej. cursor null -> IllegalStateException), reporta PROVIDER_ERROR
+        val rootFailProvider = FakeSafProvider(
+            validTreeUris = setOf(treeUri),
+            persistedTrees = setOf(treeUri),
+            roots = mapOf(
+                treeUri to SafDocumentEntry(rootDocId, "Music", SafTreeBrowser.MIME_TYPE_DIR, 0L, -1L, "$treeUri/document/$rootDocId"),
+            ),
+            throwIoOnDir = setOf(rootDocId),
+        )
+        val failRes = SafTreeBrowser(rootFailProvider).scanAudioFiles(treeUri)
+        assertEquals(SafScanStatus.PROVIDER_ERROR, failRes.status)
+        assertTrue(failRes.files.isEmpty())
+    }
 }
