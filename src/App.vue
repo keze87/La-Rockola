@@ -663,18 +663,21 @@
 					:aria-selected="activeTab === tab.id"
 					:aria-label="tab.name"
 					:class="[
-						'touch-target flex flex-1 cursor-pointer touch-manipulation items-center justify-center gap-1 py-3 text-center text-sm font-medium tracking-wide uppercase transition-colors active:scale-95',
+						'touch-target flex flex-1 cursor-pointer touch-manipulation items-center justify-center gap-1.5 py-2.5 text-center text-sm font-medium tracking-wide uppercase transition-all duration-150 active:scale-95',
 						activeTab === tab.id
-							? 'text-carpincho-primary border-carpincho-primary border-b-2'
+							? 'text-carpincho-warning border-carpincho-primary border-b-2'
 							: 'hover:bg-carpincho-border/50 text-carpincho-muted border-b-2 border-transparent',
 					]"
 					@click="switchTab(tab.id)"
 				>
-					<div class="relative">
+					<div
+						class="relative flex items-center justify-center rounded-full px-3 py-0.5 transition-colors duration-150"
+						:class="activeTab === tab.id ? 'bg-carpincho-primary/20' : ''"
+					>
 						<i class="material-icons" aria-hidden="true">{{ tab.icon }}</i>
 						<span
 							v-if="tab.id === 'queue' && queueState.length > 0"
-							class="bg-carpincho-primary absolute -top-1.5 -right-3 flex h-[14px] min-w-[14px] items-center justify-center rounded-full px-[3px] text-[0.55rem] leading-none font-bold text-white"
+							class="bg-carpincho-primary absolute -top-1 -right-0.5 flex h-[14px] min-w-[14px] items-center justify-center rounded-full px-[3px] text-[0.55rem] leading-none font-bold text-white"
 						>
 							{{ queueState.length > 99 ? '99+' : queueState.length }}
 						</span>

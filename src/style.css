@@ -185,6 +185,22 @@ textarea,
 	-webkit-touch-callout: default;
 }
 
+button,
+[role='button'],
+[role='tab'] {
+	touch-action: manipulation;
+}
+
+@media (pointer: coarse) {
+	.tab-content {
+		scrollbar-width: none;
+	}
+
+	.tab-content::-webkit-scrollbar {
+		display: none;
+	}
+}
+
 #app {
 	display: flex;
 	flex-direction: column;
