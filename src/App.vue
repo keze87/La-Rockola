@@ -610,7 +610,7 @@
 			class="bg-carpincho-panel border-carpincho-border flex max-w-sm flex-col items-center rounded-2xl border p-6 shadow-xl"
 		>
 			<img
-				:src="apiUrl('/favicon.png')"
+				src="/favicon.png"
 				alt="La Rockola del Carpincho"
 				class="mb-4 h-20 w-20 rounded-2xl shadow"
 			/>
