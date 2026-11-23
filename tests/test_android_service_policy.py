@@ -118,3 +118,30 @@ def test_stop_embedded_server_logs_persistence_exception_without_failing(monkeyp
 		android_entry._active_server = None
 		android_entry._host_state = "stopped"
 		android_entry._stop_requested = False
+
+
+def test_get_connected_remote_clients_counts_active_http_stream_without_websocket(
+	isolate_container, monkeypatch
+) -> None:
+	"""Un stream HTTP remoto activo debe contar como cliente conectado aunque el WebSocket haya cerrado."""
+	from app.api import media as media_mod
+
+	mgr = isolate_container.ensure_ws_manager()
+	mgr.active_connections = []
+	assert get_connected_remote_clients() == 0
+
+	with media_mod.track_remote_stream(is_remote=True):
+		assert media_mod.active_remote_stream_count() == 1
+		assert get_connected_remote_clients() == 1
+
+	assert media_mod.active_remote_stream_count() == 0
+	assert media_mod.has_recent_remote_stream(grace_sec=30.0) is True
+	assert get_connected_remote_clients() == 1
+
+	# Tras vencer la ventana de gracia, ya no queda retenido como conectado
+	media_mod._last_remote_stream_at -= 60.0
+	assert get_connected_remote_clients() == 0
+
+	with media_mod.track_remote_stream(is_remote=False):
+		assert media_mod.active_remote_stream_count() == 0
+		assert get_connected_remote_clients() == 0

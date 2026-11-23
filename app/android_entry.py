@@ -94,14 +94,24 @@ def dispatch_native_command(cmd: str, extra_json: str = "{}", timeout_sec: float
 
 
 def get_connected_remote_clients() -> int:
-	"""Devuelve la cantidad de clientes WebSocket remotos conectados al servidor embebido."""
+	"""Devuelve clientes remotos activos (WebSocket + streams HTTP en curso o en ventana de gracia)."""
+	ws_count = 0
 	mgr = get_container().ws_manager
-	if mgr is None or not hasattr(mgr, "remote_client_count"):
-		return 0
+	if mgr is not None and hasattr(mgr, "remote_client_count"):
+		try:
+			ws_count = int(mgr.remote_client_count())
+		except Exception:
+			ws_count = 0
+	http_count = 0
 	try:
-		return int(mgr.remote_client_count())
+		from app.api.media import active_remote_stream_count, has_recent_remote_stream
+
+		http_count = active_remote_stream_count()
+		if http_count == 0 and ws_count == 0 and has_recent_remote_stream(grace_sec=30.0):
+			http_count = 1
 	except Exception:
-		return 0
+		http_count = 0
+	return ws_count + http_count
 
 
 def _invoke_ready_callback(callback: Any) -> None:

@@ -34,6 +34,22 @@ internal object ServicePowerPolicy {
         if (forceStop) return true
         return !isHostRunning
     }
+
+    fun foregroundServiceType(isMediaPlaying: Boolean, hasRemoteClients: Boolean): Int {
+        return if (!isMediaPlaying && hasRemoteClients) {
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+        } else {
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+        }
+    }
+
+    fun shouldStopAfterRemoteGrace(
+        taskRemoved: Boolean,
+        isMediaPlaying: Boolean,
+        hasRemoteClients: Boolean,
+    ): Boolean {
+        return taskRemoved && !isMediaPlaying && !hasRemoteClients
+    }
 }
 
 /**
@@ -418,8 +434,9 @@ class RockolaForegroundService : Service() {
             commandClient.setTarget(hostTarget)
         }
 
+        mainHandler.removeCallbacks(remoteIdleCheckRunnable)
         if (!isInForeground && (intent?.getBooleanExtra(EXTRA_STARTED_AS_FOREGROUND, false) == true || isMediaPlaying)) {
-            promoteToForeground("La Rockola está lista")
+            promoteToForeground("La Rockola está lista", ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
         }
         if (!isMediaPlaying) {
             releaseLocks()
@@ -580,7 +597,26 @@ class RockolaForegroundService : Service() {
         wifiLock = null
     }
 
-    private fun promoteToForeground(text: String) {
+    private val remoteIdleCheckRunnable = object : Runnable {
+        override fun run() {
+            if (!isRunning || isMediaPlaying) return
+            if (ServicePowerPolicy.shouldStopAfterRemoteGrace(
+                    taskRemoved = true,
+                    isMediaPlaying = isMediaPlaying,
+                    hasRemoteClients = hasConnectedRemoteClients(),
+                )
+            ) {
+                stopServerAndService()
+            } else {
+                mainHandler.postDelayed(this, 15_000L)
+            }
+        }
+    }
+
+    private fun promoteToForeground(
+        text: String,
+        serviceType: Int = ServicePowerPolicy.foregroundServiceType(isMediaPlaying, hasConnectedRemoteClients()),
+    ) {
         if (isInForeground) {
             notificationManager.notifyCurrentState()
             return
@@ -588,7 +624,7 @@ class RockolaForegroundService : Service() {
         val notification = notificationManager.buildNotification(text)
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+                startForeground(NOTIFICATION_ID, notification, serviceType)
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
@@ -624,8 +660,12 @@ class RockolaForegroundService : Service() {
         val hasRemotes = hasConnectedRemoteClients()
         if (ServicePowerPolicy.shouldStopOnTaskRemoved(isMediaPlaying, hasRemotes)) {
             stopServerAndService()
-        } else if (!isMediaPlaying && hasRemotes && !isInForeground) {
-            promoteToForeground("Sirviendo a clientes remotos")
+        } else if (!isMediaPlaying && hasRemotes) {
+            if (!isInForeground) {
+                promoteToForeground("Sirviendo a clientes remotos", ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+            }
+            mainHandler.removeCallbacks(remoteIdleCheckRunnable)
+            mainHandler.postDelayed(remoteIdleCheckRunnable, 15_000L)
         }
         super.onTaskRemoved(rootIntent)
     }
@@ -669,6 +709,7 @@ class RockolaForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        mainHandler.removeCallbacks(remoteIdleCheckRunnable)
         if (activeInstance === this) {
             activeInstance = null
         }

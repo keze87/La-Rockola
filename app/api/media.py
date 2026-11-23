@@ -317,12 +317,60 @@ async def serve_cover(
 	return await asyncio.to_thread(_serve_cover_sync, path, size, if_none_match, is_announcement, db_path)
 
 
+import threading
+import time
+from contextlib import contextmanager
+
+_remote_stream_lock = threading.Lock()
+_active_remote_streams = 0
+_last_remote_stream_at = 0.0
+
+
+def active_remote_stream_count() -> int:
+	"""Cantidad de streams HTTP de audio remotos en curso."""
+	with _remote_stream_lock:
+		return _active_remote_streams
+
+
+def has_recent_remote_stream(grace_sec: float = 30.0) -> bool:
+	"""Indica si hubo un stream HTTP remoto activo dentro de la ventana de gracia."""
+	with _remote_stream_lock:
+		if _active_remote_streams > 0:
+			return True
+		return _last_remote_stream_at > 0.0 and (time.monotonic() - _last_remote_stream_at) < grace_sec
+
+
+@contextmanager
+def track_remote_stream(is_remote: bool):
+	"""Registra la duración de un stream HTTP remoto en curso."""
+	global _active_remote_streams, _last_remote_stream_at
+	if not is_remote:
+		yield
+		return
+	with _remote_stream_lock:
+		_active_remote_streams += 1
+		_last_remote_stream_at = time.monotonic()
+	try:
+		yield
+	finally:
+		with _remote_stream_lock:
+			_active_remote_streams = max(0, _active_remote_streams - 1)
+			_last_remote_stream_at = time.monotonic()
+
+
+def _is_remote_request(request: Request | None) -> bool:
+	client = getattr(request, "client", None) if request is not None else None
+	host = getattr(client, "host", None)
+	return bool(host and host not in ("127.0.0.1", "::1", "localhost"))
+
+
 def _build_saf_stream_response(
 	path: str,
 	file_size: int | None,
 	media_type: str,
 	cache_control: str,
 	range_header: str | None,
+	is_remote: bool = False,
 ) -> Response:
 	backend = get_storage_backend(path)
 	if file_size == 0 and not range_header:
@@ -363,14 +411,15 @@ def _build_saf_stream_response(
 		}
 
 		def _iter_unknown():
-			try:
-				while True:
-					chunk = stream.read(65536)
-					if not chunk:
-						break
-					yield chunk
-			finally:
-				stream.close()
+			with track_remote_stream(is_remote):
+				try:
+					while True:
+						chunk = stream.read(65536)
+						if not chunk:
+							break
+						yield chunk
+				finally:
+					stream.close()
 
 		return StreamingResponse(_iter_unknown(), status_code=200, media_type=media_type, headers=unknown_headers)
 
@@ -437,16 +486,17 @@ def _build_saf_stream_response(
 		headers["Content-Range"] = f"bytes {start}-{end}/{file_size}"
 
 	def _iter_chunks():
-		try:
-			remaining = content_length
-			while remaining > 0:
-				chunk = stream.read(min(65536, remaining))
-				if not chunk:
-					break
-				remaining -= len(chunk)
-				yield chunk
-		finally:
-			stream.close()
+		with track_remote_stream(is_remote):
+			try:
+				remaining = content_length
+				while remaining > 0:
+					chunk = stream.read(min(65536, remaining))
+					if not chunk:
+						break
+					remaining -= len(chunk)
+					yield chunk
+			finally:
+				stream.close()
 
 	return StreamingResponse(
 		_iter_chunks(),
@@ -503,8 +553,9 @@ async def stream_audio(
 			return Response(status_code=404)
 		media_type = mimetypes.guess_type(get_saf_name(path))[0] or "application/octet-stream"
 		range_header = request.headers.get("range") if request else None
+		is_remote = _is_remote_request(request)
 		return await asyncio.to_thread(
-			_build_saf_stream_response, path, st_info[1], media_type, cache_control, range_header
+			_build_saf_stream_response, path, st_info[1], media_type, cache_control, range_header, is_remote
 		)
 
 	if not os.path.exists(path):

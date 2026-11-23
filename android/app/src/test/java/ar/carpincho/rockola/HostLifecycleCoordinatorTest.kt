@@ -422,4 +422,30 @@ class HostLifecycleCoordinatorTest {
         assertTrue(lastStartingIdx > lastStoppedIdx)
         coord.stop(500L)
     }
+
+    @Test
+    fun `politica de tipo foreground y cierre tras gracia de clientes remotos`() {
+        assertEquals(
+            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
+            ServicePowerPolicy.foregroundServiceType(isMediaPlaying = true, hasRemoteClients = true),
+        )
+        assertEquals(
+            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+            ServicePowerPolicy.foregroundServiceType(isMediaPlaying = false, hasRemoteClients = true),
+        )
+        assertTrue(
+            ServicePowerPolicy.shouldStopAfterRemoteGrace(
+                taskRemoved = true,
+                isMediaPlaying = false,
+                hasRemoteClients = false,
+            ),
+        )
+        assertFalse(
+            ServicePowerPolicy.shouldStopAfterRemoteGrace(
+                taskRemoved = true,
+                isMediaPlaying = false,
+                hasRemoteClients = true,
+            ),
+        )
+    }
 }
