@@ -76,6 +76,8 @@ android {
     buildTypes {
         debug {
             applicationIdSuffix ".debug"
+            resValue "string", "app_name", "La Rockola (Debug)"
+            resValue "string", "title_activity_main", "La Rockola (Debug)"
         }
         release {
             signingConfig signingConfigs.release
