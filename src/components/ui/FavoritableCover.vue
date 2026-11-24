@@ -12,7 +12,6 @@
 			buttonSize?: string;
 			buttonIconSize?: string;
 			sizePx?: number | null;
-			unloadWhenHidden?: boolean;
 			showFavorite?: boolean;
 			buttonPosition?: string;
 		}>(),
@@ -23,7 +22,6 @@
 			buttonSize: 'h-[22px] w-[22px]',
 			buttonIconSize: '!text-[13px]',
 			sizePx: 512,
-			unloadWhenHidden: false,
 			showFavorite: true,
 			buttonPosition: '-right-2 -bottom-2',
 		}
@@ -40,7 +38,6 @@
 			:rounded="rounded"
 			:icon-size="iconSize"
 			:size-px="sizePx"
-			:unload-when-hidden="unloadWhenHidden"
 			class="cursor-pointer"
 			@click.stop.prevent="toggleFavorite"
 		/>

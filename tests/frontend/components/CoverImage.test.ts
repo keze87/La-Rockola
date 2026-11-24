@@ -61,55 +61,6 @@ describe('CoverImage.vue', () => {
 		expect(wrapperOrig.find('img').attributes('src')).not.toContain('&size=');
 	});
 
-	it('unloads <img> when offscreen and loads it when visible', async () => {
-		let observerCallback: any = null;
-		class MockIntersectionObserver {
-			constructor(callback: any) {
-				observerCallback = callback;
-			}
-			observe() {}
-			unobserve() {}
-			disconnect() {}
-		}
-		const origWindowIO = (window as any).IntersectionObserver;
-		const origGlobalIO = (globalThis as any).IntersectionObserver;
-		(window as any).IntersectionObserver = MockIntersectionObserver;
-		(globalThis as any).IntersectionObserver = MockIntersectionObserver;
-
-		try {
-			const wrapper = mount(CoverImage, {
-				props: {
-					path: '/music/album.flac',
-					unloadWhenHidden: true,
-				},
-			});
-
-			await wrapper.vm.$nextTick();
-
-			// Initially mounted in test mode
-			expect(wrapper.find('img').exists()).toBe(true);
-
-			// Simulate scrolling out of view (offscreen / not being seen)
-			if (observerCallback) {
-				observerCallback([{ isIntersecting: false }]);
-				await wrapper.vm.$nextTick();
-
-				// Image is now unloaded!
-				expect(wrapper.find('img').exists()).toBe(false);
-
-				// Simulate scrolling back into view
-				observerCallback([{ isIntersecting: true }]);
-				await wrapper.vm.$nextTick();
-
-				// Image is loaded back!
-				expect(wrapper.find('img').exists()).toBe(true);
-			}
-		} finally {
-			(window as any).IntersectionObserver = origWindowIO;
-			(globalThis as any).IntersectionObserver = origGlobalIO;
-		}
-	});
-
 	it('renders loading skeleton until image finishes loading and resets when path changes', async () => {
 		const wrapper = mount(CoverImage, {
 			props: {
@@ -171,38 +122,5 @@ describe('CoverImage.vue', () => {
 		await wrapper.setProps({ path: '/music/cached-2.flac' });
 		await wrapper.vm.$nextTick();
 		expect(wrapper.find('img.cover-main-img').classes()).toContain('opacity-100');
-	});
-
-	it('keeps image mounted by default (unloadWhenHidden=false) even if IntersectionObserver reports false', async () => {
-		let observerCallback: any = null;
-		class MockIntersectionObserver {
-			constructor(callback: any) {
-				observerCallback = callback;
-			}
-			observe() {}
-			unobserve() {}
-			disconnect() {}
-		}
-		const origWindowIO = (window as any).IntersectionObserver;
-		const origGlobalIO = (globalThis as any).IntersectionObserver;
-		(window as any).IntersectionObserver = MockIntersectionObserver;
-		(globalThis as any).IntersectionObserver = MockIntersectionObserver;
-
-		try {
-			const wrapper = mount(CoverImage, {
-				props: {
-					path: '/music/album.flac',
-				},
-			});
-			await wrapper.vm.$nextTick();
-			if (observerCallback) {
-				observerCallback([{ isIntersecting: false }]);
-				await wrapper.vm.$nextTick();
-			}
-			expect(wrapper.find('img.cover-main-img').exists()).toBe(true);
-		} finally {
-			(window as any).IntersectionObserver = origWindowIO;
-			(globalThis as any).IntersectionObserver = origGlobalIO;
-		}
 	});
 });

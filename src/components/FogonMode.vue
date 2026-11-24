@@ -716,7 +716,6 @@
 										size="h-full w-full"
 										rounded="rounded-2xl md:rounded-3xl"
 										:size-px="512"
-										:unload-when-hidden="false"
 										button-size="h-10 w-10 md:h-12 md:w-12"
 										button-icon-size="text-xl md:text-2xl"
 										button-position="right-3 bottom-3 md:right-4 md:bottom-4"

@@ -1,6 +1,5 @@
 <script setup lang="ts">
 	import { computed, onMounted, ref, watch } from 'vue';
-	import { useIntersectionObserver } from '@vueuse/core';
 	import { useCover } from '../../composables/useCover';
 	import type { HTMLAttributes } from 'vue';
 
@@ -12,7 +11,6 @@
 				rounded?: string;
 				iconSize?: string;
 				sizePx?: number | null;
-				unloadWhenHidden?: boolean;
 			} & /* @vue-ignore */ HTMLAttributes
 		>(),
 		{
@@ -21,7 +19,6 @@
 			rounded: 'rounded',
 			iconSize: '!text-lg',
 			sizePx: 512,
-			unloadWhenHidden: false,
 		}
 	);
 
@@ -32,20 +29,18 @@
 	const { coverUrl: rawThumbUrl } = useCover(() => props.path, { size: 128 });
 	const thumbUrl = computed(() => (coverUrl.value && props.sizePx && props.sizePx > 128 ? rawThumbUrl.value : null));
 
-	const elRef = ref<HTMLElement | null>(null);
 	const imgRef = ref<HTMLImageElement | null>(null);
 	const isLoaded = ref(false);
 	const isThumbLoaded = ref(false);
-	const isVisible = ref(true);
 
 	function syncLoadedFromDom() {
-		if (coverUrl.value && isVisible.value && imgRef.value?.complete && imgRef.value.naturalWidth > 0) {
+		if (coverUrl.value && imgRef.value?.complete && imgRef.value.naturalWidth > 0) {
 			isLoaded.value = true;
 		}
 	}
 
 	watch(
-		[coverUrl, isVisible],
+		coverUrl,
 		() => {
 			isLoaded.value = false;
 			isThumbLoaded.value = false;
@@ -66,30 +61,12 @@
 		isLoaded.value = false;
 		onCoverError();
 	}
-
-	if (props.unloadWhenHidden && typeof window !== 'undefined' && 'IntersectionObserver' in window) {
-		useIntersectionObserver(
-			elRef,
-			(entries) => {
-				const entry = entries[0];
-				if (entry) {
-					isVisible.value = entry.isIntersecting;
-				}
-			},
-			{
-				rootMargin: '250px',
-			}
-		);
-	}
 </script>
 
 <template>
-	<div
-		ref="elRef"
-		:class="[size, rounded, 'relative isolate flex shrink-0 items-center justify-center overflow-hidden']"
-	>
+	<div :class="[size, rounded, 'relative isolate flex shrink-0 items-center justify-center overflow-hidden']">
 		<div
-			v-if="isVisible && coverUrl && !isLoaded && !(thumbUrl && isThumbLoaded)"
+			v-if="coverUrl && !isLoaded && !(thumbUrl && isThumbLoaded)"
 			:class="[
 				size,
 				rounded,
@@ -97,7 +74,7 @@
 			]"
 		/>
 		<img
-			v-if="isVisible && coverUrl"
+			v-if="coverUrl"
 			ref="imgRef"
 			:src="coverUrl"
 			:class="[
@@ -112,7 +89,7 @@
 			@error="onImgError"
 		/>
 		<img
-			v-if="isVisible && thumbUrl && !isLoaded"
+			v-if="thumbUrl && !isLoaded"
 			:src="thumbUrl"
 			:class="[
 				size,
