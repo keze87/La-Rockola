@@ -172,4 +172,33 @@ describe('FloatingPlayer.vue', () => {
 		expect(activeBtn.classes()).toContain('bg-[var(--accent-primary-soft)]');
 		expect(activeBtn.classes()).toContain('text-[var(--accent-primary)]');
 	});
+
+	it('triggers haptic tick once when crossing swipe threshold during touchmove', async () => {
+		const androidHost = await import('@/composables/useAndroidHost');
+		const isNativeSpy = vi.spyOn(androidHost, 'isNativeAndroidHost').mockReturnValue(true);
+		const hapticSpy = vi.spyOn(androidHost, 'triggerAndroidHaptic');
+
+		try {
+			const wrapper = mount(FloatingPlayer);
+			const playerEl = wrapper.find('.floating-player');
+
+			await playerEl.trigger('touchstart', { touches: [{ clientX: 220, clientY: 100 }] });
+			await playerEl.trigger('touchmove', { touches: [{ clientX: 190, clientY: 102 }] });
+			expect(hapticSpy).not.toHaveBeenCalledWith('tick');
+
+			// Cruza el umbral (56px)
+			await playerEl.trigger('touchmove', { touches: [{ clientX: 155, clientY: 102 }] });
+			expect(hapticSpy).toHaveBeenCalledWith('tick');
+			expect(hapticSpy).toHaveBeenCalledTimes(1);
+
+			// Sigue arrastrando más allá del umbral: no repite tick
+			await playerEl.trigger('touchmove', { touches: [{ clientX: 130, clientY: 102 }] });
+			expect(hapticSpy).toHaveBeenCalledTimes(1);
+
+			await playerEl.trigger('touchcancel');
+		} finally {
+			hapticSpy.mockRestore();
+			isNativeSpy.mockRestore();
+		}
+	});
 });

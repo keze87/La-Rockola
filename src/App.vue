@@ -193,18 +193,27 @@
 
 	const { initRouter } = useAppRouter();
 
+	function navigateSpaHistory(target: string): void {
+		if (typeof window === 'undefined') return;
+		if (isNativeAndroidHost()) {
+			window.history.replaceState(window.history.state, '', target);
+		} else {
+			window.history.pushState({}, '', target);
+		}
+	}
+
 	watch(isFogonMode, (fogon) => {
 		if (typeof window === 'undefined') return;
 		const currentSpaRoute = extractSpaRoute(window.location.pathname);
 		if (fogon) {
 			if (currentSpaRoute !== '/fogon') {
 				const target = `${buildSpaPath('/fogon')}${window.location.search}${window.location.hash}`;
-				window.history.pushState({}, '', target);
+				navigateSpaHistory(target);
 			}
 		} else if (currentSpaRoute === '/fogon') {
 			const tabRoute = activeTab.value === 'library' ? '/' : `/${activeTab.value}`;
 			const target = `${buildSpaPath(tabRoute)}${window.location.search}${window.location.hash}`;
-			window.history.pushState({}, '', target);
+			navigateSpaHistory(target);
 		}
 	});
 
@@ -214,12 +223,12 @@
 		if (open) {
 			if (currentSpaRoute !== '/letras') {
 				const target = `${buildSpaPath('/letras')}${window.location.search}${window.location.hash}`;
-				window.history.pushState({}, '', target);
+				navigateSpaHistory(target);
 			}
 		} else if (currentSpaRoute === '/letras' || currentSpaRoute === '/lyrics') {
 			const tabRoute = activeTab.value === 'library' ? '/' : `/${activeTab.value}`;
 			const target = `${buildSpaPath(tabRoute)}${window.location.search}${window.location.hash}`;
-			window.history.pushState({}, '', target);
+			navigateSpaHistory(target);
 		}
 	});
 
@@ -230,7 +239,7 @@
 			const targetPathname = buildSpaPath(tabRoute);
 			if (window.location.pathname !== targetPathname) {
 				const target = `${targetPathname}${window.location.search}${window.location.hash}`;
-				window.history.pushState({}, '', target);
+				navigateSpaHistory(target);
 			}
 		}
 	});
@@ -306,6 +315,16 @@
 			activeTab.value !== 'library'
 	);
 
+	const isPredictiveBackOnTab = computed(
+		() =>
+			activeTab.value !== 'library' &&
+			!isFogonMode.value &&
+			!isLyricsEditorOpen.value &&
+			!ctxMenu.visible &&
+			!hasOpenModal.value &&
+			!isInputFocused.value
+	);
+
 	watch(
 		hasClosableBackLayer,
 		(enabled) => {
@@ -327,8 +346,9 @@
 		document.documentElement.classList.toggle('ime-open', px > 0);
 	}
 
-	// Swipe horizontal entre pestañas sin interferir con filas de cola ni sliders
+	// Swipe horizontal entre pestañas sin interferir con filas de cola ni sliders ni bordes de atrás predictivo
 	const TAB_SWIPE_MIN_PX = 72;
+	const TAB_SWIPE_EDGE_EXCLUSION_PX = 24;
 	let tabTouchStartX = 0;
 	let tabTouchStartY = 0;
 	let tabTouchLastX = 0;
@@ -355,6 +375,18 @@
 			return;
 		}
 		const touch = e.touches[0];
+		if (!touch) {
+			resetTabSwipe();
+			return;
+		}
+		const vw = typeof window !== 'undefined' ? window.innerWidth : 0;
+		if (
+			touch.clientX < TAB_SWIPE_EDGE_EXCLUSION_PX ||
+			(vw > TAB_SWIPE_EDGE_EXCLUSION_PX * 2 && touch.clientX > vw - TAB_SWIPE_EDGE_EXCLUSION_PX)
+		) {
+			resetTabSwipe();
+			return;
+		}
 		tabTouchStartX = touch.clientX;
 		tabTouchStartY = touch.clientY;
 		tabTouchLastX = touch.clientX;
@@ -468,7 +500,7 @@
 		if (typeof document === 'undefined' || !headbarRef.value) return;
 		const h = headbarRef.value.getBoundingClientRect().height;
 		if (h > 0) {
-			document.documentElement.style.setProperty('--headbar-h', `${Math.round(h)}px`);
+			document.documentElement.style.setProperty('--headbar-h', `${Math.floor(h)}px`);
 		}
 	}
 
@@ -749,101 +781,105 @@
 		</nav>
 
 		<!-- AVISO RÁPIDO ANDROID / HEADLESS -->
-		<div
-			v-if="isNativeAndroidHost() && isHostMode && androidBootStage === 'extracting_assets'"
-			role="status"
-			aria-live="polite"
-			class="bg-carpincho-panel border-carpincho-border text-carpincho-warning flex w-full shrink-0 flex-col gap-1 border-b px-4 py-1.5 text-xs font-semibold"
-		>
-			<div class="flex items-center justify-between gap-2">
-				<span>Preparando recursos de la Rockola...</span>
-				<span>{{ androidExtractProgress }}%</span>
+		<div class="headbar-banners mt-[var(--headbar-h)] flex w-full shrink-0 flex-col">
+			<div
+				v-if="isNativeAndroidHost() && isHostMode && androidBootStage === 'extracting_assets'"
+				role="status"
+				aria-live="polite"
+				class="bg-carpincho-panel border-carpincho-border text-carpincho-warning flex w-full shrink-0 flex-col gap-1 border-b px-4 py-1.5 text-xs font-semibold"
+			>
+				<div class="flex items-center justify-between gap-2">
+					<span>Preparando recursos de la Rockola...</span>
+					<span>{{ androidExtractProgress }}%</span>
+				</div>
+				<div class="bg-carpincho-border h-1 w-full overflow-hidden rounded-full">
+					<div
+						class="bg-carpincho-warning h-full transition-[width] duration-150"
+						:style="{ width: `${androidExtractProgress}%` }"
+					/>
+				</div>
 			</div>
-			<div class="bg-carpincho-border h-1 w-full overflow-hidden rounded-full">
-				<div
-					class="bg-carpincho-warning h-full transition-[width] duration-150"
-					:style="{ width: `${androidExtractProgress}%` }"
-				/>
+			<div
+				v-else-if="isNativeAndroidHost() && isHydratedFromSnapshot && localServerState !== 'ready'"
+				role="status"
+				aria-live="polite"
+				class="bg-carpincho-panel border-carpincho-border text-carpincho-muted flex w-full shrink-0 items-center justify-center gap-2 border-b px-4 py-1 text-xs font-semibold"
+			>
+				<i class="material-icons text-sm" aria-hidden="true">sync</i>
+				<span>Actualizando lista...</span>
 			</div>
-		</div>
-		<div
-			v-else-if="isNativeAndroidHost() && isHydratedFromSnapshot && localServerState !== 'ready'"
-			role="status"
-			aria-live="polite"
-			class="bg-carpincho-panel border-carpincho-border text-carpincho-muted flex w-full shrink-0 items-center justify-center gap-2 border-b px-4 py-1 text-xs font-semibold"
-		>
-			<i class="material-icons text-sm" aria-hidden="true">sync</i>
-			<span>Actualizando lista...</span>
-		</div>
-		<div
-			v-if="isNativeAndroidHost() && showNotificationPermissionRationale"
-			role="region"
-			aria-label="Permiso de notificaciones"
-			class="bg-carpincho-panel border-carpincho-border flex w-full shrink-0 flex-wrap items-center justify-between gap-2 border-b px-4 py-2 text-xs"
-		>
-			<div class="flex min-w-0 flex-1 items-center gap-2">
-				<i class="material-icons text-carpincho-warning text-base" aria-hidden="true">notifications_active</i>
-				<span class="text-carpincho-text">
-					Activá las notificaciones para ver y controlar la música desde la pantalla de bloqueo.
+			<div
+				v-if="isNativeAndroidHost() && showNotificationPermissionRationale"
+				role="region"
+				aria-label="Permiso de notificaciones"
+				class="bg-carpincho-panel border-carpincho-border flex w-full shrink-0 flex-wrap items-center justify-between gap-2 border-b px-4 py-2 text-xs"
+			>
+				<div class="flex min-w-0 flex-1 items-center gap-2">
+					<i class="material-icons text-carpincho-warning text-base" aria-hidden="true">
+						notifications_active
+					</i>
+					<span class="text-carpincho-text">
+						Activá las notificaciones para ver y controlar la música desde la pantalla de bloqueo.
+					</span>
+				</div>
+				<div class="flex shrink-0 items-center gap-2">
+					<button
+						type="button"
+						class="touch-target tap-feedback text-carpincho-muted hover:text-carpincho-text rounded-lg px-2.5 py-1.5 font-semibold"
+						@click="dismissNotificationPermissionPrompt"
+					>
+						Ahora no
+					</button>
+					<button
+						type="button"
+						class="touch-target tap-feedback bg-carpincho-primary rounded-lg px-3 py-1.5 font-bold text-white shadow-sm"
+						@click="requestAndroidNotificationPermission"
+					>
+						Activar
+					</button>
+				</div>
+			</div>
+			<div
+				v-if="isNativeAndroidHost() && isRemoteMode"
+				class="bg-carpincho-panel border-carpincho-border text-carpincho-secondary flex w-full shrink-0 items-center justify-center gap-2 border-b px-4 py-1.5 text-xs font-semibold"
+			>
+				<i class="material-icons text-sm" aria-hidden="true">dns</i>
+				<span class="truncate">Remoto: {{ activeRemoteServerUrl }}</span>
+			</div>
+			<button
+				v-if="showAndroidFolderBanner"
+				type="button"
+				class="touch-target bg-carpincho-warning text-carpincho-panel flex w-full shrink-0 cursor-pointer items-center justify-center gap-2 px-4 py-2 text-xs font-bold shadow-sm"
+				@click="pickAndApplyMusicFolder"
+			>
+				<i class="material-icons text-base" aria-hidden="true">sd_card</i>
+				<span>
+					{{
+						libraryFolderError ||
+						(libraryFolderStatus === 'permission_denied' || libraryFolderStatus === 'storage_unavailable'
+							? 'Carpeta sin acceso · Tocá acá para volver a elegirla'
+							: 'Elegir la carpeta de música para arrancar la ronda')
+					}}
 				</span>
-			</div>
-			<div class="flex shrink-0 items-center gap-2">
-				<button
-					type="button"
-					class="text-carpincho-muted hover:text-carpincho-text rounded-lg px-2.5 py-1.5 font-semibold"
-					@click="dismissNotificationPermissionPrompt"
-				>
-					Ahora no
-				</button>
-				<button
-					type="button"
-					class="bg-carpincho-primary rounded-lg px-3 py-1.5 font-bold text-white shadow-sm"
-					@click="requestAndroidNotificationPermission"
-				>
-					Activar
-				</button>
-			</div>
+			</button>
+			<button
+				v-else-if="!hasMpv && !listenLocally && !hasLocalPlayer && (!isNativeAndroidHost() || isRemoteMode)"
+				type="button"
+				class="touch-target bg-carpincho-success flex w-full shrink-0 cursor-pointer items-center justify-center gap-2 px-4 py-2 text-xs font-bold text-white shadow-sm"
+				@click="
+					listenLocally = true;
+					haptic();
+				"
+			>
+				<i class="material-icons text-base" aria-hidden="true">headphones</i>
+				<span>El servidor corre sin MPV · Tocá acá para escuchar en este teléfono</span>
+			</button>
 		</div>
-		<div
-			v-if="isNativeAndroidHost() && isRemoteMode"
-			class="bg-carpincho-panel border-carpincho-border text-carpincho-secondary flex w-full shrink-0 items-center justify-center gap-2 border-b px-4 py-1.5 text-xs font-semibold"
-		>
-			<i class="material-icons text-sm" aria-hidden="true">dns</i>
-			<span class="truncate">Remoto: {{ activeRemoteServerUrl }}</span>
-		</div>
-		<button
-			v-if="showAndroidFolderBanner"
-			type="button"
-			class="touch-target bg-carpincho-warning text-carpincho-panel flex w-full shrink-0 cursor-pointer items-center justify-center gap-2 px-4 py-2 text-xs font-bold shadow-sm"
-			@click="pickAndApplyMusicFolder"
-		>
-			<i class="material-icons text-base" aria-hidden="true">sd_card</i>
-			<span>
-				{{
-					libraryFolderError ||
-					(libraryFolderStatus === 'permission_denied' || libraryFolderStatus === 'storage_unavailable'
-						? 'Carpeta sin acceso · Tocá acá para volver a elegirla'
-						: 'Elegir la carpeta de música para arrancar la ronda')
-				}}
-			</span>
-		</button>
-		<button
-			v-else-if="!hasMpv && !listenLocally && !hasLocalPlayer && (!isNativeAndroidHost() || isRemoteMode)"
-			type="button"
-			class="touch-target bg-carpincho-success flex w-full shrink-0 cursor-pointer items-center justify-center gap-2 px-4 py-2 text-xs font-bold text-white shadow-sm"
-			@click="
-				listenLocally = true;
-				haptic();
-			"
-		>
-			<i class="material-icons text-base" aria-hidden="true">headphones</i>
-			<span>El servidor corre sin MPV · Tocá acá para escuchar en este teléfono</span>
-		</button>
 
-		<!-- BARRA DE PROGRESO  -->
+		<!-- BARRA DE PROGRESO (anclada justo debajo del head-bar fijo) -->
 		<div
 			v-show="!isScanning && currentTrackPath"
-			class="group relative flex h-2 w-full shrink-0 cursor-pointer touch-none items-start bg-transparent"
+			class="headbar-progress-bar group fixed top-[var(--headbar-h)] right-0 left-0 z-40 flex h-2 w-full cursor-pointer touch-none items-start bg-transparent"
 			style="-webkit-tap-highlight-color: transparent"
 			@pointerdown="startSeek"
 			@pointermove="moveSeek"
@@ -854,13 +890,13 @@
 				class="relative h-[2px] w-full bg-[rgba(255,235,208,0.1)] transition-all duration-100 ease-out group-hover:h-1.5 group-active:h-1.5"
 			>
 				<div
-					class="absolute top-0 left-0 z-50 h-full bg-[var(--accent-primary)]"
+					class="absolute top-0 left-0 z-10 h-full bg-[var(--accent-primary)]"
 					:style="{ width: progressPercent + '%' }"
 				/>
 
 				<!-- Bolita que solo aparece al pasar el dedo/mouse -->
 				<div
-					class="absolute top-1/2 z-50 h-3 w-3 -translate-y-1/2 rounded-full bg-[var(--accent-primary)] opacity-0 shadow-md group-hover:opacity-100 group-active:opacity-100"
+					class="absolute top-1/2 z-10 h-3 w-3 -translate-y-1/2 rounded-full bg-[var(--accent-primary)] opacity-0 shadow-md group-hover:opacity-100 group-active:opacity-100"
 					:style="{ left: progressPercent + '%', marginLeft: '-6px' }"
 				/>
 			</div>
@@ -895,7 +931,7 @@
 								? 'text-[var(--accent-primary)]'
 								: 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text-primary)]',
 						]"
-						@click="switchTab(tab.id)"
+						@click="switchTab(tab.id, { onScrollToTop: () => haptic('tick') })"
 					>
 						<div
 							class="relative flex items-center justify-center rounded-full px-3 py-0.5 transition-colors duration-150"
@@ -921,11 +957,12 @@
 			<!-- CONTENIDO DE PESTAÑAS (dos paneles en >= lg para biblioteca/tops + cola lateral) -->
 			<div
 				class="tab-swipe-container relative order-1 min-h-0 w-full flex-1 overflow-hidden md:order-2"
-				:class="
+				:class="[
 					activeTab === 'library' || activeTab === 'top'
 						? 'lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(21rem,26rem)]'
-						: ''
-				"
+						: '',
+					{ 'predictive-back-target': isPredictiveBackOnTab },
+				]"
 				@touchstart.passive="onTabContentTouchStart"
 				@touchmove.passive="onTabContentTouchMove"
 				@touchend="onTabContentTouchEnd"

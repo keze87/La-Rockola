@@ -285,7 +285,7 @@ describe('public/sw.js lifecycle & offline resilience', () => {
 
 	it('manifest.webmanifest separates any/maskable icons and aligns theme_color with index.html', () => {
 		const manifest = JSON.parse(readFileSync(resolve(process.cwd(), 'public/manifest.webmanifest'), 'utf-8'));
-		expect(manifest.theme_color).toBe('#1f1a17');
+		expect(manifest.theme_color).toBe('#120e0b');
 		expect(Array.isArray(manifest.icons)).toBe(true);
 		const purposes = manifest.icons.map((i: { purpose?: string }) => i.purpose);
 		expect(purposes).not.toContain('any maskable');

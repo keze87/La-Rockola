@@ -301,6 +301,10 @@
 	}
 
 	function onSheetDragStart(e: TouchEvent) {
+		if ((menuRef.value?.scrollTop ?? 0) > 0) {
+			resetSheetDrag();
+			return;
+		}
 		sheetDragStartY = e.touches[0]?.clientY ?? 0;
 		isDraggingSheet.value = true;
 		sheetOffsetY.value = 0;
@@ -308,6 +312,10 @@
 
 	function onSheetDragMove(e: TouchEvent) {
 		if (!isDraggingSheet.value) return;
+		if ((menuRef.value?.scrollTop ?? 0) > 0) {
+			resetSheetDrag();
+			return;
+		}
 		const currentY = e.touches[0]?.clientY ?? sheetDragStartY;
 		const dy = currentY - sheetDragStartY;
 		if (dy > 0) {
@@ -331,207 +339,208 @@
 </script>
 
 <template>
-	<div
-		v-if="ctxMenu.visible"
-		class="fixed inset-0 z-[11000] max-sm:bg-black/55 max-sm:backdrop-blur-[2px]"
-		@pointerdown.self="onBackdropPointerDown"
-		@touchstart.self.passive="onBackdropPointerDown"
-		@click.self="dismissFromBackdrop"
-		@contextmenu.prevent="dismissFromBackdrop"
-	>
+	<Transition name="ctx-sheet" :duration="{ enter: 200, leave: 180 }">
 		<div
-			ref="menuRef"
-			class="ctx-menu animate-ctx-appear absolute"
-			role="menu"
-			aria-labelledby="ctx-menu-title"
-			:class="{ 'kbd-nav': keyboardNav }"
-			:style="menuStyle"
-			@keydown="ctxMenuKeydown"
-			@pointerdown="keyboardNav = false"
+			v-if="ctxMenu.visible"
+			class="fixed inset-0 z-[11000] max-sm:bg-black/55 max-sm:backdrop-blur-[2px]"
+			@pointerdown.self="onBackdropPointerDown"
+			@touchstart.self.passive="onBackdropPointerDown"
+			@click.self="dismissFromBackdrop"
+			@contextmenu.prevent="dismissFromBackdrop"
 		>
-			<button
-				type="button"
-				aria-label="Cerrar menú contextual"
-				class="tap-feedback flex w-full cursor-pointer touch-none items-center justify-center pt-2.5 pb-1.5 sm:hidden"
-				@click="closeCtxMenu"
-				@touchstart.passive="onSheetDragStart"
-				@touchmove="onSheetDragMove"
-				@touchend="onSheetDragEnd"
-				@touchcancel="resetSheetDrag"
-			>
-				<span class="bg-carpincho-border h-1 w-10 rounded-full" aria-hidden="true" />
-			</button>
 			<div
-				class="ctx-menu-header touch-none select-none"
+				ref="menuRef"
+				class="ctx-menu animate-ctx-appear absolute"
+				role="menu"
+				aria-labelledby="ctx-menu-title"
+				:class="{ 'kbd-nav': keyboardNav }"
+				:style="menuStyle"
+				@keydown="ctxMenuKeydown"
+				@pointerdown="keyboardNav = false"
 				@touchstart.passive="onSheetDragStart"
 				@touchmove="onSheetDragMove"
 				@touchend="onSheetDragEnd"
 				@touchcancel="resetSheetDrag"
 			>
-				<div id="ctx-menu-title" class="truncate">
-					🦦 {{ ctxMenu.track?.title || ctxMenu.track?.display_title }}
-				</div>
-				<div
-					v-if="ctxMenu.track?.display_artist || ctxMenu.track?.artist"
-					class="mt-0.5 truncate text-[12px] font-medium tracking-normal text-[var(--text-secondary)] normal-case"
+				<button
+					type="button"
+					aria-label="Cerrar menú contextual"
+					class="tap-feedback flex w-full cursor-pointer touch-none items-center justify-center pt-2.5 pb-1.5 sm:hidden"
+					@click="closeCtxMenu"
 				>
-					{{ ctxMenu.track?.display_artist || ctxMenu.track?.artist }}
+					<span class="bg-carpincho-border h-1 w-10 rounded-full" aria-hidden="true" />
+				</button>
+				<div class="ctx-menu-header touch-none select-none">
+					<div id="ctx-menu-title" class="truncate">
+						🦦 {{ ctxMenu.track?.title || ctxMenu.track?.display_title }}
+					</div>
+					<div
+						v-if="ctxMenu.track?.display_artist || ctxMenu.track?.artist"
+						class="mt-0.5 truncate text-[12px] font-medium tracking-normal text-[var(--text-secondary)] normal-case"
+					>
+						{{ ctxMenu.track?.display_artist || ctxMenu.track?.artist }}
+					</div>
 				</div>
+
+				<!-- ACCIONES DE LIBRERÍA -->
+				<template v-if="ctxMenu.source === 'library'">
+					<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxPlayNext">
+						<i class="material-icons">queue_play_next</i>
+						Que suene de próximo
+					</button>
+					<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxPlayNow">
+						<i class="material-icons">play_arrow</i>
+						Mandale play de una
+					</button>
+					<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxAddToQueue">
+						<i class="material-icons">playlist_add</i>
+						Al fondo de la fila
+					</button>
+					<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxToggleFavorite">
+						<i class="material-icons">
+							{{ favorites?.includes(ctxMenu.track?.path || '') ? 'favorite' : 'favorite_border' }}
+						</i>
+						{{ favorites?.includes(ctxMenu.track?.path || '') ? 'Sacar de favoritos' : 'A los favoritos' }}
+					</button>
+					<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxFilterByArtist">
+						<i class="material-icons">person_search</i>
+						Chusmear más del artista
+					</button>
+					<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxPauseAfter">
+						<i class="material-icons">timer</i>
+						Frenar la chata tras este tema
+					</button>
+					<button
+						v-if="!isNativeAndroidHost() && !ctxMenu.track?.path?.startsWith('content://')"
+						type="button"
+						class="ctx-menu-item"
+						role="menuitem"
+						@click="ctxEditLyrics"
+					>
+						<i class="material-icons">lyrics</i>
+						Editar letras
+					</button>
+				</template>
+
+				<!-- ACCIONES DEL TEMA ACTUAL -->
+				<template v-if="ctxMenu.source === 'current'">
+					<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxTogglePause">
+						<i class="material-icons">{{ isPaused ? 'play_arrow' : 'pause' }}</i>
+						{{ isPaused ? 'Reanudar tema' : 'Pausar tema' }}
+					</button>
+					<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxRestartCurrent">
+						<i class="material-icons">replay</i>
+						Volver a empezar
+					</button>
+					<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxSkipCurrent">
+						<i class="material-icons">skip_next</i>
+						Pasar al siguiente tema
+					</button>
+					<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxToggleFavorite">
+						<i class="material-icons">
+							{{ favorites?.includes(ctxMenu.track?.path || '') ? 'favorite' : 'favorite_border' }}
+						</i>
+						{{ favorites?.includes(ctxMenu.track?.path || '') ? 'Sacar de favoritos' : 'A los favoritos' }}
+					</button>
+					<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxPauseAfter">
+						<i class="material-icons">timer</i>
+						Frenar la chata tras este tema
+					</button>
+					<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxFilterByArtist">
+						<i class="material-icons">person_search</i>
+						Buscar en la librería
+					</button>
+					<button
+						v-if="!isNativeAndroidHost() && !ctxMenu.track?.path?.startsWith('content://')"
+						type="button"
+						class="ctx-menu-item"
+						role="menuitem"
+						@click="ctxEditLyrics"
+					>
+						<i class="material-icons">lyrics</i>
+						Editar letras
+					</button>
+				</template>
+
+				<!-- ACCIONES DE LA FILA -->
+				<template v-if="ctxMenu.source === 'queue'">
+					<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxPlayNextQueue">
+						<i class="material-icons">vertical_align_top</i>
+						Subir a próximo
+					</button>
+					<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxPlayNow">
+						<i class="material-icons">play_arrow</i>
+						Mandale play de una
+					</button>
+					<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxToggleFavorite">
+						<i class="material-icons">
+							{{ favorites?.includes(ctxMenu.track?.path || '') ? 'favorite' : 'favorite_border' }}
+						</i>
+						{{ favorites?.includes(ctxMenu.track?.path || '') ? 'Sacar de favoritos' : 'A los favoritos' }}
+					</button>
+					<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxPauseAfter">
+						<i class="material-icons">timer</i>
+						Frenar la chata tras este tema
+					</button>
+					<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxFilterByArtist">
+						<i class="material-icons">person_search</i>
+						Buscar en la librería
+					</button>
+					<button
+						v-if="!isNativeAndroidHost() && !ctxMenu.track?.path?.startsWith('content://')"
+						type="button"
+						class="ctx-menu-item"
+						role="menuitem"
+						@click="ctxEditLyrics"
+					>
+						<i class="material-icons">lyrics</i>
+						Editar letras
+					</button>
+					<button type="button" class="ctx-menu-item delete-item" role="menuitem" @click="ctxRemoveFromQueue">
+						<i class="material-icons text-[var(--accent-danger)]">delete</i>
+						<span class="text-[var(--accent-danger)]">Pegarle un voleo</span>
+					</button>
+				</template>
+
+				<!-- ACCIONES DEL HISTORIAL -->
+				<template v-if="ctxMenu.source === 'history'">
+					<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxHistoryPlayAgain">
+						<i class="material-icons">add_circle_outline</i>
+						Agregar a la fila
+					</button>
+					<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxToggleFavorite">
+						<i class="material-icons">
+							{{ favorites?.includes(ctxMenu.track?.path || '') ? 'favorite' : 'favorite_border' }}
+						</i>
+						{{ favorites?.includes(ctxMenu.track?.path || '') ? 'Sacar de favoritos' : 'A los favoritos' }}
+					</button>
+					<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxFilterByArtist">
+						<i class="material-icons">person_search</i>
+						Buscar en la librería
+					</button>
+					<button
+						v-if="!isNativeAndroidHost() && !ctxMenu.track?.path?.startsWith('content://')"
+						type="button"
+						class="ctx-menu-item"
+						role="menuitem"
+						@click="ctxEditLyrics"
+					>
+						<i class="material-icons">lyrics</i>
+						Editar letras
+					</button>
+					<button
+						type="button"
+						class="ctx-menu-item delete-item"
+						role="menuitem"
+						@click="ctxRemoveFromHistory"
+					>
+						<i class="material-icons text-[var(--accent-danger)]">delete</i>
+						<span class="text-[var(--accent-danger)]">Borrar del historial</span>
+					</button>
+				</template>
 			</div>
-
-			<!-- ACCIONES DE LIBRERÍA -->
-			<template v-if="ctxMenu.source === 'library'">
-				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxPlayNext">
-					<i class="material-icons">queue_play_next</i>
-					Que suene de próximo
-				</button>
-				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxPlayNow">
-					<i class="material-icons">play_arrow</i>
-					Mandale play de una
-				</button>
-				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxAddToQueue">
-					<i class="material-icons">playlist_add</i>
-					Al fondo de la fila
-				</button>
-				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxToggleFavorite">
-					<i class="material-icons">
-						{{ favorites?.includes(ctxMenu.track?.path || '') ? 'favorite' : 'favorite_border' }}
-					</i>
-					{{ favorites?.includes(ctxMenu.track?.path || '') ? 'Sacar de favoritos' : 'A los favoritos' }}
-				</button>
-				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxFilterByArtist">
-					<i class="material-icons">person_search</i>
-					Chusmear más del artista
-				</button>
-				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxPauseAfter">
-					<i class="material-icons">timer</i>
-					Frenar la chata tras este tema
-				</button>
-				<button
-					v-if="!isNativeAndroidHost() && !ctxMenu.track?.path?.startsWith('content://')"
-					type="button"
-					class="ctx-menu-item"
-					role="menuitem"
-					@click="ctxEditLyrics"
-				>
-					<i class="material-icons">lyrics</i>
-					Editar letras
-				</button>
-			</template>
-
-			<!-- ACCIONES DEL TEMA ACTUAL -->
-			<template v-if="ctxMenu.source === 'current'">
-				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxTogglePause">
-					<i class="material-icons">{{ isPaused ? 'play_arrow' : 'pause' }}</i>
-					{{ isPaused ? 'Reanudar tema' : 'Pausar tema' }}
-				</button>
-				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxRestartCurrent">
-					<i class="material-icons">replay</i>
-					Volver a empezar
-				</button>
-				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxSkipCurrent">
-					<i class="material-icons">skip_next</i>
-					Pasar al siguiente tema
-				</button>
-				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxToggleFavorite">
-					<i class="material-icons">
-						{{ favorites?.includes(ctxMenu.track?.path || '') ? 'favorite' : 'favorite_border' }}
-					</i>
-					{{ favorites?.includes(ctxMenu.track?.path || '') ? 'Sacar de favoritos' : 'A los favoritos' }}
-				</button>
-				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxPauseAfter">
-					<i class="material-icons">timer</i>
-					Frenar la chata tras este tema
-				</button>
-				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxFilterByArtist">
-					<i class="material-icons">person_search</i>
-					Buscar en la librería
-				</button>
-				<button
-					v-if="!isNativeAndroidHost() && !ctxMenu.track?.path?.startsWith('content://')"
-					type="button"
-					class="ctx-menu-item"
-					role="menuitem"
-					@click="ctxEditLyrics"
-				>
-					<i class="material-icons">lyrics</i>
-					Editar letras
-				</button>
-			</template>
-
-			<!-- ACCIONES DE LA FILA -->
-			<template v-if="ctxMenu.source === 'queue'">
-				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxPlayNextQueue">
-					<i class="material-icons">vertical_align_top</i>
-					Subir a próximo
-				</button>
-				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxPlayNow">
-					<i class="material-icons">play_arrow</i>
-					Mandale play de una
-				</button>
-				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxToggleFavorite">
-					<i class="material-icons">
-						{{ favorites?.includes(ctxMenu.track?.path || '') ? 'favorite' : 'favorite_border' }}
-					</i>
-					{{ favorites?.includes(ctxMenu.track?.path || '') ? 'Sacar de favoritos' : 'A los favoritos' }}
-				</button>
-				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxPauseAfter">
-					<i class="material-icons">timer</i>
-					Frenar la chata tras este tema
-				</button>
-				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxFilterByArtist">
-					<i class="material-icons">person_search</i>
-					Buscar en la librería
-				</button>
-				<button
-					v-if="!isNativeAndroidHost() && !ctxMenu.track?.path?.startsWith('content://')"
-					type="button"
-					class="ctx-menu-item"
-					role="menuitem"
-					@click="ctxEditLyrics"
-				>
-					<i class="material-icons">lyrics</i>
-					Editar letras
-				</button>
-				<button type="button" class="ctx-menu-item delete-item" role="menuitem" @click="ctxRemoveFromQueue">
-					<i class="material-icons text-[var(--accent-danger)]">delete</i>
-					<span class="text-[var(--accent-danger)]">Pegarle un voleo</span>
-				</button>
-			</template>
-
-			<!-- ACCIONES DEL HISTORIAL -->
-			<template v-if="ctxMenu.source === 'history'">
-				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxHistoryPlayAgain">
-					<i class="material-icons">add_circle_outline</i>
-					Agregar a la fila
-				</button>
-				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxToggleFavorite">
-					<i class="material-icons">
-						{{ favorites?.includes(ctxMenu.track?.path || '') ? 'favorite' : 'favorite_border' }}
-					</i>
-					{{ favorites?.includes(ctxMenu.track?.path || '') ? 'Sacar de favoritos' : 'A los favoritos' }}
-				</button>
-				<button type="button" class="ctx-menu-item" role="menuitem" @click="ctxFilterByArtist">
-					<i class="material-icons">person_search</i>
-					Buscar en la librería
-				</button>
-				<button
-					v-if="!isNativeAndroidHost() && !ctxMenu.track?.path?.startsWith('content://')"
-					type="button"
-					class="ctx-menu-item"
-					role="menuitem"
-					@click="ctxEditLyrics"
-				>
-					<i class="material-icons">lyrics</i>
-					Editar letras
-				</button>
-				<button type="button" class="ctx-menu-item delete-item" role="menuitem" @click="ctxRemoveFromHistory">
-					<i class="material-icons text-[var(--accent-danger)]">delete</i>
-					<span class="text-[var(--accent-danger)]">Borrar del historial</span>
-				</button>
-			</template>
 		</div>
-	</div>
+	</Transition>
 </template>
 
 <style scoped>
@@ -576,9 +585,14 @@
 		border-top: 0.5px solid rgba(255, 235, 208, 0.05);
 	}
 
-	.ctx-menu-item:hover,
 	.ctx-menu-item:active {
 		background: var(--bg-surface-hover);
+	}
+
+	@media (hover: hover) {
+		.ctx-menu-item:hover {
+			background: var(--bg-surface-hover);
+		}
 	}
 
 	.ctx-menu-item:focus {
@@ -596,30 +610,33 @@
 		font-size: 1.1rem;
 	}
 
-	.ctx-menu-item.delete-item:hover,
 	.ctx-menu-item.delete-item:active {
 		background: rgba(217, 101, 91, 0.2) !important;
+	}
+
+	@media (hover: hover) {
+		.ctx-menu-item.delete-item:hover {
+			background: rgba(217, 101, 91, 0.2) !important;
+		}
 	}
 
 	.ctx-menu.kbd-nav .ctx-menu-item.delete-item:focus {
 		background: rgba(217, 101, 91, 0.2) !important;
 	}
 
-	@keyframes ctx-sheet-up {
-		from {
-			opacity: 0.75;
-			transform: translateY(100%);
-		}
+	.ctx-sheet-enter-active,
+	.ctx-sheet-leave-active {
+		transition: opacity 0.18s var(--ease-ios);
+	}
 
-		to {
-			opacity: 1;
-			transform: translateY(0);
-		}
+	.ctx-sheet-enter-from,
+	.ctx-sheet-leave-to {
+		opacity: 0;
 	}
 
 	@media (max-width: 639px) {
 		.ctx-menu {
-			animation: ctx-sheet-up 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+			animation: none;
 			border-bottom: none;
 			border-left: none;
 			border-radius: 18px 18px 0 0;
@@ -632,7 +649,21 @@
 			position: fixed;
 			right: 0 !important;
 			top: auto !important;
+			transform: translateY(calc(var(--rockola-back-progress, 0) * 72px));
 			width: 100%;
+		}
+
+		.ctx-sheet-enter-active .ctx-menu,
+		.ctx-sheet-leave-active .ctx-menu {
+			transition:
+				transform 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+				opacity 0.18s ease;
+		}
+
+		.ctx-sheet-enter-from .ctx-menu,
+		.ctx-sheet-leave-to .ctx-menu {
+			opacity: 0.75;
+			transform: translateY(100%) !important;
 		}
 
 		.ctx-menu-item {
@@ -641,8 +672,13 @@
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		.ctx-menu {
+		.ctx-menu,
+		.ctx-sheet-enter-active,
+		.ctx-sheet-leave-active,
+		.ctx-sheet-enter-active .ctx-menu,
+		.ctx-sheet-leave-active .ctx-menu {
 			animation: none !important;
+			transition: none !important;
 		}
 	}
 </style>

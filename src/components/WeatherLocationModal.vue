@@ -243,7 +243,7 @@
 			<!-- Cuerpo -->
 			<div class="flex-1 space-y-4 overflow-y-auto p-6">
 				<p class="text-carpincho-muted text-xs">
-					Hacé click en el mapa, arrastrá el carpincho 🧉 o usá la detección automática.
+					Tocá en el mapa, arrastrá el carpincho 🧉 o usá la detección automática.
 				</p>
 
 				<!-- Contenedor del mapa -->
@@ -259,6 +259,8 @@
 						<input
 							v-model.number="lat"
 							type="number"
+							inputmode="decimal"
+							enterkeyhint="done"
 							step="0.0001"
 							placeholder="Latitud"
 							class="focus:border-carpincho-warning border-carpincho-border bg-carpincho-bg text-carpincho-text w-28 rounded-lg border px-2 py-1 text-xs focus:outline-none"
@@ -267,6 +269,8 @@
 						<input
 							v-model.number="lng"
 							type="number"
+							inputmode="decimal"
+							enterkeyhint="done"
 							step="0.0001"
 							placeholder="Longitud"
 							class="focus:border-carpincho-warning border-carpincho-border bg-carpincho-bg text-carpincho-text w-28 rounded-lg border px-2 py-1 text-xs focus:outline-none"

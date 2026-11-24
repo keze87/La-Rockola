@@ -447,4 +447,28 @@ describe('ContextMenu.vue', () => {
 		await header.trigger('touchend', { changedTouches: [{ clientY: 270 }] });
 		expect(ctxMenu.visible).toBe(false);
 	});
+
+	it('allows dragging down from the sheet container when scrollTop is 0, and avoids closing when scrolled down', async () => {
+		ctxMenu.visible = true;
+		ctxMenu.track = sampleTrack;
+
+		const wrapper = mount(ContextMenu);
+		const menu = wrapper.find('.ctx-menu');
+		expect(menu.exists()).toBe(true);
+
+		// Cuando scrollTop > 0, no debe iniciar arrastre de cierre
+		Object.defineProperty(menu.element, 'scrollTop', { configurable: true, writable: true, value: 24 });
+		await menu.trigger('touchstart', { touches: [{ clientY: 200 }] });
+		await menu.trigger('touchmove', { touches: [{ clientY: 270 }] });
+		await menu.trigger('touchend', { changedTouches: [{ clientY: 270 }] });
+		expect(ctxMenu.visible).toBe(true);
+
+		// Cuando scrollTop === 0, arrastrar hacia abajo > 48px cierra el menú
+		Object.defineProperty(menu.element, 'scrollTop', { configurable: true, writable: true, value: 0 });
+		await menu.trigger('touchstart', { touches: [{ clientY: 200 }] });
+		await menu.trigger('touchmove', { touches: [{ clientY: 270 }] });
+		expect(menu.attributes('style')).toContain('translateY(70px)');
+		await menu.trigger('touchend', { changedTouches: [{ clientY: 270 }] });
+		expect(ctxMenu.visible).toBe(false);
+	});
 });

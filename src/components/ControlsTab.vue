@@ -443,6 +443,7 @@
 <template>
 	<section
 		id="controls-tab"
+		v-bind="{ 'data-tab-panel': 'controls' }"
 		class="tab-content h-full overflow-y-auto bg-[var(--bg-canvas)] px-4 pt-5 sm:px-6"
 		@scroll.passive="onTabScroll"
 	>
@@ -795,6 +796,11 @@
 				id="remote-server-input"
 				v-model="remoteServerInput"
 				type="text"
+				inputmode="url"
+				enterkeyhint="go"
+				autocapitalize="off"
+				autocorrect="off"
+				spellcheck="false"
 				placeholder="IP de tu PC (ej: 192.168.0.55)"
 				class="mb-4 w-full rounded-[var(--radius-md)] border border-[var(--hairline)] bg-[var(--bg-input)] px-3 py-2.5 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-tertiary)] focus:border-[var(--accent-primary)]"
 				@keyup.enter="handleConnectRemoteServer"

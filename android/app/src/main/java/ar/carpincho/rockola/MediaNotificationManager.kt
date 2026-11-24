@@ -460,7 +460,7 @@ class MediaNotificationManager(
             .setContentText(contentText)
             .setSubText(subTextLabel)
             .setSmallIcon(R.drawable.ic_stat_carpincho)
-            .setColor(0xFFA67C52.toInt())
+            .setColor(ContextCompat.getColor(service, R.color.rockola_primary))
             .setLargeIcon(largeIcon)
             .setContentIntent(openPending)
             .setOngoing(!currentPaused)

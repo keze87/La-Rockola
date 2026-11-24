@@ -115,7 +115,7 @@ describe('LibraryTab.vue', () => {
 
 	it('filters tracks using Fuse.js search query', async () => {
 		const wrapper = mount(LibraryTab);
-		const input = wrapper.find('input[type="text"]');
+		const input = wrapper.find('#library-search-input');
 
 		await input.setValue('Charly');
 		expect(wrapper.text()).toContain('Nos Siguen Pegando Abajo');
@@ -143,7 +143,7 @@ describe('LibraryTab.vue', () => {
 
 	it('shows empty state when no tracks match search', async () => {
 		const wrapper = mount(LibraryTab);
-		const input = wrapper.find('input[type="text"]');
+		const input = wrapper.find('#library-search-input');
 
 		await input.setValue('NonexistentSongQueryXYZ');
 		expect(wrapper.text()).toContain('No hay nada por acá con ese nombre, fiera.');
@@ -295,5 +295,20 @@ describe('LibraryTab.vue', () => {
 		const input = wrapper.find('#library-search-input');
 		expect(input.exists()).toBe(true);
 		expect(input.classes()).toContain('focus-visible:outline-none');
+	});
+
+	it('configures native mobile keyboard hints on library search input and blurs on Enter', async () => {
+		const wrapper = mount(LibraryTab, { attachTo: document.body });
+		const input = wrapper.find('#library-search-input');
+		expect(input.attributes('type')).toBe('search');
+		expect(input.attributes('enterkeyhint')).toBe('search');
+		expect(input.attributes('autocomplete')).toBe('off');
+		expect(input.attributes('autocorrect')).toBe('off');
+		expect(input.attributes('spellcheck')).toBe('false');
+
+		const blurSpy = vi.spyOn(input.element as HTMLInputElement, 'blur');
+		await input.trigger('keydown.enter');
+		expect(blurSpy).toHaveBeenCalledTimes(1);
+		wrapper.unmount();
 	});
 });

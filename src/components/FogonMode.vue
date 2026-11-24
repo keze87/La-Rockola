@@ -378,6 +378,7 @@
 	let coverTouchStartX = 0;
 	let coverTouchStartY = 0;
 	let coverSwipeAxis: 'vertical' | 'horizontal' | null = null;
+	let coverThresholdHapticFired = false;
 
 	const coverSwipeStyle = computed(() => {
 		if (coverSwipeX.value !== 0) {
@@ -402,6 +403,7 @@
 		coverSwipeY.value = 0;
 		isCoverSwiping.value = false;
 		coverSwipeAxis = null;
+		coverThresholdHapticFired = false;
 	}
 
 	function onCoverTouchStart(e: TouchEvent) {
@@ -413,6 +415,7 @@
 		coverSwipeAxis = null;
 		coverSwipeX.value = 0;
 		coverSwipeY.value = 0;
+		coverThresholdHapticFired = false;
 	}
 
 	function onCoverTouchMove(e: TouchEvent) {
@@ -429,10 +432,18 @@
 		if (coverSwipeAxis === 'vertical') {
 			coverSwipeY.value = Math.max(0, Math.min(240, dy));
 			coverSwipeX.value = 0;
+			if (!coverThresholdHapticFired && coverSwipeY.value >= COVER_SWIPE_CLOSE_THRESHOLD) {
+				coverThresholdHapticFired = true;
+				haptic('tick');
+			}
 			if (e.cancelable) e.preventDefault();
 		} else if (coverSwipeAxis === 'horizontal') {
 			coverSwipeX.value = Math.max(-120, Math.min(120, dx));
 			coverSwipeY.value = 0;
+			if (!coverThresholdHapticFired && Math.abs(coverSwipeX.value) >= COVER_SWIPE_SKIP_THRESHOLD) {
+				coverThresholdHapticFired = true;
+				haptic('tick');
+			}
 			if (e.cancelable) e.preventDefault();
 		} else {
 			coverSwipeX.value = 0;
@@ -1030,6 +1041,14 @@
 	.fogon-enter-from,
 	.fogon-leave-to {
 		opacity: 0;
+	}
+
+	@media (prefers-reduced-motion: no-preference) {
+		.fogon-container:not(.is-android-pip) {
+			transform: translateY(calc(var(--rockola-back-progress, 0) * 28px))
+				scale(calc(1 - var(--rockola-back-progress, 0) * 0.05));
+			border-radius: calc(var(--rockola-back-progress, 0) * 24px);
+		}
 	}
 
 	/* Animaciones para cambio de tema (fogon-track) */

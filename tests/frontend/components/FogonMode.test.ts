@@ -1055,4 +1055,34 @@ Dialogue: 0,0:00:01.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Letra {\\kf100}animad
 		expect(seekThumb.exists()).toBe(true);
 		expect(seekThumb.classes()).toContain('bg-[#EFE7DC]');
 	});
+
+	it('triggers haptic tick once when crossing cover swipe threshold during touchmove', async () => {
+		const androidHost = await import('@/composables/useAndroidHost');
+		const isNativeSpy = vi.spyOn(androidHost, 'isNativeAndroidHost').mockReturnValue(true);
+		const hapticSpy = vi.spyOn(androidHost, 'triggerAndroidHaptic');
+
+		try {
+			isFogonMode.value = true;
+			const wrapper = mount(FogonMode);
+			const coverWrapper = wrapper.find('.fogon-cover-wrapper');
+
+			await coverWrapper.trigger('touchstart', { touches: [{ clientX: 240, clientY: 160 }] });
+			await coverWrapper.trigger('touchmove', { touches: [{ clientX: 200, clientY: 162 }] });
+			expect(hapticSpy).not.toHaveBeenCalledWith('tick');
+
+			// Cruza umbral horizontal (64px)
+			await coverWrapper.trigger('touchmove', { touches: [{ clientX: 165, clientY: 162 }] });
+			expect(hapticSpy).toHaveBeenCalledWith('tick');
+			expect(hapticSpy).toHaveBeenCalledTimes(1);
+
+			// Sigue arrastrando: no repite tick
+			await coverWrapper.trigger('touchmove', { touches: [{ clientX: 140, clientY: 162 }] });
+			expect(hapticSpy).toHaveBeenCalledTimes(1);
+
+			await coverWrapper.trigger('touchcancel');
+		} finally {
+			hapticSpy.mockRestore();
+			isNativeSpy.mockRestore();
+		}
+	});
 });

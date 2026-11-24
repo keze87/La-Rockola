@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useTabs } from '@/composables/player/useTabs';
 import { activeTab } from '@/composables/player/state';
 
 describe('useTabs', () => {
 	beforeEach(() => {
 		activeTab.value = 'library';
+		document.body.innerHTML = '';
 	});
 
 	it('switches activeTab reactively', () => {
@@ -46,5 +47,25 @@ describe('useTabs', () => {
 		isTabsBarHidden.value = true;
 		handleScroll(5);
 		expect(isTabsBarHidden.value).toBe(false);
+	});
+
+	it('scrolls active tab container smoothly to top when re-tapping the already active tab', () => {
+		const { switchTab } = useTabs();
+		activeTab.value = 'library';
+
+		const container = document.createElement('section');
+		container.className = 'tab-content';
+		container.dataset.tabPanel = 'library';
+		Object.defineProperty(container, 'scrollTop', { configurable: true, writable: true, value: 320 });
+		const scrollToSpy = vi.fn();
+		container.scrollTo = scrollToSpy;
+		document.body.appendChild(container);
+
+		const onScrollToTop = vi.fn();
+		const scrolled = switchTab('library', { onScrollToTop });
+
+		expect(scrolled).toBe(true);
+		expect(scrollToSpy).toHaveBeenCalledWith({ top: 0, behavior: 'smooth' });
+		expect(onScrollToTop).toHaveBeenCalledTimes(1);
 	});
 });

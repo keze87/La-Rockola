@@ -68,4 +68,16 @@ class MainActivityPolicyTest {
         org.junit.Assert.assertEquals("resume_last", withLast.first().id)
         org.junit.Assert.assertTrue(withLast.first().longLabel.contains("El Viejo"))
     }
+
+    @Test
+    fun `politica de zoom de texto de WebView acota fontScale al rango seguro`() {
+        org.junit.Assert.assertEquals(100, WebViewDisplayPolicy.computeTextZoom(1.0f))
+        org.junit.Assert.assertEquals(90, WebViewDisplayPolicy.computeTextZoom(0.7f))
+        org.junit.Assert.assertEquals(110, WebViewDisplayPolicy.computeTextZoom(1.1f))
+        org.junit.Assert.assertEquals(115, WebViewDisplayPolicy.computeTextZoom(1.3f))
+        org.junit.Assert.assertEquals(115, WebViewDisplayPolicy.computeTextZoom(1.6f))
+        org.junit.Assert.assertEquals(100, WebViewDisplayPolicy.computeTextZoom(Float.NaN))
+        org.junit.Assert.assertEquals(100, WebViewDisplayPolicy.computeTextZoom(0f))
+        org.junit.Assert.assertEquals(100, WebViewDisplayPolicy.computeTextZoom(-1f))
+    }
 }

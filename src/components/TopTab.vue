@@ -43,6 +43,7 @@
 <template>
 	<section
 		ref="sectionRef"
+		v-bind="{ 'data-tab-panel': 'top' }"
 		class="tab-content h-full overflow-y-auto bg-[var(--bg-canvas)] pt-2"
 		@scroll.passive="onTabScroll"
 		@touchstart.passive="onPullTouchStart"

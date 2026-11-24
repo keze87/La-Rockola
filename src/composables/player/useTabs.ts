@@ -17,10 +17,36 @@ if (typeof window !== 'undefined') {
 
 let lastScrollTop = 0;
 
+export interface SwitchTabOptions {
+	onScrollToTop?: () => void;
+}
+
+export function scrollActiveTabToTop(tabId: string): boolean {
+	if (typeof document === 'undefined') return false;
+	const selector = `[data-tab-panel="${tabId}"].tab-content, [data-tab-panel="${tabId}"] .tab-content`;
+	const el = document.querySelector<HTMLElement>(selector);
+	if (!el || el.scrollTop <= 0) return false;
+	if (typeof el.scrollTo === 'function') {
+		el.scrollTo({ top: 0, behavior: 'smooth' });
+	} else {
+		el.scrollTop = 0;
+	}
+	return true;
+}
+
 export function useTabs() {
-	function switchTab(tabId: string) {
+	function switchTab(tabId: string, options?: SwitchTabOptions): boolean {
+		const isSameTab = activeTab.value === tabId;
 		activeTab.value = tabId;
 		isTabsBarHidden.value = false;
+
+		if (isSameTab) {
+			const scrolled = scrollActiveTabToTop(tabId);
+			if (scrolled) {
+				options?.onScrollToTop?.();
+			}
+			return scrolled;
+		}
 
 		if (tabId === 'queue') {
 			nextTick(() => {
@@ -36,6 +62,7 @@ export function useTabs() {
 				if (el) el.scrollTop = 0;
 			});
 		}
+		return false;
 	}
 
 	function handleScroll(scrollTop: number) {

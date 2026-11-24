@@ -129,6 +129,7 @@
 <template>
 	<section
 		ref="queueSectionRef"
+		v-bind="{ 'data-tab-panel': 'queue' }"
 		class="tab-content h-full overflow-y-auto bg-[var(--bg-canvas)]"
 		@scroll.passive="onTabScroll"
 	>
@@ -143,9 +144,15 @@
 				<i class="material-icons shrink-0 !text-[18px] text-[var(--accent-primary)]">link</i>
 				<input
 					v-model="newUrl"
-					type="text"
+					type="url"
+					inputmode="url"
+					enterkeyhint="go"
+					autocapitalize="off"
+					autocorrect="off"
+					spellcheck="false"
 					placeholder="Pegá el link de YouTube acá, máquina..."
 					class="min-w-0 flex-1 bg-transparent text-[14px] text-[var(--text-primary)] placeholder-[var(--text-tertiary)] outline-none"
+					@keydown.enter="addUrl"
 				/>
 				<button
 					type="button"

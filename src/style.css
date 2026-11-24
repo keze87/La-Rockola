@@ -91,6 +91,7 @@
 
 	--target-size: 24px;
 	--rockola-ime-height: 0px;
+	--rockola-back-progress: 0;
 }
 
 .touch-target {
@@ -375,6 +376,11 @@ textarea,
 	-webkit-touch-callout: default;
 }
 
+input[type='search']::-webkit-search-cancel-button {
+	-webkit-appearance: none;
+	appearance: none;
+}
+
 button,
 [role='button'],
 [role='tab'] {
@@ -470,6 +476,19 @@ button,
 	.list-leave-to {
 		opacity: 0;
 		transform: translateX(-30px);
+	}
+
+	/* Feedback visual continuo para gesto atrás predictivo (Android 14+) */
+	dialog[open] {
+		transform: scale(calc(1 - var(--rockola-back-progress, 0) * 0.04));
+		opacity: calc(1 - var(--rockola-back-progress, 0) * 0.15);
+		transform-origin: center center;
+	}
+
+	.tab-swipe-container.predictive-back-target {
+		transform: scale(calc(1 - var(--rockola-back-progress, 0) * 0.025));
+		opacity: calc(1 - var(--rockola-back-progress, 0) * 0.08);
+		transform-origin: center center;
 	}
 }
 

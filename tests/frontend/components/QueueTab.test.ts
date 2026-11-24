@@ -75,7 +75,7 @@ describe('QueueTab.vue', () => {
 
 	it('submits a new URL using the input and add button', async () => {
 		const wrapper = mount(QueueTab);
-		const input = wrapper.find('input[type="text"]');
+		const input = wrapper.find('input[placeholder*="YouTube"]');
 		const addBtn = wrapper.findAll('button').find((b) => b.text().includes('add'));
 
 		await input.setValue('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
@@ -623,5 +623,17 @@ describe('QueueTab.vue', () => {
 				body: JSON.stringify({ cmd: 'clear_round' }),
 			})
 		);
+	});
+
+	it('configures native URL keyboard hints on the URL adder input', () => {
+		const wrapper = mount(QueueTab);
+		const input = wrapper.find('input[placeholder*="YouTube"]');
+		expect(input.exists()).toBe(true);
+		expect(input.attributes('type')).toBe('url');
+		expect(input.attributes('inputmode')).toBe('url');
+		expect(input.attributes('enterkeyhint')).toBe('go');
+		expect(input.attributes('autocapitalize')).toBe('off');
+		expect(input.attributes('autocorrect')).toBe('off');
+		expect(input.attributes('spellcheck')).toBe('false');
 	});
 });

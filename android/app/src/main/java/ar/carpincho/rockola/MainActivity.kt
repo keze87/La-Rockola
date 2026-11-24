@@ -1,6 +1,11 @@
 package ar.carpincho.rockola
 
 import android.Manifest
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.ObjectAnimator
+import android.animation.PropertyValuesHolder
+import android.animation.ValueAnimator
 import android.app.PendingIntent
 import android.app.PictureInPictureParams
 import android.app.RemoteAction
@@ -14,6 +19,8 @@ import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import android.util.Rational
+import android.view.View
+import android.view.animation.DecelerateInterpolator
 import android.webkit.WebView
 import androidx.activity.BackEventCompat
 import androidx.activity.OnBackPressedCallback
@@ -48,6 +55,19 @@ internal object SplashHoldPolicy {
  */
 internal object BackNavigationPolicy {
     fun shouldEnableCallback(hasClosableLayer: Boolean): Boolean = hasClosableLayer
+}
+
+/**
+ * Política de visualización del WebView para respetar escala de texto accesible sin romper la UI.
+ */
+internal object WebViewDisplayPolicy {
+    const val MIN_TEXT_ZOOM = 90
+    const val MAX_TEXT_ZOOM = 115
+
+    fun computeTextZoom(fontScale: Float): Int {
+        if (!fontScale.isFinite() || fontScale <= 0f) return 100
+        return (fontScale * 100f).roundToInt().coerceIn(MIN_TEXT_ZOOM, MAX_TEXT_ZOOM)
+    }
 }
 
 /**
@@ -244,6 +264,31 @@ class MainActivity : BridgeActivity() {
                 elapsedMs = SystemClock.elapsedRealtime() - splashStartedAtMs,
             )
         }
+        splashScreen.setOnExitAnimationListener { splashScreenView ->
+            if (!ValueAnimator.areAnimatorsEnabled()) {
+                splashScreenView.remove()
+                return@setOnExitAnimationListener
+            }
+            val exitAnimator = ObjectAnimator.ofPropertyValuesHolder(
+                splashScreenView.view,
+                PropertyValuesHolder.ofFloat(View.ALPHA, 1f, 0f),
+                PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 1.05f),
+                PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 1.05f),
+            ).apply {
+                duration = 180L
+                interpolator = DecelerateInterpolator()
+                addListener(object : AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(animation: Animator) {
+                        splashScreenView.remove()
+                    }
+
+                    override fun onAnimationCancel(animation: Animator) {
+                        splashScreenView.remove()
+                    }
+                })
+            }
+            exitAnimator.start()
+        }
         registerPlugin(RockolaServerPlugin::class.java)
         isFogonActive = savedInstanceState?.getBoolean(STATE_FOGON_ACTIVE, false) ?: false
         if (savedInstanceState != null) {
@@ -257,7 +302,16 @@ class MainActivity : BridgeActivity() {
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
         bridge?.webView?.apply {
             setBackgroundColor(ContextCompat.getColor(this@MainActivity, R.color.rockola_bg))
-            settings.mediaPlaybackRequiresUserGesture = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            isVerticalScrollBarEnabled = false
+            isHorizontalScrollBarEnabled = false
+            settings.apply {
+                mediaPlaybackRequiresUserGesture = false
+                setSupportZoom(false)
+                builtInZoomControls = false
+                displayZoomControls = false
+                textZoom = WebViewDisplayPolicy.computeTextZoom(resources.configuration.fontScale)
+            }
         }
         if (MainActivityPolicy.shouldHandleShortcutOnCreate(savedInstanceState != null, intent?.action)) {
             handleShortcutIntent(intent)
@@ -348,6 +402,11 @@ class MainActivity : BridgeActivity() {
     ) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         evaluateJsSafely("window.__rockolaSetPipMode && window.__rockolaSetPipMode($isInPictureInPictureMode)")
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        bridge?.webView?.settings?.textZoom = WebViewDisplayPolicy.computeTextZoom(newConfig.fontScale)
     }
 
     private fun registerBackNavigationHandler() {

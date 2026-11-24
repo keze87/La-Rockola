@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Paleta unificada de La Rockola del Carpincho -->
-    <color name="rockola_bg">#1F1A17</color>
-    <color name="rockola_surface">#2B2622</color>
-    <color name="rockola_primary">#A67C52</color>
-    <color name="rockola_secondary">#D4A373</color>
-    <color name="rockola_warning">#E9C46A</color>
-    <color name="rockola_success">#588157</color>
-    <color name="rockola_border">#4A3F35</color>
-    <color name="rockola_text">#E8D5C4</color>
-    <color name="rockola_muted">#A6ADC8</color>
+    <!-- Paleta unificada de La Rockola del Carpincho (alineada con src/style.css) -->
+    <color name="rockola_bg">#120E0B</color>
+    <color name="rockola_surface">#1C1612</color>
+    <color name="rockola_primary">#A87C56</color>
+    <color name="rockola_secondary">#D49642</color>
+    <color name="rockola_warning">#D49642</color>
+    <color name="rockola_success">#6A905C</color>
+    <color name="rockola_border">#2E251F</color>
+    <color name="rockola_text">#F5EFE6</color>
+    <color name="rockola_muted">#A89A8B</color>
 
     <color name="colorPrimary">@color/rockola_primary</color>
     <color name="colorPrimaryDark">@color/rockola_bg</color>

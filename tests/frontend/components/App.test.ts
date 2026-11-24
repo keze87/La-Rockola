@@ -731,4 +731,85 @@ Dialogue: 0,0:00:20.00,0:00:24.00,Default,,0,0,0,,{\\kf100}Verso {\\kf100}tres
 		document.documentElement.style.removeProperty('--headbar-h');
 		wrapper.unmount();
 	});
+
+	it('ignores horizontal tab swipes starting within 24px of screen edges for Android predictive back', async () => {
+		const origInnerWidth = window.innerWidth;
+		Object.defineProperty(window, 'innerWidth', { configurable: true, value: 400 });
+
+		try {
+			const wrapper = mount(App);
+			await wrapper.vm.$nextTick();
+
+			const container = wrapper.find('.tab-swipe-container');
+			expect(container.exists()).toBe(true);
+
+			// Borde izquierdo (< 24px) no debe cambiar de pestaña
+			activeTab.value = 'queue';
+			await wrapper.vm.$nextTick();
+			await container.trigger('touchstart', { touches: [{ clientX: 12, clientY: 200 }] });
+			await container.trigger('touchmove', { touches: [{ clientX: 180, clientY: 202 }] });
+			await container.trigger('touchend');
+			expect(activeTab.value).toBe('queue');
+
+			// Borde derecho (> width - 24px) tampoco debe cambiar de pestaña
+			await container.trigger('touchstart', { touches: [{ clientX: 388, clientY: 200 }] });
+			await container.trigger('touchmove', { touches: [{ clientX: 200, clientY: 202 }] });
+			await container.trigger('touchend');
+			expect(activeTab.value).toBe('queue');
+
+			wrapper.unmount();
+		} finally {
+			Object.defineProperty(window, 'innerWidth', { configurable: true, value: origInnerWidth });
+		}
+	});
+
+	it('uses history.replaceState instead of pushState on native Android when switching tabs or fogon', async () => {
+		const androidHost = await import('@/composables/useAndroidHost');
+		const isNativeSpy = vi.spyOn(androidHost, 'isNativeAndroidHost').mockReturnValue(true);
+		const initSpy = vi.spyOn(androidHost, 'initAndroidServer').mockResolvedValue(true);
+		const shortcutSpy = vi.spyOn(androidHost, 'consumeAndroidPendingShortcut').mockResolvedValue(null);
+		const pushSpy = vi.spyOn(window.history, 'pushState');
+		const replaceSpy = vi.spyOn(window.history, 'replaceState');
+
+		try {
+			window.history.replaceState({}, '', '/');
+			replaceSpy.mockClear();
+			pushSpy.mockClear();
+
+			const wrapper = mount(App);
+			await wrapper.vm.$nextTick();
+
+			activeTab.value = 'queue';
+			await wrapper.vm.$nextTick();
+			isFogonMode.value = true;
+			await wrapper.vm.$nextTick();
+
+			expect(pushSpy).not.toHaveBeenCalled();
+			expect(replaceSpy).toHaveBeenCalled();
+			wrapper.unmount();
+		} finally {
+			pushSpy.mockRestore();
+			replaceSpy.mockRestore();
+			isNativeSpy.mockRestore();
+			initSpy.mockRestore();
+			shortcutSpy.mockRestore();
+		}
+	});
+
+	it('anchors progress bar and status banners below the fixed headbar instead of under the status bar', async () => {
+		currentTrackPath.value = '/music/rock.mp3';
+		const wrapper = mount(App);
+		await wrapper.vm.$nextTick();
+
+		const progressBar = wrapper.find('.headbar-progress-bar');
+		expect(progressBar.exists()).toBe(true);
+		expect(progressBar.classes()).toContain('fixed');
+		expect(progressBar.classes()).toContain('top-[var(--headbar-h)]');
+		expect(progressBar.classes()).toContain('z-40');
+
+		const bannersContainer = wrapper.find('.headbar-banners');
+		expect(bannersContainer.exists()).toBe(true);
+		expect(bannersContainer.classes()).toContain('mt-[var(--headbar-h)]');
+		wrapper.unmount();
+	});
 });

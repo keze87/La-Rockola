@@ -153,10 +153,15 @@
 				<input
 					id="library-search-input"
 					v-model="searchQuery"
-					type="text"
+					type="search"
+					enterkeyhint="search"
+					autocomplete="off"
+					autocorrect="off"
+					spellcheck="false"
 					aria-label="Buscar canciones o artistas"
 					placeholder="Buscá un buen tema pa' acompañar los mates..."
 					class="min-w-0 flex-1 truncate bg-transparent text-[14px] text-ellipsis text-[var(--text-primary)] placeholder-[var(--text-tertiary)] !outline-none focus:outline-none focus-visible:outline-none"
+					@keydown.enter="($event.target as HTMLInputElement).blur()"
 				/>
 				<button
 					v-show="searchQuery"
@@ -172,7 +177,7 @@
 
 		<!-- Contenedor con scroll para la lista virtualizada -->
 		<section
-			v-bind="containerProps"
+			v-bind="{ ...containerProps, 'data-tab-panel': 'library' }"
 			class="tab-content relative h-full overflow-y-auto bg-[var(--bg-canvas)] !pt-[calc(var(--headbar-h)+63px)]"
 			@scroll.passive="onTabScroll"
 			@touchstart.passive="onPullTouchStart"

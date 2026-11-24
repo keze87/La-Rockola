@@ -713,6 +713,14 @@ describe('ControlsTab.vue', () => {
 			expect(actionsGrid.text()).toContain('Full Rockola');
 			expect(actionsGrid.text()).toContain('Limpiar ronda');
 			expect(actionsGrid.text()).toContain('Cortala de una');
+
+			const remoteInput = wrapper.find('#remote-server-input');
+			expect(remoteInput.exists()).toBe(true);
+			expect(remoteInput.attributes('inputmode')).toBe('url');
+			expect(remoteInput.attributes('enterkeyhint')).toBe('go');
+			expect(remoteInput.attributes('autocapitalize')).toBe('off');
+			expect(remoteInput.attributes('autocorrect')).toBe('off');
+			expect(remoteInput.attributes('spellcheck')).toBe('false');
 		} finally {
 			store.resetServerConnectionStore();
 			isNativeSpy.mockRestore();

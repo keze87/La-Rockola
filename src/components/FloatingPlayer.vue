@@ -61,6 +61,7 @@
 	let touchStartY = 0;
 	let swipeAxis: 'horizontal' | 'vertical' | 'ignored' | null = null;
 	let suppressNextClick = false;
+	let swipeThresholdHapticFired = false;
 
 	const swipeStyle = computed(() => {
 		if (swipeOffsetX.value === 0 && swipeOffsetY.value === 0) return undefined;
@@ -75,6 +76,7 @@
 		swipeOffsetY.value = 0;
 		isSwiping.value = false;
 		swipeAxis = null;
+		swipeThresholdHapticFired = false;
 	}
 
 	function onTouchStart(e: TouchEvent) {
@@ -86,6 +88,7 @@
 		swipeAxis = null;
 		swipeOffsetX.value = 0;
 		swipeOffsetY.value = 0;
+		swipeThresholdHapticFired = false;
 	}
 
 	function onTouchMove(e: TouchEvent) {
@@ -108,10 +111,18 @@
 		if (swipeAxis === 'horizontal') {
 			swipeOffsetX.value = Math.max(-110, Math.min(110, dx));
 			swipeOffsetY.value = 0;
+			if (!swipeThresholdHapticFired && Math.abs(swipeOffsetX.value) >= SWIPE_X_THRESHOLD) {
+				swipeThresholdHapticFired = true;
+				haptic('tick');
+			}
 			if (e.cancelable) e.preventDefault();
 		} else if (swipeAxis === 'vertical') {
 			swipeOffsetY.value = Math.min(0, Math.max(-80, dy));
 			swipeOffsetX.value = 0;
+			if (!swipeThresholdHapticFired && swipeOffsetY.value <= -SWIPE_UP_THRESHOLD) {
+				swipeThresholdHapticFired = true;
+				haptic('tick');
+			}
 			if (e.cancelable) e.preventDefault();
 		}
 	}
