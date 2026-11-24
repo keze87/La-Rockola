@@ -564,25 +564,65 @@ describe('QueueTab.vue', () => {
 		expect(row.attributes('style')).toContain('transform: translateX(40px)');
 	});
 
-	it('shows red delete feedback and trash icon when swiping left on a queue row', async () => {
+	it('shows Gmail-style reveal behind row and only activates danger circle after commit threshold', async () => {
 		queueState.value = ['/music/q1.mp3'];
 		const wrapper = mount(QueueTab);
 		const row = wrapper.find('.swipe-row');
 		expect(row.exists()).toBe(true);
 
-		// Touch start at x=200
+		// Touch start at x=200, y=100
 		await row.trigger('touchstart', {
-			changedTouches: [{ screenX: 200 }],
-		});
-		// Touch move left to x=140 (diff = -60)
-		await row.trigger('touchmove', {
-			touches: [{ screenX: 140 }],
+			changedTouches: [{ screenX: 200, screenY: 100 }],
 		});
 
-		expect(row.classes()).toContain('swipe-delete-active');
+		// Pequeño desplazamiento horizontal (< 16px) no debe activar ni mover la fila
+		await row.trigger('touchmove', {
+			touches: [{ screenX: 190, screenY: 100 }],
+		});
+		expect(row.attributes('style') ?? '').not.toContain('translateX');
+		expect(row.classes()).not.toContain('swipe-delete-active');
+
+		// Desplazamiento parcial (-60px): muestra ícono discreto detrás, sin pintar la fila de rojo
+		await row.trigger('touchmove', {
+			touches: [{ screenX: 140, screenY: 100 }],
+		});
+		expect(row.attributes('style')).toContain('transform: translateX(-60px)');
+		expect(row.classes()).not.toContain('swipe-delete-active');
 		const trashIndicator = wrapper.find('.swipe-delete-indicator');
 		expect(trashIndicator.exists()).toBe(true);
 		expect(trashIndicator.text()).toContain('delete');
+		expect(trashIndicator.classes()).not.toContain('swipe-delete-ready');
+
+		// Superando el umbral (-90px): el círculo detrás pasa a rojo sólido listo para soltar
+		await row.trigger('touchmove', {
+			touches: [{ screenX: 110, screenY: 100 }],
+		});
+		expect(wrapper.find('.swipe-delete-indicator').classes()).toContain('swipe-delete-ready');
+	});
+
+	it('cancels long-press context menu and ignores horizontal drift during vertical scroll', async () => {
+		vi.useFakeTimers();
+		try {
+			queueState.value = ['/music/q1.mp3'];
+			const wrapper = mount(QueueTab);
+			const row = wrapper.find('.swipe-row');
+
+			await row.trigger('touchstart', {
+				changedTouches: [{ screenX: 150, screenY: 200 }],
+			});
+			// Scroll vertical con mínima deriva horizontal (+5px X, +30px Y)
+			await row.trigger('touchmove', {
+				touches: [{ screenX: 155, screenY: 230 }],
+			});
+
+			vi.advanceTimersByTime(600);
+			await wrapper.vm.$nextTick();
+
+			expect(row.attributes('style') ?? '').not.toContain('translateX');
+			expect(wrapper.find('.swipe-delete-indicator').exists()).toBe(false);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('hides URL adder input on local Android host unless connected to remote server', async () => {

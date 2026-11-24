@@ -82,6 +82,7 @@
 		queueTouchStart,
 		queueTouchMove,
 		queueTouchEnd,
+		cancelQueueTouch,
 		dragStart,
 		dragOver,
 		dragLeave,
@@ -111,6 +112,7 @@
 	}
 
 	function onTabScroll(e: Event) {
+		cancelQueueTouch();
 		const target = e.target as HTMLElement;
 		if (target) {
 			handleScroll(target.scrollTop);
@@ -205,168 +207,210 @@
 		<div class="overflow-hidden pt-1">
 			<!-- Lista única unificada de temas -->
 			<TransitionGroup name="list" tag="div" class="relative w-full">
-				<TrackRow
-					v-for="(item, rowPos) in unifiedQueue"
-					:id="item.status === 'current' ? 'current-queue-row' : undefined"
-					:key="item.id"
-					:class="[
-						item.status === 'history' ? 'opacity-[0.52] transition-opacity' : '',
-						item.status === 'queue' ? 'swipe-row' : '',
-						item.status === 'queue' &&
-						item.queueIndex !== undefined &&
-						(swipeOffsets.get(item.queueIndex) ?? 0) < 0
-							? 'swipe-delete-active'
-							: '',
-						rowPos >= 12 ? 'deferred-row' : '',
-						trackGridClass,
-					]"
-					:data-history-path="item.status === 'history' ? item.path : undefined"
-					:data-history-index="item.historyIndex"
-					:data-queue-index="item.queueIndex"
-					:data-current-track="item.status === 'current' ? true : undefined"
-					:data-track-status="item.status"
-					:data-playlist-index="item.index"
-					:track="getTrackInfo(item.path)"
-					:context-source="item.status"
-					:index="
-						item.status === 'history' ? item.historyIndex : item.status === 'queue' ? item.queueIndex : null
-					"
-					:context-menu-only="item.status === 'queue'"
-					:style="
-						item.status === 'queue' && item.queueIndex !== undefined && swipeOffsets.has(item.queueIndex)
-							? { transform: `translateX(${swipeOffsets.get(item.queueIndex)}px)` }
-							: undefined
-					"
-					draggable="true"
-					@click="onTrackClick(item)"
-					@dragstart="dragStart($event, item.index)"
-					@dragover.prevent="dragOver($event, item.index)"
-					@dragleave="dragLeave($event)"
-					@drop.prevent="dragDrop($event, item.index)"
-					@dragend="dragEnd($event)"
-					@touchstart="
-						item.status === 'queue' && item.queueIndex !== undefined
-							? queueTouchStart($event, item.path, item.queueIndex)
-							: undefined
-					"
-					@touchend="
-						item.status === 'queue' && item.queueIndex !== undefined
-							? queueTouchEnd($event, item.queueIndex)
-							: undefined
-					"
-					@touchmove="
-						item.status === 'queue' && item.queueIndex !== undefined
-							? queueTouchMove($event, item.queueIndex)
-							: undefined
-					"
-				>
-					<template #prefix>
-						<template v-if="item.status === 'history'">
-							<i class="material-icons !text-[18px] text-[var(--accent-mate)]">check</i>
-						</template>
-
-						<template v-else-if="item.status === 'current'">
-							<div :class="['equalizer', isPaused ? 'paused' : '']">
-								<span />
-								<span />
-								<span />
-							</div>
-						</template>
-
-						<template v-else-if="item.status === 'queue' && item.queueIndex !== undefined">
-							<span class="text-[12px] font-semibold text-[var(--text-tertiary)] tabular-nums">
-								{{ item.queueIndex + 1 }}
-							</span>
-						</template>
-					</template>
-
-					<template #title-extra>
-						<i
-							v-if="item.path === pauseAfterPath"
-							class="material-icons shrink-0 !text-[15px] text-[var(--accent-primary)]"
-							title="Se frena acá"
-						>
-							timer
-						</i>
-					</template>
-
-					<template
-						v-if="item.status === 'current' || (item.status === 'queue' && item.queueIndex !== undefined)"
-						#suffix
+				<div v-for="(item, rowPos) in unifiedQueue" :key="item.id" class="relative overflow-hidden">
+					<!-- Fondo fijo estilo Gmail revelado detrás de la fila al deslizar -->
+					<div
+						v-if="
+							item.status === 'queue' &&
+							item.queueIndex !== undefined &&
+							swipeOffsets.has(item.queueIndex)
+						"
+						class="pointer-events-none absolute inset-0 flex items-center justify-between bg-[var(--bg-elevated)] px-5"
+						aria-hidden="true"
 					>
-						<div v-if="item.status === 'current'" class="flex items-center" @click.stop>
-							<button
-								type="button"
-								:aria-label="
-									pauseAfterPath === currentTrackPath
-										? 'Cancelar pausa al terminar'
-										: 'Frenar tras este tema'
-								"
-								:title="
-									pauseAfterPath === currentTrackPath
-										? 'Cancelar pausa al terminar'
-										: 'Frenar tras este tema'
-								"
+						<div class="flex items-center">
+							<span
+								v-if="(swipeOffsets.get(item.queueIndex) ?? 0) > 0"
 								:class="[
-									btnBaseClass,
-									pauseAfterPath === currentTrackPath
-										? 'bg-[var(--accent-primary-soft)] text-[var(--accent-primary)]'
-										: '',
+									'swipe-promote-indicator inline-flex h-10 w-10 items-center justify-center rounded-full transition-all duration-150',
+									(swipeOffsets.get(item.queueIndex) ?? 0) >= 80
+										? 'swipe-promote-ready scale-110 bg-[var(--accent-primary)] text-[#120e0b] shadow-sm'
+										: 'scale-90 bg-[var(--bg-surface)] text-[var(--text-secondary)]',
 								]"
-								@click="
-									togglePauseAfterCurrent();
-									haptic();
-								"
 							>
-								<i class="material-icons !text-[18px]" aria-hidden="true">timer</i>
-							</button>
+								<i class="material-icons !text-[20px]">vertical_align_top</i>
+							</span>
 						</div>
-
-						<div
-							v-else-if="item.status === 'queue' && item.queueIndex !== undefined"
-							class="flex items-center gap-1"
-							@click.stop
-						>
-							<button
-								type="button"
-								aria-label="Subir a próximo"
-								:class="btnBaseClass"
-								title="Subir a próximo"
-								@click="moveQueueItem(item.queueIndex, 'first')"
-							>
-								<i class="material-icons !text-[18px]" aria-hidden="true">vertical_align_top</i>
-							</button>
-							<button
-								type="button"
-								aria-label="Mover al final"
-								:class="btnBaseClass"
-								title="Mover al final"
-								@click="moveQueueItem(item.queueIndex, 'last')"
-							>
-								<i class="material-icons !text-[18px]" aria-hidden="true">vertical_align_bottom</i>
-							</button>
-							<button
-								type="button"
-								aria-label="Sacar de la fila"
-								:class="[
-									btnBaseClass,
-									'hidden hover:bg-[var(--accent-danger)]/20 hover:text-[var(--accent-danger)] sm:flex',
-								]"
-								title="Sacar de la fila"
-								@click="onRemoveClick(item.queueIndex, $event)"
-							>
-								<i class="material-icons !text-[18px]" aria-hidden="true">delete</i>
-							</button>
+						<div class="flex items-center">
 							<span
 								v-if="(swipeOffsets.get(item.queueIndex) ?? 0) < 0"
-								class="swipe-delete-indicator pointer-events-none inline-flex items-center justify-center rounded-full bg-[var(--accent-danger)]/20 p-1.5 text-[var(--accent-danger)]"
-								aria-hidden="true"
+								:class="[
+									'swipe-delete-indicator inline-flex h-10 w-10 items-center justify-center rounded-full transition-all duration-150',
+									(swipeOffsets.get(item.queueIndex) ?? 0) <= -80
+										? 'swipe-delete-ready scale-110 bg-[var(--accent-danger)] text-[#120e0b] shadow-sm'
+										: 'scale-90 bg-[var(--bg-surface)] text-[var(--text-secondary)]',
+								]"
 							>
-								<i class="material-icons !text-[18px]">delete</i>
+								<i class="material-icons !text-[20px]">delete</i>
 							</span>
 						</div>
-					</template>
-				</TrackRow>
+					</div>
+
+					<TrackRow
+						:id="item.status === 'current' ? 'current-queue-row' : undefined"
+						:class="[
+							item.status === 'history' ? 'opacity-[0.52] transition-opacity' : '',
+							item.status === 'queue' ? 'swipe-row bg-[var(--bg-canvas)]' : '',
+							rowPos >= 12 ? 'deferred-row' : '',
+							trackGridClass,
+						]"
+						:data-history-path="item.status === 'history' ? item.path : undefined"
+						:data-history-index="item.historyIndex"
+						:data-queue-index="item.queueIndex"
+						:data-current-track="item.status === 'current' ? true : undefined"
+						:data-track-status="item.status"
+						:data-playlist-index="item.index"
+						:track="getTrackInfo(item.path)"
+						:context-source="item.status"
+						:index="
+							item.status === 'history'
+								? item.historyIndex
+								: item.status === 'queue'
+									? item.queueIndex
+									: null
+						"
+						:context-menu-only="item.status === 'queue'"
+						:style="
+							item.status === 'queue' &&
+							item.queueIndex !== undefined &&
+							swipeOffsets.has(item.queueIndex)
+								? {
+										transform: `translateX(${swipeOffsets.get(item.queueIndex)}px)`,
+										transition: 'none',
+									}
+								: undefined
+						"
+						draggable="true"
+						@click="onTrackClick(item)"
+						@dragstart="dragStart($event, item.index)"
+						@dragover.prevent="dragOver($event, item.index)"
+						@dragleave="dragLeave($event)"
+						@drop.prevent="dragDrop($event, item.index)"
+						@dragend="dragEnd($event)"
+						@touchstart="
+							item.status === 'queue' && item.queueIndex !== undefined
+								? queueTouchStart($event, item.path, item.queueIndex)
+								: undefined
+						"
+						@touchend="
+							item.status === 'queue' && item.queueIndex !== undefined
+								? queueTouchEnd($event, item.queueIndex)
+								: undefined
+						"
+						@touchmove="
+							item.status === 'queue' && item.queueIndex !== undefined
+								? queueTouchMove($event, item.queueIndex)
+								: undefined
+						"
+						@touchcancel="
+							item.status === 'queue' && item.queueIndex !== undefined
+								? cancelQueueTouch(item.queueIndex)
+								: undefined
+						"
+					>
+						<template #prefix>
+							<template v-if="item.status === 'history'">
+								<i class="material-icons !text-[18px] text-[var(--accent-mate)]">check</i>
+							</template>
+
+							<template v-else-if="item.status === 'current'">
+								<div :class="['equalizer', isPaused ? 'paused' : '']">
+									<span />
+									<span />
+									<span />
+								</div>
+							</template>
+
+							<template v-else-if="item.status === 'queue' && item.queueIndex !== undefined">
+								<span class="text-[12px] font-semibold text-[var(--text-tertiary)] tabular-nums">
+									{{ item.queueIndex + 1 }}
+								</span>
+							</template>
+						</template>
+
+						<template #title-extra>
+							<i
+								v-if="item.path === pauseAfterPath"
+								class="material-icons shrink-0 !text-[15px] text-[var(--accent-primary)]"
+								title="Se frena acá"
+							>
+								timer
+							</i>
+						</template>
+
+						<template
+							v-if="
+								item.status === 'current' || (item.status === 'queue' && item.queueIndex !== undefined)
+							"
+							#suffix
+						>
+							<div v-if="item.status === 'current'" class="flex items-center" @click.stop>
+								<button
+									type="button"
+									:aria-label="
+										pauseAfterPath === currentTrackPath
+											? 'Cancelar pausa al terminar'
+											: 'Frenar tras este tema'
+									"
+									:title="
+										pauseAfterPath === currentTrackPath
+											? 'Cancelar pausa al terminar'
+											: 'Frenar tras este tema'
+									"
+									:class="[
+										btnBaseClass,
+										pauseAfterPath === currentTrackPath
+											? 'bg-[var(--accent-primary-soft)] text-[var(--accent-primary)]'
+											: '',
+									]"
+									@click="
+										togglePauseAfterCurrent();
+										haptic();
+									"
+								>
+									<i class="material-icons !text-[18px]" aria-hidden="true">timer</i>
+								</button>
+							</div>
+
+							<div
+								v-else-if="item.status === 'queue' && item.queueIndex !== undefined"
+								class="flex items-center gap-1"
+								@click.stop
+							>
+								<button
+									type="button"
+									aria-label="Subir a próximo"
+									:class="btnBaseClass"
+									title="Subir a próximo"
+									@click="moveQueueItem(item.queueIndex, 'first')"
+								>
+									<i class="material-icons !text-[18px]" aria-hidden="true">vertical_align_top</i>
+								</button>
+								<button
+									type="button"
+									aria-label="Mover al final"
+									:class="btnBaseClass"
+									title="Mover al final"
+									@click="moveQueueItem(item.queueIndex, 'last')"
+								>
+									<i class="material-icons !text-[18px]" aria-hidden="true">vertical_align_bottom</i>
+								</button>
+								<button
+									type="button"
+									aria-label="Sacar de la fila"
+									:class="[
+										btnBaseClass,
+										'hidden hover:bg-[var(--accent-danger)]/20 hover:text-[var(--accent-danger)] sm:flex',
+									]"
+									title="Sacar de la fila"
+									@click="onRemoveClick(item.queueIndex, $event)"
+								>
+									<i class="material-icons !text-[18px]" aria-hidden="true">delete</i>
+								</button>
+							</div>
+						</template>
+					</TrackRow>
+				</div>
 			</TransitionGroup>
 
 			<!-- Drop zone al final de la lista unificada -->
@@ -407,14 +451,8 @@
 
 <style scoped>
 	.swipe-row {
-		transition:
-			transform 0.3s ease,
-			background-color 0.2s ease;
-		touch-action: manipulation;
-	}
-
-	.swipe-delete-active {
-		background-color: rgba(217, 101, 91, 0.24) !important;
+		transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+		touch-action: pan-y;
 	}
 
 	/* Respuesta visual cuando se elimina un ítem de la fila */
