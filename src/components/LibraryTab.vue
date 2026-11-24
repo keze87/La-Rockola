@@ -156,7 +156,7 @@
 
 		<!-- Encabezado fijo con buscador iOS y filtros cálidos -->
 		<div
-			class="sticky top-0 z-30 flex items-center gap-2 border-b border-[var(--hairline)] bg-[rgba(18,14,11,0.94)] px-3 py-2.5"
+			class="sticky top-[var(--headbar-h)] z-30 flex items-center gap-2 border-b-[0.5px] border-[var(--glass-border)] bg-[var(--glass-bg-strong)] px-3 py-2.5 [backdrop-filter:var(--glass-blur)] [-webkit-backdrop-filter:var(--glass-blur)]"
 		>
 			<button
 				type="button"
@@ -201,7 +201,7 @@
 					type="text"
 					aria-label="Buscar canciones o artistas"
 					placeholder="Buscá un buen tema pa' acompañar los mates..."
-					class="min-w-0 flex-1 truncate bg-transparent text-[14px] text-ellipsis text-[var(--text-primary)] placeholder-[var(--text-tertiary)] outline-none"
+					class="min-w-0 flex-1 truncate bg-transparent text-[14px] text-ellipsis text-[var(--text-primary)] placeholder-[var(--text-tertiary)] !outline-none focus:outline-none focus-visible:outline-none"
 				/>
 				<button
 					v-show="searchQuery"
