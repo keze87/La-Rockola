@@ -282,6 +282,9 @@ class RockolaForegroundService : Service() {
     @Volatile
     private var isInForeground: Boolean = false
 
+    @Volatile
+    private var currentForegroundType: Int = 0
+
     private lateinit var hostCoordinator: HostLifecycleCoordinator
     private lateinit var commandClient: MediaCommandClient
     private lateinit var pythonHost: EmbeddedPythonHost
@@ -710,7 +713,7 @@ class RockolaForegroundService : Service() {
             isUiVisible,
         ),
     ) {
-        if (isInForeground) {
+        if (isInForeground && (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || currentForegroundType == serviceType)) {
             notificationManager.notifyCurrentState()
             return
         }
@@ -718,12 +721,14 @@ class RockolaForegroundService : Service() {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(NOTIFICATION_ID, notification, serviceType)
+                currentForegroundType = serviceType
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
             isInForeground = true
         } catch (e: Exception) {
             isInForeground = false
+            currentForegroundType = 0
             Log.w("RockolaService", "No se pudo promover a foreground: ${e.message}")
             notificationManager.notifyCurrentState()
         }
@@ -746,6 +751,7 @@ class RockolaForegroundService : Service() {
                 stopForeground(!keepDismissibleNotification)
             }
             isInForeground = false
+            currentForegroundType = 0
         }
         if (keepDismissibleNotification && notificationManager.hasActiveTrack) {
             notificationManager.notifyCurrentState()
@@ -788,6 +794,7 @@ class RockolaForegroundService : Service() {
                             notification,
                             ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
                         )
+                        currentForegroundType = ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
                     } else {
                         startForeground(NOTIFICATION_ID, notification)
                     }
