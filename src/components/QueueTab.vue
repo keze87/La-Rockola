@@ -205,6 +205,11 @@
 					:class="[
 						item.status === 'history' ? 'opacity-[0.52] transition-opacity' : '',
 						item.status === 'queue' ? 'swipe-row' : '',
+						item.status === 'queue' &&
+						item.queueIndex !== undefined &&
+						(swipeOffsets.get(item.queueIndex) ?? 0) < 0
+							? 'swipe-delete-active'
+							: '',
 						rowPos >= 12 ? 'deferred-row' : '',
 						trackGridClass,
 					]"
@@ -345,6 +350,13 @@
 							>
 								<i class="material-icons !text-[18px]" aria-hidden="true">delete</i>
 							</button>
+							<span
+								v-if="(swipeOffsets.get(item.queueIndex) ?? 0) < 0"
+								class="swipe-delete-indicator pointer-events-none inline-flex items-center justify-center rounded-full bg-[var(--accent-danger)]/20 p-1.5 text-[var(--accent-danger)]"
+								aria-hidden="true"
+							>
+								<i class="material-icons !text-[18px]">delete</i>
+							</span>
 						</div>
 					</template>
 				</TrackRow>
@@ -388,8 +400,14 @@
 
 <style scoped>
 	.swipe-row {
-		transition: transform 0.3s ease;
+		transition:
+			transform 0.3s ease,
+			background-color 0.2s ease;
 		touch-action: manipulation;
+	}
+
+	.swipe-delete-active {
+		background-color: rgba(217, 101, 91, 0.24) !important;
 	}
 
 	/* Respuesta visual cuando se elimina un ítem de la fila */

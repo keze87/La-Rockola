@@ -564,6 +564,27 @@ describe('QueueTab.vue', () => {
 		expect(row.attributes('style')).toContain('transform: translateX(40px)');
 	});
 
+	it('shows red delete feedback and trash icon when swiping left on a queue row', async () => {
+		queueState.value = ['/music/q1.mp3'];
+		const wrapper = mount(QueueTab);
+		const row = wrapper.find('.swipe-row');
+		expect(row.exists()).toBe(true);
+
+		// Touch start at x=200
+		await row.trigger('touchstart', {
+			changedTouches: [{ screenX: 200 }],
+		});
+		// Touch move left to x=140 (diff = -60)
+		await row.trigger('touchmove', {
+			touches: [{ screenX: 140 }],
+		});
+
+		expect(row.classes()).toContain('swipe-delete-active');
+		const trashIndicator = wrapper.find('.swipe-delete-indicator');
+		expect(trashIndicator.exists()).toBe(true);
+		expect(trashIndicator.text()).toContain('delete');
+	});
+
 	it('hides URL adder input on local Android host unless connected to remote server', async () => {
 		const androidHost = await import('@/composables/useAndroidHost');
 		const isNativeSpy = vi.spyOn(androidHost, 'isNativeAndroidHost').mockReturnValue(true);

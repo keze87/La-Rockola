@@ -73,6 +73,7 @@ Siempre que se realicen cambios en el backend de Python o en el código del fron
 3. **Compilación y Construcción**:
     - Python: `python -m compileall server.py scripts/ tests/`
     - Frontend: `npm run build`
+    - Android (APK): construir la APK e instalarla en el dispositivo conectado por `adb` (si no hay dispositivo conectado, continuar sin error). La versión release y no la debug.
 
 4. **Testing**:
     - Python: `pytest`
