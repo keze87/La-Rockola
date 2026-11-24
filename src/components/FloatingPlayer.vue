@@ -208,7 +208,7 @@
 					'touch-target tap-feedback hidden h-9 w-9 items-center justify-center rounded-full transition-opacity sm:flex',
 					pauseAfterPath === currentTrackPath && currentTrackPath
 						? 'bg-[var(--accent-primary-soft)] text-[var(--accent-primary)] opacity-100'
-						: 'bg-[rgba(255,236,210,0.08)] text-[var(--text-primary)] opacity-[0.78] hover:bg-[var(--bg-surface-active)] hover:opacity-100',
+						: 'bg-[rgba(255,236,210,0.08)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface-active)] hover:text-[var(--text-primary)]',
 				]"
 				:aria-label="
 					pauseAfterPath === currentTrackPath && currentTrackPath

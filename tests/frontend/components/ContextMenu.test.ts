@@ -412,4 +412,15 @@ describe('ContextMenu.vue', () => {
 		await handleBtn.trigger('touchend', { changedTouches: [{ clientY: 165 }] });
 		expect(ctxMenu.visible).toBe(false);
 	});
+
+	it('displays artist subtitle inside ctx-menu-header when track has artist metadata', () => {
+		ctxMenu.visible = true;
+		ctxMenu.track = sampleTrack;
+
+		const wrapper = mount(ContextMenu);
+		const header = wrapper.find('.ctx-menu-header');
+		expect(header.exists()).toBe(true);
+		expect(header.text()).toContain('Bajan');
+		expect(header.text()).toContain('Pescado Rabioso');
+	});
 });

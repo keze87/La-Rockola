@@ -482,15 +482,15 @@
 					@pointercancel="endVol"
 				>
 					<div
-						class="relative h-[8px] w-full overflow-hidden rounded-full bg-[rgba(255,236,210,0.12)] transition-[height] duration-150 group-active:h-[10px]"
+						class="relative h-[8px] w-full overflow-visible rounded-full bg-[rgba(255,236,210,0.12)] transition-[height] duration-150 group-active:h-[10px]"
 					>
 						<div
 							class="absolute top-0 left-0 h-full rounded-full bg-[var(--accent-primary)]"
 							:style="{ width: volPercent + '%' }"
 						/>
 						<div
-							class="absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--text-primary)] shadow-[0_1px_4px_rgba(0,0,0,0.45)] transition-transform group-active:scale-110"
-							:style="{ left: `clamp(7px, ${volPercent}%, calc(100% - 7px))` }"
+							class="absolute top-1/2 aspect-square h-4 w-4 shrink-0 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#EFE7DC] shadow-[0_2px_6px_rgba(0,0,0,0.45)] transition-transform group-active:scale-110"
+							:style="{ left: `clamp(8px, ${volPercent}%, calc(100% - 8px))` }"
 						/>
 					</div>
 				</div>
@@ -678,14 +678,59 @@
 			</div>
 		</div>
 
-		<div v-if="hasEdgeTts" class="mx-auto mb-4 flex max-w-lg flex-wrap justify-center gap-2.5">
-			<PillButton
-				icon="map"
-				color-class="border border-[var(--hairline)] bg-[var(--bg-grouped)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-primary)]"
+		<div
+			v-if="hasEdgeTts || showAndroidFolderPicker"
+			class="mx-auto mb-4 max-w-lg divide-y divide-[var(--hairline)] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--hairline)] bg-[var(--bg-grouped)]"
+		>
+			<button
+				v-if="hasEdgeTts"
+				type="button"
+				class="tap-feedback flex w-full cursor-pointer items-center justify-between gap-3 px-4 py-3.5 text-left transition-colors hover:bg-[var(--bg-surface-hover)]"
 				@click="isWeatherModalOpen = true"
 			>
-				{{ displayWeatherLocation ? `Ubicación del Clima: ${displayWeatherLocation}` : 'Configurar ubicación' }}
-			</PillButton>
+				<div class="flex min-w-0 flex-1 items-center gap-3">
+					<i class="material-icons shrink-0 !text-[20px] text-[var(--accent-primary)]" aria-hidden="true">
+						map
+					</i>
+					<span class="truncate text-sm font-semibold text-[var(--text-primary)]">
+						{{
+							displayWeatherLocation
+								? `Ubicación del Clima: ${displayWeatherLocation}`
+								: 'Configurar ubicación'
+						}}
+					</span>
+				</div>
+				<i class="material-icons shrink-0 !text-[18px] text-[var(--text-tertiary)]" aria-hidden="true">
+					chevron_right
+				</i>
+			</button>
+
+			<button
+				v-if="showAndroidFolderPicker"
+				type="button"
+				class="tap-feedback flex w-full cursor-pointer items-center justify-between gap-3 px-4 py-3.5 text-left transition-colors hover:bg-[var(--bg-surface-hover)]"
+				@click="handlePickMusicFolder"
+			>
+				<div class="flex min-w-0 flex-1 items-center gap-3">
+					<i class="material-icons shrink-0 !text-[20px] text-[var(--accent-primary)]" aria-hidden="true">
+						sd_card
+					</i>
+					<div class="min-w-0 flex-1">
+						<div class="truncate text-sm font-semibold text-[var(--text-primary)]">
+							Elegir carpeta de música
+						</div>
+						<div
+							v-if="androidServerStatus.musicDir"
+							class="mt-0.5 truncate text-[11px] text-[var(--text-tertiary)]"
+						>
+							{{ androidServerStatus.musicDir }}
+						</div>
+					</div>
+				</div>
+				<i class="material-icons shrink-0 !text-[18px] text-[var(--text-tertiary)]" aria-hidden="true">
+					chevron_right
+				</i>
+			</button>
 		</div>
 
 		<div
@@ -715,19 +760,6 @@
 			>
 				Escuchar en este dispositivo
 			</PillButton>
-		</div>
-
-		<div v-if="showAndroidFolderPicker" class="mx-auto mb-4 flex max-w-lg flex-col items-center gap-2">
-			<PillButton
-				icon="sd_card"
-				color-class="bg-[var(--accent-carpincho)] hover:bg-[var(--accent-carpincho-hover)] text-[#f5efe6]"
-				@click="handlePickMusicFolder"
-			>
-				Elegir carpeta de música
-			</PillButton>
-			<p v-if="androidServerStatus.musicDir" class="max-w-xs truncate text-xs text-[var(--text-secondary)]">
-				{{ androidServerStatus.musicDir }}
-			</p>
 		</div>
 
 		<dialog
@@ -794,85 +826,117 @@
 			</div>
 		</dialog>
 
-		<div class="mx-auto mb-3 flex max-w-lg flex-wrap justify-center gap-2.5">
-			<PillButton
-				icon="stop"
-				color-class="bg-[var(--accent-danger)] text-[#f5efe6] hover:brightness-110"
-				@click="stop"
-			>
-				Cortala de una
-			</PillButton>
-
-			<PillButton
-				icon="delete_sweep"
-				color-class="border border-[var(--accent-danger)]/40 bg-[var(--accent-danger)]/15 text-[var(--accent-danger)] hover:bg-[var(--accent-danger)]/25"
-				@click="
-					clearRound();
-					haptic();
-				"
-			>
-				Limpiar ronda
-			</PillButton>
-
-			<PillButton
-				v-if="hasMpv"
-				icon="fullscreen"
-				color-class="border border-[var(--hairline)] bg-[var(--bg-grouped)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-primary)]"
-				@click="fullscreen"
-			>
-				Todo pantalla, ñeri
-			</PillButton>
-
-			<PillButton
-				v-if="hasMpv"
-				:icon="mpvVisible ? 'visibility_off' : 'visibility'"
-				color-class="border border-[var(--hairline)] bg-[var(--bg-grouped)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-primary)]"
-				@click="toggleMpvVisibility"
-			>
-				{{ mpvVisible ? 'Ocultar MPV' : 'Mostrar MPV' }}
-			</PillButton>
-		</div>
-
-		<div class="mx-auto mb-8 flex max-w-lg flex-wrap justify-center gap-2.5">
-			<PillButton
-				:icon="serverMuted ? 'volume_off' : 'volume_up'"
-				:color-class="
+		<div class="mx-auto mb-8 grid max-w-lg grid-cols-2 gap-2.5">
+			<button
+				type="button"
+				class="tap-feedback flex h-[48px] w-full cursor-pointer items-center justify-center gap-2 rounded-[14px] border px-3 text-sm font-semibold transition-colors"
+				:class="
 					serverMuted
-						? 'bg-[var(--accent-danger)] text-[#f5efe6] hover:brightness-110'
-						: 'border border-[var(--hairline)] bg-[var(--bg-grouped)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-primary)]'
+						? 'border-[var(--accent-primary)]/30 bg-[var(--accent-primary-soft)] text-[var(--accent-primary)]'
+						: 'border-[var(--hairline)] bg-[var(--bg-grouped)] text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)]'
 				"
 				@click="
 					setMute(!serverMuted);
 					haptic();
 				"
 			>
-				{{ serverMuted ? 'Desmutear' : 'Mutear' }}
-			</PillButton>
+				<i
+					class="material-icons !text-[18px]"
+					:class="serverMuted ? 'text-[var(--accent-primary)]' : 'text-[var(--text-secondary)]'"
+					aria-hidden="true"
+				>
+					{{ serverMuted ? 'volume_off' : 'volume_up' }}
+				</i>
+				<span class="truncate">{{ serverMuted ? 'Desmutear' : 'Mutear' }}</span>
+			</button>
 
-			<PillButton
-				:icon="isScanning ? 'sync' : 'refresh'"
-				:color-class="
-					isScanning || Boolean(scanStatus?.is_analyzing_mood)
-						? 'border border-[var(--hairline)] bg-[var(--bg-input)] text-[var(--text-tertiary)]'
-						: 'bg-[var(--accent-mate)] text-[#f5efe6] hover:brightness-110'
-				"
+			<button
+				type="button"
 				:disabled="isScanning || Boolean(scanStatus?.is_analyzing_mood)"
+				class="tap-feedback flex h-[48px] w-full cursor-pointer items-center justify-center gap-2 rounded-[14px] border px-3 text-sm font-semibold transition-colors disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50"
+				:class="
+					isScanning || Boolean(scanStatus?.is_analyzing_mood)
+						? 'border-[var(--hairline)] bg-[var(--bg-input)] text-[var(--text-tertiary)]'
+						: 'border-[rgba(106,144,92,0.24)] bg-[rgba(106,144,92,0.12)] text-[var(--text-primary)] hover:bg-[rgba(106,144,92,0.2)]'
+				"
 				@click="loadLibrary(true)"
 			>
-				<template v-if="isScanning">
-					Escaneando...
-					<template v-if="scanStatus?.total > 0">({{ scanStatus.current }}/{{ scanStatus.total }})</template>
-				</template>
-				<template v-else>Pegale otra escaneada</template>
-			</PillButton>
+				<i
+					class="material-icons !text-[18px]"
+					:class="[isScanning ? 'animate-spin text-[var(--text-tertiary)]' : 'text-[var(--accent-mate)]']"
+					aria-hidden="true"
+				>
+					{{ isScanning ? 'sync' : 'refresh' }}
+				</i>
+				<span class="truncate">
+					<template v-if="isScanning">
+						Escaneando...
+						<template v-if="scanStatus?.total > 0">
+							({{ scanStatus.current }}/{{ scanStatus.total }})
+						</template>
+					</template>
+					<template v-else>Pegale otra escaneada</template>
+				</span>
+			</button>
 
-			<PillButton
-				:icon="isFullRockola ? 'fullscreen_exit' : 'open_in_full'"
-				color-class="bg-[var(--accent-carpincho)] hover:bg-[var(--accent-carpincho-hover)] text-[#f5efe6]"
+			<button
+				type="button"
+				class="tap-feedback flex h-[48px] w-full cursor-pointer items-center justify-center gap-2 rounded-[14px] border px-3 text-sm font-semibold transition-colors"
+				:class="
+					isFullRockola
+						? 'border-[var(--accent-primary)]/30 bg-[var(--accent-primary-soft)] text-[var(--accent-primary)]'
+						: 'border-[var(--hairline)] bg-[var(--bg-grouped)] text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)]'
+				"
 				@click="toggleFullRockola"
 			>
-				Full Rockola
-			</PillButton>
+				<i class="material-icons !text-[18px] text-[var(--accent-primary)]" aria-hidden="true">
+					{{ isFullRockola ? 'fullscreen_exit' : 'open_in_full' }}
+				</i>
+				<span class="truncate">Full Rockola</span>
+			</button>
+
+			<button
+				v-if="hasMpv"
+				type="button"
+				class="tap-feedback flex h-[48px] w-full cursor-pointer items-center justify-center gap-2 rounded-[14px] border border-[var(--hairline)] bg-[var(--bg-grouped)] px-3 text-sm font-semibold text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-surface-hover)]"
+				@click="fullscreen"
+			>
+				<i class="material-icons !text-[18px] text-[var(--text-secondary)]" aria-hidden="true">fullscreen</i>
+				<span class="truncate">Todo pantalla, ñeri</span>
+			</button>
+
+			<button
+				v-if="hasMpv"
+				type="button"
+				class="tap-feedback flex h-[48px] w-full cursor-pointer items-center justify-center gap-2 rounded-[14px] border border-[var(--hairline)] bg-[var(--bg-grouped)] px-3 text-sm font-semibold text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-surface-hover)]"
+				@click="toggleMpvVisibility"
+			>
+				<i class="material-icons !text-[18px] text-[var(--text-secondary)]" aria-hidden="true">
+					{{ mpvVisible ? 'visibility_off' : 'visibility' }}
+				</i>
+				<span class="truncate">{{ mpvVisible ? 'Ocultar MPV' : 'Mostrar MPV' }}</span>
+			</button>
+
+			<button
+				type="button"
+				class="tap-feedback flex h-[48px] w-full cursor-pointer items-center justify-center gap-2 rounded-[14px] border border-[rgba(217,101,91,0.24)] bg-[rgba(217,101,91,0.12)] px-3 text-sm font-semibold text-[#E67E73] transition-colors hover:bg-[rgba(217,101,91,0.2)]"
+				@click="
+					clearRound();
+					haptic();
+				"
+			>
+				<i class="material-icons !text-[18px] text-[#E67E73]" aria-hidden="true">delete_sweep</i>
+				<span class="truncate">Limpiar ronda</span>
+			</button>
+
+			<button
+				type="button"
+				class="tap-feedback col-span-2 flex h-[48px] w-full cursor-pointer items-center justify-center gap-2 rounded-[14px] border border-[rgba(217,101,91,0.24)] bg-[rgba(217,101,91,0.12)] px-3 text-sm font-semibold text-[#E67E73] transition-colors hover:bg-[rgba(217,101,91,0.2)]"
+				@click="stop"
+			>
+				<i class="material-icons !text-[18px] text-[#E67E73]" aria-hidden="true">stop</i>
+				<span class="truncate">Cortala de una</span>
+			</button>
 		</div>
 
 		<!-- Código QR -->
@@ -885,7 +949,7 @@
 			</div>
 		</div>
 
-		<div class="flex flex-col items-center pb-6">
+		<div class="flex flex-col items-center pb-12">
 			<!-- Clase 'relative' agregada para contener la imagen absoluta -->
 			<div
 				class="relative flex items-center justify-center rounded-[var(--radius-lg)] bg-[#f5efe6] p-4 shadow-lg"

@@ -52,4 +52,20 @@ describe('DragSlider.vue', () => {
 		// Cancel drag
 		await wrapper.trigger('pointercancel', { clientX: 150, pointerId: 1 });
 	});
+
+	it('renders strictly circular warm-cream thumb with overflow-visible track', () => {
+		const wrapper = mount(DragSlider, {
+			props: {
+				modelValue: 50,
+				max: 100,
+			},
+		});
+
+		const track = wrapper.find('.overflow-visible');
+		expect(track.exists()).toBe(true);
+
+		const thumb = wrapper.find('.aspect-square.rounded-full');
+		expect(thumb.exists()).toBe(true);
+		expect(thumb.classes()).toContain('bg-[#EFE7DC]');
+	});
 });

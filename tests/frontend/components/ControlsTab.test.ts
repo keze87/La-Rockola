@@ -103,9 +103,7 @@ describe('ControlsTab.vue', () => {
 	it('dispatches stop command when "Cortala de una" is clicked', async () => {
 		const wrapper = mount(ControlsTab);
 
-		const stopBtn = wrapper
-			.findAllComponents({ name: 'PillButton' })
-			.find((w) => w.text().includes('Cortala de una'));
+		const stopBtn = wrapper.findAll('button').find((w) => w.text().includes('Cortala de una'));
 		expect(stopBtn).toBeDefined();
 		await stopBtn!.trigger('click');
 
@@ -214,11 +212,11 @@ describe('ControlsTab.vue', () => {
 		expect(qrCode.props('value')).toBe('http://192.168.1.100:1729');
 	});
 
-	it('triggers mute toggle from PillButton', async () => {
+	it('triggers mute toggle from quick action button', async () => {
 		serverMuted.value = false;
 		const wrapper = mount(ControlsTab);
 
-		const muteBtn = wrapper.findAllComponents({ name: 'PillButton' }).find((w) => w.text().includes('Mutear'));
+		const muteBtn = wrapper.findAll('button').find((w) => w.text().includes('Mutear'));
 		expect(muteBtn).toBeDefined();
 		await muteBtn!.trigger('click');
 
@@ -234,9 +232,7 @@ describe('ControlsTab.vue', () => {
 	it('triggers library rescan when clicking "Pegale otra escaneada"', async () => {
 		const wrapper = mount(ControlsTab);
 
-		const rescanBtn = wrapper
-			.findAllComponents({ name: 'PillButton' })
-			.find((w) => w.text().includes('Pegale otra escaneada'));
+		const rescanBtn = wrapper.findAll('button').find((w) => w.text().includes('Pegale otra escaneada'));
 		expect(rescanBtn).toBeDefined();
 		await rescanBtn!.trigger('click');
 
@@ -247,7 +243,7 @@ describe('ControlsTab.vue', () => {
 		mpvVisible.value = true;
 		const wrapper = mount(ControlsTab);
 
-		const hideBtn = wrapper.findAllComponents({ name: 'PillButton' }).find((w) => w.text().includes('Ocultar MPV'));
+		const hideBtn = wrapper.findAll('button').find((w) => w.text().includes('Ocultar MPV'));
 		expect(hideBtn).toBeDefined();
 		await hideBtn!.trigger('click');
 
@@ -257,9 +253,7 @@ describe('ControlsTab.vue', () => {
 	it('dispatches fullscreen command when clicking "Todo pantalla, ñeri"', async () => {
 		const wrapper = mount(ControlsTab);
 
-		const fsBtn = wrapper
-			.findAllComponents({ name: 'PillButton' })
-			.find((w) => w.text().includes('Todo pantalla, ñeri'));
+		const fsBtn = wrapper.findAll('button').find((w) => w.text().includes('Todo pantalla, ñeri'));
 		expect(fsBtn).toBeDefined();
 		await fsBtn!.trigger('click');
 
@@ -325,9 +319,7 @@ describe('ControlsTab.vue', () => {
 		};
 		const wrapper = mount(ControlsTab);
 
-		const scanBtn = wrapper
-			.findAllComponents({ name: 'PillButton' })
-			.find((w) => w.text().includes('Escaneando...'));
+		const scanBtn = wrapper.findAll('button').find((w) => w.text().includes('Escaneando...'));
 		expect(scanBtn).toBeDefined();
 		expect(scanBtn?.text()).toContain('120/500');
 		expect(scanBtn?.attributes('disabled')).toBeDefined();
@@ -340,7 +332,7 @@ describe('ControlsTab.vue', () => {
 		expect(wrapper.text()).toContain('Ubicación del Clima: San Miguel de Tucumán');
 
 		const mapBtn = wrapper
-			.findAllComponents({ name: 'PillButton' })
+			.findAll('button')
 			.find((b) => b.text().includes('Ubicación del Clima: San Miguel de Tucumán'));
 		expect(mapBtn).toBeDefined();
 
@@ -428,18 +420,18 @@ describe('ControlsTab.vue', () => {
 		mpvVisible.value = false;
 		const wrapper = mount(ControlsTab);
 
-		const btn = wrapper.findAllComponents({ name: 'PillButton' }).find((b) => b.text().includes('Mostrar MPV'));
+		const btn = wrapper.findAll('button').find((b) => b.text().includes('Mostrar MPV'));
 		expect(btn).toBeDefined();
-		expect(btn?.props('icon')).toBe('visibility');
+		expect(btn!.find('i.material-icons').text().trim()).toBe('visibility');
 	});
 
 	it('displays "Ocultar MPV" with visibility_off icon when mpvVisible is true', () => {
 		mpvVisible.value = true;
 		const wrapper = mount(ControlsTab);
 
-		const btn = wrapper.findAllComponents({ name: 'PillButton' }).find((b) => b.text().includes('Ocultar MPV'));
+		const btn = wrapper.findAll('button').find((b) => b.text().includes('Ocultar MPV'));
 		expect(btn).toBeDefined();
-		expect(btn?.props('icon')).toBe('visibility_off');
+		expect(btn!.find('i.material-icons').text().trim()).toBe('visibility_off');
 	});
 
 	it('clicking an inactive sort button changes activeSort for session only without saving config', async () => {
@@ -536,17 +528,15 @@ describe('ControlsTab.vue', () => {
 		});
 
 		const wrapper = mount(ControlsTab);
-		const fullBtn = wrapper
-			.findAllComponents({ name: 'PillButton' })
-			.find((b) => b.text().includes('Full Rockola'));
+		const fullBtn = wrapper.findAll('button').find((b) => b.text().includes('Full Rockola'));
 		expect(fullBtn).toBeDefined();
-		expect(fullBtn!.props('icon')).toBe('open_in_full');
+		expect(fullBtn!.find('i.material-icons').text().trim()).toBe('open_in_full');
 
 		await fullBtn!.trigger('click');
 		await flushPromises();
 
 		expect(toggleSpy).toHaveBeenCalledTimes(1);
-		expect(fullBtn!.props('icon')).toBe('fullscreen_exit');
+		expect(fullBtn!.find('i.material-icons').text().trim()).toBe('fullscreen_exit');
 
 		isNativeSpy.mockRestore();
 		toggleSpy.mockRestore();
@@ -685,6 +675,47 @@ describe('ControlsTab.vue', () => {
 			isNativeSpy.mockRestore();
 			stopSpy.mockRestore();
 			startSpy.mockRestore();
+		}
+	});
+
+	it('renders circular warm-cream volume thumb, grouped system settings rows, and 2-column quick actions grid', async () => {
+		const androidHost = await import('@/composables/useAndroidHost');
+		const store = await import('@/stores/useServerConnectionStore');
+		const isNativeSpy = vi.spyOn(androidHost, 'isNativeAndroidHost').mockReturnValue(true);
+
+		store.resetServerConnectionStore();
+		store.setHostMode();
+		store.localMusicDir.value = 'content://com.android.externalstorage.documents/tree/primary%3AMusic';
+		hasEdgeTts.value = true;
+
+		try {
+			const wrapper = mount(ControlsTab);
+
+			// Slider de volumen: track visible y thumb circular #EFE7DC
+			const volThumb = wrapper.find('.aspect-square.rounded-full');
+			expect(volThumb.exists()).toBe(true);
+			expect(volThumb.classes()).toContain('bg-[#EFE7DC]');
+			expect(wrapper.find('.overflow-hidden.rounded-full').exists()).toBe(false);
+
+			// Ajustes de sistema agrupados con chevron_right
+			const groupedSettings = wrapper
+				.findAll('.divide-y')
+				.find((el) => el.text().includes('Ubicación del Clima'));
+			expect(groupedSettings).toBeDefined();
+			expect(groupedSettings!.text()).toContain('Elegir carpeta de música');
+			expect(groupedSettings!.text()).toContain('chevron_right');
+
+			// Acciones rápidas en grilla de 2 columnas
+			const actionsGrid = wrapper.find('.grid.grid-cols-2');
+			expect(actionsGrid.exists()).toBe(true);
+			expect(actionsGrid.text()).toContain('Mutear');
+			expect(actionsGrid.text()).toContain('Pegale otra escaneada');
+			expect(actionsGrid.text()).toContain('Full Rockola');
+			expect(actionsGrid.text()).toContain('Limpiar ronda');
+			expect(actionsGrid.text()).toContain('Cortala de una');
+		} finally {
+			store.resetServerConnectionStore();
+			isNativeSpy.mockRestore();
 		}
 	});
 });

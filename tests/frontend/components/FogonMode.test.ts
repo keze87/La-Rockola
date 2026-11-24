@@ -9,6 +9,7 @@ import {
 	djNextTrack,
 	isFogonMode,
 	isPaused,
+	pauseAfterPath,
 	queueState,
 	showFogonVolume,
 	trackMap,
@@ -1034,5 +1035,24 @@ Dialogue: 0,0:00:01.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Letra {\\kf100}animad
 		await coverWrapper.trigger('touchmove', { touches: [{ clientX: 125, clientY: 160 }] });
 		await coverWrapper.trigger('touchend');
 		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it('renders inactive timer in secondary tone, active in primary accent, and circular warm-cream seekbar thumb', async () => {
+		pauseAfterPath.value = null;
+		const wrapper = mount(FogonMode);
+
+		const timerBtn = wrapper.find('button.fogon-timer-btn');
+		expect(timerBtn.exists()).toBe(true);
+		expect(timerBtn.classes()).toContain('text-[var(--text-secondary)]');
+		expect(timerBtn.classes()).not.toContain('text-[var(--text-primary)]');
+
+		pauseAfterPath.value = '/music/cancion.flac';
+		await wrapper.vm.$nextTick();
+		expect(timerBtn.classes()).toContain('bg-[var(--accent-primary-soft)]');
+		expect(timerBtn.classes()).toContain('text-[var(--accent-primary)]');
+
+		const seekThumb = wrapper.find('.fogon-seekbar-wrapper .rounded-full.aspect-square');
+		expect(seekThumb.exists()).toBe(true);
+		expect(seekThumb.classes()).toContain('bg-[#EFE7DC]');
 	});
 });

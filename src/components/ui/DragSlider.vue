@@ -44,7 +44,7 @@
 		@pointercancel="endDrag"
 	>
 		<div
-			class="pointer-events-none relative h-[6px] w-full rounded-full transition-[height] duration-150 group-active:h-[10px]"
+			class="pointer-events-none relative h-[6px] w-full overflow-visible rounded-full transition-[height] duration-150 group-active:h-[10px]"
 			:class="trackColor"
 		>
 			<div
@@ -54,8 +54,8 @@
 			/>
 
 			<div
-				class="absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full bg-[var(--text-primary)] shadow-[0_2px_6px_rgba(0,0,0,0.45)] transition-transform group-active:scale-110"
-				:style="{ left: progressPercent + '%', marginLeft: '-8px' }"
+				class="absolute top-1/2 aspect-square h-4 w-4 shrink-0 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#EFE7DC] shadow-[0_2px_6px_rgba(0,0,0,0.45)] transition-transform group-active:scale-110"
+				:style="{ left: progressPercent + '%' }"
 			/>
 		</div>
 	</div>

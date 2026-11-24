@@ -6,6 +6,7 @@ import {
 	currentTrackPath,
 	isFogonMode,
 	isPaused,
+	pauseAfterPath,
 	queueState,
 	trackMap,
 	djBaraEnabled,
@@ -151,5 +152,24 @@ describe('FloatingPlayer.vue', () => {
 		for (const icon of wrapper.findAll('i.material-icons')) {
 			expect(icon.attributes('aria-hidden')).toBe('true');
 		}
+	});
+
+	it('uses secondary warm tone on inactive timer button and primary accent when active', async () => {
+		currentTrackPath.value = '/music/song.mp3';
+		pauseAfterPath.value = null;
+		const wrapper = mount(FloatingPlayer);
+
+		const timerBtn = wrapper.find('button[title="Frenar tras este tema"]');
+		expect(timerBtn.exists()).toBe(true);
+		expect(timerBtn.classes()).toContain('text-[var(--text-secondary)]');
+		expect(timerBtn.classes()).not.toContain('text-[var(--text-primary)]');
+
+		pauseAfterPath.value = '/music/song.mp3';
+		await wrapper.vm.$nextTick();
+
+		const activeBtn = wrapper.find('button[title="Cancelar pausa al terminar"]');
+		expect(activeBtn.exists()).toBe(true);
+		expect(activeBtn.classes()).toContain('bg-[var(--accent-primary-soft)]');
+		expect(activeBtn.classes()).toContain('text-[var(--accent-primary)]');
 	});
 });

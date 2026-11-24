@@ -341,7 +341,7 @@
 		'fogon-timer-btn tap-feedback flex h-10 w-10 items-center justify-center rounded-full transition-[colors,opacity] z-20',
 		isTimerActive.value
 			? 'bg-[var(--accent-primary-soft)] text-[var(--accent-primary)] opacity-100'
-			: 'text-[var(--text-primary)] opacity-[0.78] hover:bg-[var(--bg-surface-hover)] hover:opacity-100',
+			: 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text-primary)]',
 	]);
 	const timerTitle = computed(() => (isTimerActive.value ? 'Cancelar pausa al terminar' : 'Frenar tras este tema'));
 
@@ -821,7 +821,7 @@
 									@pointercancel="endSeek"
 								>
 									<div
-										class="pointer-events-none relative w-full rounded-full bg-[rgba(255,236,210,0.16)] transition-[height] duration-150 group-active:h-[6px]"
+										class="pointer-events-none relative w-full overflow-visible rounded-full bg-[rgba(255,236,210,0.16)] transition-[height] duration-150 group-active:h-[6px]"
 										:class="isDraggingSeek ? 'h-[6px]' : 'h-[4px]'"
 									>
 										<div
@@ -829,9 +829,9 @@
 											:style="{ width: progressPercent + '%' }"
 										/>
 										<div
-											class="absolute top-1/2 h-[11px] w-[11px] -translate-y-1/2 rounded-full bg-[var(--text-primary)] shadow-[0_2px_6px_rgba(0,0,0,0.45)] transition-transform group-active:scale-[1.45]"
-											:class="isDraggingSeek ? 'scale-[1.45]' : 'scale-100'"
-											:style="{ left: progressPercent + '%', marginLeft: '-5.5px' }"
+											class="absolute top-1/2 aspect-square h-[11px] w-[11px] shrink-0 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#EFE7DC] shadow-[0_2px_6px_rgba(0,0,0,0.45)] transition-transform group-active:scale-[1.36]"
+											:class="isDraggingSeek ? 'scale-[1.36]' : 'scale-100'"
+											:style="{ left: progressPercent + '%' }"
 										/>
 									</div>
 								</div>
@@ -1382,8 +1382,8 @@
 	/* Soporte adaptativo para dispositivos móviles en apaisado / pantallas de altura reducida */
 	@media (min-height: 261px) and (max-height: 550px) {
 		.fogon-container {
-			padding: calc(44px + var(--rockola-safe-top) + 6px) max(1.25rem, var(--rockola-safe-right))
-				calc(0.5rem + var(--rockola-safe-bottom)) max(1.25rem, var(--rockola-safe-left)) !important;
+			padding: calc(44px + var(--rockola-safe-top) + 4px) max(1.25rem, var(--rockola-safe-right))
+				max(12px, var(--rockola-safe-bottom)) max(1.25rem, var(--rockola-safe-left)) !important;
 		}
 
 		.fogon-main-layout {
@@ -1395,16 +1395,19 @@
 			max-width: 320px !important;
 			height: 100% !important;
 			justify-content: center !important;
+			gap: 6px !important;
+			padding-top: 0 !important;
+			padding-bottom: 0 !important;
 		}
 
 		.fogon-cover-wrapper {
-			height: 34vh !important;
-			width: 34vh !important;
-			max-height: 34vh !important;
-			max-width: 34vh !important;
+			height: clamp(104px, 28vh, 144px) !important;
+			width: clamp(104px, 28vh, 144px) !important;
+			max-height: min(30vh, 148px) !important;
+			max-width: min(30vh, 148px) !important;
 			aspect-ratio: 1 / 1 !important;
 			flex-shrink: 0 !important;
-			margin-bottom: 0.35rem !important;
+			margin-bottom: 0 !important;
 			border-radius: 1rem !important;
 		}
 
@@ -1441,23 +1444,32 @@
 			font-size: 0.75rem !important;
 		}
 
+		.fogon-seekbar-wrapper > div {
+			height: 28px !important;
+		}
+
 		.fogon-controls-wrapper {
-			margin-top: 0.25rem !important;
+			margin-top: 2px !important;
 			padding-top: 0 !important;
 		}
 
 		.fogon-controls-row {
-			margin-top: 0.25rem !important;
+			margin-top: 2px !important;
 			gap: 0.75rem !important;
 		}
 
 		.fogon-play-btn {
-			height: 2.75rem !important;
-			width: 2.75rem !important;
+			height: 52px !important;
+			width: 52px !important;
 		}
 
 		.fogon-play-btn i {
-			font-size: 1.75rem !important;
+			font-size: 1.85rem !important;
+		}
+
+		:deep(.fogon-next-song) {
+			margin-top: 8px !important;
+			padding: 8px 10px !important;
 		}
 
 		.fogon-lyrics-container {

@@ -328,8 +328,16 @@
 			>
 				<span class="bg-carpincho-border h-1 w-10 rounded-full" aria-hidden="true" />
 			</button>
-			<div id="ctx-menu-title" class="ctx-menu-header truncate">
-				🦦 {{ ctxMenu.track?.title || ctxMenu.track?.display_title }}
+			<div class="ctx-menu-header">
+				<div id="ctx-menu-title" class="truncate">
+					🦦 {{ ctxMenu.track?.title || ctxMenu.track?.display_title }}
+				</div>
+				<div
+					v-if="ctxMenu.track?.display_artist || ctxMenu.track?.artist"
+					class="mt-0.5 truncate text-[12px] font-medium tracking-normal text-[var(--text-secondary)] normal-case"
+				>
+					{{ ctxMenu.track?.display_artist || ctxMenu.track?.artist }}
+				</div>
 			</div>
 
 			<!-- ACCIONES DE LIBRERÍA -->
@@ -525,6 +533,10 @@
 		width: 100%;
 	}
 
+	.ctx-menu-item + .ctx-menu-item {
+		border-top: 0.5px solid rgba(255, 235, 208, 0.05);
+	}
+
 	.ctx-menu-item:hover,
 	.ctx-menu-item:active {
 		background: var(--bg-surface-hover);
@@ -577,7 +589,7 @@
 			left: 0 !important;
 			max-height: 82dvh;
 			overflow-y: auto;
-			padding-bottom: calc(0.75rem + var(--rockola-safe-bottom, 0px));
+			padding-bottom: calc(22px + var(--rockola-safe-bottom, 0px));
 			position: fixed;
 			right: 0 !important;
 			top: auto !important;
