@@ -151,4 +151,25 @@ describe('CoverImage.vue', () => {
 		await thumb.trigger('load');
 		expect(wrapper.find('.cover-skeleton').exists()).toBe(false);
 	});
+
+	it('does not defer loading with loading=lazy and marks cached complete images loaded after mount', async () => {
+		const wrapper = mount(CoverImage, {
+			props: {
+				path: '/music/cached.flac',
+				sizePx: 128,
+			},
+		});
+
+		const imgEl = wrapper.find('img.cover-main-img');
+		expect(imgEl.exists()).toBe(true);
+		expect(imgEl.attributes('loading')).toBeUndefined();
+
+		Object.defineProperty(imgEl.element, 'complete', { value: true, configurable: true });
+		Object.defineProperty(imgEl.element, 'naturalWidth', { value: 128, configurable: true });
+
+		// Al re-evaluar tras cambiar path con imagen ya completa en caché, debe mostrarse
+		await wrapper.setProps({ path: '/music/cached-2.flac' });
+		await wrapper.vm.$nextTick();
+		expect(wrapper.find('img.cover-main-img').classes()).toContain('opacity-100');
+	});
 });

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-	import { computed, ref, watch } from 'vue';
+	import { computed, onMounted, ref, watch } from 'vue';
 	import { useIntersectionObserver } from '@vueuse/core';
 	import { useCover } from '../../composables/useCover';
 	import type { HTMLAttributes } from 'vue';
@@ -36,19 +36,27 @@
 	const imgRef = ref<HTMLImageElement | null>(null);
 	const isLoaded = ref(false);
 	const isThumbLoaded = ref(false);
-	const isVisible = ref(import.meta.env.MODE === 'test' || !props.unloadWhenHidden);
+	const isVisible = ref(true);
+
+	function syncLoadedFromDom() {
+		if (coverUrl.value && isVisible.value && imgRef.value?.complete && imgRef.value.naturalWidth > 0) {
+			isLoaded.value = true;
+		}
+	}
 
 	watch(
 		[coverUrl, isVisible],
-		([nextUrl, nextVisible]) => {
+		() => {
 			isLoaded.value = false;
 			isThumbLoaded.value = false;
-			if (nextUrl && nextVisible && imgRef.value?.complete && imgRef.value.naturalWidth > 0) {
-				isLoaded.value = true;
-			}
+			syncLoadedFromDom();
 		},
-		{ flush: 'sync' }
+		{ flush: 'post' }
 	);
+
+	onMounted(() => {
+		syncLoadedFromDom();
+	});
 
 	function onImgLoad() {
 		isLoaded.value = true;
@@ -69,7 +77,7 @@
 				}
 			},
 			{
-				rootMargin: '150px',
+				rootMargin: '250px',
 			}
 		);
 	}
@@ -98,7 +106,6 @@
 				'cover-main-img absolute inset-0 z-10 h-full w-full shrink-0 object-cover transition-opacity duration-200',
 				isLoaded ? 'opacity-100' : 'opacity-0',
 			]"
-			loading="lazy"
 			decoding="async"
 			alt=""
 			@load="onImgLoad"
@@ -113,7 +120,6 @@
 				'cover-thumb-img absolute inset-0 h-full w-full shrink-0 object-cover transition-opacity duration-150',
 				isThumbLoaded ? 'opacity-100' : 'opacity-0',
 			]"
-			loading="lazy"
 			decoding="async"
 			alt=""
 			@load="isThumbLoaded = true"

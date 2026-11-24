@@ -1,5 +1,5 @@
 <script setup lang="ts">
-	import { ref, watch } from 'vue';
+	import { computed, ref, watch } from 'vue';
 	import { buildSpaPath } from '../composables/useAppRouter';
 	import { isNativeAndroidHost } from '../composables/useAndroidHost';
 	import { menuRef, useContextMenu } from '../composables/useContextMenu';
@@ -284,15 +284,46 @@
 		haptic();
 	}
 
-	let handleTouchStartY = 0;
+	const sheetOffsetY = ref(0);
+	const isDraggingSheet = ref(false);
+	let sheetDragStartY = 0;
 
-	function onHandleTouchStart(e: TouchEvent) {
-		handleTouchStartY = e.touches[0]?.clientY ?? 0;
+	const menuStyle = computed(() => ({
+		top: `${ctxMenu.y}px`,
+		left: `${ctxMenu.x}px`,
+		transform: sheetOffsetY.value > 0 ? `translateY(${Math.round(sheetOffsetY.value)}px)` : undefined,
+		transition: isDraggingSheet.value ? 'none' : 'transform 0.2s cubic-bezier(0.22, 1, 0.36, 1)',
+	}));
+
+	function resetSheetDrag() {
+		isDraggingSheet.value = false;
+		sheetOffsetY.value = 0;
 	}
 
-	function onHandleTouchEnd(e: TouchEvent) {
-		const endY = e.changedTouches[0]?.clientY ?? 0;
-		if (endY - handleTouchStartY > 36) {
+	function onSheetDragStart(e: TouchEvent) {
+		sheetDragStartY = e.touches[0]?.clientY ?? 0;
+		isDraggingSheet.value = true;
+		sheetOffsetY.value = 0;
+	}
+
+	function onSheetDragMove(e: TouchEvent) {
+		if (!isDraggingSheet.value) return;
+		const currentY = e.touches[0]?.clientY ?? sheetDragStartY;
+		const dy = currentY - sheetDragStartY;
+		if (dy > 0) {
+			sheetOffsetY.value = dy;
+			if (e.cancelable) e.preventDefault();
+		} else {
+			sheetOffsetY.value = 0;
+		}
+	}
+
+	function onSheetDragEnd(e: TouchEvent) {
+		if (!isDraggingSheet.value) return;
+		const endY = e.changedTouches[0]?.clientY ?? sheetDragStartY;
+		const dy = Math.max(sheetOffsetY.value, endY - sheetDragStartY);
+		resetSheetDrag();
+		if (dy > 48) {
 			closeCtxMenu();
 			haptic();
 		}
@@ -314,21 +345,29 @@
 			role="menu"
 			aria-labelledby="ctx-menu-title"
 			:class="{ 'kbd-nav': keyboardNav }"
-			:style="{ top: ctxMenu.y + 'px', left: ctxMenu.x + 'px' }"
+			:style="menuStyle"
 			@keydown="ctxMenuKeydown"
 			@pointerdown="keyboardNav = false"
 		>
 			<button
 				type="button"
 				aria-label="Cerrar menú contextual"
-				class="tap-feedback flex w-full cursor-pointer items-center justify-center pt-2.5 pb-1.5 sm:hidden"
+				class="tap-feedback flex w-full cursor-pointer touch-none items-center justify-center pt-2.5 pb-1.5 sm:hidden"
 				@click="closeCtxMenu"
-				@touchstart.passive="onHandleTouchStart"
-				@touchend="onHandleTouchEnd"
+				@touchstart.passive="onSheetDragStart"
+				@touchmove="onSheetDragMove"
+				@touchend="onSheetDragEnd"
+				@touchcancel="resetSheetDrag"
 			>
 				<span class="bg-carpincho-border h-1 w-10 rounded-full" aria-hidden="true" />
 			</button>
-			<div class="ctx-menu-header">
+			<div
+				class="ctx-menu-header touch-none select-none"
+				@touchstart.passive="onSheetDragStart"
+				@touchmove="onSheetDragMove"
+				@touchend="onSheetDragEnd"
+				@touchcancel="resetSheetDrag"
+			>
 				<div id="ctx-menu-title" class="truncate">
 					🦦 {{ ctxMenu.track?.title || ctxMenu.track?.display_title }}
 				</div>

@@ -423,4 +423,28 @@ describe('ContextMenu.vue', () => {
 		expect(header.text()).toContain('Bajan');
 		expect(header.text()).toContain('Pescado Rabioso');
 	});
+
+	it('follows finger and closes when dragging down from the title/artist header', async () => {
+		ctxMenu.visible = true;
+		ctxMenu.track = sampleTrack;
+
+		const wrapper = mount(ContextMenu);
+		const header = wrapper.find('.ctx-menu-header');
+		const menu = wrapper.find('.ctx-menu');
+		expect(header.exists()).toBe(true);
+
+		// Arrastre corto (< umbral): sigue al dedo y al soltar vuelve sin cerrar
+		await header.trigger('touchstart', { touches: [{ clientY: 200 }] });
+		await header.trigger('touchmove', { touches: [{ clientY: 230 }] });
+		expect(menu.attributes('style')).toContain('translateY(30px)');
+		await header.trigger('touchend', { changedTouches: [{ clientY: 230 }] });
+		expect(ctxMenu.visible).toBe(true);
+
+		// Arrastre largo (> 48px) desde el título/artista: sigue al dedo y cierra al soltar
+		await header.trigger('touchstart', { touches: [{ clientY: 200 }] });
+		await header.trigger('touchmove', { touches: [{ clientY: 270 }] });
+		expect(menu.attributes('style')).toContain('translateY(70px)');
+		await header.trigger('touchend', { changedTouches: [{ clientY: 270 }] });
+		expect(ctxMenu.visible).toBe(false);
+	});
 });
