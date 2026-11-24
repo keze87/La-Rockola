@@ -311,4 +311,116 @@ describe('LibraryTab.vue', () => {
 		expect(blurSpy).toHaveBeenCalledTimes(1);
 		wrapper.unmount();
 	});
+
+	it('reveals Gmail-style favorite indicator on right swipe and toggles favorite on commit', async () => {
+		currentTracks.value = [{ path: '/music/rock.mp3', display_title: 'Rock', display_artist: 'Carpincho' }];
+		const wrapper = mount(LibraryTab);
+		const row = wrapper.find('.library-swipe-row');
+		expect(row.exists()).toBe(true);
+
+		await row.trigger('touchstart', {
+			changedTouches: [{ screenX: 100, screenY: 100 }],
+		});
+		// Desplazamiento menor al umbral (+50px): revela círculo sin estado ready
+		await row.trigger('touchmove', {
+			touches: [{ screenX: 150, screenY: 100 }],
+		});
+		expect(row.attributes('style')).toContain('transform: translateX(50px)');
+		const favIndicator = wrapper.find('.swipe-favorite-indicator');
+		expect(favIndicator.exists()).toBe(true);
+		expect(favIndicator.classes()).not.toContain('swipe-favorite-ready');
+
+		// Cruza umbral (+90px) y suelta -> toggle_favorite
+		await row.trigger('touchmove', {
+			touches: [{ screenX: 190, screenY: 100 }],
+		});
+		expect(wrapper.find('.swipe-favorite-indicator').classes()).toContain('swipe-favorite-ready');
+		await row.trigger('touchend', {
+			changedTouches: [{ screenX: 190, screenY: 100 }],
+		});
+
+		expect(global.fetch).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({
+				method: 'POST',
+				body: JSON.stringify({ cmd: 'toggle_favorite', path: '/music/rock.mp3' }),
+			})
+		);
+	});
+
+	it('swiping left queues track next when absent, or removes from queue when already queued', async () => {
+		currentTracks.value = [{ path: '/music/rock.mp3', display_title: 'Rock', display_artist: 'Carpincho' }];
+		queueState.value = [];
+		const wrapper = mount(LibraryTab);
+		const row = wrapper.find('.library-swipe-row');
+
+		// 1. No está en cola -> "Reproducir como siguiente" (insert_queue_item index 0)
+		await row.trigger('touchstart', {
+			changedTouches: [{ screenX: 200, screenY: 100 }],
+		});
+		await row.trigger('touchmove', {
+			touches: [{ screenX: 110, screenY: 100 }],
+		});
+		expect(wrapper.find('.swipe-next-indicator').exists()).toBe(true);
+		expect(wrapper.find('.swipe-next-indicator').classes()).toContain('swipe-next-ready');
+		await row.trigger('touchend', {
+			changedTouches: [{ screenX: 110, screenY: 100 }],
+		});
+
+		expect(global.fetch).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({
+				method: 'POST',
+				body: JSON.stringify({ cmd: 'insert_queue_item', path: '/music/rock.mp3', index: 0 }),
+			})
+		);
+
+		// 2. Ya está en cola -> "Sacar de la cola" (toggle_queue)
+		vi.mocked(global.fetch).mockClear();
+		queueState.value = ['/music/rock.mp3'];
+		await wrapper.vm.$nextTick();
+
+		await row.trigger('touchstart', {
+			changedTouches: [{ screenX: 200, screenY: 100 }],
+		});
+		await row.trigger('touchmove', {
+			touches: [{ screenX: 110, screenY: 100 }],
+		});
+		expect(wrapper.find('.swipe-queue-remove-indicator').exists()).toBe(true);
+		expect(wrapper.find('.swipe-queue-remove-indicator').classes()).toContain('swipe-queue-remove-ready');
+		await row.trigger('touchend', {
+			changedTouches: [{ screenX: 110, screenY: 100 }],
+		});
+
+		expect(global.fetch).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({
+				method: 'POST',
+				body: JSON.stringify({ cmd: 'toggle_queue', path: '/music/rock.mp3' }),
+			})
+		);
+	});
+
+	it('cancels long-press and ignores swipe drift during vertical scroll in library', async () => {
+		vi.useFakeTimers();
+		try {
+			currentTracks.value = [{ path: '/music/rock.mp3', display_title: 'Rock', display_artist: 'Carpincho' }];
+			const wrapper = mount(LibraryTab);
+			const row = wrapper.find('.library-swipe-row');
+
+			await row.trigger('touchstart', {
+				changedTouches: [{ screenX: 150, screenY: 200 }],
+			});
+			await row.trigger('touchmove', {
+				touches: [{ screenX: 155, screenY: 230 }],
+			});
+			vi.advanceTimersByTime(600);
+			await wrapper.vm.$nextTick();
+
+			expect(row.attributes('style') ?? '').not.toContain('translateX');
+			expect(wrapper.find('.swipe-favorite-indicator').exists()).toBe(false);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
 });

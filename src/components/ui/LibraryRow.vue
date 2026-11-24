@@ -2,6 +2,7 @@
 	import { useTrack } from '../../composables/useTrack';
 	import { useContextMenuBindings } from '../../composables/useContextMenu';
 	import FavoritableCover from './FavoritableCover.vue';
+	import type { HTMLAttributes } from 'vue';
 	import type { Track } from '../../types';
 
 	// Variante basada en div/grid hermana de TrackRow, usada exclusivamente por la lista
@@ -11,17 +12,19 @@
 	// no puede ser `<tr>`/`<td>` como TrackRow. Los anchos de columna de abajo están ajustados
 	// a ojo con el layout de tabla anterior; ajustar las clases grid-cols acá si cambian.
 	const props = withDefaults(
-		defineProps<{
-			track: Track;
-			isCurrent: boolean;
-			isPaused: boolean;
-			queuePosition: number;
-			hasPlayed?: boolean;
+		defineProps<
+			{
+				track: Track;
+				isCurrent: boolean;
+				isPaused: boolean;
+				queuePosition: number;
+				hasPlayed?: boolean;
 
-			contextSource?: string;
-			index?: number | null;
-			contextMenuOnly?: boolean;
-		}>(),
+				contextSource?: string;
+				index?: number | null;
+				contextMenuOnly?: boolean;
+			} & /* @vue-ignore */ HTMLAttributes
+		>(),
 		{
 			hasPlayed: false,
 			contextSource: 'library',

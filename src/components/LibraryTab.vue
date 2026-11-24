@@ -2,8 +2,12 @@
 	import { computed, onMounted, watch } from 'vue';
 	import { useVirtualList } from '@vueuse/core';
 	import { isNativeAndroidHost, pickAndApplyMusicFolder } from '../composables/useAndroidHost';
+	import { useContextMenu } from '../composables/useContextMenu';
+	import { usePlaybackControls } from '../composables/usePlaybackControls';
 	import { usePlayer } from '../composables/usePlayer';
+	import { favorites } from '../composables/player/state';
 	import { usePullToRefresh } from '../composables/usePullToRefresh';
+	import { useRowSwipe } from '../composables/useRowSwipe';
 	import { restoreTabScroll, saveTabScrollDebounced } from '../composables/useUiPersistence';
 	import {
 		isHostMode,
@@ -17,6 +21,7 @@
 	const {
 		currentTrackPath,
 		filteredTracks,
+		getTrackInfo,
 		handleLibraryClick,
 		handleScroll,
 		haptic,
@@ -28,7 +33,35 @@
 		queueIndex,
 		scanStatus,
 		showFavoritesOnly,
+		showToast,
+		toggleFavorite,
+		toggleQueue,
 	} = usePlayer();
+	const { openCtxMenu } = useContextMenu();
+	const { insertQueueItem } = usePlaybackControls();
+
+	const {
+		swipeOffsets,
+		touchStart: libraryTouchStart,
+		touchMove: libraryTouchMove,
+		touchEnd: libraryTouchEnd,
+		cancelTouch: cancelLibraryTouch,
+	} = useRowSwipe<string>({
+		haptic,
+		onLongPress: (e, path) => {
+			openCtxMenu(e, getTrackInfo(path), 'library', null);
+		},
+		onSwipeLeft: async (path) => {
+			await toggleFavorite(path);
+		},
+		onSwipeRight: async (path) => {
+			if (queueIndex(path) !== -1) {
+				await toggleQueue(path, true);
+			} else {
+				await insertQueueItem(path, 0);
+			}
+		},
+	});
 
 	// Pull-to-refresh estilo Material cuando el listado está arriba
 	const {
@@ -77,6 +110,7 @@
 		}
 	}
 	function onTabScroll(e: Event) {
+		cancelLibraryTouch();
 		const target = e.target as HTMLElement;
 		if (target) {
 			handleScroll(target.scrollTop);
@@ -261,16 +295,78 @@
 
 			<!-- Filas virtualizadas de canciones -->
 			<div v-bind="wrapperProps" class="w-full">
-				<LibraryRow
-					v-for="item in virtualTracks"
-					:key="item.data.path"
-					:track="item.data"
-					:is-current="currentTrackPath === item.data.path"
-					:is-paused="isPaused"
-					:queue-position="queueIndex(item.data.path)"
-					:has-played="historyPathsSet.has(item.data.path)"
-					@click="handleLibraryClick(item.data)"
-				/>
+				<div v-for="item in virtualTracks" :key="item.data.path" class="relative h-[72px] overflow-hidden">
+					<!-- Fondo fijo estilo Gmail revelado detrás de la fila al deslizar -->
+					<div
+						v-if="swipeOffsets.has(item.data.path)"
+						class="pointer-events-none absolute inset-0 flex items-center justify-between bg-[var(--bg-elevated)] px-5"
+						aria-hidden="true"
+					>
+						<div class="flex items-center">
+							<span
+								v-if="(swipeOffsets.get(item.data.path) ?? 0) > 0"
+								:class="[
+									'swipe-favorite-indicator inline-flex h-10 w-10 items-center justify-center rounded-full transition-all duration-150',
+									(swipeOffsets.get(item.data.path) ?? 0) >= 80
+										? 'swipe-favorite-ready scale-110 bg-[var(--accent-primary)] text-[#120e0b] shadow-sm'
+										: 'scale-90 bg-[var(--bg-surface)] text-[var(--text-secondary)]',
+								]"
+							>
+								<i class="material-icons !text-[20px]">
+									{{ favorites.includes(item.data.path) ? 'heart_broken' : 'favorite' }}
+								</i>
+							</span>
+						</div>
+						<div class="flex items-center">
+							<span
+								v-if="(swipeOffsets.get(item.data.path) ?? 0) < 0"
+								:class="[
+									'inline-flex h-10 w-10 items-center justify-center rounded-full transition-all duration-150',
+									queueIndex(item.data.path) !== -1
+										? [
+												'swipe-queue-remove-indicator',
+												(swipeOffsets.get(item.data.path) ?? 0) <= -80
+													? 'swipe-queue-remove-ready scale-110 bg-[var(--accent-danger)] text-[#120e0b] shadow-sm'
+													: 'scale-90 bg-[var(--bg-surface)] text-[var(--text-secondary)]',
+											]
+										: [
+												'swipe-next-indicator',
+												(swipeOffsets.get(item.data.path) ?? 0) <= -80
+													? 'swipe-next-ready scale-110 bg-[var(--accent-primary)] text-[#120e0b] shadow-sm'
+													: 'scale-90 bg-[var(--bg-surface)] text-[var(--text-secondary)]',
+											],
+								]"
+							>
+								<i class="material-icons !text-[20px]">
+									{{ queueIndex(item.data.path) !== -1 ? 'delete' : 'playlist_play' }}
+								</i>
+							</span>
+						</div>
+					</div>
+
+					<LibraryRow
+						class="library-swipe-row bg-[var(--bg-canvas)]"
+						:track="item.data"
+						:is-current="currentTrackPath === item.data.path"
+						:is-paused="isPaused"
+						:queue-position="queueIndex(item.data.path)"
+						:has-played="historyPathsSet.has(item.data.path)"
+						:context-menu-only="true"
+						:style="
+							swipeOffsets.has(item.data.path)
+								? {
+										transform: `translateX(${swipeOffsets.get(item.data.path)}px)`,
+										transition: 'none',
+									}
+								: undefined
+						"
+						@click="handleLibraryClick(item.data)"
+						@touchstart="libraryTouchStart($event, item.data.path)"
+						@touchmove="libraryTouchMove($event, item.data.path)"
+						@touchend="libraryTouchEnd($event, item.data.path)"
+						@touchcancel="cancelLibraryTouch(item.data.path)"
+					/>
+				</div>
 
 				<!-- Estado vacío cuando no hay resultados o falta permiso/carpeta en Android Host -->
 				<div v-if="filteredTracks.length === 0" class="text-carpincho-primary p-4 text-center sm:p-8">
@@ -325,3 +421,10 @@
 		</section>
 	</div>
 </template>
+
+<style scoped>
+	.library-swipe-row {
+		transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+		touch-action: pan-y;
+	}
+</style>

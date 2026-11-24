@@ -3,6 +3,7 @@
 
 import { computed, ref, type Ref } from 'vue';
 import type { Track } from '../../types';
+import { useRowSwipe } from '../useRowSwipe';
 import type { HapticKind } from './useHaptics';
 
 export interface UnifiedTrackItem {
@@ -39,21 +40,26 @@ export function useQueueDragDrop(options: UseQueueDragDropOptions) {
 		removeQueueItemCmd,
 	} = options;
 
-	const swipeOffsets = ref(new Map<number, number>());
 	const dragFromIndex = ref<number | null>(null);
+	const longPressPathByIndex = new Map<number, string>();
 
-	const LONG_PRESS_CANCEL_PX = 8;
-	const VERTICAL_SCROLL_LOCK_PX = 10;
-	const HORIZONTAL_SWIPE_LOCK_PX = 16;
-	const SWIPE_COMMIT_THRESHOLD_PX = 80;
-	const SWIPE_MAX_OFFSET_PX = 124;
-
-	let touchStartX = 0;
-	let touchStartY = 0;
-	let touchGestureMode: 'idle' | 'vertical-scroll' | 'horizontal-swipe' = 'idle';
-	let thresholdHapticFired = false;
-	let queueLongPressTimer: ReturnType<typeof setTimeout> | null = null;
-	let queueLongPressFired = false;
+	const {
+		swipeOffsets,
+		touchStart: baseTouchStart,
+		touchMove: queueTouchMove,
+		touchEnd: queueTouchEnd,
+		cancelTouch: cancelQueueTouch,
+	} = useRowSwipe<number>({
+		haptic,
+		onLongPress: (e, index) => {
+			const path = longPressPathByIndex.get(index);
+			if (path) {
+				openCtxMenu(e, getTrackInfo(path), 'queue', index);
+			}
+		},
+		onSwipeLeft: (index) => removeQueueItemCmd(index),
+		onSwipeRight: (index) => moveQueueItem(index, 'first'),
+	});
 
 	const unifiedQueue = computed<UnifiedTrackItem[]>(() => {
 		const list: UnifiedTrackItem[] = [];
@@ -93,125 +99,9 @@ export function useQueueDragDrop(options: UseQueueDragDropOptions) {
 		return list;
 	});
 
-	function clearQueueLongPress() {
-		if (queueLongPressTimer) {
-			clearTimeout(queueLongPressTimer);
-			queueLongPressTimer = null;
-		}
-	}
-
-	function cancelQueueTouch(index?: number) {
-		clearQueueLongPress();
-		queueLongPressFired = false;
-		touchGestureMode = 'idle';
-		thresholdHapticFired = false;
-		if (index !== undefined) {
-			swipeOffsets.value.delete(index);
-		} else {
-			swipeOffsets.value.clear();
-		}
-	}
-
 	function queueTouchStart(e: TouchEvent, path: string, i: number) {
-		clearQueueLongPress();
-		const touch = e.changedTouches[0] ?? e.touches[0];
-		if (!touch) return;
-
-		touchStartX = touch.screenX;
-		touchStartY = touch.screenY ?? 0;
-		touchGestureMode = 'idle';
-		thresholdHapticFired = false;
-		queueLongPressFired = false;
-
-		queueLongPressTimer = setTimeout(() => {
-			queueLongPressTimer = null;
-			if (touchGestureMode !== 'idle') return;
-			queueLongPressFired = true;
-			haptic(true);
-			openCtxMenu(e, getTrackInfo(path), 'queue', i);
-		}, 500);
-	}
-
-	function queueTouchMove(e: TouchEvent, index: number) {
-		const touch = e.touches[0];
-		if (!touch) return;
-
-		const dx = touch.screenX - touchStartX;
-		const dy = (touch.screenY ?? touchStartY) - touchStartY;
-		const absDx = Math.abs(dx);
-		const absDy = Math.abs(dy);
-
-		// Cancelamos pulsación larga ante cualquier desplazamiento vertical u horizontal real (incluyendo scroll)
-		if (absDx > LONG_PRESS_CANCEL_PX || absDy > LONG_PRESS_CANCEL_PX) {
-			clearQueueLongPress();
-		}
-
-		if (touchGestureMode === 'idle') {
-			if (absDy >= VERTICAL_SCROLL_LOCK_PX && absDy >= absDx) {
-				touchGestureMode = 'vertical-scroll';
-				swipeOffsets.value.delete(index);
-				return;
-			}
-			if (absDx >= HORIZONTAL_SWIPE_LOCK_PX && absDx > absDy * 1.4) {
-				touchGestureMode = 'horizontal-swipe';
-			} else {
-				return;
-			}
-		}
-
-		if (touchGestureMode === 'vertical-scroll') {
-			return;
-		}
-
-		if (typeof e.stopPropagation === 'function') {
-			e.stopPropagation();
-		}
-
-		const clampedDiff = Math.max(-SWIPE_MAX_OFFSET_PX, Math.min(SWIPE_MAX_OFFSET_PX, dx));
-		swipeOffsets.value.set(index, clampedDiff);
-
-		if (!thresholdHapticFired && Math.abs(clampedDiff) >= SWIPE_COMMIT_THRESHOLD_PX) {
-			thresholdHapticFired = true;
-			haptic('tick');
-		}
-	}
-
-	function queueTouchEnd(e: TouchEvent, index: number) {
-		clearQueueLongPress();
-
-		if (queueLongPressFired) {
-			if (typeof e.preventDefault === 'function') e.preventDefault();
-			queueLongPressFired = false;
-			touchGestureMode = 'idle';
-			thresholdHapticFired = false;
-			return;
-		}
-
-		const prevMode = touchGestureMode;
-		touchGestureMode = 'idle';
-		thresholdHapticFired = false;
-
-		const touch = e.changedTouches[0];
-		if (touch && prevMode !== 'vertical-scroll') {
-			const dx = touch.screenX - touchStartX;
-			const dy = (touch.screenY ?? touchStartY) - touchStartY;
-			const isHorizontalFlick =
-				prevMode === 'horizontal-swipe' ||
-				(Math.abs(dx) > SWIPE_COMMIT_THRESHOLD_PX && Math.abs(dx) > Math.abs(dy) * 1.4);
-
-			if (isHorizontalFlick) {
-				const diff = -dx;
-				if (diff > SWIPE_COMMIT_THRESHOLD_PX) {
-					haptic('confirm');
-					removeQueueItemCmd(index);
-				} else if (diff < -SWIPE_COMMIT_THRESHOLD_PX) {
-					haptic('confirm');
-					moveQueueItem(index, 'first');
-				}
-			}
-		}
-
-		swipeOffsets.value.delete(index);
+		longPressPathByIndex.set(i, path);
+		baseTouchStart(e, i);
 	}
 
 	function dragStart(e: DragEvent, index: number) {
