@@ -18,7 +18,9 @@
 		"test:watch": "vitest",
 		"watch": "vite build --watch",
 		"android:sync": "npm run build && python3 scripts/build_android.py --sync-only",
-		"android:build": "python3 scripts/build_android.py"
+		"android:build": "python3 scripts/build_android.py",
+		"android:release": "python3 scripts/build_android.py --release --flavor arm64",
+		"android:install": "npm run android:release && (adb get-state >/dev/null 2>&1 && adb install -r android/app/build/outputs/apk/arm64/release/app-arm64-release.apk || echo 'Sin dispositivo adb conectado; omitiendo instalación')"
 	},
 	"dependencies": {
 		"@capacitor/core": "^8.6.2",
