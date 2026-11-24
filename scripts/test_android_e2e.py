@@ -180,6 +180,16 @@ def _run_server_mode_checks(serial: str, base_url: str, screen_awake: bool) -> l
 	assert st_h == 200 and health.get("status") == "ok"
 	st_c, caps = _http_json(f"{base_url}/api/system/capabilities")
 	assert st_c == 200 and "has_edge_tts" in caps
+	st_tts, tts_info = _http_json(f"{base_url}/api/system/tts-preload?limit=5")
+	if st_tts != 200 or not isinstance(tts_info.get("total"), int) or not isinstance(tts_info.get("recent"), list):
+		raise RuntimeError(f"/api/system/tts-preload devolvió respuesta inválida (status={st_tts}): {tts_info}")
+	results.append(
+		E2EResult(
+			f"server_{label}_tts_preload",
+			True,
+			f"total={tts_info['total']}, bytes={tts_info.get('total_bytes', 0)}, recent={len(tts_info['recent'])}",
+		)
+	)
 	t0 = time.perf_counter()
 	st_lib, lib = _http_json(f"{base_url}/library")
 	lib_ms = (time.perf_counter() - t0) * 1000.0

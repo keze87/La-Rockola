@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import sqlite3
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -285,3 +286,64 @@ def test_lifespan_starts_tts_preload_with_unmetered_wifi_on_android(
 	assert len(captured) == 1
 	assert captured[0]["require_unmetered_wifi"] is True
 	assert captured[0]["max_mb"] == 333.0
+
+
+def test_tts_preload_endpoint_returns_zero_when_db_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+	"""GET /api/system/tts-preload devuelve total=0 y recent=[] sin error si aún no existe tts_cache.db."""
+	from fastapi.testclient import TestClient
+
+	import app.main as main_mod
+	from app.core import config as config_mod
+
+	monkeypatch.setenv("ROCKOLA_DATA_DIR", str(tmp_path))
+	config_mod.set_settings(config_mod.Settings(music_dir="", music_dir_configured=False))
+
+	with TestClient(main_mod.create_app()) as client:
+		res = client.get("/api/system/tts-preload")
+
+	assert res.status_code == 200
+	data = res.json()
+	assert data["total"] == 0
+	assert data["total_bytes"] == 0
+	assert data["recent"] == []
+
+
+def test_tts_preload_endpoint_returns_count_and_latest_entries(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+	"""GET /api/system/tts-preload devuelve la cantidad total y los últimos audios generados ordenados por created_at DESC."""
+	from fastapi.testclient import TestClient
+
+	import app.main as main_mod
+	from app.core import config as config_mod
+
+	monkeypatch.setenv("ROCKOLA_DATA_DIR", str(tmp_path))
+	config_mod.set_settings(config_mod.Settings(music_dir="", music_dir_configured=False))
+
+	db_path = tmp_path / "tts_cache.db"
+	init_tts_cache_db(db_path)
+	with contextlib.closing(sqlite3.connect(db_path)) as conn:
+		rows = [
+			("k1", "intro", "es-AR-TomasNeural", "Primer saludo", b"ID3aaa", 1.2, 100.0, 100.0, 1),
+			("k2", "hora", "es-AR-ElenaNeural", "Las nueve", b"ID3bbbb", 1.5, 200.0, 200.0, 2),
+			("k3", "fortuna", "es-AR-TomasNeural", "Carpincho sabio", b"ID3ccccc", 2.1, 300.0, 300.0, 1),
+		]
+		conn.executemany(
+			"""
+			INSERT INTO tts_cache (cache_key, category, voice, text, audio_blob, duration, created_at, last_used, use_count)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			""",
+			rows,
+		)
+		conn.commit()
+
+	with TestClient(main_mod.create_app()) as client:
+		res = client.get("/api/system/tts-preload?limit=2")
+
+	assert res.status_code == 200
+	data = res.json()
+	assert data["total"] == 3
+	assert data["total_bytes"] == len(b"ID3aaa") + len(b"ID3bbbb") + len(b"ID3ccccc")
+	assert len(data["recent"]) == 2
+	assert data["recent"][0]["text"] == "Carpincho sabio"
+	assert data["recent"][0]["category"] == "fortuna"
+	assert data["recent"][0]["voice"] == "es-AR-TomasNeural"
+	assert data["recent"][1]["text"] == "Las nueve"

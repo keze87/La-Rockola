@@ -283,6 +283,48 @@ def prune_tts_cache_db(
 	return deleted_count
 
 
+def get_tts_cache_stats(limit: int = 10, db_path: Path | str | None = None) -> dict[str, Any]:
+	"""Devuelve la cantidad total de audios TTS cacheados, su peso y los últimos generados."""
+	target_path = Path(db_path) if db_path else (get_carpincho_data_dir() / "tts_cache.db")
+	safe_limit = max(0, min(50, int(limit)))
+	empty_result: dict[str, Any] = {"total": 0, "total_bytes": 0, "recent": []}
+	if not target_path.exists():
+		return empty_result
+	try:
+		with contextlib.closing(sqlite3.connect(target_path, timeout=5.0)) as conn:
+			cur = conn.cursor()
+			cur.execute("SELECT COUNT(*), COALESCE(SUM(LENGTH(audio_blob)), 0) FROM tts_cache")
+			count_row = cur.fetchone() or (0, 0)
+			total = int(count_row[0] or 0)
+			total_bytes = int(count_row[1] or 0)
+			recent: list[dict[str, Any]] = []
+			if safe_limit > 0 and total > 0:
+				rows = cur.execute(
+					"""
+					SELECT category, voice, text, duration, created_at, use_count
+					FROM tts_cache
+					ORDER BY created_at DESC
+					LIMIT ?
+					""",
+					(safe_limit,),
+				).fetchall()
+				for category, voice, text, duration, created_at, use_count in rows:
+					recent.append(
+						{
+							"category": str(category),
+							"voice": str(voice),
+							"text": str(text),
+							"duration": float(duration) if duration is not None else None,
+							"created_at": float(created_at),
+							"use_count": int(use_count or 0),
+						}
+					)
+			return {"total": total, "total_bytes": total_bytes, "recent": recent}
+	except Exception as e:
+		logger.debug(f"Error consultando estadísticas de caché TTS ({target_path}): {e}")
+		return empty_result
+
+
 _tts_lock: asyncio.Lock | None = None
 
 

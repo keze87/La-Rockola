@@ -21,6 +21,7 @@ from app.domain.library.mood import is_mood_available
 from app.domain.playback.orchestrator import broadcast_state
 from app.infrastructure.binaries.ytdlp import YtDlpAdapter
 from app.infrastructure.db.connection import execute_write
+from app.infrastructure.media.tts_cache import get_tts_cache_stats
 from app.infrastructure.storage import get_storage_backend, normalize_music_root
 from app.infrastructure.weather.client import (
 	build_weather_phrase,
@@ -77,6 +78,14 @@ async def get_system_capabilities() -> dict[str, Any]:
 		"has_edge_tts": bool(state.has_edge_tts if state else False),
 		"has_mpv": bool(getattr(state, "has_mpv", True) if state else False),
 	}
+
+
+@router.get("/system/tts-preload")
+async def get_tts_preload_status(
+	limit: int = Query(10, ge=1, le=50, description="Cantidad máxima de audios recientes a listar"),
+) -> dict[str, Any]:
+	"""Reporta cuántos audios TTS hay precargados en caché y los últimos generados."""
+	return await asyncio.to_thread(get_tts_cache_stats, limit=limit)
 
 
 @router.get("/system/info")
