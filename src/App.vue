@@ -640,9 +640,9 @@
 		v-show="!isFogonMode && !isLyricsEditorOpen"
 		class="app-main-content flex min-h-0 w-full flex-1 flex-col overflow-hidden"
 	>
-		<!-- BARRA SUPERIOR DE NAVEGACIÓN -->
+		<!-- BARRA SUPERIOR DE NAVEGACIÓN (fixed con efecto glass cubriendo también la barra de estado) -->
 		<nav
-			class="shrink-0 cursor-pointer overflow-hidden border-b border-[var(--hairline)] bg-[var(--glass-bg)] px-4 pt-[calc(10px+var(--rockola-safe-top))] pb-2.5 [backdrop-filter:var(--glass-blur)] [-webkit-backdrop-filter:var(--glass-blur)]"
+			class="head-bar fixed top-0 right-0 left-0 z-40 cursor-pointer overflow-hidden border-b-[0.5px] border-[var(--glass-border)] bg-[var(--glass-bg-strong)] px-4 pt-[calc(10px+var(--rockola-safe-top))] pb-2.5 [backdrop-filter:var(--glass-blur)] [-webkit-backdrop-filter:var(--glass-blur)]"
 			@click="
 				isFogonMode = true;
 				haptic();
@@ -847,7 +847,7 @@
 			<!-- PESTAÑAS (anclada borde a borde en móvil cubriendo safe-bottom, riel lateral desde md) -->
 			<nav
 				aria-label="Secciones principales"
-				class="floating-tab-bar fixed z-40 order-2 flex min-h-[var(--tabbar-h)] shrink-0 items-center overflow-hidden border-t-[0.5px] border-[var(--glass-border)] bg-[var(--glass-bg-strong)] px-2 pt-1.5 [backdrop-filter:var(--glass-blur)] transition-all duration-200 ease-out [-webkit-backdrop-filter:var(--glass-blur)] md:static md:inset-auto md:z-10 md:order-1 md:h-auto md:min-h-0 md:w-[96px] md:flex-col md:items-stretch md:border-t-0 md:border-r md:border-[var(--hairline)] md:bg-[var(--bg-elevated)] md:px-0 md:py-0 md:pb-0 md:[backdrop-filter:none] lg:w-[104px]"
+				class="floating-tab-bar fixed z-40 order-2 flex min-h-[var(--tabbar-h)] shrink-0 items-center overflow-hidden border-t-[0.5px] border-[var(--glass-border)] bg-[var(--glass-bg-strong)] px-2 pt-1.5 [backdrop-filter:var(--glass-blur)] transition-all duration-200 ease-out [-webkit-backdrop-filter:var(--glass-blur)] md:static md:inset-auto md:z-10 md:order-1 md:h-auto md:min-h-0 md:w-[96px] md:flex-col md:items-stretch md:border-t-0 md:border-r md:border-[var(--hairline)] md:bg-[var(--bg-elevated)] md:px-0 md:py-0 md:pt-[var(--headbar-h)] md:pb-0 md:[backdrop-filter:none] lg:w-[104px]"
 				:class="[
 					isTabsBarHidden && isShortScreen
 						? 'pointer-events-none max-h-0 translate-y-2 border-0 py-0 opacity-0 md:max-h-none md:translate-y-0 md:opacity-100'

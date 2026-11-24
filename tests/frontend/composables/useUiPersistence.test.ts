@@ -89,6 +89,24 @@ describe('useUiPersistence', () => {
 		expect(showFavoritesOnly.value).toBe(true);
 	});
 
+	it('abre en library al reiniciar la app (cuando sessionStorage está vacío y solo persiste localStorage)', () => {
+		activeTab.value = 'controls';
+		librarySearchQuery.value = 'charly';
+		activeSort.value = 'artist';
+		saveUiState();
+
+		// Simulamos reinicio completo de la app: sessionStorage se vacía, localStorage sobrevive
+		sessionStorage.clear();
+		activeTab.value = 'library';
+		librarySearchQuery.value = '';
+		activeSort.value = 'time';
+
+		expect(restoreUiState()).toBe(true);
+		expect(activeTab.value).toBe('library');
+		expect(librarySearchQuery.value).toBe('charly');
+		expect(activeSort.value).toBe('artist');
+	});
+
 	it('agrupa múltiples llamadas de saveTabScrollDebounced en una sola escritura', () => {
 		vi.useFakeTimers();
 		const setItemSpy = vi.spyOn(localStorage, 'setItem');

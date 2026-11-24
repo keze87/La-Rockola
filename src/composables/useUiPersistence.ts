@@ -79,13 +79,27 @@ export function saveUiState(): void {
 	writeStorage(UI_PERSISTENCE_KEY, JSON.stringify(payload));
 }
 
+function hasSessionUiState(): boolean {
+	try {
+		return typeof sessionStorage !== 'undefined' && sessionStorage.getItem(UI_PERSISTENCE_KEY) !== null;
+	} catch {
+		return false;
+	}
+}
+
 export function restoreUiState(options?: { restoreTab?: boolean }): boolean {
+	const hasSessionState = hasSessionUiState();
 	const raw = readStorage(UI_PERSISTENCE_KEY);
 	if (!raw) return false;
 	try {
 		const parsed = JSON.parse(raw) as Partial<PersistedUiState> | null;
 		if (!parsed || typeof parsed !== 'object') return false;
-		if (options?.restoreTab !== false && typeof parsed.activeTab === 'string' && VALID_TABS.has(parsed.activeTab)) {
+		if (
+			options?.restoreTab !== false &&
+			hasSessionState &&
+			typeof parsed.activeTab === 'string' &&
+			VALID_TABS.has(parsed.activeTab)
+		) {
 			activeTab.value = parsed.activeTab;
 		}
 		if (typeof parsed.searchQuery === 'string') {

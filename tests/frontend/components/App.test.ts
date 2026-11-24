@@ -695,4 +695,17 @@ Dialogue: 0,0:00:20.00,0:00:24.00,Default,,0,0,0,,{\\kf100}Verso {\\kf100}tres
 			initSpy.mockRestore();
 		}
 	});
+
+	it('renders fixed glass headbar matching the tab bar glass effect', () => {
+		const wrapper = mount(App);
+		const headbar = wrapper.find('nav.head-bar');
+		expect(headbar.exists()).toBe(true);
+		expect(headbar.classes()).toContain('fixed');
+		expect(headbar.classes()).toContain('top-0');
+		expect(headbar.classes()).toContain('z-40');
+		expect(headbar.classes()).toContain('bg-[var(--glass-bg-strong)]');
+		expect(headbar.classes()).toContain('border-[var(--glass-border)]');
+		expect(headbar.classes()).toContain('[backdrop-filter:var(--glass-blur)]');
+		wrapper.unmount();
+	});
 });

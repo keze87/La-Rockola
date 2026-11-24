@@ -81,6 +81,7 @@
 	--tabbar-h: 64px;
 	--rail-w: 96px;
 	--safe-top: max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px));
+	--headbar-h: calc(58px + var(--safe-top));
 	--safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px));
 	--rockola-safe-top: var(--safe-top);
 	--rockola-safe-bottom: var(--safe-bottom);
@@ -162,6 +163,8 @@ dialog::backdrop {
 	min-height: 0;
 	overflow-y: auto;
 	overscroll-behavior-y: contain;
+	padding-top: calc(var(--headbar-h) + 12px) !important;
+	scroll-padding-top: calc(var(--headbar-h) + 16px);
 	padding-bottom: calc(var(--floating-player-h) + var(--safe-bottom) + 28px + var(--rockola-ime-height)) !important;
 	scroll-padding-bottom: calc(var(--floating-player-h) + var(--safe-bottom) + 36px + var(--rockola-ime-height));
 	--scrollbar-thumb: var(--hairline-strong);
