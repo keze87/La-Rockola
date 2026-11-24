@@ -284,11 +284,13 @@ describe('LibraryTab.vue', () => {
 		}
 	});
 
-	it('anchors sticky search bar directly below fixed headbar and removes focus outline rectangle on input', () => {
+	it('anchors search bar directly below fixed headbar and removes focus outline rectangle on input', () => {
 		const wrapper = mount(LibraryTab);
-		const stickyBar = wrapper.find('.sticky');
-		expect(stickyBar.exists()).toBe(true);
-		expect(stickyBar.classes()).toContain('top-[var(--headbar-h)]');
+		const searchBar = wrapper.find('.library-search-bar');
+		expect(searchBar.exists()).toBe(true);
+		expect(searchBar.classes()).toContain('absolute');
+		expect(searchBar.classes()).toContain('top-[var(--headbar-h)]');
+		expect(searchBar.classes()).toContain('z-30');
 
 		const input = wrapper.find('#library-search-input');
 		expect(input.exists()).toBe(true);
