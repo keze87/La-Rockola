@@ -100,6 +100,9 @@ class SafTreeBrowser(
     private val provider: SafTreeProvider,
     private val audioExtensions: Set<String> = DEFAULT_AUDIO_EXTENSIONS,
     private val maxParentCacheSize: Int = MAX_PARENT_CACHE_ENTRIES,
+    private val clockMs: () -> Long = { System.currentTimeMillis() },
+    private val sessionTtlMs: Long = 300_000L,
+    private val maxScanSessions: Int = 4,
 ) {
     companion object {
         const val MIME_TYPE_DIR = "vnd.android.document/directory"
@@ -120,14 +123,16 @@ class SafTreeBrowser(
         var terminalStatus: SafScanStatus? = null,
         @Volatile var cancelled: Boolean = false,
         @Volatile var inUse: Boolean = false,
-        @Volatile var lastAccessedAtMs: Long = System.currentTimeMillis(),
+        @Volatile var closed: Boolean = false,
+        @Volatile var lastAccessedAtMs: Long = 0L,
     )
 
     private val sessionMaintenanceLock = Any()
 
-    fun activeScanSessionCount(): Int = scanSessions.size
+    fun activeScanSessionCount(): Int = synchronized(sessionMaintenanceLock) { scanSessions.size }
 
     private fun clearSessionData(session: ScanSession) {
+        session.closed = true
         session.queue.clear()
         session.visitedDirs.clear()
         session.seenFiles.clear()
@@ -135,25 +140,30 @@ class SafTreeBrowser(
         session.failedDirs.clear()
     }
 
+    private fun pruneScanSessionsLocked(now: Long) {
+        val iterator = scanSessions.entries.iterator()
+        while (iterator.hasNext()) {
+            val (_, sess) = iterator.next()
+            if (!sess.inUse && (sess.cancelled || (now - sess.lastAccessedAtMs) > sessionTtlMs)) {
+                iterator.remove()
+                clearSessionData(sess)
+            }
+        }
+        val cap = maxScanSessions.coerceAtLeast(1)
+        while (scanSessions.size >= cap) {
+            val oldest = scanSessions.entries
+                .filter { !it.value.inUse }
+                .minByOrNull { it.value.lastAccessedAtMs }
+                ?: break
+            scanSessions.remove(oldest.key)
+            clearSessionData(oldest.value)
+        }
+    }
+
     private fun pruneScanSessions() {
-        val now = System.currentTimeMillis()
+        val now = clockMs()
         synchronized(sessionMaintenanceLock) {
-            val iterator = scanSessions.entries.iterator()
-            while (iterator.hasNext()) {
-                val (_, sess) = iterator.next()
-                if (!sess.inUse && (sess.cancelled || (now - sess.lastAccessedAtMs) > 300_000L)) {
-                    iterator.remove()
-                    clearSessionData(sess)
-                }
-            }
-            while (scanSessions.size >= 4) {
-                val oldest = scanSessions.entries
-                    .filter { !it.value.inUse }
-                    .minByOrNull { it.value.lastAccessedAtMs }
-                    ?: break
-                scanSessions.remove(oldest.key)
-                clearSessionData(oldest.value)
-            }
+            pruneScanSessionsLocked(now)
         }
     }
 
@@ -163,16 +173,15 @@ class SafTreeBrowser(
     )
 
     private val cacheLock = Any()
-    private var activeTreeForCache: String? = null
     private val parentCache = object : LinkedHashMap<String, Triple<String, String, String>>(128, 0.75f, true) {
         override fun removeEldestEntry(
             eldest: MutableMap.MutableEntry<String, Triple<String, String, String>>?,
         ): Boolean = size > maxParentCacheSize.coerceAtLeast(16)
     }
-    private val dirLyricsCache = object : LinkedHashMap<String, CachedDirLyrics>(64, 0.75f, true) {
+    private val dirLyricsCache = object : LinkedHashMap<String, CachedDirLyrics>(128, 0.75f, true) {
         override fun removeEldestEntry(
             eldest: MutableMap.MutableEntry<String, CachedDirLyrics>?,
-        ): Boolean = size > 128
+        ): Boolean = size > 256
     }
     private val scanSessions = ConcurrentHashMap<String, ScanSession>()
 
@@ -180,11 +189,6 @@ class SafTreeBrowser(
 
     private fun putParentCache(docUri: String, treeUri: String, dirDocId: String, name: String) {
         synchronized(cacheLock) {
-            if (activeTreeForCache != null && activeTreeForCache != treeUri) {
-                parentCache.clear()
-                dirLyricsCache.clear()
-            }
-            activeTreeForCache = treeUri
             parentCache[docUri] = Triple(treeUri, dirDocId, name)
         }
     }
@@ -202,18 +206,13 @@ class SafTreeBrowser(
             }
         }
         synchronized(cacheLock) {
-            if (activeTreeForCache != null && activeTreeForCache != treeUri) {
-                parentCache.clear()
-                dirLyricsCache.clear()
-            }
-            activeTreeForCache = treeUri
-            dirLyricsCache["$treeUri|$dirDocId"] = CachedDirLyrics(System.currentTimeMillis(), map)
+            dirLyricsCache["$treeUri|$dirDocId"] = CachedDirLyrics(clockMs(), map)
         }
         return map
     }
 
     private fun getOrFetchDirLyrics(treeUri: String, dirDocId: String): Map<String, String> {
-        val now = System.currentTimeMillis()
+        val now = clockMs()
         val key = "$treeUri|$dirDocId"
         synchronized(cacheLock) {
             val cached = dirLyricsCache[key]
@@ -230,14 +229,14 @@ class SafTreeBrowser(
     }
 
     fun startScanSession(treeUriString: String): String {
-        pruneScanSessions()
+        val now = clockMs()
         val sessionId = UUID.randomUUID().toString()
         synchronized(cacheLock) {
-            if (activeTreeForCache != null && activeTreeForCache != treeUriString) {
-                parentCache.clear()
+            val prefix = "$treeUriString|"
+            val keysToDrop = dirLyricsCache.keys.filter { it.startsWith(prefix) }
+            for (k in keysToDrop) {
+                dirLyricsCache.remove(k)
             }
-            dirLyricsCache.clear()
-            activeTreeForCache = treeUriString
         }
         val validation = validateTreeUri(treeUriString)
         val terminal = when (validation.status) {
@@ -246,75 +245,86 @@ class SafTreeBrowser(
             SafFolderStatus.UNSUPPORTED_PROVIDER -> SafScanStatus.UNSUPPORTED_PROVIDER
             SafFolderStatus.UNCONFIGURED, SafFolderStatus.UNAVAILABLE -> SafScanStatus.STORAGE_UNAVAILABLE
         }
-        if (terminal != null) {
-            scanSessions[sessionId] = ScanSession(
+        val newSession = if (terminal != null) {
+            ScanSession(
                 treeUri = treeUriString,
                 queue = ArrayDeque(),
                 visitedDirs = HashSet(),
                 firstError = validation.error,
                 terminalStatus = terminal,
+                lastAccessedAtMs = now,
             )
-            return sessionId
+        } else {
+            try {
+                val root = provider.queryRootInfo(treeUriString)
+                if (root == null) {
+                    ScanSession(
+                        treeUri = treeUriString,
+                        queue = ArrayDeque(),
+                        visitedDirs = HashSet(),
+                        firstError = "La carpeta seleccionada no está disponible.",
+                        terminalStatus = SafScanStatus.STORAGE_UNAVAILABLE,
+                        lastAccessedAtMs = now,
+                    )
+                } else {
+                    val queue = ArrayDeque<Pair<String, String>>()
+                    val visited = HashSet<String>()
+                    queue.add(Pair(root.documentId, ""))
+                    visited.add(root.documentId)
+                    ScanSession(
+                        treeUri = treeUriString,
+                        queue = queue,
+                        visitedDirs = visited,
+                        lastAccessedAtMs = now,
+                    )
+                }
+            } catch (sec: SecurityException) {
+                ScanSession(
+                    treeUri = treeUriString,
+                    queue = ArrayDeque(),
+                    visitedDirs = HashSet(),
+                    firstError = sec.message ?: "Permiso SAF revocado.",
+                    terminalStatus = SafScanStatus.PERMISSION_DENIED,
+                    lastAccessedAtMs = now,
+                )
+            } catch (e: Exception) {
+                ScanSession(
+                    treeUri = treeUriString,
+                    queue = ArrayDeque(),
+                    visitedDirs = HashSet(),
+                    firstError = e.message ?: "Error consultando raíz SAF.",
+                    terminalStatus = SafScanStatus.PROVIDER_ERROR,
+                    lastAccessedAtMs = now,
+                )
+            }
         }
-
-        val root = try {
-            provider.queryRootInfo(treeUriString)
-        } catch (sec: SecurityException) {
-            scanSessions[sessionId] = ScanSession(
-                treeUri = treeUriString,
-                queue = ArrayDeque(),
-                visitedDirs = HashSet(),
-                firstError = sec.message ?: "Permiso SAF revocado.",
-                terminalStatus = SafScanStatus.PERMISSION_DENIED,
-            )
-            return sessionId
-        } catch (e: Exception) {
-            scanSessions[sessionId] = ScanSession(
-                treeUri = treeUriString,
-                queue = ArrayDeque(),
-                visitedDirs = HashSet(),
-                firstError = e.message ?: "Error consultando raíz SAF.",
-                terminalStatus = SafScanStatus.PROVIDER_ERROR,
-            )
-            return sessionId
+        synchronized(sessionMaintenanceLock) {
+            pruneScanSessionsLocked(now)
+            scanSessions[sessionId] = newSession
         }
-
-        if (root == null) {
-            scanSessions[sessionId] = ScanSession(
-                treeUri = treeUriString,
-                queue = ArrayDeque(),
-                visitedDirs = HashSet(),
-                firstError = "La carpeta seleccionada no está disponible.",
-                terminalStatus = SafScanStatus.STORAGE_UNAVAILABLE,
-            )
-            return sessionId
-        }
-
-        val queue = ArrayDeque<Pair<String, String>>()
-        val visited = HashSet<String>()
-        queue.add(Pair(root.documentId, ""))
-        visited.add(root.documentId)
-        scanSessions[sessionId] = ScanSession(treeUri = treeUriString, queue = queue, visitedDirs = visited)
         return sessionId
     }
 
     fun nextScanBatch(sessionId: String, batchSize: Int = 250): SafScanBatch {
-        val session = scanSessions[sessionId]
-            ?: return SafScanBatch(SafScanStatus.STORAGE_UNAVAILABLE, emptyList(), hasMore = false, error = "Sesión inexistente")
+        val session = synchronized(sessionMaintenanceLock) {
+            val found = scanSessions[sessionId] ?: return@synchronized null
+            if (found.closed) return@synchronized null
+            found.inUse = true
+            found.lastAccessedAtMs = clockMs()
+            found
+        } ?: return SafScanBatch(SafScanStatus.STORAGE_UNAVAILABLE, emptyList(), hasMore = false, error = "Sesión inexistente")
+
         synchronized(session) {
-            session.inUse = true
-            session.lastAccessedAtMs = System.currentTimeMillis()
+            var shouldDropSession = false
             try {
                 if (session.cancelled) {
-                    scanSessions.remove(sessionId)
-                    clearSessionData(session)
+                    shouldDropSession = true
                     return SafScanBatch(SafScanStatus.SUCCESS_EMPTY, emptyList(), hasMore = false)
                 }
                 session.terminalStatus?.let { term ->
                     val failedCopy = session.failedDirs.toList()
                     val errCopy = session.firstError
-                    scanSessions.remove(sessionId)
-                    clearSessionData(session)
+                    shouldDropSession = true
                     return SafScanBatch(term, emptyList(), hasMore = false, failedCopy, errCopy)
                 }
 
@@ -368,8 +378,7 @@ class SafTreeBrowser(
                 }
 
                 if (session.cancelled) {
-                    scanSessions.remove(sessionId)
-                    clearSessionData(session)
+                    shouldDropSession = true
                     return SafScanBatch(SafScanStatus.SUCCESS_EMPTY, emptyList(), hasMore = false)
                 }
 
@@ -384,26 +393,29 @@ class SafTreeBrowser(
                 val failedCopy = session.failedDirs.toList()
                 val errCopy = session.firstError
                 if (!hasMore) {
-                    scanSessions.remove(sessionId)
-                    clearSessionData(session)
+                    shouldDropSession = true
                 }
                 return SafScanBatch(status, out, hasMore, failedCopy, errCopy)
             } finally {
-                session.inUse = false
-                session.lastAccessedAtMs = System.currentTimeMillis()
+                synchronized(sessionMaintenanceLock) {
+                    session.inUse = false
+                    session.lastAccessedAtMs = clockMs()
+                    if (shouldDropSession || session.cancelled) {
+                        scanSessions.remove(sessionId, session)
+                        clearSessionData(session)
+                    }
+                }
             }
         }
     }
 
     fun cancelScanSession(sessionId: String) {
-        val session = scanSessions[sessionId] ?: return
-        session.cancelled = true
-        if (!session.inUse) {
-            scanSessions.remove(sessionId)
-            synchronized(session) {
-                if (!session.inUse) {
-                    clearSessionData(session)
-                }
+        synchronized(sessionMaintenanceLock) {
+            val session = scanSessions[sessionId] ?: return
+            session.cancelled = true
+            if (!session.inUse) {
+                scanSessions.remove(sessionId, session)
+                clearSessionData(session)
             }
         }
     }

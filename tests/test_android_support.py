@@ -943,3 +943,80 @@ def test_start_embedded_server_converts_port_bind_system_exit_into_failed_state(
 		monkeypatch.setattr(android_entry, "_last_error", None)
 		monkeypatch.setattr(android_entry, "_active_server", None)
 		monkeypatch.setattr(android_entry, "_active_thread", None)
+
+
+def test_stop_persistence_coalesces_updates_isolates_generations_and_handles_errors(
+	monkeypatch: pytest.MonkeyPatch,
+) -> None:
+	"""Persistencia en shutdown coalescea estados nuevos sin perder cambios ni pisar generaciones futuras."""
+	import threading
+
+	from app import android_entry
+
+	android_entry.wait_for_stop_persistence(timeout_sec=2.0)
+
+	vol_calls: list[int] = []
+	saved_sessions: list[tuple[int, str | None]] = []
+	first_entered = threading.Event()
+	release_first = threading.Event()
+	call_idx = 0
+
+	def fake_flush_volume() -> None:
+		nonlocal call_idx
+		call_idx += 1
+		vol_calls.append(call_idx)
+		if call_idx == 1:
+			first_entered.set()
+			release_first.wait(2.0)
+
+	class FakeOrch:
+		def __init__(self, track: str) -> None:
+			self.track = track
+
+		def save_playback_session(self, force: bool = False) -> None:
+			assert force is True
+			saved_sessions.append((len(saved_sessions) + 1, self.track))
+
+	monkeypatch.setattr("app.api.commands.flush_pending_volume_persist", fake_flush_volume)
+	container = container_mod.get_container()
+	container.orchestrator = FakeOrch("track_1.mp3")
+	monkeypatch.setattr(android_entry, "_server_generation", 10)
+
+	# 1. Primer stop queda bloqueado en flush_volume
+	android_entry.stop_embedded_server()
+	assert first_entered.wait(2.0)
+
+	# 2. Mientras el primero está en vuelo, cambia el estado y llega otro stop -> debe coalescerse y NO perderse
+	container.orchestrator = FakeOrch("track_2_final.mp3")
+	android_entry.stop_embedded_server()
+	release_first.set()
+	assert android_entry.wait_for_stop_persistence(timeout_sec=2.0) is True
+	assert any(track == "track_2_final.mp3" for _, track in saved_sessions)
+
+	# 3. Si una generación nueva arrancó antes de drenar el snapshot anterior, el viejo NO debe pisar al nuevo
+	saved_sessions.clear()
+	call_idx = 0
+	first_entered.clear()
+	release_first.clear()
+	container.orchestrator = FakeOrch("old_gen_track.mp3")
+	android_entry.stop_embedded_server()
+	assert first_entered.wait(2.0)
+	container.orchestrator = FakeOrch("new_gen_track.mp3")
+	monkeypatch.setattr(android_entry, "_server_generation", 11)
+	android_entry.stop_embedded_server()  # encola gen 11
+	release_first.set()
+	assert android_entry.wait_for_stop_persistence(timeout_sec=2.0) is True
+	assert saved_sessions[-1][1] == "new_gen_track.mp3"
+
+	# 4. Errores en volumen y sesión no impiden completar ni rompen wait_for_stop_persistence
+	def boom_vol() -> None:
+		raise OSError("disk full")
+
+	class BoomOrch:
+		def save_playback_session(self, force: bool = False) -> None:
+			raise RuntimeError("sqlite busy")
+
+	monkeypatch.setattr("app.api.commands.flush_pending_volume_persist", boom_vol)
+	container.orchestrator = BoomOrch()
+	android_entry.stop_embedded_server()
+	assert android_entry.wait_for_stop_persistence(timeout_sec=2.0) is True

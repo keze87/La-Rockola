@@ -2,9 +2,31 @@ apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 apply plugin: 'com.chaquo.python'
 
-def buildDateStamp = new Date().format('yyMMdd')
-def baseVersionCode = (project.findProperty('ROCKOLA_VERSION_CODE')?.toString()?.toInteger()) ?: buildDateStamp.toInteger()
-def baseVersionName = project.findProperty('ROCKOLA_VERSION_NAME')?.toString() ?: buildDateStamp
+def buildUtcCal = Calendar.getInstance(TimeZone.getTimeZone('UTC'))
+// Código base monotónico por minuto en UTC: garantiza superación del esquema previo yyMMdd (<= 261124) sin desbordar Play Console.
+def computedVersionCode = (
+    (buildUtcCal.get(Calendar.YEAR) - 2020) * 1000000 +
+    buildUtcCal.get(Calendar.DAY_OF_YEAR) * 1440 +
+    buildUtcCal.get(Calendar.HOUR_OF_DAY) * 60 +
+    buildUtcCal.get(Calendar.MINUTE)
+)
+def computedVersionName = String.format(
+    '%02d.%02d.%02d-%02d%02d',
+    buildUtcCal.get(Calendar.YEAR) % 100,
+    buildUtcCal.get(Calendar.MONTH) + 1,
+    buildUtcCal.get(Calendar.DAY_OF_MONTH),
+    buildUtcCal.get(Calendar.HOUR_OF_DAY),
+    buildUtcCal.get(Calendar.MINUTE),
+)
+def rawVersionCode = project.findProperty('ROCKOLA_VERSION_CODE')?.toString()?.trim()
+    ?: System.getenv('ROCKOLA_VERSION_CODE')?.trim()
+def rawVersionName = project.findProperty('ROCKOLA_VERSION_NAME')?.toString()?.trim()
+    ?: System.getenv('ROCKOLA_VERSION_NAME')?.trim()
+def baseVersionCode = rawVersionCode ? rawVersionCode.toInteger() : computedVersionCode
+if (baseVersionCode <= 0 || (baseVersionCode.longValue() * 10L + 2L) > 2100000000L) {
+    throw new GradleException("ROCKOLA_VERSION_CODE fuera de rango válido Android (1..209999999): ${baseVersionCode}")
+}
+def baseVersionName = rawVersionName ?: computedVersionName
 def ignoreKeystoreProps = project.hasProperty('ROCKOLA_IGNORE_KEYSTORE_PROPS') &&
     project.property('ROCKOLA_IGNORE_KEYSTORE_PROPS').toString().toBoolean()
 

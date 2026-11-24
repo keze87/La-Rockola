@@ -152,3 +152,80 @@ def test_build_android_fails_without_sdk_unless_sync_only(tmp_path: Path, monkey
 
 	assert build_mod.build_android(root_dir=tmp_path, skip_frontend=True, sync_only=True) == 0
 	assert build_mod.build_android(root_dir=tmp_path, skip_frontend=True, sync_only=False) == 1
+
+
+def test_verify_android_archive_rejects_corrupt_nested_zip_incongruent_elf_and_invalid_aab(
+	tmp_path: Path, monkeypatch
+) -> None:
+	"""Valida congruencia p_offset/p_vaddr, límites de segmento, .imy corrupto y BundleConfig de AAB."""
+	from scripts import verify_android_apk as vmod
+
+	# 1. Segmento PT_LOAD con p_offset % p_align != p_vaddr % p_align
+	bad_congruence = bytearray(_build_elf64(e_machine=183, p_align=0x4000))
+	# Cambiamos p_vaddr de 0 a 0x100 manteniendo p_offset = 0
+	struct.pack_into("<Q", bad_congruence, 64 + 16, 0x100)
+	issues = inspect_elf_bytes("lib/arm64-v8a/libcong.so", bytes(bad_congruence))
+	assert any("congruencia" in e.lower() or "p_vaddr" in e.lower() for e in issues)
+
+	# 2. Segmento PT_LOAD fuera de los límites del archivo
+	bad_bounds = bytearray(_build_elf64(e_machine=183, p_align=0x4000))
+	struct.pack_into("<Q", bad_bounds, 64 + 32, len(bad_bounds) + 4096)  # p_filesz > len(data)
+	issues_bounds = inspect_elf_bytes("lib/arm64-v8a/libbounds.so", bytes(bad_bounds))
+	assert any("límite" in e.lower() or "rango" in e.lower() or "filesz" in e.lower() for e in issues_bounds)
+
+	# 3. Archivo .imy corrupto no debe omitirse silenciosamente
+	ok_elf = _build_elf64(e_machine=183, p_align=0x4000)
+	apk_corrupt_imy = tmp_path / "corrupt_imy.apk"
+	with zipfile.ZipFile(apk_corrupt_imy, "w", compression=zipfile.ZIP_STORED) as zf:
+		info = zipfile.ZipInfo("lib/arm64-v8a/libok.so")
+		pad = (0x4000 - (30 + len(info.filename.encode()) + 4)) % 0x4000
+		info.extra = struct.pack("<HH", 0xFFFF, pad) + (b"\x00" * pad)
+		zf.writestr(info, ok_elf)
+		zf.writestr("assets/chaquopy/bad.imy", b"NOT_A_ZIP_AT_ALL")
+	res_imy = verify_android_archive(apk_corrupt_imy)
+	assert not res_imy.ok
+	assert any("bad.imy" in err for err in res_imy.errors)
+
+	# 4. AAB sin BundleConfig.pb debe fallar
+	aab_missing_cfg = tmp_path / "no_cfg.aab"
+	with zipfile.ZipFile(aab_missing_cfg, "w") as zf:
+		zf.writestr("base/lib/arm64-v8a/libok.so", ok_elf)
+	res_no_cfg = verify_android_archive(aab_missing_cfg, strict_aab=True)
+	assert not res_no_cfg.ok
+	assert any("BundleConfig.pb" in err for err in res_no_cfg.errors)
+
+	# 5. AAB con bundletool reportando 4KB vs 16KB
+	aab_with_cfg = tmp_path / "with_cfg.aab"
+	with zipfile.ZipFile(aab_with_cfg, "w") as zf:
+		zf.writestr("BundleConfig.pb", b"\x08\x01")
+		zf.writestr("base/lib/arm64-v8a/libok.so", ok_elf)
+
+	monkeypatch.setattr(vmod, "find_bundletool_command", lambda: ["bundletool"])
+
+	class _Res4k:
+		returncode = 0
+		stdout = '{"optimizations":{"uncompressNativeLibraries":{"alignment":"PAGE_ALIGNMENT_4K"}}}'
+		stderr = ""
+
+	monkeypatch.setattr(vmod.subprocess, "run", lambda *_a, **_k: _Res4k())
+	res_4k_aab = verify_android_archive(aab_with_cfg, strict_aab=True)
+	assert not res_4k_aab.ok
+	assert any("PAGE_ALIGNMENT_16K" in err for err in res_4k_aab.errors)
+
+	class _Res16k:
+		returncode = 0
+		stdout = '{"optimizations":{"uncompressNativeLibraries":{"alignment":"PAGE_ALIGNMENT_16K"}}}'
+		stderr = ""
+
+	monkeypatch.setattr(vmod.subprocess, "run", lambda *_a, **_k: _Res16k())
+	res_16k_aab = verify_android_archive(aab_with_cfg, strict_aab=True)
+	assert res_16k_aab.ok, res_16k_aab.errors
+
+
+def test_build_gradle_uses_monotonic_version_code_beyond_date_only() -> None:
+	"""build.gradle debe generar versionCode monotónico (no solo yyMMdd) y validar colisiones ABI."""
+	gradle_text = Path("android/app/build.gradle").read_text(encoding="utf-8")
+	assert "HOUR_OF_DAY" in gradle_text or "MINUTE" in gradle_text
+	assert "ROCKOLA_VERSION_CODE" in gradle_text
+	assert "versionCode baseVersionCode * 10 + 1" in gradle_text
+	assert "versionCode baseVersionCode * 10 + 2" in gradle_text

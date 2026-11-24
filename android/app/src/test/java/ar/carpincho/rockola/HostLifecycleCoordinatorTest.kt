@@ -473,4 +473,122 @@ class HostLifecycleCoordinatorTest {
             ),
         )
     }
+
+    @Test
+    fun `registra StopHookOutcome FAILED cuando el hook lanza excepcion y TIMED_OUT sin duplicar hooks bloqueados`() {
+        val stopSignal = CountDownLatch(1)
+        val started = CountDownLatch(1)
+        val coordFail = HostLifecycleCoordinator()
+
+        assertTrue(
+            coordFail.start(
+                port = 1740,
+                musicDir = null,
+                onRequestStop = {
+                    stopSignal.countDown()
+                    throw IllegalStateException("fallo critico de hook")
+                },
+            ) { onReady ->
+                onReady()
+                started.countDown()
+                stopSignal.await(2, TimeUnit.SECONDS)
+            },
+        )
+        assertTrue(started.await(2, TimeUnit.SECONDS))
+        assertTrue(coordFail.stop(timeoutMs = 1500L))
+        assertEquals(StopHookOutcome.FAILED, coordFail.lastStopHookOutcome)
+        assertTrue(coordFail.lastStopHookError?.contains("fallo critico de hook") == true)
+        assertEquals(HostServerState.STOPPED, coordFail.state)
+
+        // Hook bloqueado: dos llamadas a stop() coalescen sobre la misma invocación pendiente
+        val hookCalls = AtomicInteger(0)
+        val hookRelease = CountDownLatch(1)
+        val workerRelease = CountDownLatch(1)
+        val started2 = CountDownLatch(1)
+        val coordTimeout = HostLifecycleCoordinator()
+
+        assertTrue(
+            coordTimeout.start(
+                port = 1741,
+                musicDir = null,
+                onRequestStop = {
+                    hookCalls.incrementAndGet()
+                    hookRelease.await(5, TimeUnit.SECONDS)
+                },
+            ) { onReady ->
+                onReady()
+                started2.countDown()
+                workerRelease.await(5, TimeUnit.SECONDS)
+            },
+        )
+        assertTrue(started2.await(2, TimeUnit.SECONDS))
+        assertFalse(coordTimeout.stop(timeoutMs = 80L))
+        assertEquals(StopHookOutcome.TIMED_OUT, coordTimeout.lastStopHookOutcome)
+        assertEquals(HostServerState.STOP_TIMED_OUT, coordTimeout.state)
+
+        // Segundo stop mientras el primer hook sigue colgado: no debe encolar otro hook duplicado
+        assertFalse(coordTimeout.stop(timeoutMs = 80L))
+        assertEquals(1, hookCalls.get())
+
+        hookRelease.countDown()
+        workerRelease.countDown()
+        val deadline = System.currentTimeMillis() + 2000L
+        while (coordTimeout.hasActiveWorker && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10L)
+        }
+        assertEquals(HostServerState.STOPPED, coordTimeout.state)
+        assertFalse(coordTimeout.hasActiveWorker)
+    }
+
+    @Test
+    fun `es imposible iniciar un segundo worker antes de que el primero termine fisicamente su thread`() {
+        val coord = HostLifecycleCoordinator()
+        val activeRunners = AtomicInteger(0)
+        val maxConcurrentRunners = AtomicInteger(0)
+
+        repeat(25) { idx ->
+            val entered = CountDownLatch(1)
+            val allowExit = CountDownLatch(1)
+            val started = coord.start(
+                port = 1750 + idx,
+                musicDir = null,
+                onRequestStop = { allowExit.countDown() },
+            ) { onReady ->
+                val cur = activeRunners.incrementAndGet()
+                maxConcurrentRunners.updateAndGet { prev -> maxOf(prev, cur) }
+                onReady()
+                entered.countDown()
+                allowExit.await(2, TimeUnit.SECONDS)
+                Thread.sleep(8L)
+                activeRunners.decrementAndGet()
+            }
+            assertTrue("Iteración $idx falló al iniciar", started)
+            assertTrue(entered.await(2, TimeUnit.SECONDS))
+
+            // Intentos paralelos de start() mientras termina tardíamente no pueden crear un segundo worker
+            val stopThread = Thread {
+                allowExit.countDown()
+                coord.stop(timeoutMs = 2000L)
+            }.apply { start() }
+
+            var restartedImmediately = false
+            val deadline = System.currentTimeMillis() + 2000L
+            while (System.currentTimeMillis() < deadline) {
+                if (coord.start(1750 + idx, null, {}) {
+                        val cur = activeRunners.incrementAndGet()
+                        maxConcurrentRunners.updateAndGet { prev -> maxOf(prev, cur) }
+                        activeRunners.decrementAndGet()
+                    }
+                ) {
+                    restartedImmediately = true
+                    break
+                }
+                Thread.yield()
+            }
+            stopThread.join(2000L)
+            assertTrue("Iteración $idx no pudo reiniciar tras confirmar terminación", restartedImmediately)
+            assertTrue(coord.stop(timeoutMs = 2000L))
+        }
+        assertEquals(1, maxConcurrentRunners.get())
+    }
 }

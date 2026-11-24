@@ -158,3 +158,96 @@ def test_saf_stream_handles_non_seekable_unknown_size_zero_size_and_missing_file
 	with patch("app.infrastructure.storage.backend.get_android_storage_bridge", return_value=_VanishedBridge()):
 		r_gone = client.get("/stream", params={"path": TRACK_URI})
 		assert r_gone.status_code == 404
+
+
+def test_saf_stream_handles_shrunk_file_partial_reads_premature_eof_and_background_close(
+	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+	"""Valida tamaño real seekable, lecturas parciales, EOF prematuro, permiso revocado y cierre al cancelar."""
+	import io
+
+	from app.api.media import _build_saf_stream_response, active_remote_stream_count
+
+	real_file = tmp_path / "real.mp3"
+	real_payload = b"0123456789ABCDEF" * 10  # 160 bytes reales
+	real_file.write_bytes(real_payload)
+
+	# 1. Archivo declarado más grande que su tamaño real en disco: Content-Length se ajusta al tamaño real
+	class _ShrunkSeekableBridge:
+		def isAuthorizedDocumentUri(self, doc: str, *_a: object) -> bool:
+			return doc == TRACK_URI
+
+		def statDocumentJson(self, _doc: str) -> str:
+			return '{"name": "tema.mp3", "size": 9999, "mtime": 1000.0}'
+
+		def openFileDescriptorForRead(self, _doc: str) -> int:
+			return os.open(real_file, os.O_RDONLY)
+
+	client = _setup_saf_client(monkeypatch, _ShrunkSeekableBridge())
+	with patch("app.infrastructure.storage.backend.get_android_storage_bridge", return_value=_ShrunkSeekableBridge()):
+		r_shrunk = client.get("/stream", params={"path": TRACK_URI}, headers={"Range": "bytes=0-"})
+		assert r_shrunk.status_code == 206
+		assert r_shrunk.content == real_payload
+		assert r_shrunk.headers["content-length"] == str(len(real_payload))
+		assert r_shrunk.headers["content-range"] == f"bytes 0-{len(real_payload) - 1}/{len(real_payload)}"
+
+	# 2. Respuesta nunca iterada: background task debe cerrar el stream
+	closed_flag = False
+
+	class _TrackedStream(io.RawIOBase):
+		def seekable(self) -> bool:
+			return False
+
+		def readable(self) -> bool:
+			return True
+
+		def read(self, size: int = -1) -> bytes:
+			return b""
+
+		def close(self) -> None:
+			nonlocal closed_flag
+			closed_flag = True
+			super().close()
+
+	class _TrackedBackend:
+		def open_binary(self, _ref):
+			return _TrackedStream()
+
+	with patch("app.api.media.get_storage_backend", return_value=_TrackedBackend()):
+		resp = _build_saf_stream_response(TRACK_URI, 100, "audio/mpeg", "no-store", None, is_remote=True)
+		assert resp.background is not None
+		import asyncio
+
+		asyncio.run(resp.background())
+		assert closed_flag is True
+		assert active_remote_stream_count() == 0
+
+	# 3. EOF prematuro con tamaño conocido aborta el streaming en lugar de completar en silencio
+	class _PrematureEofStream(io.RawIOBase):
+		def __init__(self) -> None:
+			self._sent = False
+
+		def seekable(self) -> bool:
+			return False
+
+		def readable(self) -> bool:
+			return True
+
+		def read(self, size: int = -1) -> bytes:
+			if not self._sent:
+				self._sent = True
+				return b"ABC"
+			return b""
+
+	with patch(
+		"app.api.media.get_storage_backend",
+		return_value=type("_B", (), {"open_binary": lambda _s, _p: _PrematureEofStream()})(),
+	):
+		resp_eof = _build_saf_stream_response(TRACK_URI, 100, "audio/mpeg", "no-store", None, is_remote=False)
+
+		async def _consume() -> None:
+			async for _chunk in resp_eof.body_iterator:
+				pass
+
+		with pytest.raises(RuntimeError, match="EOF"):
+			asyncio.run(_consume())

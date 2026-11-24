@@ -195,7 +195,9 @@ def build_android(
 		raise RuntimeError(f"Gradle terminó {task} pero no encontré artefactos generados en build/outputs/.")
 
 	for artifact in artifacts:
-		res = verify_android_archive(artifact)
+		res = verify_android_archive(artifact, strict_aab=bundle)
+		for warn in res.warnings:
+			print(f"⚠️  {warn}", file=sys.stderr)
 		if not res.ok:
 			detail = "\n".join(f"  - {err}" for err in res.errors)
 			raise RuntimeError(f"Falló la verificación ELF/16 KB en {artifact}:\n{detail}")

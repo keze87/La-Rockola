@@ -7,7 +7,11 @@ para APKs y AABs Android (incluidos archivos .so dentro de paquetes .imy de Chaq
 from __future__ import annotations
 
 import io
+import json
+import os
+import shutil
 import struct
+import subprocess
 import sys
 import zipfile
 from dataclasses import dataclass, field
@@ -35,6 +39,44 @@ class VerificationResult:
 	inspected_so_count: int = 0
 	inspected_names: list[str] = field(default_factory=list)
 	errors: list[str] = field(default_factory=list)
+	warnings: list[str] = field(default_factory=list)
+
+
+def _sdk_search_roots() -> list[Path]:
+	roots: list[Path] = []
+	for env_var in ("ANDROID_HOME", "ANDROID_SDK_ROOT"):
+		val = os.environ.get(env_var, "").strip()
+		if val:
+			roots.append(Path(val))
+	roots.extend([Path("/opt/android-sdk"), Path.home() / "Android" / "Sdk"])
+	return roots
+
+
+def find_zipalign_command() -> str | None:
+	"""Localiza el binario `zipalign` en PATH o en los build-tools del Android SDK."""
+	in_path = shutil.which("zipalign")
+	if in_path:
+		return in_path
+	candidates: list[Path] = []
+	for root in _sdk_search_roots():
+		bt_dir = root / "build-tools"
+		if bt_dir.is_dir():
+			for tool in sorted(bt_dir.glob("*/zipalign")):
+				if tool.is_file():
+					candidates.append(tool)
+	return str(candidates[-1]) if candidates else None
+
+
+def find_bundletool_command() -> list[str] | None:
+	"""Localiza `bundletool` en PATH o vía ANDROID_BUNDLETOOL_JAR."""
+	in_path = shutil.which("bundletool")
+	if in_path:
+		return [in_path]
+	jar = os.environ.get("ANDROID_BUNDLETOOL_JAR", "").strip()
+	if jar and Path(jar).is_file():
+		java_bin = shutil.which("java") or "java"
+		return [java_bin, "-jar", jar]
+	return None
 
 
 def _vaddr_to_offset(vaddr: int, load_segments: list[tuple[int, int, int, int]]) -> int | None:
@@ -94,9 +136,22 @@ def inspect_elf_bytes(label: str, data: bytes) -> list[str]:
 			)
 			if p_type == PT_LOAD:
 				load_segments.append((p_offset, p_vaddr, p_filesz, p_memsz))
-				if p_align < REQUIRED_ALIGN_16KB:
+				if p_align == 0 or (p_align & (p_align - 1)) != 0:
+					issues.append(f"{label}: segmento PT_LOAD con p_align inválido (no potencia de 2: 0x{p_align:x})")
+				else:
+					if p_align < REQUIRED_ALIGN_16KB:
+						issues.append(
+							f"{label}: segmento PT_LOAD con alineamiento 0x{p_align:x} < 0x{REQUIRED_ALIGN_16KB:x} (no compatible 16 KB)"
+						)
+					if (p_offset % p_align) != (p_vaddr % p_align):
+						issues.append(
+							f"{label}: segmento PT_LOAD sin congruencia p_offset/p_vaddr "
+							f"(p_offset=0x{p_offset:x}, p_vaddr=0x{p_vaddr:x}, p_align=0x{p_align:x})"
+						)
+				if p_filesz > p_memsz or (p_offset + p_filesz) > len(data):
 					issues.append(
-						f"{label}: segmento PT_LOAD con alineamiento 0x{p_align:x} < 0x{REQUIRED_ALIGN_16KB:x} (no compatible 16 KB)"
+						f"{label}: segmento PT_LOAD fuera de límites de archivo o p_filesz > p_memsz "
+						f"(p_offset=0x{p_offset:x}, p_filesz=0x{p_filesz:x}, p_memsz=0x{p_memsz:x}, size=0x{len(data):x})"
 					)
 			elif p_type == PT_DYNAMIC:
 				dynamic_segment = (p_offset, p_filesz)
@@ -207,36 +262,110 @@ def _inspect_zip_recursive(
 			try:
 				with zipfile.ZipFile(io.BytesIO(raw_nested), "r") as nested_zf:
 					_inspect_zip_recursive(nested_zf, f"{name}::", result, None)
-			except zipfile.BadZipFile:
-				continue
+			except zipfile.BadZipFile as exc:
+				result.errors.append(f"{name}: archivo ZIP/IMY corrupto o truncado ({exc})")
 
 
-def verify_android_archive(archive_path: Path) -> VerificationResult:
-	"""Valida todas las bibliotecas nativas (.so directas y en .imy) dentro de un APK o AAB."""
+def _verify_aab_bundle_config(
+	archive_path: Path, namelist: set[str], strict_aab: bool, result: VerificationResult
+) -> None:
+	if "BundleConfig.pb" not in namelist:
+		result.errors.append(f"{archive_path.name}: falta BundleConfig.pb en el archivo AAB")
+		return
+
+	bundletool_cmd = find_bundletool_command()
+	if bundletool_cmd is None:
+		msg = f"{archive_path.name}: bundletool no encontrado para auditar PAGE_ALIGNMENT_16K en BundleConfig.pb"
+		if strict_aab:
+			result.errors.append(msg)
+		else:
+			result.warnings.append(msg)
+		return
+
+	proc = subprocess.run(
+		[*bundletool_cmd, "dump", "config", "--bundle", str(archive_path)],
+		capture_output=True,
+		text=True,
+		check=False,
+	)
+	if proc.returncode != 0:
+		result.errors.append(
+			f"{archive_path.name}: bundletool dump config falló (rc={proc.returncode}): {proc.stderr.strip() or proc.stdout.strip()}"
+		)
+		return
+
+	try:
+		cfg = json.loads(proc.stdout)
+		alignment = cfg.get("optimizations", {}).get("uncompressNativeLibraries", {}).get("alignment")
+	except Exception as exc:
+		result.errors.append(f"{archive_path.name}: no se pudo parsear JSON de bundletool dump config ({exc})")
+		return
+
+	if alignment != "PAGE_ALIGNMENT_16K":
+		result.errors.append(
+			f"{archive_path.name}: BundleConfig alignment inválido '{alignment}' (se requiere PAGE_ALIGNMENT_16K)"
+		)
+
+
+def _verify_apk_zipalign(archive_path: Path, result: VerificationResult) -> None:
+	zipalign_cmd = find_zipalign_command()
+	if zipalign_cmd is None:
+		result.warnings.append(f"{archive_path.name}: zipalign no disponible en PATH/SDK; se usó verificación interna")
+		return
+	proc = subprocess.run(
+		[zipalign_cmd, "-c", "-P", "16", "-v", "4", str(archive_path)],
+		capture_output=True,
+		text=True,
+		check=False,
+	)
+	if proc.returncode != 0:
+		detail = (proc.stderr or proc.stdout).strip().splitlines()[-1:] or ["exit != 0"]
+		result.errors.append(f"{archive_path.name}: zipalign -c -P 16 -v 4 falló ({detail[0]})")
+
+
+def verify_android_archive(archive_path: Path, strict_aab: bool = False) -> VerificationResult:
+	"""Valida todas las bibliotecas nativas (.so directas y en .imy), ZIP alignment 16 KB y BundleConfig dentro de un APK/AAB."""
 	result = VerificationResult(ok=True)
 	if not archive_path.is_file():
 		return VerificationResult(ok=False, errors=[f"Artefacto no encontrado: {archive_path}"])
 
 	with zipfile.ZipFile(archive_path, "r") as zf:
+		namelist = set(zf.namelist())
 		_inspect_zip_recursive(zf, "", result, archive_path)
 
 	if result.inspected_so_count == 0:
 		result.errors.append(f"{archive_path.name}: no se encontraron bibliotecas nativas (.so) dentro del paquete")
+
+	lower_name = archive_path.name.lower()
+	if lower_name.endswith(".aab"):
+		_verify_aab_bundle_config(archive_path, namelist, strict_aab, result)
+	elif lower_name.endswith(".apk"):
+		_verify_apk_zipalign(archive_path, result)
 
 	result.ok = len(result.errors) == 0
 	return result
 
 
 def main(argv: list[str] | None = None) -> int:
-	targets = argv if argv is not None else sys.argv[1:]
+	raw_args = list(argv if argv is not None else sys.argv[1:])
+	strict_aab = False
+	targets: list[str] = []
+	for arg in raw_args:
+		if arg == "--strict-aab":
+			strict_aab = True
+		else:
+			targets.append(arg)
+
 	if not targets:
-		print("Uso: python3 scripts/verify_android_apk.py <apk_o_aab> [...]", file=sys.stderr)
+		print("Uso: python3 scripts/verify_android_apk.py [--strict-aab] <apk_o_aab> [...]", file=sys.stderr)
 		return 2
 
 	overall_ok = True
 	for raw_target in targets:
 		path = Path(raw_target)
-		res = verify_android_archive(path)
+		res = verify_android_archive(path, strict_aab=strict_aab)
+		for warn in res.warnings:
+			print(f"⚠️  {warn}", file=sys.stderr)
 		if res.ok:
 			print(f"✅ {path.name}: {res.inspected_so_count} binarios .so verificados (16 KB OK, sin RUNPATH Termux)")
 		else:

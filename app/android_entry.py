@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import threading
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -36,6 +37,7 @@ _server_loop: asyncio.AbstractEventLoop | None = None
 _host_state: str = "stopped"
 _last_error: str | None = None
 _stop_requested: bool = False
+_server_generation: int = 0
 
 
 def set_server_event_loop(loop: asyncio.AbstractEventLoop | None) -> None:
@@ -249,7 +251,7 @@ def start_embedded_server(
 	on_ready: Callable[[], None] | Any = None,
 ) -> bool:
 	"""Arranca Uvicorn de forma bloqueante dentro de un hilo secundario del ForegroundService."""
-	global _active_server, _active_thread, _host_state, _last_error, _stop_requested
+	global _active_server, _active_thread, _host_state, _last_error, _stop_requested, _server_generation
 	import uvicorn
 
 	from app.main import create_app
@@ -265,6 +267,8 @@ def start_embedded_server(
 		if _active_server is not None or _host_state in ("starting", "ready", "stopping"):
 			logger.warning("Se omitió arranque duplicado del servidor embebido (estado actual: %s)", _host_state)
 			return False
+		_server_generation += 1
+		my_generation = _server_generation
 		_host_state = "starting"
 		_last_error = None
 		_stop_requested = False
@@ -298,8 +302,9 @@ def start_embedded_server(
 		has_async_startup = callable(orig_startup)
 
 		with _server_lock:
-			if _stop_requested:
-				_host_state = "stopped"
+			if _stop_requested or _server_generation != my_generation:
+				if _server_generation == my_generation:
+					_host_state = "stopped"
 				return True
 			_active_server = server
 			if not has_async_startup:
@@ -313,7 +318,7 @@ def start_embedded_server(
 				await orig_startup(sockets=sockets)
 				should_notify = False
 				with _server_lock:
-					if _active_server is server and not _stop_requested:
+					if _active_server is server and _server_generation == my_generation and not _stop_requested:
 						_host_state = "ready"
 						should_notify = True
 				if should_notify:
@@ -332,54 +337,92 @@ def start_embedded_server(
 		msg = f"No se pudo abrir el puerto {port} (¿ya está en uso?)"
 		logger.exception(msg)
 		with _server_lock:
-			_last_error = msg
-			_host_state = "failed"
+			if _server_generation == my_generation:
+				_last_error = msg
+				_host_state = "failed"
 		raise RuntimeError(msg) from exc
 	except Exception as exc:
 		logger.exception("Error fatal en servidor embebido")
 		with _server_lock:
-			_last_error = str(exc) or exc.__class__.__name__
-			_host_state = "failed"
+			if _server_generation == my_generation:
+				_last_error = str(exc) or exc.__class__.__name__
+				_host_state = "failed"
 		raise
 	finally:
 		set_server_event_loop(None)
 		with _server_lock:
-			if server is None or _active_server is server:
+			if _server_generation == my_generation and (server is None or _active_server is server):
 				_active_server = None
 				_active_thread = None
 				if _host_state != "failed":
 					_host_state = "stopped"
 
 
-_persist_lock = threading.Lock()
+_persist_cond = threading.Condition()
 _persist_in_flight = False
+_in_flight_persist_snapshot: tuple[int, Any] | None = None
+_pending_persist_snapshot: tuple[int, Any] | None = None
 _persist_executor: concurrent.futures.ThreadPoolExecutor | None = None
 
 
-def _run_stop_persistence() -> None:
-	global _persist_in_flight
-	try:
-		from app.api.commands import flush_pending_volume_persist
+def _drain_stop_persistence() -> None:
+	"""Drena snapshots coalescidos de persistencia al apagar sin pisar generaciones más nuevas."""
+	global _persist_in_flight, _in_flight_persist_snapshot, _pending_persist_snapshot
+	while True:
+		with _persist_cond:
+			snapshot = _pending_persist_snapshot
+			_pending_persist_snapshot = None
+			if snapshot is None:
+				_persist_in_flight = False
+				_in_flight_persist_snapshot = None
+				_persist_cond.notify_all()
+				return
+			_in_flight_persist_snapshot = snapshot
 
-		flush_pending_volume_persist()
-	except Exception as exc:
-		logger.warning("Error haciendo flush de volumen al apagar: %s", exc)
-	try:
-		orch = get_container().orchestrator
-		if orch is not None and hasattr(orch, "save_playback_session"):
-			orch.save_playback_session(force=True)
-	except Exception as exc:
-		logger.warning("Error guardando sesión de reproducción al apagar: %s", exc)
-	finally:
-		with _persist_lock:
-			_persist_in_flight = False
+		snap_gen, snap_orch = snapshot
+		try:
+			from app.api.commands import flush_pending_volume_persist
+
+			flush_pending_volume_persist()
+		except Exception as exc:
+			logger.warning("Error haciendo flush de volumen al apagar: %s", exc)
+
+		with _server_lock:
+			current_gen = _server_generation
+
+		if current_gen != snap_gen:
+			logger.info(
+				"Se omitió guardar sesión de generación %d porque ya arrancó generación %d",
+				snap_gen,
+				current_gen,
+			)
+			continue
+
+		try:
+			if snap_orch is not None and hasattr(snap_orch, "save_playback_session"):
+				snap_orch.save_playback_session(force=True)
+		except Exception as exc:
+			logger.warning("Error guardando sesión de reproducción al apagar: %s", exc)
+
+
+def wait_for_stop_persistence(timeout_sec: float = 5.0) -> bool:
+	"""Espera de forma acotada hasta que termine la persistencia en vuelo al apagar."""
+	deadline = time.monotonic() + max(0.0, timeout_sec)
+	with _persist_cond:
+		while _persist_in_flight or _pending_persist_snapshot is not None:
+			remaining = deadline - time.monotonic()
+			if remaining <= 0:
+				return False
+			_persist_cond.wait(timeout=remaining)
+		return True
 
 
 def stop_embedded_server() -> None:
-	"""Solicita el apagado limpio del servidor Uvicorn embebido sin bloquear por persistencia."""
-	global _host_state, _stop_requested, _persist_in_flight, _persist_executor
+	"""Solicita el apagado limpio del servidor Uvicorn embebido coalesciendo la persistencia final."""
+	global _host_state, _stop_requested, _persist_in_flight, _pending_persist_snapshot, _persist_executor
 	with _server_lock:
 		_stop_requested = True
+		snap_gen = _server_generation
 		if _active_server is not None:
 			if _host_state == "stopping":
 				# Segundo pedido de apagado sobre un servidor trabado: forzamos salida de conexiones
@@ -391,7 +434,17 @@ def stop_embedded_server() -> None:
 		elif _host_state != "failed":
 			_host_state = "stopped"
 
-	with _persist_lock:
+	snap_orch = get_container().orchestrator
+	with _persist_cond:
+		same_in_flight = (
+			_persist_in_flight
+			and _pending_persist_snapshot is None
+			and _in_flight_persist_snapshot is not None
+			and _in_flight_persist_snapshot[0] == snap_gen
+			and _in_flight_persist_snapshot[1] is snap_orch
+		)
+		if not same_in_flight and (_pending_persist_snapshot is None or snap_gen >= _pending_persist_snapshot[0]):
+			_pending_persist_snapshot = (snap_gen, snap_orch)
 		if not _persist_in_flight:
 			_persist_in_flight = True
 			if _persist_executor is None:
@@ -399,7 +452,7 @@ def stop_embedded_server() -> None:
 					max_workers=1,
 					thread_name_prefix="RockolaStopPersist",
 				)
-			_persist_executor.submit(_run_stop_persistence)
+			_persist_executor.submit(_drain_stop_persistence)
 
 
 def get_server_info() -> dict[str, Any]:

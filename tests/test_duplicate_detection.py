@@ -436,3 +436,67 @@ def test_audio_hash_mp4_hashes_all_mdat_atoms(tmp_path: Path) -> None:
 	f1.write_bytes(box(b"ftyp", b"M4A ") + moov + mdat1 + mdat2_a)
 	f2.write_bytes(box(b"ftyp", b"M4A ") + moov + mdat1 + mdat2_b)
 	assert generate_audio_hash(f1) != generate_audio_hash(f2)
+
+
+def test_smart_hash_handles_partial_reads_and_zero_reads(monkeypatch) -> None:
+	"""Lecturas parciales en smart_hash deben producir el mismo hash que lectura completa."""
+	import io
+
+	from app.domain.library.hasher import generate_smart_hash, generate_track_hashes
+
+	payload = bytes(i % 251 for i in range(64 * 1024))
+
+	class PartialReadStream(io.BytesIO):
+		def read(self, size: int | None = -1) -> bytes:
+			if size is None or size < 0:
+				return super().read()
+			# Fuerza lecturas fragmentadas de máximo 7 bytes (simula proveedor SAF lento/fragmentado)
+			return super().read(min(size, 7))
+
+	class FullBackend:
+		def stat_file(self, _ref):
+			return (1.0, len(payload))
+
+		def open_binary(self, _ref):
+			return io.BytesIO(payload)
+
+	class PartialBackend:
+		def stat_file(self, _ref):
+			return (1.0, len(payload))
+
+		def open_binary(self, _ref):
+			return PartialReadStream(payload)
+
+	monkeypatch.setattr("app.domain.library.hasher.get_storage_backend", lambda _ref: FullBackend())
+	full_th, full_ah = generate_track_hashes("content://tree/document/full.mp3", chunk_size=4096)
+	full_smart = generate_smart_hash("content://tree/document/full.mp3", chunk_size=4096)
+
+	monkeypatch.setattr("app.domain.library.hasher.get_storage_backend", lambda _ref: PartialBackend())
+	part_th, part_ah = generate_track_hashes("content://tree/document/full.mp3", chunk_size=4096)
+	part_smart = generate_smart_hash("content://tree/document/full.mp3", chunk_size=4096)
+
+	assert part_th == full_th == full_smart == part_smart
+	assert part_ah == full_ah
+
+
+def test_audio_hash_returns_none_for_mp4_video_containers_to_avoid_false_dedup(tmp_path: Path) -> None:
+	"""Contenedores MP4/video devuelven audio_hash=None para no confundir video con audio puro."""
+	import struct
+
+	from app.domain.library.hasher import generate_audio_hash
+
+	def box(tag: bytes, payload: bytes) -> bytes:
+		return struct.pack(">I4s", 8 + len(payload), tag) + payload
+
+	mp4_a = tmp_path / "video_a.mp4"
+	mp4_b = tmp_path / "video_b.mp4"
+	m4a_with_vide = tmp_path / "video_disfrazado.m4a"
+	moov_with_vide = box(b"moov", box(b"trak", box(b"mdia", box(b"hdlr", b"\x00" * 8 + b"vide" + b"\x00" * 8))))
+
+	mp4_a.write_bytes(box(b"ftyp", b"isom") + moov_with_vide + box(b"mdat", b"\xaa" * 4096))
+	mp4_b.write_bytes(box(b"ftyp", b"isom") + moov_with_vide + box(b"mdat", b"\xbb" * 4096))
+	m4a_with_vide.write_bytes(box(b"ftyp", b"M4A ") + moov_with_vide + box(b"mdat", b"\xaa" * 4096))
+
+	assert generate_audio_hash(mp4_a) is None
+	assert generate_audio_hash(mp4_b) is None
+	assert generate_audio_hash(m4a_with_vide) is None

@@ -18,6 +18,7 @@ from typing import Any, Self
 from fastapi import APIRouter, Query, Request, Response
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from mutagen import File as MutagenFile
+from starlette.background import BackgroundTask
 
 from app.core.container import get_container
 from app.infrastructure.db.repositories import CoverThumbRepository
@@ -387,15 +388,34 @@ def _build_saf_stream_response(
 		return Response(status_code=403)
 	except FileNotFoundError:
 		return Response(status_code=404)
+	except OSError:
+		return Response(status_code=500)
+
+	closed = False
+	close_lock = threading.Lock()
+
+	def _close_stream_once() -> None:
+		nonlocal closed
+		with close_lock:
+			if closed:
+				return
+			closed = True
+		try:
+			stream.close()
+		except Exception:
+			pass
 
 	is_seekable = bool(stream.seekable())
-	if file_size is None and is_seekable:
+	if is_seekable:
 		try:
 			stream.seek(0, os.SEEK_END)
-			file_size = int(stream.tell())
+			real_size = int(stream.tell())
 			stream.seek(0, os.SEEK_SET)
+			if real_size >= 0:
+				file_size = real_size
 		except Exception:
-			file_size = None
+			if file_size is None:
+				file_size = None
 
 	accept_ranges = "bytes" if is_seekable else "none"
 	base_headers = {
@@ -418,13 +438,22 @@ def _build_saf_stream_response(
 						if not chunk:
 							break
 						yield chunk
+				except OSError as exc:
+					logger.warning("Error de lectura I/O en stream SAF desconocido (%s): %s", path, exc)
+					raise RuntimeError(f"Error I/O en stream SAF: {exc}") from exc
 				finally:
-					stream.close()
+					_close_stream_once()
 
-		return StreamingResponse(_iter_unknown(), status_code=200, media_type=media_type, headers=unknown_headers)
+		return StreamingResponse(
+			_iter_unknown(),
+			status_code=200,
+			media_type=media_type,
+			headers=unknown_headers,
+			background=BackgroundTask(_close_stream_once),
+		)
 
 	if file_size == 0:
-		stream.close()
+		_close_stream_once()
 		if range_header:
 			return Response(status_code=416, headers={**base_headers, "Content-Range": "bytes */0"})
 		return Response(
@@ -437,16 +466,16 @@ def _build_saf_stream_response(
 	if range_header:
 		match = re.match(r"^\s*bytes=(\d*)-(\d*)\s*$", range_header.split(",", 1)[0])
 		if not match:
-			stream.close()
+			_close_stream_once()
 			return Response(status_code=416, headers={**base_headers, "Content-Range": f"bytes */{file_size}"})
 		raw_start, raw_end = match.group(1), match.group(2)
 		if raw_start == "" and raw_end == "":
-			stream.close()
+			_close_stream_once()
 			return Response(status_code=416, headers={**base_headers, "Content-Range": f"bytes */{file_size}"})
 		if raw_start == "":
 			suffix_len = int(raw_end)
 			if suffix_len <= 0:
-				stream.close()
+				_close_stream_once()
 				return Response(status_code=416, headers={**base_headers, "Content-Range": f"bytes */{file_size}"})
 			start = max(0, file_size - suffix_len)
 			end = file_size - 1
@@ -454,7 +483,7 @@ def _build_saf_stream_response(
 			start = int(raw_start)
 			end = int(raw_end) if raw_end else file_size - 1
 			if start >= file_size or end < start:
-				stream.close()
+				_close_stream_once()
 				return Response(status_code=416, headers={**base_headers, "Content-Range": f"bytes */{file_size}"})
 			end = min(end, file_size - 1)
 		status_code = 206
@@ -468,13 +497,13 @@ def _build_saf_stream_response(
 				while to_skip > 0:
 					discarded = stream.read(min(65536, to_skip))
 					if not discarded:
-						stream.close()
+						_close_stream_once()
 						return Response(
 							status_code=416, headers={**base_headers, "Content-Range": f"bytes */{file_size}"}
 						)
 					to_skip -= len(discarded)
 		except Exception:
-			stream.close()
+			_close_stream_once()
 			return Response(status_code=416, headers={**base_headers, "Content-Range": f"bytes */{file_size}"})
 
 	content_length = end - start + 1
@@ -492,17 +521,27 @@ def _build_saf_stream_response(
 				while remaining > 0:
 					chunk = stream.read(min(65536, remaining))
 					if not chunk:
-						break
+						logger.warning(
+							"EOF prematuro en stream SAF (%s): faltaron %d de %d bytes",
+							path,
+							remaining,
+							content_length,
+						)
+						raise RuntimeError(f"EOF prematuro en stream SAF: faltaron {remaining} bytes")
 					remaining -= len(chunk)
 					yield chunk
+			except OSError as exc:
+				logger.warning("Error I/O en stream SAF (%s): %s", path, exc)
+				raise RuntimeError(f"Error I/O en stream SAF: {exc}") from exc
 			finally:
-				stream.close()
+				_close_stream_once()
 
 	return StreamingResponse(
 		_iter_chunks(),
 		status_code=status_code,
 		media_type=media_type,
 		headers=headers,
+		background=BackgroundTask(_close_stream_once),
 	)
 
 

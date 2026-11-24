@@ -487,4 +487,112 @@ class AndroidStorageBridgeTest {
         }
         assertTrue(browser.activeScanSessionCount() <= 4)
     }
+
+    @Test
+    fun `cancelacion concurrente espera fin de batch y expiracion determinista limpia sesiones vencidas`() {
+        val treeUri = "content://com.android.externalstorage.documents/tree/primary%3AMusic"
+        val rootDocId = "primary:Music"
+        val subDocId = "primary:Music/Sub"
+        val enteredList = java.util.concurrent.CountDownLatch(1)
+        val allowListReturn = java.util.concurrent.CountDownLatch(1)
+        var nowMs = 1_000_000L
+
+        val slowProvider = object : SafTreeProvider {
+            override fun isTreeUri(raw: String): Boolean = raw == treeUri
+            override fun hasPersistedReadPermission(treeUri: String): Boolean = true
+            override fun queryRootInfo(treeUri: String): SafDocumentEntry =
+                SafDocumentEntry(rootDocId, "Music", SafTreeBrowser.MIME_TYPE_DIR, 0L, 100L, treeUri)
+            override fun listChildren(treeUri: String, parentDocumentId: String): List<SafDocumentEntry> {
+                if (parentDocumentId == rootDocId) {
+                    enteredList.countDown()
+                    allowListReturn.await(2, java.util.concurrent.TimeUnit.SECONDS)
+                    return listOf(
+                        SafDocumentEntry(subDocId, "Sub", SafTreeBrowser.MIME_TYPE_DIR, 0L, 100L, "$treeUri/sub"),
+                        SafDocumentEntry("s1", "a.mp3", "audio/mpeg", 10L, 100L, "$treeUri/document/a.mp3"),
+                    )
+                }
+                return emptyList()
+            }
+            override fun readDocumentText(docUri: String): String? = null
+        }
+
+        val browser = SafTreeBrowser(
+            provider = slowProvider,
+            clockMs = { nowMs },
+            sessionTtlMs = 60_000L,
+            maxScanSessions = 4,
+        )
+        val s1 = browser.startScanSession(treeUri)
+        val batchResult = java.util.concurrent.atomic.AtomicReference<SafScanBatch>()
+        val worker = Thread {
+            batchResult.set(browser.nextScanBatch(s1, batchSize = 50))
+        }.apply { start() }
+
+        assertTrue(enteredList.await(2, java.util.concurrent.TimeUnit.SECONDS))
+        // Cancelar mientras el hilo procesa el batch no borra ni corrompe la sesión antes de salir
+        browser.cancelScanSession(s1)
+        assertEquals(1, browser.activeScanSessionCount())
+
+        allowListReturn.countDown()
+        worker.join(2000L)
+        assertEquals(false, batchResult.get().hasMore)
+        assertEquals(0, browser.activeScanSessionCount())
+
+        // Expiración determinista con reloj inyectado
+        nowMs += 1_000L
+        browser.startScanSession(treeUri)
+        assertEquals(1, browser.activeScanSessionCount())
+        nowMs += 65_000L
+        browser.startScanSession(treeUri)
+        // La expirada fue podada antes de crear la nueva -> sigue habiendo 1 sola sesión activa
+        assertEquals(1, browser.activeScanSessionCount())
+    }
+
+    @Test
+    fun `multiples bibliotecas SAF conviven en caches sin pisarse al escanear ni buscar letras`() {
+        val treeA = "content://com.android.externalstorage.documents/tree/primary%3AMusicA"
+        val treeB = "content://com.android.externalstorage.documents/tree/ABCD-1234%3AMusicB"
+        val docA = "$treeA/document/primary%3AMusicA%2Funo.mp3"
+        val lrcA = "$treeA/document/primary%3AMusicA%2Funo.lrc"
+        val docB = "$treeB/document/ABCD-1234%3AMusicB%2Fdos.mp3"
+        val lrcB = "$treeB/document/ABCD-1234%3AMusicB%2Fdos.lrc"
+
+        val baseProvider = FakeSafProvider(
+            validTreeUris = setOf(treeA, treeB),
+            persistedTrees = setOf(treeA, treeB),
+            roots = mapOf(
+                treeA to SafDocumentEntry("primary:MusicA", "MusicA", SafTreeBrowser.MIME_TYPE_DIR, 0L, 100L, treeA),
+                treeB to SafDocumentEntry("ABCD-1234:MusicB", "MusicB", SafTreeBrowser.MIME_TYPE_DIR, 0L, 100L, treeB),
+            ),
+            treeChildren = mapOf(
+                Pair(treeA, "primary:MusicA") to listOf(
+                    SafDocumentEntry("primary:MusicA/uno.mp3", "uno.mp3", "audio/mpeg", 100L, 100L, docA),
+                    SafDocumentEntry("primary:MusicA/uno.lrc", "uno.lrc", "text/plain", 30L, 100L, lrcA),
+                ),
+                Pair(treeB, "ABCD-1234:MusicB") to listOf(
+                    SafDocumentEntry("ABCD-1234:MusicB/dos.mp3", "dos.mp3", "audio/mpeg", 100L, 100L, docB),
+                    SafDocumentEntry("ABCD-1234:MusicB/dos.lrc", "dos.lrc", "text/plain", 30L, 100L, lrcB),
+                ),
+            ),
+            textFiles = mapOf(lrcA to "[00:01]Uno", lrcB to "[00:01]Dos"),
+        )
+        val listCalls = java.util.concurrent.atomic.AtomicInteger(0)
+        val countingProvider = object : SafTreeProvider by baseProvider {
+            override fun listChildren(treeUri: String, parentDocumentId: String): List<SafDocumentEntry> {
+                listCalls.incrementAndGet()
+                return baseProvider.listChildren(treeUri, parentDocumentId)
+            }
+        }
+        val browser = SafTreeBrowser(countingProvider)
+        val sA = browser.startScanSession(treeA)
+        assertEquals(1, browser.nextScanBatch(sA).files.size)
+        val sB = browser.startScanSession(treeB)
+        assertEquals(1, browser.nextScanBatch(sB).files.size)
+        assertEquals(2, listCalls.get())
+
+        // Buscar letras de ambos árboles debe resolverse desde cache sin re-listar ninguno de los dos
+        assertEquals("[00:01]Uno", browser.readSiblingText(docA, listOf(".lrc"))?.content)
+        assertEquals("[00:01]Dos", browser.readSiblingText(docB, listOf(".lrc"))?.content)
+        assertEquals(2, listCalls.get())
+    }
 }

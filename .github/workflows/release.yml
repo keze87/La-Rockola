@@ -153,9 +153,19 @@ jobs:
               run: |
                   python3 scripts/build_android.py --skip-frontend --flavor arm64 --release
 
-            - name: Verify APK 16KB ELF & ZIP alignment
+            - name: Verify APK 16KB ELF, ZIP alignment & SHA-256 checksum
               run: |
                   APK_FILE="$(ls android/app/build/outputs/apk/arm64/release/*.apk | head -n 1)"
+                  SHA_FILE="${APK_FILE}.sha256"
+                  if [ -z "$APK_FILE" ] || [ ! -s "$APK_FILE" ]; then
+                    echo "❌ No se encontró el APK release firmado" >&2
+                    exit 1
+                  fi
+                  if [ ! -s "$SHA_FILE" ]; then
+                    echo "❌ Falta archivo checksum $SHA_FILE" >&2
+                    exit 1
+                  fi
+                  (cd "$(dirname "$APK_FILE")" && sha256sum -c "$(basename "$SHA_FILE")")
                   python3 scripts/verify_android_apk.py "$APK_FILE"
 
             - name: Verify APK v2/v3/v4 signature with apksigner

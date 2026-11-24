@@ -16,23 +16,26 @@ from app.infrastructure.storage import get_saf_name, get_storage_backend, is_saf
 logger = logging.getLogger("RockolaCarpincho")
 
 
+VIDEO_CONTAINER_SUFFIXES = frozenset({".mp4", ".m4v", ".mov", ".mkv", ".avi", ".webm", ".3gp"})
+
+
 def _mp3_audio_bounds(f: BinaryIO, file_size: int) -> tuple[int, int]:
 	"""Calcula el rango de bytes correspondiente al stream MPEG excluyendo tags ID3v2 e ID3v1."""
 	start = 0
 	end = file_size
 	if file_size >= 10:
 		f.seek(0)
-		header = f.read(10)
-		if len(header) == 10 and header[:3] == b"ID3":
+		header = _read_exact(f, 10)
+		if header[:3] == b"ID3":
 			flags = header[5]
 			tag_size = (
 				((header[6] & 0x7F) << 21) | ((header[7] & 0x7F) << 14) | ((header[8] & 0x7F) << 7) | (header[9] & 0x7F)
 			)
-			start = 10 + tag_size + (10 if (flags & 0x10) else 0)
+			start = min(file_size, 10 + tag_size + (10 if (flags & 0x10) else 0))
 
 	if file_size - start >= 128:
 		f.seek(file_size - 128)
-		if f.read(3) == b"TAG":
+		if _read_exact(f, 3) == b"TAG":
 			end = file_size - 128
 
 	return (start, end) if end > start else (0, file_size)
@@ -53,33 +56,55 @@ def _read_exact(f: BinaryIO, length: int) -> bytes:
 	return b"".join(chunks)
 
 
-def _mp4_audio_ranges(f: BinaryIO, file_size: int) -> list[tuple[int, int]]:
-	"""Ubica todos los átomos mdat dentro de contenedores MP4/M4A para ignorar átomos de metadata."""
-	ranges: list[tuple[int, int]] = []
-	offset = 0
-	while offset + 8 <= file_size:
+def _iter_iso_boxes(f: BinaryIO, start: int, limit_end: int) -> list[tuple[bytes, int, int]]:
+	"""Enumera átomos ISO BMFF dentro de [start, limit_end) tolerando lecturas fragmentadas."""
+	boxes: list[tuple[bytes, int, int]] = []
+	offset = start
+	while offset + 8 <= limit_end:
 		f.seek(offset)
-		box = f.read(8)
-		if len(box) < 8:
-			break
+		box = _read_exact(f, 8)
 		size, tag = struct.unpack(">I4s", box)
 		header_size = 8
-		if size == 1 and offset + 16 <= file_size:
-			ext_box = f.read(8)
-			if len(ext_box) < 8:
+		if size == 1:
+			if offset + 16 > limit_end:
 				break
-			size = struct.unpack(">Q", ext_box)[0]
+			size = struct.unpack(">Q", _read_exact(f, 8))[0]
 			header_size = 16
 		elif size == 0:
-			size = file_size - offset
-		if size < header_size:
+			size = limit_end - offset
+		if size < header_size or offset + size > limit_end:
 			break
-		if tag == b"mdat":
-			end = min(file_size, offset + size)
-			start = offset + header_size
-			if end > start:
-				ranges.append((start, end))
+		boxes.append((tag, offset + header_size, offset + size))
 		offset += size
+	return boxes
+
+
+def _moov_has_video_track(f: BinaryIO, moov_start: int, moov_end: int) -> bool:
+	"""Detecta si un átomo moov declara al menos un track con handler 'vide'."""
+	for tag, p_start, p_end in _iter_iso_boxes(f, moov_start, moov_end):
+		if tag == b"trak":
+			for sub_tag, sub_start, sub_end in _iter_iso_boxes(f, p_start, p_end):
+				if sub_tag == b"mdia":
+					for md_tag, md_start, md_end in _iter_iso_boxes(f, sub_start, sub_end):
+						if md_tag == b"hdlr" and (md_end - md_start) >= 12:
+							f.seek(md_start)
+							hdlr_head = _read_exact(f, 12)
+							if hdlr_head[8:12] == b"vide":
+								return True
+	return False
+
+
+def _mp4_audio_ranges(f: BinaryIO, file_size: int) -> list[tuple[int, int]] | None:
+	"""
+	Ubica átomos mdat de un contenedor M4A únicamente si no contiene tracks de video.
+	Si el átomo moov declara un track 'vide', devuelve None para no mezclar audio y video.
+	"""
+	ranges: list[tuple[int, int]] = []
+	for tag, start, end in _iter_iso_boxes(f, 0, file_size):
+		if tag == b"moov" and _moov_has_video_track(f, start, end):
+			return None
+		if tag == b"mdat" and end > start:
+			ranges.append((start, end))
 	return ranges or [(0, file_size)]
 
 
@@ -121,8 +146,18 @@ def _hash_byte_ranges(f: BinaryIO, ranges: list[tuple[int, int]], chunk_size: in
 
 
 def _compute_audio_hash_from_stream(f: BinaryIO, suffix: str, file_size: int, chunk_size: int) -> str | None:
-	"""Calcula audio_hash sobre un stream binario ya abierto, sin reabrir el archivo."""
-	if file_size <= 0 or not f.seekable():
+	"""
+	Calcula `audio_hash` sobre un stream binario seekable ya abierto, sin reabrir el archivo.
+
+	Semántica soportada por formato:
+	- `.flac`: firma MD5 nativa del stream de audio FLAC (`flac:<md5>`).
+	- `.mp3`: stream MPEG excluyendo cabeceras ID3v2 e ID3v1.
+	- `.m4a`: payloads de átomos `mdat` únicamente si el contenedor no declara tracks de video (`vide`).
+	- Contenedores de video (`.mp4`, `.m4v`, `.mov`, `.mkv`, `.avi`, `.webm`, `.3gp`) o `.m4a` con video:
+	  devuelven `None` explícitamente porque no garantizan identidad exclusiva de audio sin demux completo.
+	- Otros formatos de solo audio (`.ogg`, `.opus`, `.wav`, `.aac`, `.wma`, etc.): bytes completos del stream.
+	"""
+	if file_size <= 0 or not f.seekable() or suffix in VIDEO_CONTAINER_SUFFIXES:
 		return None
 
 	if suffix == ".flac":
@@ -140,8 +175,11 @@ def _compute_audio_hash_from_stream(f: BinaryIO, suffix: str, file_size: int, ch
 	try:
 		if suffix == ".mp3":
 			ranges = [_mp3_audio_bounds(f, file_size)]
-		elif suffix in (".m4a", ".mp4"):
-			ranges = _mp4_audio_ranges(f, file_size)
+		elif suffix == ".m4a":
+			maybe_ranges = _mp4_audio_ranges(f, file_size)
+			if maybe_ranges is None:
+				return None
+			ranges = maybe_ranges
 		else:
 			ranges = [(0, file_size)]
 		return _hash_byte_ranges(f, ranges, chunk_size)
@@ -150,17 +188,25 @@ def _compute_audio_hash_from_stream(f: BinaryIO, suffix: str, file_size: int, ch
 
 
 def _compute_smart_hash_from_stream(f: BinaryIO, file_size: int, chunk_size: int) -> str:
-	"""Calcula el smart-hash (15% y 85% del archivo) sobre un stream binario ya abierto."""
+	"""
+	Calcula el smart-hash (15% y 85% del archivo) sobre un stream seekable tolerando lecturas parciales.
+	"""
+	if file_size <= 0 or not f.seekable():
+		raise ValueError(f"Stream inválido o tamaño nulo para smart-hash ({file_size})")
+
 	if file_size < chunk_size * 3:
-		f.seek(file_size // 2)
-		data = f.read(file_size // 4)
+		pos = file_size // 2
+		f.seek(pos)
+		data = _read_exact(f, min(file_size // 4, max(0, file_size - pos)))
 		return hashlib.md5(data).hexdigest()
 
-	f.seek(int(file_size * 0.15))
-	chunk1 = f.read(chunk_size)
+	pos1 = int(file_size * 0.15)
+	f.seek(pos1)
+	chunk1 = _read_exact(f, min(chunk_size, max(0, file_size - pos1)))
 
-	f.seek(int(file_size * 0.85))
-	chunk2 = f.read(chunk_size)
+	pos2 = int(file_size * 0.85)
+	f.seek(pos2)
+	chunk2 = _read_exact(f, min(chunk_size, max(0, file_size - pos2)))
 
 	hasher = hashlib.md5()
 	hasher.update(chunk1)
@@ -209,8 +255,8 @@ def generate_track_hashes(
 def generate_audio_hash(filepath: str | Path, chunk_size: int = 1024 * 1024) -> str | None:
 	"""
 	Genera un hash basado únicamente en el stream de audio, inmune a cambios de metadata.
-	Soporta MD5 nativo de FLAC, salto de ID3 en MP3 y átomos mdat en MP4/M4A.
-	Devuelve `None` si no se pudo calcular de forma confiable.
+	Soporta MD5 nativo de FLAC, salto de ID3 en MP3 y átomos mdat en M4A sin video; devuelve `None`
+	en contenedores de video o streams no seekables / con lectura incompleta.
 	"""
 	_, audio_hash = generate_track_hashes(filepath, chunk_size=chunk_size)
 	return audio_hash
