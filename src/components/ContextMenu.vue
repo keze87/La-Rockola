@@ -283,6 +283,20 @@
 		showToast('Pasando al siguiente tema...', 'info');
 		haptic();
 	}
+
+	let handleTouchStartY = 0;
+
+	function onHandleTouchStart(e: TouchEvent) {
+		handleTouchStartY = e.touches[0]?.clientY ?? 0;
+	}
+
+	function onHandleTouchEnd(e: TouchEvent) {
+		const endY = e.changedTouches[0]?.clientY ?? 0;
+		if (endY - handleTouchStartY > 36) {
+			closeCtxMenu();
+			haptic();
+		}
+	}
 </script>
 
 <template>
@@ -304,7 +318,16 @@
 			@keydown="ctxMenuKeydown"
 			@pointerdown="keyboardNav = false"
 		>
-			<div class="bg-carpincho-border mx-auto mt-2.5 mb-1 h-1 w-10 rounded-full sm:hidden" aria-hidden="true" />
+			<button
+				type="button"
+				aria-label="Cerrar menú contextual"
+				class="tap-feedback flex w-full cursor-pointer items-center justify-center pt-2.5 pb-1.5 sm:hidden"
+				@click="closeCtxMenu"
+				@touchstart.passive="onHandleTouchStart"
+				@touchend="onHandleTouchEnd"
+			>
+				<span class="bg-carpincho-border h-1 w-10 rounded-full" aria-hidden="true" />
+			</button>
 			<div id="ctx-menu-title" class="ctx-menu-header truncate">
 				🦦 {{ ctxMenu.track?.title || ctxMenu.track?.display_title }}
 			</div>

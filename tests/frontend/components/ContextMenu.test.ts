@@ -393,4 +393,23 @@ describe('ContextMenu.vue', () => {
 		await backdrop.trigger('click');
 		expect(ctxMenu.visible).toBe(false);
 	});
+
+	it('closes context menu when clicking or swiping down on the top grabber bar', async () => {
+		ctxMenu.visible = true;
+		ctxMenu.track = sampleTrack;
+
+		const wrapper = mount(ContextMenu);
+		const handleBtn = wrapper.find('button[aria-label="Cerrar menú contextual"]');
+		expect(handleBtn.exists()).toBe(true);
+
+		await handleBtn.trigger('click');
+		expect(ctxMenu.visible).toBe(false);
+
+		ctxMenu.visible = true;
+		await wrapper.vm.$nextTick();
+
+		await handleBtn.trigger('touchstart', { touches: [{ clientY: 100 }] });
+		await handleBtn.trigger('touchend', { changedTouches: [{ clientY: 165 }] });
+		expect(ctxMenu.visible).toBe(false);
+	});
 });
