@@ -781,7 +781,7 @@
 		</nav>
 
 		<!-- AVISO RÁPIDO ANDROID / HEADLESS -->
-		<div class="headbar-banners mt-[var(--headbar-h)] flex w-full shrink-0 flex-col">
+		<div class="headbar-banners fixed top-[var(--headbar-h)] right-0 left-0 z-[38] flex w-full flex-col">
 			<div
 				v-if="isNativeAndroidHost() && isHostMode && androidBootStage === 'extracting_assets'"
 				role="status"

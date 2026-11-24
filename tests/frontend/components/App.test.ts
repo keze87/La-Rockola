@@ -809,7 +809,8 @@ Dialogue: 0,0:00:20.00,0:00:24.00,Default,,0,0,0,,{\\kf100}Verso {\\kf100}tres
 
 		const bannersContainer = wrapper.find('.headbar-banners');
 		expect(bannersContainer.exists()).toBe(true);
-		expect(bannersContainer.classes()).toContain('mt-[var(--headbar-h)]');
+		expect(bannersContainer.classes()).toContain('fixed');
+		expect(bannersContainer.classes()).toContain('top-[var(--headbar-h)]');
 		wrapper.unmount();
 	});
 });
