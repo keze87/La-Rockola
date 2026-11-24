@@ -125,6 +125,7 @@ class RockolaForegroundService : Service() {
         private const val DEFAULT_PORT = 1729
         private const val STOP_JOIN_TIMEOUT_MS = 4000L
         private const val WAKELOCK_TIMEOUT_MS = 4 * 60 * 60 * 1000L
+        private const val DEMOTE_DEBOUNCE_MS = 8000L
 
         @Volatile
         var hostState: HostServerState = HostServerState.STOPPED
@@ -285,6 +286,28 @@ class RockolaForegroundService : Service() {
     @Volatile
     private var currentForegroundType: Int = 0
 
+    private var pendingDemoteRunnable: Runnable? = null
+
+    private fun cancelPendingDemote() {
+        pendingDemoteRunnable?.let { mainHandler.removeCallbacks(it) }
+        pendingDemoteRunnable = null
+    }
+
+    private fun scheduleDemoteFromForeground(keepDismissibleNotification: Boolean) {
+        cancelPendingDemote()
+        if (keepDismissibleNotification && notificationManager.hasActiveTrack) {
+            notificationManager.notifyCurrentState()
+        }
+        val runnable = Runnable {
+            pendingDemoteRunnable = null
+            if (!isMediaPlaying) {
+                demoteFromForeground(keepDismissibleNotification = keepDismissibleNotification)
+            }
+        }
+        pendingDemoteRunnable = runnable
+        mainHandler.postDelayed(runnable, DEMOTE_DEBOUNCE_MS)
+    }
+
     private lateinit var hostCoordinator: HostLifecycleCoordinator
     private lateinit var commandClient: MediaCommandClient
     private lateinit var pythonHost: EmbeddedPythonHost
@@ -379,10 +402,11 @@ class RockolaForegroundService : Service() {
                 isMediaPlaying = isActivelyPlaying
                 onPipStateNeedsRefresh?.invoke()
                 if (isActivelyPlaying) {
+                    cancelPendingDemote()
                     acquireLocks()
                     promoteToForeground("Reproduciendo")
                 } else {
-                    demoteFromForeground(keepDismissibleNotification = notificationManager.hasActiveTrack)
+                    scheduleDemoteFromForeground(keepDismissibleNotification = notificationManager.hasActiveTrack)
                 }
             },
             onMediaNotification = { title, artist, paused, coverUrl, trackPath, durationMs, positionMs, isFavorite, isPauseAfter, album ->
@@ -538,12 +562,11 @@ class RockolaForegroundService : Service() {
         notificationManager.updatePosition(durationMs, positionMs, paused)
         onPipStateNeedsRefresh?.invoke()
         if (active) {
+            cancelPendingDemote()
             acquireLocks()
-            if (!isInForeground) {
-                promoteToForeground("Reproduciendo")
-            }
+            promoteToForeground("Reproduciendo")
         } else {
-            demoteFromForeground(keepDismissibleNotification = notificationManager.hasActiveTrack)
+            scheduleDemoteFromForeground(keepDismissibleNotification = notificationManager.hasActiveTrack)
         }
     }
 
@@ -583,13 +606,16 @@ class RockolaForegroundService : Service() {
         }
         onPipStateNeedsRefresh?.invoke()
         if (active) {
+            cancelPendingDemote()
             acquireLocks()
             promoteToForeground(artist)
         } else if (hasTrack && canNotify) {
-            // En pausa soltamos locks y foreground dejando notificación descartable
-            demoteFromForeground(keepDismissibleNotification = true)
-        } else {
+            // En pausa soltamos locks y foreground tras breve margen para no romper transiciones entre pistas
+            scheduleDemoteFromForeground(keepDismissibleNotification = true)
+        } else if (!canNotify) {
             demoteFromForeground(keepDismissibleNotification = false)
+        } else {
+            scheduleDemoteFromForeground(keepDismissibleNotification = false)
         }
     }
 
@@ -713,6 +739,7 @@ class RockolaForegroundService : Service() {
             isUiVisible,
         ),
     ) {
+        cancelPendingDemote()
         if (isInForeground && (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || currentForegroundType == serviceType)) {
             notificationManager.notifyCurrentState()
             return
@@ -735,6 +762,7 @@ class RockolaForegroundService : Service() {
     }
 
     private fun demoteFromForeground(keepDismissibleNotification: Boolean, forceStop: Boolean = false) {
+        cancelPendingDemote()
         releaseLocks()
         val shouldStopFg = ServicePowerPolicy.shouldStopForeground(
             isHostRunning = isRunning,
