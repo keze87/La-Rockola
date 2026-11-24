@@ -37,10 +37,11 @@ internal object ServicePowerPolicy {
     fun shouldStopForeground(
         keepDismissibleNotification: Boolean,
         isHostRunning: Boolean,
+        hasRemoteClients: Boolean = false,
         forceStop: Boolean = false,
     ): Boolean {
-        if (forceStop) return true
-        return !isHostRunning
+        if (forceStop || !isHostRunning) return true
+        return !hasRemoteClients
     }
 
     fun foregroundServiceType(isMediaPlaying: Boolean, hasRemoteClients: Boolean): Int {
@@ -79,10 +80,10 @@ class RockolaForegroundService : Service() {
         const val PREFS_NAME = "rockola_android_prefs"
         const val KEY_MUSIC_DIR = "music_dir"
         const val KEY_PORT = "port"
+        const val KEY_TARGET_MODE = "target_mode"
 
         const val ACTION_START = "ar.carpincho.rockola.ACTION_START"
         const val ACTION_STOP = "ar.carpincho.rockola.ACTION_STOP"
-        const val ACTION_SET_MEDIA_TARGET = "ar.carpincho.rockola.ACTION_SET_MEDIA_TARGET"
         const val ACTION_MEDIA_PREV = "ar.carpincho.rockola.ACTION_MEDIA_PREV"
         const val ACTION_MEDIA_PLAY_PAUSE = "ar.carpincho.rockola.ACTION_MEDIA_PLAY_PAUSE"
         const val ACTION_MEDIA_NEXT = "ar.carpincho.rockola.ACTION_MEDIA_NEXT"
@@ -96,7 +97,6 @@ class RockolaForegroundService : Service() {
         }
         const val ACTION_MEDIA_PAUSE_AFTER = "ar.carpincho.rockola.ACTION_MEDIA_PAUSE_AFTER"
         const val ACTION_UPDATE_MEDIA = "ar.carpincho.rockola.ACTION_UPDATE_MEDIA"
-        const val ACTION_UPDATE_POSITION = "ar.carpincho.rockola.ACTION_UPDATE_POSITION"
 
         const val CUSTOM_ACTION_FAVORITE = "ar.carpincho.rockola.CUSTOM_FAVORITE"
         const val CUSTOM_ACTION_PAUSE_AFTER = "ar.carpincho.rockola.CUSTOM_PAUSE_AFTER"
@@ -104,12 +104,9 @@ class RockolaForegroundService : Service() {
         const val EXTRA_PORT = "port"
         const val EXTRA_MUSIC_DIR = "music_dir"
         const val EXTRA_STARTED_AS_FOREGROUND = "started_as_foreground"
-        const val EXTRA_TARGET_MODE = "target_mode"
-        const val EXTRA_TARGET_ORIGIN = "target_origin"
-        const val EXTRA_TARGET_AUTH = "target_auth"
-        const val EXTRA_TARGET_GENERATION = "target_generation"
         const val EXTRA_TITLE = "media_title"
         const val EXTRA_ARTIST = "media_artist"
+        const val EXTRA_ALBUM = "media_album"
         const val EXTRA_PAUSED = "media_paused"
         const val EXTRA_COVER_URL = "media_cover_url"
         const val EXTRA_TRACK_PATH = "media_track_path"
@@ -184,6 +181,61 @@ class RockolaForegroundService : Service() {
         @Volatile
         internal var onNativeCommandError: ((cmd: String, code: String, message: String) -> Unit)? = null
 
+        internal fun persistTargetMode(context: Context, mode: MediaTargetMode) {
+            val wire = if (mode == MediaTargetMode.REMOTE) "remote" else "host"
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putString(KEY_TARGET_MODE, wire)
+                .apply()
+        }
+
+        internal fun applyMediaTargetDirect(context: Context, target: MediaTarget) {
+            persistTargetMode(context, target.mode)
+            currentMediaTarget = target
+            val instance = activeInstance ?: return
+            instance.mainHandler.post {
+                instance.applyTargetOnMain(target)
+            }
+        }
+
+        internal fun applyMediaUpdateDirect(
+            title: String,
+            artist: String,
+            album: String?,
+            paused: Boolean,
+            coverUrl: String?,
+            trackPath: String?,
+            durationMs: Long,
+            positionMs: Long,
+            isFavorite: Boolean,
+            isPauseAfter: Boolean,
+        ): Boolean {
+            val instance = activeInstance ?: return false
+            instance.mainHandler.post {
+                instance.applyMediaUpdate(
+                    title = title,
+                    artist = artist,
+                    album = album,
+                    paused = paused,
+                    coverUrl = coverUrl,
+                    trackPath = trackPath,
+                    durationMs = durationMs,
+                    positionMs = positionMs,
+                    isFavorite = isFavorite,
+                    isPauseAfter = isPauseAfter,
+                )
+            }
+            return true
+        }
+
+        internal fun applyPositionUpdateDirect(durationMs: Long, positionMs: Long, paused: Boolean): Boolean {
+            val instance = activeInstance ?: return false
+            instance.mainHandler.post {
+                instance.applyPositionUpdate(durationMs, positionMs, paused)
+            }
+            return true
+        }
+
         internal fun requestStopAndAwait(context: Context, timeoutMs: Long = STOP_JOIN_TIMEOUT_MS): Boolean {
             val instance = activeInstance
             if (instance != null) {
@@ -206,9 +258,8 @@ class RockolaForegroundService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val stopExecutor: ExecutorService = Executors.newSingleThreadExecutor()
-    private val nativeCommandExecutor: ExecutorService = Executors.newFixedThreadPool(2) { runnable ->
-        Thread(runnable, "RockolaNativeCmd").apply { isDaemon = true }
+    private val backgroundExecutor: ExecutorService = Executors.newFixedThreadPool(2) { runnable ->
+        Thread(runnable, "RockolaServiceBg").apply { isDaemon = true }
     }
 
     @Volatile
@@ -266,7 +317,7 @@ class RockolaForegroundService : Service() {
                         }
                     }
                     val payloadJson = MediaCommandClient.serializeCommandJson(cmd, extra)
-                    nativeCommandExecutor.execute {
+                    backgroundExecutor.execute {
                         val status = try {
                             com.chaquo.python.Python.getInstance()
                                 .getModule("app.android_entry")
@@ -314,12 +365,13 @@ class RockolaForegroundService : Service() {
                     demoteFromForeground(keepDismissibleNotification = notificationManager.hasActiveTrack)
                 }
             },
-            onMediaNotification = { title, artist, paused, coverUrl, trackPath, durationMs, positionMs, isFavorite, isPauseAfter ->
+            onMediaNotification = { title, artist, paused, coverUrl, trackPath, durationMs, positionMs, isFavorite, isPauseAfter, album ->
                 // En modo remoto ignoramos metadatos locales para no pisar la sesión del servidor remoto
                 if (currentMediaTarget.mode != MediaTargetMode.HOST) return@AndroidAudioPlayer
                 applyMediaUpdate(
                     title = title,
                     artist = artist,
+                    album = album,
                     paused = paused,
                     coverUrl = coverUrl,
                     trackPath = trackPath,
@@ -338,32 +390,13 @@ class RockolaForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // Cumplimos de inmediato el contrato de startForegroundService antes de procesar demotes
-        val startedAsForeground = intent?.getBooleanExtra(EXTRA_STARTED_AS_FOREGROUND, false) ?: false
-        if (startedAsForeground && !isInForeground) {
-            promoteToForeground("Preparando reproducción...")
-        }
-
         when (intent?.action) {
-            ACTION_STOP -> {
-                stopServerAndService()
+            Intent.ACTION_MEDIA_BUTTON -> {
+                notificationManager.handleMediaButtonIntent(intent)
                 return START_NOT_STICKY
             }
-            ACTION_SET_MEDIA_TARGET -> {
-                val modeStr = intent.getStringExtra(EXTRA_TARGET_MODE) ?: "host"
-                val mode = if (modeStr == "remote") MediaTargetMode.REMOTE else MediaTargetMode.HOST
-                val origin = intent.getStringExtra(EXTRA_TARGET_ORIGIN)
-                    ?: "http://127.0.0.1:$currentPort"
-                val auth = intent.getStringExtra(EXTRA_TARGET_AUTH)
-                val gen = intent.getLongExtra(EXTRA_TARGET_GENERATION, currentMediaTarget.generation)
-                val target = MediaTarget(mode = mode, origin = origin, authHeader = auth, generation = gen)
-                currentMediaTarget = target
-                isMediaPlaying = false
-                isActivelyPlaying = false
-                demoteFromForeground(keepDismissibleNotification = false)
-                commandClient.setTarget(target)
-                notificationManager.setTarget(target, allowNotificationCancel = true)
-                onPipStateNeedsRefresh?.invoke()
+            ACTION_STOP -> {
+                stopServerAndService()
                 return START_NOT_STICKY
             }
             ACTION_MEDIA_PREV -> {
@@ -387,18 +420,16 @@ class RockolaForegroundService : Service() {
                 notificationManager.togglePauseAfter()
                 return START_NOT_STICKY
             }
-            ACTION_UPDATE_POSITION -> {
-                val durationMs = intent.getLongExtra(EXTRA_DURATION_MS, 0L).coerceAtLeast(0L)
-                val positionMs = intent.getLongExtra(EXTRA_POSITION_MS, 0L).coerceAtLeast(0L)
-                val paused = intent.getBooleanExtra(EXTRA_PAUSED, notificationManager.isPaused)
-                applyPositionUpdate(durationMs, positionMs, paused)
-                return START_NOT_STICKY
-            }
             ACTION_UPDATE_MEDIA -> {
+                val startedAsForeground = intent.getBooleanExtra(EXTRA_STARTED_AS_FOREGROUND, false)
+                if (startedAsForeground && !isInForeground) {
+                    promoteToForeground("La Rockola")
+                }
                 val title = intent.getStringExtra(EXTRA_TITLE)?.takeIf { it.isNotBlank() }
                     ?: "La Rockola del Carpincho"
                 val artist = intent.getStringExtra(EXTRA_ARTIST)?.takeIf { it.isNotBlank() }
                     ?: "La Rockola del Carpincho"
+                val album = intent.getStringExtra(EXTRA_ALBUM)?.takeIf { it.isNotBlank() }
                 val paused = intent.getBooleanExtra(EXTRA_PAUSED, true)
                 val coverUrl = intent.getStringExtra(EXTRA_COVER_URL)?.takeIf { it.isNotBlank() }
                 val trackPath = intent.getStringExtra(EXTRA_TRACK_PATH)?.takeIf { it.isNotBlank() }
@@ -410,6 +441,7 @@ class RockolaForegroundService : Service() {
                 applyMediaUpdate(
                     title = title,
                     artist = artist,
+                    album = album,
                     paused = paused,
                     coverUrl = coverUrl,
                     trackPath = trackPath,
@@ -451,16 +483,27 @@ class RockolaForegroundService : Service() {
         }
 
         mainHandler.removeCallbacks(remoteIdleCheckRunnable)
-        if (!isInForeground && (intent?.getBooleanExtra(EXTRA_STARTED_AS_FOREGROUND, false) == true || isMediaPlaying)) {
-            promoteToForeground("La Rockola está lista", ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+        val startedAsForeground = intent?.getBooleanExtra(EXTRA_STARTED_AS_FOREGROUND, false) ?: false
+        if (startedAsForeground && !isInForeground) {
+            promoteToForeground("La Rockola", ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
         }
-        if (!isMediaPlaying) {
-            releaseLocks()
+        if (!isMediaPlaying && !hasConnectedRemoteClients()) {
+            demoteFromForeground(keepDismissibleNotification = notificationManager.hasActiveTrack)
         }
 
         startEmbeddedPythonServer(port, musicDir)
 
         return START_NOT_STICKY
+    }
+
+    private fun applyTargetOnMain(target: MediaTarget) {
+        currentMediaTarget = target
+        isMediaPlaying = false
+        isActivelyPlaying = false
+        demoteFromForeground(keepDismissibleNotification = false)
+        commandClient.setTarget(target)
+        notificationManager.setTarget(target, allowNotificationCancel = true)
+        onPipStateNeedsRefresh?.invoke()
     }
 
     private fun applyPositionUpdate(durationMs: Long, positionMs: Long, paused: Boolean) {
@@ -483,6 +526,7 @@ class RockolaForegroundService : Service() {
     private fun applyMediaUpdate(
         title: String,
         artist: String,
+        album: String? = null,
         paused: Boolean,
         coverUrl: String?,
         trackPath: String?,
@@ -508,6 +552,7 @@ class RockolaForegroundService : Service() {
             isFavorite = isFavorite,
             isPauseAfter = isPauseAfter,
             postNotification = false,
+            album = album,
         )
         if (hasTrack) {
             ShortcutHelper.saveLastTrackTitleAndRefresh(this, title)
@@ -538,13 +583,6 @@ class RockolaForegroundService : Service() {
                     currentServerUrl = endpoint.serverUrl
                 },
                 onReady = {
-                    val endpointUrl = currentServerUrl
-                    if (endpointUrl.isNotBlank()) {
-                        notificationManager.updateServerEndpoint(
-                            serverUrl = endpointUrl,
-                            statusText = "Sonando en $endpointUrl",
-                        )
-                    }
                     onReady()
                 },
             )
@@ -657,7 +695,12 @@ class RockolaForegroundService : Service() {
 
     private fun demoteFromForeground(keepDismissibleNotification: Boolean, forceStop: Boolean = false) {
         releaseLocks()
-        val shouldStopFg = ServicePowerPolicy.shouldStopForeground(keepDismissibleNotification, isRunning, forceStop)
+        val shouldStopFg = ServicePowerPolicy.shouldStopForeground(
+            keepDismissibleNotification = keepDismissibleNotification,
+            isHostRunning = isRunning,
+            hasRemoteClients = hasConnectedRemoteClients(),
+            forceStop = forceStop,
+        )
         if (isInForeground && shouldStopFg) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                 val mode = if (keepDismissibleNotification) STOP_FOREGROUND_DETACH else STOP_FOREGROUND_REMOVE
@@ -761,7 +804,7 @@ class RockolaForegroundService : Service() {
         isActivelyPlaying = false
         isMediaPlaying = false
         demoteFromForeground(keepDismissibleNotification = false, forceStop = true)
-        stopExecutor.execute {
+        backgroundExecutor.execute {
             val clean = hostCoordinator.stop(STOP_JOIN_TIMEOUT_MS)
             syncCoordinatorSnapshot()
             if (clean) {
@@ -787,15 +830,16 @@ class RockolaForegroundService : Service() {
             audioPlayer.release()
         }
         commandClient.shutdown()
-        nativeCommandExecutor.shutdownNow()
         if (hostCoordinator.hasActiveWorker) {
-            stopExecutor.execute {
+            backgroundExecutor.execute {
                 hostCoordinator.stop(STOP_JOIN_TIMEOUT_MS)
                 syncCoordinatorSnapshot()
+                hostCoordinator.shutdown()
             }
-            stopExecutor.shutdown()
+            backgroundExecutor.shutdown()
         } else {
-            stopExecutor.shutdownNow()
+            backgroundExecutor.shutdownNow()
+            hostCoordinator.shutdown()
         }
         syncCoordinatorSnapshot()
         super.onDestroy()

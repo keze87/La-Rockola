@@ -2,7 +2,7 @@
 // Permite arrancar/detener el servidor embebido (Chaquopy + ForegroundService),
 // alternar explícitamente entre modo host local y cliente remoto, y elegir carpetas de música.
 
-import { Capacitor, SystemBars, registerPlugin } from '@capacitor/core';
+import { Capacitor, type PluginListenerHandle, SystemBars, registerPlugin } from '@capacitor/core';
 import { ref, watch } from 'vue';
 import { listenLocally, volume } from '../stores/usePlaybackStore';
 import {
@@ -56,6 +56,7 @@ export interface PickMusicFolderResult {
 export interface MediaNotificationPayload {
 	title: string;
 	artist: string;
+	album?: string | null;
 	paused: boolean;
 	coverUrl?: string | null;
 	trackPath?: string | null;
@@ -110,6 +111,10 @@ export interface RockolaServerPlugin {
 	enterPipMode(): Promise<{ entered: boolean; reason?: string | null }>;
 	getMediaVolume(): Promise<{ level: number; muted: boolean }>;
 	setMediaVolume(options: { level: number }): Promise<{ level: number; muted: boolean }>;
+	addListener?(
+		eventName: string,
+		listenerFunc: (data: Record<string, unknown>) => void
+	): Promise<PluginListenerHandle>;
 }
 
 const RockolaServer = registerPlugin<RockolaServerPlugin>('RockolaServer');
@@ -778,6 +783,89 @@ export function resetAndroidMediaPositionThrottle(): void {
 	lastPausedValue = null;
 }
 
+export interface AndroidNativeEventHandlers {
+	onMediaVolumeChanged?: (level: number, muted: boolean) => void;
+	onNativeCommandError?: (cmd: string, code: string, message: string) => void;
+	onPipModeChanged?: (active: boolean) => void;
+	onImeInsetsChanged?: (bottomCssPx: number) => void;
+	onBackProgress?: (progress: number) => void;
+	onShortcutAction?: (action: string) => void;
+}
+
+export function subscribeAndroidNativeEvents(handlers: AndroidNativeEventHandlers): () => void {
+	if (!isNativeAndroidHost() || typeof RockolaServer.addListener !== 'function') {
+		return () => {};
+	}
+
+	let disposed = false;
+	const handles: PluginListenerHandle[] = [];
+
+	const register = (eventName: string, cb: (data: Record<string, unknown>) => void) => {
+		void RockolaServer.addListener?.(eventName, cb)
+			.then((handle) => {
+				if (disposed) {
+					void handle.remove().catch(() => {});
+				} else {
+					handles.push(handle);
+				}
+			})
+			.catch(() => {
+				// Puente nativo todavía inicializándose
+			});
+	};
+
+	if (handlers.onMediaVolumeChanged) {
+		register('mediaVolumeChanged', (data) => {
+			if (typeof data.level === 'number') {
+				handlers.onMediaVolumeChanged?.(data.level, Boolean(data.muted));
+			}
+		});
+	}
+	if (handlers.onNativeCommandError) {
+		register('nativeCommandError', (data) => {
+			handlers.onNativeCommandError?.(
+				String(data.cmd ?? ''),
+				String(data.code ?? 'NATIVE_ERROR'),
+				String(data.message ?? '')
+			);
+		});
+	}
+	if (handlers.onPipModeChanged) {
+		register('pipModeChanged', (data) => {
+			handlers.onPipModeChanged?.(Boolean(data.active));
+		});
+	}
+	if (handlers.onImeInsetsChanged) {
+		register('imeInsetsChanged', (data) => {
+			if (typeof data.bottomCssPx === 'number') {
+				handlers.onImeInsetsChanged?.(data.bottomCssPx);
+			}
+		});
+	}
+	if (handlers.onBackProgress) {
+		register('backProgress', (data) => {
+			if (typeof data.progress === 'number') {
+				handlers.onBackProgress?.(data.progress);
+			}
+		});
+	}
+	if (handlers.onShortcutAction) {
+		register('shortcutAction', (data) => {
+			if (typeof data.action === 'string' && data.action.trim()) {
+				handlers.onShortcutAction?.(data.action);
+			}
+		});
+	}
+
+	return () => {
+		disposed = true;
+		while (handles.length > 0) {
+			const h = handles.pop();
+			void h?.remove().catch(() => {});
+		}
+	};
+}
+
 export async function syncAndroidMediaNotification(payload: MediaNotificationPayload): Promise<void> {
 	if (!isNativeAndroidHost()) return;
 	const duration = payload.duration ?? 0;
@@ -790,6 +878,7 @@ export async function syncAndroidMediaNotification(payload: MediaNotificationPay
 		await RockolaServer.updateMediaNotification({
 			title: payload.title,
 			artist: payload.artist,
+			...(payload.album !== undefined ? { album: payload.album } : {}),
 			paused: payload.paused,
 			coverUrl: payload.coverUrl ?? null,
 			trackPath: payload.trackPath ?? null,

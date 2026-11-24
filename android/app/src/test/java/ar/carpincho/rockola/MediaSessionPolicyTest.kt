@@ -1,9 +1,7 @@
 package ar.carpincho.rockola
 
 import android.support.v4.media.session.PlaybackStateCompat
-import android.view.KeyEvent
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -25,15 +23,26 @@ class MediaSessionPolicyTest {
     }
 
     @Test
-    fun `detector de doble toque en auricular distingue toque simple de doble toque`() {
-        val detector = HeadsetDoubleTapDetector(doubleTapWindowMs = 350L)
+    fun `formatSubText evita mostrar URL cruda en modo local y extrae host en modo remoto`() {
+        assertEquals(
+            "La Rockola",
+            MediaSessionPolicy.formatSubText(MediaTarget(MediaTargetMode.HOST, "http://192.168.1.40:1729")),
+        )
+        assertEquals(
+            "Remoto · 192.168.1.55",
+            MediaSessionPolicy.formatSubText(MediaTarget(MediaTargetMode.REMOTE, "http://192.168.1.55:1729")),
+        )
+        assertEquals(
+            "Remoto · rockola.local",
+            MediaSessionPolicy.formatSubText(MediaTarget(MediaTargetMode.REMOTE, "https://rockola.local/")),
+        )
+    }
 
-        assertFalse(detector.isDoubleTap(KeyEvent.KEYCODE_HEADSETHOOK, nowMs = 1000L))
-        assertTrue(detector.isDoubleTap(KeyEvent.KEYCODE_HEADSETHOOK, nowMs = 1250L))
-
-        // Tras consumir doble toque, el siguiente vuelve a ser el primero de una nueva secuencia
-        assertFalse(detector.isDoubleTap(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, nowMs = 1350L))
-        // Fuera de la ventana de 350 ms ya no es doble toque
-        assertFalse(detector.isDoubleTap(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, nowMs = 1800L))
+    @Test
+    fun `resolveAlbumName devuelve album real cuando existe o fallback de La Rockola`() {
+        assertEquals("Artaud", MediaSessionPolicy.resolveAlbumName("Artaud"))
+        assertEquals("Artaud", MediaSessionPolicy.resolveAlbumName("  Artaud  "))
+        assertEquals("La Rockola del Carpincho", MediaSessionPolicy.resolveAlbumName(null))
+        assertEquals("La Rockola del Carpincho", MediaSessionPolicy.resolveAlbumName("   "))
     }
 }

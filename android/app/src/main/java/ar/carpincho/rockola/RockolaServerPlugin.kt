@@ -2,15 +2,14 @@ package ar.carpincho.rockola
 
 import android.Manifest
 import android.app.Activity
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
-import android.database.ContentObserver
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import android.provider.Settings
 import android.view.WindowManager
 import androidx.activity.result.ActivityResult
@@ -25,6 +24,7 @@ import com.getcapacitor.annotation.ActivityCallback
 import com.getcapacitor.annotation.CapacitorPlugin
 import org.json.JSONObject
 import java.io.File
+import java.lang.ref.WeakReference
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlin.math.roundToInt
@@ -36,27 +36,45 @@ import kotlin.math.roundToInt
 @CapacitorPlugin(name = "RockolaServer")
 class RockolaServerPlugin : Plugin() {
 
-    private var volumeObserver: ContentObserver? = null
+    companion object {
+        private const val VOLUME_CHANGED_ACTION = "android.media.VOLUME_CHANGED_ACTION"
+
+        @Volatile
+        private var activePluginRef: WeakReference<RockolaServerPlugin>? = null
+
+        fun emitNativeEvent(eventName: String, data: JSObject): Boolean {
+            val plugin = activePluginRef?.get() ?: return false
+            val webView = plugin.bridge?.webView ?: return false
+            webView.post {
+                plugin.notifyListeners(eventName, data)
+            }
+            return true
+        }
+    }
+
+    private var volumeReceiver: BroadcastReceiver? = null
     private var lastNotifiedVolumeState: Pair<Int, Boolean>? = null
     private val pluginExecutor: ExecutorService = Executors.newSingleThreadExecutor()
 
     override fun load() {
         super.load()
+        activePluginRef = WeakReference(this)
         AndroidStorageBridge.initialize(context)
         lastNotifiedVolumeState = readMediaVolumeState()
-        // Settings.System.CONTENT_URI es un best-effort para botones físicos de volumen:
-        // algunos OEMs/versiones (Android 14-16) no siempre emiten cambios por esta URI,
-        // por lo que también re-leemos el volumen en handleOnResume().
-        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
-            override fun onChange(selfChange: Boolean) {
-                notifyMediaVolumeIfChanged()
+
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context?, intent: Intent?) {
+                if (intent?.action == VOLUME_CHANGED_ACTION) {
+                    notifyMediaVolumeIfChanged()
+                }
             }
         }
-        volumeObserver = observer
-        context.contentResolver.registerContentObserver(
-            Settings.System.CONTENT_URI,
-            true,
-            observer,
+        volumeReceiver = receiver
+        ContextCompat.registerReceiver(
+            context,
+            receiver,
+            IntentFilter(VOLUME_CHANGED_ACTION),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
         )
 
         RockolaForegroundService.onPipStateNeedsRefresh = {
@@ -66,15 +84,14 @@ class RockolaServerPlugin : Plugin() {
         }
 
         RockolaForegroundService.onNativeCommandError = { cmd, code, message ->
-            val cmdJson = JSONObject.quote(cmd)
-            val codeJson = JSONObject.quote(code)
-            val msgJson = JSONObject.quote(message)
-            bridge?.webView?.post {
-                bridge?.webView?.evaluateJavascript(
-                    "window.__rockolaOnNativeCommandError && window.__rockolaOnNativeCommandError($cmdJson, $codeJson, $msgJson)",
-                    null,
-                )
-            }
+            emitNativeEvent(
+                "nativeCommandError",
+                JSObject().apply {
+                    put("cmd", cmd)
+                    put("code", code)
+                    put("message", message)
+                },
+            )
         }
     }
 
@@ -84,15 +101,18 @@ class RockolaServerPlugin : Plugin() {
     }
 
     override fun handleOnDestroy() {
+        if (activePluginRef?.get() === this) {
+            activePluginRef = null
+        }
         RockolaForegroundService.onPipStateNeedsRefresh = null
         RockolaForegroundService.onNativeCommandError = null
-        volumeObserver?.let {
+        volumeReceiver?.let {
             try {
-                context.contentResolver.unregisterContentObserver(it)
+                context.unregisterReceiver(it)
             } catch (_: Exception) {
             }
         }
-        volumeObserver = null
+        volumeReceiver = null
         pluginExecutor.shutdownNow()
         super.handleOnDestroy()
     }
@@ -102,12 +122,13 @@ class RockolaServerPlugin : Plugin() {
         if (current == lastNotifiedVolumeState) return
         lastNotifiedVolumeState = current
         val (percent, muted) = current
-        bridge?.webView?.post {
-            bridge?.webView?.evaluateJavascript(
-                "window.__rockolaOnMediaVolumeChanged && window.__rockolaOnMediaVolumeChanged($percent, $muted)",
-                null,
-            )
-        }
+        emitNativeEvent(
+            "mediaVolumeChanged",
+            JSObject().apply {
+                put("level", percent)
+                put("muted", muted)
+            },
+        )
     }
 
     private fun readMediaVolumeState(): Pair<Int, Boolean> {
@@ -146,14 +167,6 @@ class RockolaServerPlugin : Plugin() {
         }
     }
 
-    private fun hasStorageAccess(): Boolean {
-        val configured = resolveConfiguredMusicDir()
-        if (!configured.isNullOrEmpty() && configured.startsWith("content://")) {
-            return AndroidStorageBridge.validateTreeUri(context, configured).status == SafFolderStatus.OK
-        }
-        return false
-    }
-
     private fun buildStatusObject(): JSObject {
         val prefs = context.getSharedPreferences(RockolaForegroundService.PREFS_NAME, Context.MODE_PRIVATE)
         val port = RockolaForegroundService.currentPort
@@ -173,15 +186,32 @@ class RockolaServerPlugin : Plugin() {
         }
     }
 
-    private fun safeStartService(intent: Intent, foreground: Boolean = false): String? {
+    private fun safeStartService(
+        intent: Intent,
+        foreground: Boolean = false,
+        allowForegroundFallback: Boolean = false,
+    ): String? {
         return try {
             if (foreground) {
+                intent.putExtra(RockolaForegroundService.EXTRA_STARTED_AS_FOREGROUND, true)
                 ContextCompat.startForegroundService(context, intent)
             } else {
                 context.startService(intent)
             }
             null
         } catch (e: IllegalStateException) {
+            if (!foreground && allowForegroundFallback) {
+                return try {
+                    intent.putExtra(RockolaForegroundService.EXTRA_STARTED_AS_FOREGROUND, true)
+                    ContextCompat.startForegroundService(context, intent)
+                    null
+                } catch (fallbackErr: IllegalStateException) {
+                    fallbackErr.message?.takeIf { it.isNotBlank() }
+                        ?: "Android bloqueó el inicio del servicio en segundo plano. Volvé a abrir la app."
+                } catch (fallbackErr: SecurityException) {
+                    fallbackErr.message?.takeIf { it.isNotBlank() } ?: "Sin permiso para iniciar el servicio."
+                }
+            }
             // Incluye ForegroundServiceStartNotAllowedException en Android 12+ cuando la app está en segundo plano
             e.message?.takeIf { it.isNotBlank() }
                 ?: "Android bloqueó el inicio del servicio en segundo plano. Volvé a abrir la app."
@@ -221,12 +251,11 @@ class RockolaServerPlugin : Plugin() {
         val intent = Intent(context, RockolaForegroundService::class.java).apply {
             action = RockolaForegroundService.ACTION_START
             putExtra(RockolaForegroundService.EXTRA_PORT, port)
-            putExtra(RockolaForegroundService.EXTRA_STARTED_AS_FOREGROUND, true)
             if (!musicDir.isNullOrBlank()) {
                 putExtra(RockolaForegroundService.EXTRA_MUSIC_DIR, musicDir)
             }
         }
-        val err = safeStartService(intent, foreground = true)
+        val err = safeStartService(intent, foreground = false, allowForegroundFallback = true)
         if (err != null) {
             call.reject(err, "SERVICE_START_NOT_ALLOWED")
             return
@@ -344,72 +373,71 @@ class RockolaServerPlugin : Plugin() {
         val generation = call.getInt("generation")?.toLong() ?: 0L
 
         val mode = if (modeStr == "remote") MediaTargetMode.REMOTE else MediaTargetMode.HOST
-        RockolaForegroundService.currentMediaTarget = MediaTarget(
+        val target = MediaTarget(
             mode = mode,
             origin = origin,
             authHeader = authHeader,
             generation = generation,
         )
-
-        val intent = Intent(context, RockolaForegroundService::class.java).apply {
-            action = RockolaForegroundService.ACTION_SET_MEDIA_TARGET
-            putExtra(RockolaForegroundService.EXTRA_TARGET_MODE, modeStr)
-            putExtra(RockolaForegroundService.EXTRA_TARGET_ORIGIN, origin)
-            putExtra(RockolaForegroundService.EXTRA_TARGET_GENERATION, generation)
-            if (!authHeader.isNullOrBlank()) {
-                putExtra(RockolaForegroundService.EXTRA_TARGET_AUTH, authHeader)
-            }
-        }
-        val err = safeStartService(intent)
-        if (err != null) {
-            call.reject(err, "SERVICE_START_NOT_ALLOWED")
-            return
-        }
+        RockolaForegroundService.applyMediaTargetDirect(context, target)
         call.resolve(JSObject().apply { put("updated", true) })
     }
 
     @PluginMethod
     fun updateMediaNotification(call: PluginCall) {
         val isRemote = RockolaForegroundService.currentMediaTarget.mode == MediaTargetMode.REMOTE
+        if (!isRemote && RockolaForegroundService.isRunning) {
+            // En modo HOST la única fuente de verdad es Python/ExoPlayer
+            call.resolve(JSObject().apply { put("updated", false) })
+            return
+        }
         if (!RockolaForegroundService.isRunning && !isRemote) {
             call.resolve(JSObject().apply { put("updated", false) })
             return
         }
         val title = call.getString("title") ?: "La Rockola del Carpincho"
         val artist = call.getString("artist") ?: "La Rockola del Carpincho"
+        val album = call.getString("album")?.takeIf { it.isNotBlank() }
         val paused = call.getBoolean("paused") ?: true
         val coverUrl = call.getString("coverUrl")
         val trackPath = call.getString("trackPath")
-        val durationSec = call.getDouble("duration") ?: 0.0
-        val positionSec = call.getDouble("position") ?: 0.0
+        val durationMs = ((call.getDouble("duration") ?: 0.0) * 1000.0).toLong().coerceAtLeast(0L)
+        val positionMs = ((call.getDouble("position") ?: 0.0) * 1000.0).toLong().coerceAtLeast(0L)
         val isFavorite = call.getBoolean("isFavorite") ?: false
         val isPauseAfter = call.getBoolean("isPauseAfter") ?: false
 
-        val intent = Intent(context, RockolaForegroundService::class.java).apply {
-            action = RockolaForegroundService.ACTION_UPDATE_MEDIA
-            putExtra(RockolaForegroundService.EXTRA_TITLE, title)
-            putExtra(RockolaForegroundService.EXTRA_ARTIST, artist)
-            putExtra(RockolaForegroundService.EXTRA_PAUSED, paused)
-            putExtra(RockolaForegroundService.EXTRA_DURATION_MS, (durationSec * 1000.0).toLong().coerceAtLeast(0L))
-            putExtra(RockolaForegroundService.EXTRA_POSITION_MS, (positionSec * 1000.0).toLong().coerceAtLeast(0L))
-            putExtra(RockolaForegroundService.EXTRA_IS_FAVORITE, isFavorite)
-            putExtra(RockolaForegroundService.EXTRA_IS_PAUSE_AFTER, isPauseAfter)
-            if (!coverUrl.isNullOrBlank()) {
-                putExtra(RockolaForegroundService.EXTRA_COVER_URL, coverUrl)
-            }
-            if (!trackPath.isNullOrBlank()) {
+        val handledDirectly = RockolaForegroundService.applyMediaUpdateDirect(
+            title = title,
+            artist = artist,
+            album = album,
+            paused = paused,
+            coverUrl = coverUrl,
+            trackPath = trackPath,
+            durationMs = durationMs,
+            positionMs = positionMs,
+            isFavorite = isFavorite,
+            isPauseAfter = isPauseAfter,
+        )
+        if (!handledDirectly && isRemote && !paused && !trackPath.isNullOrBlank()) {
+            val intent = Intent(context, RockolaForegroundService::class.java).apply {
+                action = RockolaForegroundService.ACTION_UPDATE_MEDIA
+                putExtra(RockolaForegroundService.EXTRA_STARTED_AS_FOREGROUND, true)
+                putExtra(RockolaForegroundService.EXTRA_TITLE, title)
+                putExtra(RockolaForegroundService.EXTRA_ARTIST, artist)
+                putExtra(RockolaForegroundService.EXTRA_PAUSED, paused)
+                putExtra(RockolaForegroundService.EXTRA_DURATION_MS, durationMs)
+                putExtra(RockolaForegroundService.EXTRA_POSITION_MS, positionMs)
+                putExtra(RockolaForegroundService.EXTRA_IS_FAVORITE, isFavorite)
+                putExtra(RockolaForegroundService.EXTRA_IS_PAUSE_AFTER, isPauseAfter)
+                if (album != null) putExtra(RockolaForegroundService.EXTRA_ALBUM, album)
+                if (!coverUrl.isNullOrBlank()) putExtra(RockolaForegroundService.EXTRA_COVER_URL, coverUrl)
                 putExtra(RockolaForegroundService.EXTRA_TRACK_PATH, trackPath)
             }
-        }
-        val startErr = if (!paused && !trackPath.isNullOrBlank()) {
-            intent.putExtra(RockolaForegroundService.EXTRA_STARTED_AS_FOREGROUND, true)
-            safeStartService(intent, foreground = true)
-        } else {
-            safeStartService(intent, foreground = false)
-        }
-        if (startErr != null) {
-            call.reject(startErr, "SERVICE_START_NOT_ALLOWED")
-            return
+            val startErr = safeStartService(intent, foreground = true)
+            if (startErr != null) {
+                call.reject(startErr, "SERVICE_START_NOT_ALLOWED")
+                return
+            }
         }
         val mainActivity = activity as? MainActivity
         if (mainActivity?.isFogonActive == true) {
@@ -421,30 +449,20 @@ class RockolaServerPlugin : Plugin() {
     @PluginMethod
     fun updateMediaPosition(call: PluginCall) {
         val isRemote = RockolaForegroundService.currentMediaTarget.mode == MediaTargetMode.REMOTE
-        if (!RockolaForegroundService.isRunning && !isRemote) {
+        if (!isRemote) {
             call.resolve(JSObject().apply { put("updated", false) })
             return
         }
-        val durationSec = call.getDouble("duration") ?: 0.0
-        val positionSec = call.getDouble("position") ?: 0.0
+        val durationMs = ((call.getDouble("duration") ?: 0.0) * 1000.0).toLong().coerceAtLeast(0L)
+        val positionMs = ((call.getDouble("position") ?: 0.0) * 1000.0).toLong().coerceAtLeast(0L)
         val paused = call.getBoolean("paused") ?: true
 
-        val intent = Intent(context, RockolaForegroundService::class.java).apply {
-            action = RockolaForegroundService.ACTION_UPDATE_POSITION
-            putExtra(RockolaForegroundService.EXTRA_DURATION_MS, (durationSec * 1000.0).toLong().coerceAtLeast(0L))
-            putExtra(RockolaForegroundService.EXTRA_POSITION_MS, (positionSec * 1000.0).toLong().coerceAtLeast(0L))
-            putExtra(RockolaForegroundService.EXTRA_PAUSED, paused)
-        }
-        val posErr = safeStartService(intent)
-        if (posErr != null) {
-            call.reject(posErr, "SERVICE_START_NOT_ALLOWED")
-            return
-        }
+        val updated = RockolaForegroundService.applyPositionUpdateDirect(durationMs, positionMs, paused)
         val mainActivity = activity as? MainActivity
-        if (mainActivity?.isFogonActive == true) {
+        if (updated && mainActivity?.isFogonActive == true) {
             mainActivity.refreshPipParams()
         }
-        call.resolve(JSObject().apply { put("updated", true) })
+        call.resolve(JSObject().apply { put("updated", updated) })
     }
 
     @PluginMethod

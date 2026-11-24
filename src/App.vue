@@ -19,6 +19,7 @@
 		requestAndroidNotificationPermission,
 		setAndroidBackHandlerEnabled,
 		showNotificationPermissionRationale,
+		subscribeAndroidNativeEvents,
 	} from './composables/useAndroidHost';
 	import { hydrateFromBootSnapshot, isHydratedFromSnapshot } from './composables/player/useLocalSnapshot';
 	import {
@@ -493,6 +494,7 @@
 	}
 
 	let stopUiPersistence: (() => void) | null = null;
+	let stopAndroidEvents: (() => void) | null = null;
 	const headbarRef = ref<HTMLElement | null>(null);
 	let headbarResizeObserver: ResizeObserver | null = null;
 
@@ -519,16 +521,14 @@
 		});
 		stopUiPersistence = initUiPersistence();
 		window.__rockolaHandleBack = handleAndroidBack;
-		window.__rockolaOnBackProgress = handleAndroidBackProgress;
-		window.__rockolaSetImeInsets = handleAndroidImeInsets;
-		window.__rockolaOpenFogon = openFogonFromAndroid;
-		window.__rockolaOpenLibrary = openLibraryFromAndroid;
-		window.__rockolaOpenQueue = openQueueFromAndroid;
-		window.__rockolaOpenTops = openTopsFromAndroid;
-		window.__rockolaResumeLast = resumeLastFromAndroid;
-		window.__rockolaSetPipMode = handleAndroidPipMode;
-		window.__rockolaOnMediaVolumeChanged = handleAndroidMediaVolumeChanged;
-		window.__rockolaOnNativeCommandError = handleNativeCommandError;
+		stopAndroidEvents = subscribeAndroidNativeEvents({
+			onBackProgress: handleAndroidBackProgress,
+			onImeInsetsChanged: handleAndroidImeInsets,
+			onPipModeChanged: handleAndroidPipMode,
+			onMediaVolumeChanged: handleAndroidMediaVolumeChanged,
+			onNativeCommandError: handleNativeCommandError,
+			onShortcutAction: applyShortcutAction,
+		});
 		if (typeof document !== 'undefined') {
 			document.addEventListener('focusin', syncInputFocusState);
 			document.addEventListener('focusout', handleFocusOut);
@@ -578,6 +578,8 @@
 	onUnmounted(() => {
 		stopUiPersistence?.();
 		stopUiPersistence = null;
+		stopAndroidEvents?.();
+		stopAndroidEvents = null;
 		headbarResizeObserver?.disconnect();
 		headbarResizeObserver = null;
 		if (typeof window !== 'undefined') {
@@ -595,36 +597,6 @@
 		if (typeof window === 'undefined') return;
 		if (window.__rockolaHandleBack === handleAndroidBack) {
 			delete window.__rockolaHandleBack;
-		}
-		if (window.__rockolaOnBackProgress === handleAndroidBackProgress) {
-			delete window.__rockolaOnBackProgress;
-		}
-		if (window.__rockolaSetImeInsets === handleAndroidImeInsets) {
-			delete window.__rockolaSetImeInsets;
-		}
-		if (window.__rockolaOpenFogon === openFogonFromAndroid) {
-			delete window.__rockolaOpenFogon;
-		}
-		if (window.__rockolaOpenLibrary === openLibraryFromAndroid) {
-			delete window.__rockolaOpenLibrary;
-		}
-		if (window.__rockolaOpenQueue === openQueueFromAndroid) {
-			delete window.__rockolaOpenQueue;
-		}
-		if (window.__rockolaOpenTops === openTopsFromAndroid) {
-			delete window.__rockolaOpenTops;
-		}
-		if (window.__rockolaResumeLast === resumeLastFromAndroid) {
-			delete window.__rockolaResumeLast;
-		}
-		if (window.__rockolaSetPipMode === handleAndroidPipMode) {
-			delete window.__rockolaSetPipMode;
-		}
-		if (window.__rockolaOnMediaVolumeChanged === handleAndroidMediaVolumeChanged) {
-			delete window.__rockolaOnMediaVolumeChanged;
-		}
-		if (window.__rockolaOnNativeCommandError === handleNativeCommandError) {
-			delete window.__rockolaOnNativeCommandError;
 		}
 	});
 </script>

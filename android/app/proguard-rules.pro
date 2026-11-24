@@ -8,7 +8,15 @@
     @com.getcapacitor.annotation.ActivityCallback *;
     @com.getcapacitor.annotation.PermissionCallback *;
 }
--keep class ar.carpincho.rockola.** { *; }
+
+# Clases Android / Capacitor / Chaquopy accedidas por reflexión o JNI
+-keep class ar.carpincho.rockola.MainActivity { *; }
+-keep class ar.carpincho.rockola.RockolaApplication { *; }
+-keep class ar.carpincho.rockola.RockolaForegroundService { *; }
+-keep class ar.carpincho.rockola.RockolaServerPlugin { *; }
+-keep class ar.carpincho.rockola.AndroidStorageBridge { *; }
+-keep class ar.carpincho.rockola.AndroidImageResizer { *; }
+-keep class ar.carpincho.rockola.AndroidAudioPlayer { *; }
 
 # Chaquopy JVM <-> Python puente nativo y JNI
 -keep class com.chaquo.python.** { *; }

@@ -1,10 +1,10 @@
 package ar.carpincho.rockola
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.IOException
@@ -72,7 +72,9 @@ class MediaCommandClient(
     private val artworkTimeoutMs: Int = 12_000,
     private val artworkMaxBytes: Int = 6 * 1024 * 1024,
     private val artworkMaxDownloadBytes: Int = 2 * 1024 * 1024,
-    private val bitmapDecoder: (InputStream) -> Bitmap? = { stream -> decodeSampledBitmap(stream.readBytes(), 512, 512) },
+    private val bitmapDecoder: (InputStream) -> Bitmap? = { stream ->
+        AndroidImageResizer.decodeSampledBitmap(stream.readBytes(), 512, 512)
+    },
     private val callbackDispatcher: (() -> Unit) -> Unit = { action -> dispatchToMainThread(action) },
     private val logWarn: (String) -> Unit = { msg ->
         try {
@@ -402,65 +404,13 @@ class MediaCommandClient(
             return out.toByteArray()
         }
 
-        internal fun decodeSampledBitmap(bytes: ByteArray, reqWidth: Int, reqHeight: Int): Bitmap? {
-            if (bytes.isEmpty()) return null
-            val boundsOpts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, boundsOpts)
-            var inSampleSize = 1
-            val height = boundsOpts.outHeight
-            val width = boundsOpts.outWidth
-            if (height > reqHeight || width > reqWidth) {
-                val halfHeight = height / 2
-                val halfWidth = width / 2
-                while ((halfHeight / inSampleSize) >= reqHeight && (halfWidth / inSampleSize) >= reqWidth) {
-                    inSampleSize *= 2
-                }
-            }
-            val decodeOpts = BitmapFactory.Options().apply {
-                this.inSampleSize = inSampleSize
-            }
-            return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOpts)
-        }
-
         internal fun serializeCommandJson(cmd: String, extraFields: Map<String, Any>): String {
-            val sb = StringBuilder(64)
-            sb.append('{')
-            sb.append("\"cmd\":").append(quoteJson(cmd))
-            for ((k, v) in extraFields) {
-                sb.append(',').append(quoteJson(k)).append(':')
-                when (v) {
-                    is Boolean -> sb.append(v)
-                    is Number -> sb.append(v)
-                    else -> sb.append(quoteJson(v.toString()))
+            return JSONObject().apply {
+                put("cmd", cmd)
+                for ((k, v) in extraFields) {
+                    put(k, v)
                 }
-            }
-            sb.append('}')
-            return sb.toString()
-        }
-
-        private fun quoteJson(value: String): String {
-            val sb = StringBuilder(value.length + 2)
-            sb.append('"')
-            for (ch in value) {
-                when (ch) {
-                    '"' -> sb.append("\\\"")
-                    '\\' -> sb.append("\\\\")
-                    '\b' -> sb.append("\\b")
-                    '\u000C' -> sb.append("\\f")
-                    '\n' -> sb.append("\\n")
-                    '\r' -> sb.append("\\r")
-                    '\t' -> sb.append("\\t")
-                    else -> {
-                        if (ch < ' ') {
-                            sb.append(String.format("\\u%04x", ch.code))
-                        } else {
-                            sb.append(ch)
-                        }
-                    }
-                }
-            }
-            sb.append('"')
-            return sb.toString()
+            }.toString()
         }
     }
 }

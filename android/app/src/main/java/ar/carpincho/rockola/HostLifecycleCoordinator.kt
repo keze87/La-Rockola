@@ -410,6 +410,11 @@ class HostLifecycleCoordinator(
         }
     }
 
+    fun shutdown() {
+        stopHookExecutor.shutdownNow()
+        reaperExecutor.shutdownNow()
+    }
+
     private fun setStateLocked(next: HostServerState, err: String?): StateSnapshot {
         stateVersion += 1L
         state = next

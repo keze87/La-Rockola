@@ -19,6 +19,7 @@ const { pluginMock, systemBarsMock, state } = vi.hoisted(() => ({
 		enterPipMode: vi.fn(),
 		getMediaVolume: vi.fn(),
 		setMediaVolume: vi.fn(),
+		addListener: vi.fn().mockResolvedValue({ remove: vi.fn().mockResolvedValue(undefined) }),
 	},
 	systemBarsMock: {
 		hide: vi.fn().mockResolvedValue(undefined),
@@ -688,5 +689,55 @@ describe('useAndroidHost.ts', () => {
 		expect(ok).toBe(false);
 		expect(store.localServerState.value).toBe('unavailable');
 		expect(store.lastServerError.value?.message).toContain('segundo plano');
+	});
+
+	it('subscribeAndroidNativeEvents registers Capacitor listeners on Android and removes handles on cleanup', async () => {
+		const mod = await import('@/composables/useAndroidHost');
+		state.isNative = true;
+		state.platform = 'android';
+
+		const listeners: Record<string, (data: Record<string, unknown>) => void> = {};
+		const removeFn = vi.fn().mockResolvedValue(undefined);
+		pluginMock.addListener.mockImplementation(
+			async (eventName: string, cb: (d: Record<string, unknown>) => void) => {
+				listeners[eventName] = cb;
+				return { remove: removeFn };
+			}
+		);
+
+		const onVol = vi.fn();
+		const onErr = vi.fn();
+		const onPip = vi.fn();
+		const onIme = vi.fn();
+		const onBack = vi.fn();
+		const onShortcut = vi.fn();
+
+		const cleanup = mod.subscribeAndroidNativeEvents({
+			onMediaVolumeChanged: onVol,
+			onNativeCommandError: onErr,
+			onPipModeChanged: onPip,
+			onImeInsetsChanged: onIme,
+			onBackProgress: onBack,
+			onShortcutAction: onShortcut,
+		});
+
+		await new Promise((r) => setTimeout(r, 0));
+
+		listeners.mediaVolumeChanged?.({ level: 42, muted: false });
+		listeners.nativeCommandError?.({ cmd: 'skip', code: 'TIMEOUT', message: 'Sin respuesta' });
+		listeners.pipModeChanged?.({ active: true });
+		listeners.imeInsetsChanged?.({ bottomCssPx: 280 });
+		listeners.backProgress?.({ progress: 0.45 });
+		listeners.shortcutAction?.({ action: 'ar.carpincho.rockola.ACTION_OPEN_QUEUE' });
+
+		expect(onVol).toHaveBeenCalledWith(42, false);
+		expect(onErr).toHaveBeenCalledWith('skip', 'TIMEOUT', 'Sin respuesta');
+		expect(onPip).toHaveBeenCalledWith(true);
+		expect(onIme).toHaveBeenCalledWith(280);
+		expect(onBack).toHaveBeenCalledWith(0.45);
+		expect(onShortcut).toHaveBeenCalledWith('ar.carpincho.rockola.ACTION_OPEN_QUEUE');
+
+		cleanup();
+		expect(removeFn).toHaveBeenCalledTimes(6);
 	});
 });

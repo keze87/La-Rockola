@@ -160,13 +160,6 @@ class SafTreeBrowser(
         }
     }
 
-    private fun pruneScanSessions() {
-        val now = clockMs()
-        synchronized(sessionMaintenanceLock) {
-            pruneScanSessionsLocked(now)
-        }
-    }
-
     private data class CachedDirLyrics(
         val fetchedAtMs: Long,
         val byLowerName: Map<String, String>,
@@ -471,89 +464,26 @@ class SafTreeBrowser(
     }
 
     fun scanAudioFiles(treeUriString: String): SafScanResult {
-        val validation = validateTreeUri(treeUriString)
-        when (validation.status) {
-            SafFolderStatus.OK -> Unit
-            SafFolderStatus.PERMISSION_REVOKED ->
-                return SafScanResult(SafScanStatus.PERMISSION_DENIED, emptyList(), error = validation.error)
-            SafFolderStatus.UNSUPPORTED_PROVIDER ->
-                return SafScanResult(SafScanStatus.UNSUPPORTED_PROVIDER, emptyList(), error = validation.error)
-            SafFolderStatus.UNCONFIGURED, SafFolderStatus.UNAVAILABLE ->
-                return SafScanResult(SafScanStatus.STORAGE_UNAVAILABLE, emptyList(), error = validation.error)
-        }
-
-        val root = try {
-            provider.queryRootInfo(treeUriString)
-        } catch (sec: SecurityException) {
-            return SafScanResult(
-                SafScanStatus.PERMISSION_DENIED,
-                emptyList(),
-                error = sec.message ?: "Permiso SAF revocado.",
-            )
-        } catch (e: Exception) {
-            return SafScanResult(
-                SafScanStatus.PROVIDER_ERROR,
-                emptyList(),
-                error = e.message ?: "Error consultando raíz SAF.",
-            )
-        } ?: return SafScanResult(
-            SafScanStatus.STORAGE_UNAVAILABLE,
-            emptyList(),
-            error = "La carpeta seleccionada no está disponible.",
-        )
-
+        val sessionId = startScanSession(treeUriString)
         val collected = ArrayList<SafAudioTrackEntry>()
-        val failedDirs = ArrayList<String>()
-        var firstDirError: String? = null
-        val visitedDirs = HashSet<String>()
-        val queue = ArrayDeque<Pair<String, String>>()
-        queue.add(Pair(root.documentId, ""))
-        visitedDirs.add(root.documentId)
-
-        while (queue.isNotEmpty()) {
-            val (dirDocId, prefix) = queue.removeFirst()
-            val children = try {
-                provider.listChildren(treeUriString, dirDocId)
-            } catch (e: Exception) {
-                failedDirs.add(dirDocId)
-                if (firstDirError == null) {
-                    firstDirError = e.message ?: e.javaClass.simpleName
-                }
-                continue
+        var lastBatch: SafScanBatch? = null
+        try {
+            while (true) {
+                val batch = nextScanBatch(sessionId, batchSize = 500)
+                collected.addAll(batch.files)
+                lastBatch = batch
+                if (!batch.hasMore) break
             }
-            for (child in children) {
-                if (child.mimeType == MIME_TYPE_DIR) {
-                    if (visitedDirs.add(child.documentId)) {
-                        val nextPrefix = if (prefix.isEmpty()) child.name else "$prefix/${child.name}"
-                        queue.add(Pair(child.documentId, nextPrefix))
-                    }
-                    continue
-                }
-                putParentCache(child.uri, treeUriString, dirDocId, child.name)
-                val dotIdx = child.name.lastIndexOf('.')
-                val ext = if (dotIdx >= 0) child.name.substring(dotIdx).lowercase() else ""
-                if (ext !in audioExtensions) continue
-
-                val relPath = if (prefix.isEmpty()) child.name else "$prefix/${child.name}"
-                collected.add(
-                    SafAudioTrackEntry(
-                        uri = child.uri,
-                        name = child.name,
-                        relativePath = relPath,
-                        size = child.size,
-                        mtimeSec = if (child.lastModifiedMs >= 0L) child.lastModifiedMs / 1000.0 else -1.0,
-                        mimeType = child.mimeType,
-                    ),
-                )
-            }
+        } finally {
+            cancelScanSession(sessionId)
         }
-        val status = when {
-            failedDirs.isNotEmpty() && collected.isEmpty() -> SafScanStatus.PROVIDER_ERROR
-            failedDirs.isNotEmpty() -> SafScanStatus.PARTIAL_FAILURE
-            collected.isEmpty() -> SafScanStatus.SUCCESS_EMPTY
-            else -> SafScanStatus.SUCCESS_WITH_FILES
-        }
-        return SafScanResult(status, collected, failedDirs, firstDirError)
+        val finalBatch = lastBatch ?: return SafScanResult(SafScanStatus.SUCCESS_EMPTY, emptyList())
+        return SafScanResult(
+            status = finalBatch.status,
+            files = collected,
+            failedDirs = finalBatch.failedDirs,
+            error = finalBatch.error,
+        )
     }
 
     fun listAudioFiles(treeUriString: String): List<SafAudioTrackEntry> = scanAudioFiles(treeUriString).files
@@ -842,28 +772,13 @@ object AndroidStorageBridge {
             put("error", "AndroidStorageBridge no inicializado")
         }.toString()
         val batch = activeBrowser.nextScanBatch(sessionId, batchSize)
-        val arr = JSONArray()
-        for (entry in batch.files) {
-            arr.put(
-                JSONObject().apply {
-                    put("uri", entry.uri)
-                    put("name", entry.name)
-                    put("relative_path", entry.relativePath)
-                    put("size", if (entry.size >= 0L) entry.size else JSONObject.NULL)
-                    put("mtime", if (entry.mtimeSec >= 0.0) entry.mtimeSec else JSONObject.NULL)
-                    put("mime_type", entry.mimeType)
-                },
-            )
-        }
-        val failedArr = JSONArray()
-        for (d in batch.failedDirs) failedArr.put(d)
-        return JSONObject().apply {
-            put("status", batch.status.wireName())
-            put("files", arr)
-            put("has_more", batch.hasMore)
-            put("failed_dirs", failedArr)
-            put("error", batch.error ?: JSONObject.NULL)
-        }.toString()
+        return buildScanPayloadJson(
+            status = batch.status,
+            files = batch.files,
+            failedDirs = batch.failedDirs,
+            error = batch.error,
+            hasMore = batch.hasMore,
+        )
     }
 
     @JvmStatic
@@ -880,27 +795,12 @@ object AndroidStorageBridge {
             put("error", "AndroidStorageBridge no inicializado")
         }.toString()
         val res = activeBrowser.scanAudioFiles(treeUriString)
-        val arr = JSONArray()
-        for (entry in res.files) {
-            arr.put(
-                JSONObject().apply {
-                    put("uri", entry.uri)
-                    put("name", entry.name)
-                    put("relative_path", entry.relativePath)
-                    put("size", if (entry.size >= 0L) entry.size else JSONObject.NULL)
-                    put("mtime", if (entry.mtimeSec >= 0.0) entry.mtimeSec else JSONObject.NULL)
-                    put("mime_type", entry.mimeType)
-                },
-            )
-        }
-        val failedArr = JSONArray()
-        for (d in res.failedDirs) failedArr.put(d)
-        return JSONObject().apply {
-            put("status", res.status.wireName())
-            put("files", arr)
-            put("failed_dirs", failedArr)
-            put("error", res.error ?: JSONObject.NULL)
-        }.toString()
+        return buildScanPayloadJson(
+            status = res.status,
+            files = res.files,
+            failedDirs = res.failedDirs,
+            error = res.error,
+        )
     }
 
     @JvmStatic
@@ -909,18 +809,42 @@ object AndroidStorageBridge {
         val files = activeBrowser.listAudioFiles(treeUriString)
         val arr = JSONArray()
         for (entry in files) {
-            arr.put(
-                JSONObject().apply {
-                    put("uri", entry.uri)
-                    put("name", entry.name)
-                    put("relative_path", entry.relativePath)
-                    put("size", if (entry.size >= 0L) entry.size else JSONObject.NULL)
-                    put("mtime", if (entry.mtimeSec >= 0.0) entry.mtimeSec else JSONObject.NULL)
-                    put("mime_type", entry.mimeType)
-                },
-            )
+            arr.put(entry.toJson())
         }
         return arr.toString()
+    }
+
+    private fun SafAudioTrackEntry.toJson(): JSONObject = JSONObject().apply {
+        put("uri", uri)
+        put("name", name)
+        put("relative_path", relativePath)
+        put("size", if (size >= 0L) size else JSONObject.NULL)
+        put("mtime", if (mtimeSec >= 0.0) mtimeSec else JSONObject.NULL)
+        put("mime_type", mimeType)
+    }
+
+    private fun buildScanPayloadJson(
+        status: SafScanStatus,
+        files: List<SafAudioTrackEntry>,
+        failedDirs: List<String>,
+        error: String?,
+        hasMore: Boolean? = null,
+    ): String {
+        val arr = JSONArray()
+        for (entry in files) {
+            arr.put(entry.toJson())
+        }
+        val failedArr = JSONArray()
+        for (d in failedDirs) failedArr.put(d)
+        return JSONObject().apply {
+            put("status", status.wireName())
+            put("files", arr)
+            if (hasMore != null) {
+                put("has_more", hasMore)
+            }
+            put("failed_dirs", failedArr)
+            put("error", error ?: JSONObject.NULL)
+        }.toString()
     }
 
     @JvmStatic

@@ -33,7 +33,6 @@
 		queueIndex,
 		scanStatus,
 		showFavoritesOnly,
-		showToast,
 		toggleFavorite,
 		toggleQueue,
 	} = usePlayer();
@@ -52,14 +51,14 @@
 			openCtxMenu(e, getTrackInfo(path), 'library', null);
 		},
 		onSwipeLeft: async (path) => {
-			await toggleFavorite(path);
-		},
-		onSwipeRight: async (path) => {
 			if (queueIndex(path) !== -1) {
 				await toggleQueue(path, true);
 			} else {
 				await insertQueueItem(path, 0);
 			}
+		},
+		onSwipeRight: async (path) => {
+			await toggleFavorite(path);
 		},
 	});
 

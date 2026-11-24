@@ -43,36 +43,37 @@ internal class DistAssetExtractor(
 ) {
     companion object {
         private const val STAMP_FILENAME = ".dist_stamp"
+        private const val BACKUP_SUFFIX = ".bak"
         private const val MIN_INDEX_BYTES = 32L
-        private val REF_REGEX = Regex("""(?:src|href)\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
     }
 
     fun ensureExtracted(distDir: File, currentStamp: String) {
         val parentDir = distDir.parentFile ?: throw IllegalStateException("Directorio padre inválido para dist")
-        cleanupTempDirs(parentDir, distDir.name)
+        val tempDir = File(parentDir, "${distDir.name}.tmp")
+        val backupDir = File(parentDir, "${distDir.name}$BACKUP_SUFFIX")
+        tempDir.deleteRecursively()
 
         // Si la distribución actual está sana y coincide con el build stamp, no re-extraemos
         if (isDistributionValidForStamp(distDir, currentStamp)) {
-            cleanupBackups(parentDir, distDir.name)
+            backupDir.deleteRecursively()
             onProgress(100)
             return
         }
 
-        // Si hubo caída durante un reemplazo previo y quedó un backup sano del stamp actual, lo recuperamos
-        val matchingBackup = findValidBackup(parentDir, distDir.name, expectedStamp = currentStamp)
-        if (matchingBackup != null) {
+        // Si hubo caída durante un reemplazo previo y quedó el respaldo sano del stamp actual, lo recuperamos
+        if (backupDir.isDirectory && isDistributionValidForStamp(backupDir, currentStamp)) {
             if (distDir.exists()) {
                 distDir.deleteRecursively()
             }
-            if (restoreBackup(matchingBackup, distDir) && isDistributionValidForStamp(distDir, currentStamp)) {
-                cleanupBackups(parentDir, distDir.name)
+            if (restoreBackup(backupDir, distDir) && isDistributionValidForStamp(distDir, currentStamp)) {
+                backupDir.deleteRecursively()
                 onProgress(100)
                 return
             }
         }
+        backupDir.deleteRecursively()
 
-        val tempDir = File(parentDir, "${distDir.name}.tmp-${System.currentTimeMillis()}")
-        var backupDir: File? = null
+        var movedToBackup = false
         try {
             if (!tempDir.mkdirs() && !tempDir.isDirectory) {
                 throw IOException("No se pudo crear directorio temporal de extracción: ${tempDir.absolutePath}")
@@ -107,11 +108,10 @@ internal class DistAssetExtractor(
 
             File(tempDir, STAMP_FILENAME).writeText(currentStamp)
 
-            // Reemplazo atómico con respaldo para rollback si algo falla
+            // Reemplazo atómico con único respaldo para rollback si algo falla
             if (distDir.exists()) {
-                val bak = File(parentDir, "${distDir.name}.bak-${System.currentTimeMillis()}")
-                moveOrCopyDir(distDir, bak)
-                backupDir = bak
+                moveOrCopyDir(distDir, backupDir)
+                movedToBackup = true
             }
 
             if (!tempDir.renameTo(distDir)) {
@@ -128,12 +128,11 @@ internal class DistAssetExtractor(
                 )
             }
 
-            backupDir?.deleteRecursively()
+            backupDir.deleteRecursively()
             tempDir.deleteRecursively()
-            cleanupBackups(parentDir, distDir.name)
             onProgress(100)
         } catch (t: Throwable) {
-            if (backupDir != null && backupDir.exists()) {
+            if (movedToBackup && backupDir.exists()) {
                 if (distDir.exists()) {
                     distDir.deleteRecursively()
                 }
@@ -155,21 +154,6 @@ internal class DistAssetExtractor(
             return errors
         }
 
-        val html = try {
-            indexFile.readText(Charsets.UTF_8)
-        } catch (e: Exception) {
-            errors.add("No se pudo leer index.html: ${e.message}")
-            return errors
-        }
-
-        val referencedFiles = extractLocalAssetRefs(html)
-        for (rel in referencedFiles) {
-            val target = File(dir, rel)
-            if (!target.isFile || target.length() <= 0L) {
-                errors.add("Recurso esencial ausente o vacío: $rel")
-            }
-        }
-
         val allFiles = dir.walkTopDown().filter { it.isFile }.toList()
         val hasJs = allFiles.any {
             (it.name.endsWith(".js", ignoreCase = true) || it.name.endsWith(".mjs", ignoreCase = true)) &&
@@ -186,34 +170,11 @@ internal class DistAssetExtractor(
         }
 
         val manifestFile = File(dir, "manifest.webmanifest")
-        if (referencedFiles.any { it.equals("manifest.webmanifest", ignoreCase = true) } &&
-            (!manifestFile.isFile || manifestFile.length() <= 0L)
-        ) {
-            errors.add("manifest.webmanifest ausente o vacío")
+        if (manifestFile.exists() && (!manifestFile.isFile || manifestFile.length() <= 0L)) {
+            errors.add("manifest.webmanifest vacío")
         }
 
         return errors
-    }
-
-    private fun extractLocalAssetRefs(html: String): List<String> {
-        val refs = LinkedHashSet<String>()
-        for (match in REF_REGEX.findAll(html)) {
-            val raw = match.groupValues[1].trim()
-            if (raw.isEmpty() ||
-                raw.startsWith("#") ||
-                raw.startsWith("http://", ignoreCase = true) ||
-                raw.startsWith("https://", ignoreCase = true) ||
-                raw.startsWith("data:", ignoreCase = true)
-            ) {
-                continue
-            }
-            val noQuery = raw.substringBefore('?').substringBefore('#')
-            val clean = noQuery.removePrefix("./").removePrefix("/")
-            if (clean.isNotEmpty() && !clean.startsWith("..")) {
-                refs.add(clean)
-            }
-        }
-        return refs.toList()
     }
 
     private fun copySingleAsset(assetFile: String, relativePath: String, outFile: File) {
@@ -264,14 +225,8 @@ internal class DistAssetExtractor(
         return validateDistribution(distDir).isEmpty()
     }
 
-    private fun findValidBackup(parentDir: File, distName: String, expectedStamp: String): File? {
-        val candidates = parentDir.listFiles { f ->
-            f.isDirectory && f.name.startsWith("$distName.bak-")
-        }?.sortedByDescending { it.lastModified() } ?: return null
-        return candidates.firstOrNull { isDistributionValidForStamp(it, expectedStamp) }
-    }
-
     private fun moveOrCopyDir(src: File, dst: File) {
+        dst.deleteRecursively()
         if (src.renameTo(dst)) return
         src.copyRecursively(dst, overwrite = true)
         if (!src.deleteRecursively()) {
@@ -288,16 +243,6 @@ internal class DistAssetExtractor(
         } catch (_: Exception) {
             false
         }
-    }
-
-    private fun cleanupTempDirs(parentDir: File, distName: String) {
-        parentDir.listFiles { f -> f.isDirectory && f.name.startsWith("$distName.tmp-") }
-            ?.forEach { it.deleteRecursively() }
-    }
-
-    private fun cleanupBackups(parentDir: File, distName: String) {
-        parentDir.listFiles { f -> f.isDirectory && f.name.startsWith("$distName.bak-") }
-            ?.forEach { it.deleteRecursively() }
     }
 }
 

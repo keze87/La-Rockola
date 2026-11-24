@@ -12,20 +12,17 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.os.SystemClock
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
-import android.view.KeyEvent
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
-import androidx.core.content.IntentCompat
 import androidx.media.app.NotificationCompat.MediaStyle
+import androidx.media.session.MediaButtonReceiver
+import java.net.URI
 
 /**
- * Reglas puras para las acciones expuestas en MediaSession (testeables en JVM).
+ * Reglas puras para las acciones y metadatos expuestos en MediaSession (testeables en JVM).
  */
 internal object MediaSessionPolicy {
     fun computePlaybackActions(hasTrack: Boolean, durationMs: Long): Long {
@@ -41,29 +38,22 @@ internal object MediaSessionPolicy {
             base
         }
     }
-}
 
-/**
- * Detector de doble toque para botones de auriculares / Bluetooth (play/pausa -> siguiente).
- */
-internal class HeadsetDoubleTapDetector(
-    private val doubleTapWindowMs: Long = 350L,
-) {
-    private var lastTapAtMs: Long = -1L
+    fun formatSubText(target: MediaTarget): String {
+        if (target.mode == MediaTargetMode.HOST) {
+            return "La Rockola"
+        }
+        val cleanOrigin = target.normalizedOrigin()
+        val host = try {
+            URI(cleanOrigin).host?.takeIf { it.isNotBlank() }
+        } catch (_: Exception) {
+            null
+        }
+        return "Remoto · ${host ?: cleanOrigin}"
+    }
 
-    @Synchronized
-    fun isDoubleTap(keyCode: Int, nowMs: Long): Boolean {
-        if (keyCode != KeyEvent.KEYCODE_HEADSETHOOK && keyCode != KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) {
-            return false
-        }
-        val prev = lastTapAtMs
-        return if (prev >= 0L && (nowMs - prev) in 0..doubleTapWindowMs) {
-            lastTapAtMs = -1L
-            true
-        } else {
-            lastTapAtMs = nowMs
-            false
-        }
+    fun resolveAlbumName(album: String?): String {
+        return album?.trim()?.takeIf { it.isNotEmpty() } ?: "La Rockola del Carpincho"
     }
 }
 
@@ -90,6 +80,9 @@ class MediaNotificationManager(
     private var currentArtist: String = "En espera"
 
     @Volatile
+    private var currentAlbum: String? = null
+
+    @Volatile
     private var currentPaused: Boolean = true
 
     @Volatile
@@ -104,11 +97,7 @@ class MediaNotificationManager(
     private var currentPositionMs: Long = 0L
     private var currentIsFavorite: Boolean = false
     private var currentIsPauseAfter: Boolean = false
-    private var currentServerUrl: String = "http://127.0.0.1:1729"
     private var currentTarget: MediaTarget = MediaTarget(MediaTargetMode.HOST, "http://127.0.0.1:1729")
-    private val mainHandler = Handler(Looper.getMainLooper())
-    private val headsetDetector = HeadsetDoubleTapDetector()
-    private var pendingHeadsetSingleTap: Runnable? = null
 
     private val defaultArtwork: Bitmap? by lazy {
         BitmapFactory.decodeResource(service.resources, R.mipmap.ic_launcher)
@@ -146,34 +135,6 @@ class MediaNotificationManager(
         mediaSession = MediaSessionCompat(service, "RockolaMediaSession").apply {
             setSessionActivity(sessionActivityIntent)
             setCallback(object : MediaSessionCompat.Callback() {
-                override fun onMediaButtonEvent(mediaButtonEvent: Intent?): Boolean {
-                    val keyEvent = mediaButtonEvent?.let {
-                        IntentCompat.getParcelableExtra(it, Intent.EXTRA_KEY_EVENT, KeyEvent::class.java)
-                    }
-                    if (keyEvent != null &&
-                        keyEvent.action == KeyEvent.ACTION_DOWN &&
-                        keyEvent.repeatCount == 0 &&
-                        (keyEvent.keyCode == KeyEvent.KEYCODE_HEADSETHOOK ||
-                            keyEvent.keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
-                    ) {
-                        val isDouble = headsetDetector.isDoubleTap(keyEvent.keyCode, SystemClock.elapsedRealtime())
-                        pendingHeadsetSingleTap?.let { mainHandler.removeCallbacks(it) }
-                        if (isDouble) {
-                            pendingHeadsetSingleTap = null
-                            dispatchAction("skip", emptyMap())
-                        } else {
-                            val singleTapTask = Runnable {
-                                pendingHeadsetSingleTap = null
-                                dispatchAction("pause", mapOf("state" to !currentPaused))
-                            }
-                            pendingHeadsetSingleTap = singleTapTask
-                            mainHandler.postDelayed(singleTapTask, 360L)
-                        }
-                        return true
-                    }
-                    return super.onMediaButtonEvent(mediaButtonEvent)
-                }
-
                 override fun onPlay() {
                     dispatchAction("pause", mapOf("state" to false))
                 }
@@ -210,6 +171,13 @@ class MediaNotificationManager(
         syncMediaSessionState()
     }
 
+    fun handleMediaButtonIntent(intent: Intent?) {
+        val session = mediaSession ?: return
+        if (intent != null) {
+            MediaButtonReceiver.handleIntent(session, intent)
+        }
+    }
+
     @Synchronized
     fun setTarget(target: MediaTarget, allowNotificationCancel: Boolean = true) {
         val changed = target.mode != currentTarget.mode ||
@@ -221,6 +189,7 @@ class MediaNotificationManager(
         // Al cambiar de servidor limpiamos por completo metadatos y carátula anteriores
         currentTitle = "La Rockola del Carpincho"
         currentArtist = "En espera"
+        currentAlbum = null
         currentPaused = true
         currentCoverUrl = null
         currentArtwork = null
@@ -235,11 +204,6 @@ class MediaNotificationManager(
         if (allowNotificationCancel) {
             cancelNotification()
         }
-    }
-
-    @Synchronized
-    fun updateServerEndpoint(serverUrl: String, @Suppress("UNUSED_PARAMETER") statusText: String) {
-        currentServerUrl = serverUrl
     }
 
     @Synchronized
@@ -274,11 +238,13 @@ class MediaNotificationManager(
         isFavorite: Boolean,
         isPauseAfter: Boolean,
         postNotification: Boolean = true,
+        album: String? = null,
     ) {
         val coverChanged = coverUrl != currentCoverUrl
         val targetGen = currentTarget.generation
         currentTitle = title
         currentArtist = artist
+        currentAlbum = album
         currentPaused = paused
         currentCoverUrl = coverUrl
         currentTrackPath = trackPath
@@ -436,7 +402,7 @@ class MediaNotificationManager(
             R.drawable.ic_notif_favorite_border
         }
         val favLabel = if (currentIsFavorite) "Quitar de favoritos" else "Agregar a favoritos"
-        val playPauseIcon = if (currentPaused) android.R.drawable.ic_media_play else android.R.drawable.ic_media_pause
+        val playPauseIcon = if (currentPaused) R.drawable.ic_media_play else R.drawable.ic_media_pause
         val playPauseLabel = if (currentPaused) "Reproducir" else "Pausar"
         val pauseAfterIcon = if (currentIsPauseAfter) {
             R.drawable.ic_notif_pause_after_on
@@ -446,11 +412,7 @@ class MediaNotificationManager(
         val pauseAfterLabel = if (currentIsPauseAfter) "Cancelar pausa al terminar" else "Pausar al terminar"
 
         val largeIcon = currentArtwork ?: defaultArtwork
-        val subTextLabel = if (currentTarget.mode == MediaTargetMode.REMOTE) {
-            "Remoto · ${currentTarget.normalizedOrigin()}"
-        } else {
-            currentServerUrl
-        }
+        val subTextLabel = MediaSessionPolicy.formatSubText(currentTarget)
 
         val mediaStyle = MediaStyle().setShowActionsInCompactView(1, 2, 3)
         mediaSession?.sessionToken?.let { mediaStyle.setMediaSession(it) }
@@ -467,9 +429,9 @@ class MediaNotificationManager(
             .setOnlyAlertOnce(true)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .addAction(favIcon, favLabel, favPending)
-            .addAction(android.R.drawable.ic_media_previous, "Anterior", prevPending)
+            .addAction(R.drawable.ic_media_previous, "Anterior", prevPending)
             .addAction(playPauseIcon, playPauseLabel, playPausePending)
-            .addAction(android.R.drawable.ic_media_next, "Siguiente", nextPending)
+            .addAction(R.drawable.ic_media_next, "Siguiente", nextPending)
             .addAction(pauseAfterIcon, pauseAfterLabel, pauseAfterPending)
             .setStyle(mediaStyle)
             .build()
@@ -507,8 +469,6 @@ class MediaNotificationManager(
     }
 
     fun release() {
-        pendingHeadsetSingleTap?.let { mainHandler.removeCallbacks(it) }
-        pendingHeadsetSingleTap = null
         isNotificationVisible = false
         mediaSession?.isActive = false
         mediaSession?.release()
@@ -569,7 +529,7 @@ class MediaNotificationManager(
         val metaBuilder = MediaMetadataCompat.Builder()
             .putString(MediaMetadataCompat.METADATA_KEY_TITLE, currentTitle)
             .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, currentArtist)
-            .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, "La Rockola del Carpincho")
+            .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, MediaSessionPolicy.resolveAlbumName(currentAlbum))
 
         if (currentDurationMs > 0L) {
             metaBuilder.putLong(MediaMetadataCompat.METADATA_KEY_DURATION, currentDurationMs)

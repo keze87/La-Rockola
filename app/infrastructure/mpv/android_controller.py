@@ -121,9 +121,15 @@ class AndroidPlayerController:
 					else Path(str(track_path)).stem
 				)
 				artist = (info.get("display_artist") or info.get("artist") or "Desconocido") if info else "Desconocido"
+				album = (info.get("album") or None) if info else None
 				if not str(track_path).startswith(("http://", "https://")):
 					port = int(getattr(state, "server_port", 1729) or 1729)
 					cover_url = f"http://127.0.0.1:{port}/cover?path={quote(str(track_path), safe='')}&size=256"
+		else:
+			album = None
+
+		if is_radio:
+			album = None
 
 		path_to_id = getattr(state, "path_to_id", {}) or {}
 		favorites = getattr(state, "favorites", []) or []
@@ -133,7 +139,7 @@ class AndroidPlayerController:
 
 		dur_ms = int(max(0.0, duration_sec) * 1000)
 		pos_ms = int(max(0.0, position_sec) * 1000)
-		sig = (title, artist, paused, cover_url, track_path, dur_ms, is_favorite, is_pause_after)
+		sig = (title, artist, paused, cover_url, track_path, dur_ms, is_favorite, is_pause_after, album)
 		if sig == self._last_notif_sig:
 			return
 
@@ -153,6 +159,7 @@ class AndroidPlayerController:
 				pos_ms,
 				is_favorite,
 				is_pause_after,
+				album,
 			)
 		except Exception as exc:
 			logger.debug(f"Error actualizando notificación nativa Android: {exc}")

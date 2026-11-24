@@ -26,6 +26,11 @@ class RockolaApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
+        val prefs = getSharedPreferences(RockolaForegroundService.PREFS_NAME, MODE_PRIVATE)
+        val savedMode = prefs.getString(RockolaForegroundService.KEY_TARGET_MODE, "host")
+        if (savedMode == "remote") {
+            return
+        }
         Thread(
             {
                 try {

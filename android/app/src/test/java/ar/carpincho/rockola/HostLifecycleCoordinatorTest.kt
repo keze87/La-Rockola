@@ -314,10 +314,43 @@ class HostLifecycleCoordinatorTest {
         assertFalse(ServicePowerPolicy.shouldStopOnTaskRemoved(isMediaPlaying = false, hasRemoteClients = true))
         assertFalse(ServicePowerPolicy.shouldStopOnTaskRemoved(isMediaPlaying = true, hasRemoteClients = false))
 
-        assertFalse(ServicePowerPolicy.shouldStopForeground(keepDismissibleNotification = true, isHostRunning = true))
-        assertFalse(ServicePowerPolicy.shouldStopForeground(keepDismissibleNotification = false, isHostRunning = true))
-        assertTrue(ServicePowerPolicy.shouldStopForeground(keepDismissibleNotification = false, isHostRunning = true, forceStop = true))
+        assertTrue(
+            ServicePowerPolicy.shouldStopForeground(
+                keepDismissibleNotification = true,
+                isHostRunning = true,
+                hasRemoteClients = false,
+            ),
+        )
+        assertFalse(
+            ServicePowerPolicy.shouldStopForeground(
+                keepDismissibleNotification = true,
+                isHostRunning = true,
+                hasRemoteClients = true,
+            ),
+        )
+        assertFalse(
+            ServicePowerPolicy.shouldStopForeground(
+                keepDismissibleNotification = false,
+                isHostRunning = true,
+                hasRemoteClients = true,
+            ),
+        )
+        assertTrue(
+            ServicePowerPolicy.shouldStopForeground(
+                keepDismissibleNotification = false,
+                isHostRunning = true,
+                hasRemoteClients = true,
+                forceStop = true,
+            ),
+        )
         assertTrue(ServicePowerPolicy.shouldStopForeground(keepDismissibleNotification = true, isHostRunning = false))
+    }
+
+    @Test
+    fun `shutdown cierra los executors internos del coordinador`() {
+        val coord = HostLifecycleCoordinator()
+        coord.shutdown()
+        assertFalse(coord.isRunning)
     }
 
     @Test

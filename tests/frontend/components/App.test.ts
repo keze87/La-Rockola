@@ -481,7 +481,7 @@ Dialogue: 0,0:00:20.00,0:00:24.00,Default,,0,0,0,,{\\kf100}Verso {\\kf100}tres
 		unregisterOpenModal('weather-location');
 	});
 
-	it('exposes launcher shortcut hooks (__rockolaOpenFogon, __rockolaOpenQueue) and consumes pending Android shortcut on mount', async () => {
+	it('consumes pending Android shortcut on mount and handles warm shortcut events via Capacitor bus', async () => {
 		const androidHost = await import('@/composables/useAndroidHost');
 		const isNativeSpy = vi.spyOn(androidHost, 'isNativeAndroidHost').mockReturnValue(true);
 		vi.spyOn(androidHost, 'initAndroidServer').mockResolvedValue(true);
@@ -489,55 +489,67 @@ Dialogue: 0,0:00:20.00,0:00:24.00,Default,,0,0,0,,{\\kf100}Verso {\\kf100}tres
 			.spyOn(androidHost as any, 'consumeAndroidPendingShortcut')
 			.mockResolvedValue('ar.carpincho.rockola.ACTION_OPEN_FOGON');
 
+		let capturedHandlers: any = null;
+		const cleanupSpy = vi.fn();
+		const subSpy = vi.spyOn(androidHost, 'subscribeAndroidNativeEvents').mockImplementation((handlers) => {
+			capturedHandlers = handlers;
+			return cleanupSpy;
+		});
+
 		try {
 			const wrapper = mount(App);
 			await wrapper.vm.$nextTick();
 			await new Promise((resolve) => setTimeout(resolve, 10));
 			await wrapper.vm.$nextTick();
 
-			expect(typeof (window as any).__rockolaOpenFogon).toBe('function');
-			expect(typeof (window as any).__rockolaOpenQueue).toBe('function');
+			expect(subSpy).toHaveBeenCalledTimes(1);
 			expect(isFogonMode.value).toBe(true);
 
-			isFogonMode.value = false;
-			(window as any).__rockolaOpenQueue();
+			capturedHandlers?.onShortcutAction?.('ar.carpincho.rockola.ACTION_OPEN_QUEUE');
 			expect(activeTab.value).toBe('queue');
 			expect(isFogonMode.value).toBe(false);
 
-			(window as any).__rockolaOpenFogon();
+			capturedHandlers?.onShortcutAction?.('ar.carpincho.rockola.ACTION_OPEN_FOGON');
 			expect(isFogonMode.value).toBe(true);
 
 			wrapper.unmount();
-			expect((window as any).__rockolaOpenFogon).toBeUndefined();
-			expect((window as any).__rockolaOpenQueue).toBeUndefined();
+			expect(cleanupSpy).toHaveBeenCalledTimes(1);
 		} finally {
+			subSpy.mockRestore();
 			isNativeSpy.mockRestore();
 			shortcutSpy.mockRestore();
 		}
 	});
 
-	it('syncs isAndroidPipMode and html.android-pip class via window.__rockolaSetPipMode', async () => {
+	it('syncs isAndroidPipMode and html.android-pip class via Capacitor pipModeChanged listener', async () => {
 		const androidHost = await import('@/composables/useAndroidHost');
-		const wrapper = mount(App);
-		await wrapper.vm.$nextTick();
+		let capturedHandlers: any = null;
+		const subSpy = vi.spyOn(androidHost, 'subscribeAndroidNativeEvents').mockImplementation((handlers) => {
+			capturedHandlers = handlers;
+			return vi.fn();
+		});
 
-		expect(typeof (window as any).__rockolaSetPipMode).toBe('function');
+		try {
+			const wrapper = mount(App);
+			await wrapper.vm.$nextTick();
 
-		(window as any).__rockolaSetPipMode(true);
-		await wrapper.vm.$nextTick();
-		expect((androidHost as any).isAndroidPipMode.value).toBe(true);
-		expect(document.documentElement.classList.contains('android-pip')).toBe(true);
+			capturedHandlers?.onPipModeChanged?.(true);
+			await wrapper.vm.$nextTick();
+			expect((androidHost as any).isAndroidPipMode.value).toBe(true);
+			expect(document.documentElement.classList.contains('android-pip')).toBe(true);
 
-		(window as any).__rockolaSetPipMode(false);
-		await wrapper.vm.$nextTick();
-		expect((androidHost as any).isAndroidPipMode.value).toBe(false);
-		expect(document.documentElement.classList.contains('android-pip')).toBe(false);
+			capturedHandlers?.onPipModeChanged?.(false);
+			await wrapper.vm.$nextTick();
+			expect((androidHost as any).isAndroidPipMode.value).toBe(false);
+			expect(document.documentElement.classList.contains('android-pip')).toBe(false);
 
-		(window as any).__rockolaSetPipMode(true);
-		wrapper.unmount();
-		expect((window as any).__rockolaSetPipMode).toBeUndefined();
-		expect((androidHost as any).isAndroidPipMode.value).toBe(false);
-		expect(document.documentElement.classList.contains('android-pip')).toBe(false);
+			capturedHandlers?.onPipModeChanged?.(true);
+			wrapper.unmount();
+			expect((androidHost as any).isAndroidPipMode.value).toBe(false);
+			expect(document.documentElement.classList.contains('android-pip')).toBe(false);
+		} finally {
+			subSpy.mockRestore();
+		}
 	});
 
 	it('hides "El servidor corre sin MPV" banner on local Android host unless connected remotely', async () => {
@@ -580,11 +592,18 @@ Dialogue: 0,0:00:20.00,0:00:24.00,Default,,0,0,0,,{\\kf100}Verso {\\kf100}tres
 		}
 	});
 
-	it('updates volume state from hardware volume callback even when listenLocally is false on local Android host', async () => {
+	it('updates volume state from hardware volume event even when listenLocally is false on local Android host', async () => {
 		const androidHost = await import('@/composables/useAndroidHost');
 		const prevListenLocally = listenLocally.value;
 		const prevRemoteUrl = androidHost.activeRemoteServerUrl.value;
 		const prevVol = volume.value;
+
+		let capturedHandlers: any = null;
+		const cleanupSpy = vi.fn();
+		const subSpy = vi.spyOn(androidHost, 'subscribeAndroidNativeEvents').mockImplementation((handlers) => {
+			capturedHandlers = handlers;
+			return cleanupSpy;
+		});
 
 		try {
 			listenLocally.value = false;
@@ -594,14 +613,14 @@ Dialogue: 0,0:00:20.00,0:00:24.00,Default,,0,0,0,,{\\kf100}Verso {\\kf100}tres
 			const wrapper = mount(App);
 			await wrapper.vm.$nextTick();
 
-			(window as any).__rockolaOnMediaVolumeChanged(35);
+			capturedHandlers?.onMediaVolumeChanged?.(35, false);
 			expect(volume.value).toBe(35);
-
-			expect(typeof (window as any).__rockolaOnNativeCommandError).toBe('function');
+			expect(typeof capturedHandlers?.onNativeCommandError).toBe('function');
 
 			wrapper.unmount();
-			expect((window as any).__rockolaOnNativeCommandError).toBeUndefined();
+			expect(cleanupSpy).toHaveBeenCalledTimes(1);
 		} finally {
+			subSpy.mockRestore();
 			listenLocally.value = prevListenLocally;
 			androidHost.activeRemoteServerUrl.value = prevRemoteUrl;
 			volume.value = prevVol;

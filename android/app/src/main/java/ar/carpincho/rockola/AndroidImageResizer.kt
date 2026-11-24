@@ -13,6 +13,28 @@ import kotlin.math.roundToInt
  */
 object AndroidImageResizer {
     @JvmStatic
+    fun decodeSampledBitmap(bytes: ByteArray, reqWidth: Int, reqHeight: Int): Bitmap? {
+        if (bytes.isEmpty() || reqWidth <= 0 || reqHeight <= 0) return null
+        val boundsOpts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, boundsOpts)
+        val height = boundsOpts.outHeight
+        val width = boundsOpts.outWidth
+        if (height <= 0 || width <= 0) return null
+        var inSampleSize = 1
+        if (height > reqHeight || width > reqWidth) {
+            val halfHeight = height / 2
+            val halfWidth = width / 2
+            while ((halfHeight / inSampleSize) >= reqHeight && (halfWidth / inSampleSize) >= reqWidth) {
+                inSampleSize *= 2
+            }
+        }
+        val decodeOpts = BitmapFactory.Options().apply {
+            this.inSampleSize = inSampleSize
+        }
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOpts)
+    }
+
+    @JvmStatic
     fun resizeJpeg(data: ByteArray, maxSize: Int): ByteArray? {
         if (data.isEmpty() || maxSize <= 0) return null
         var decoded: Bitmap? = null

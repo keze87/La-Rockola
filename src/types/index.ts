@@ -1,4 +1,5 @@
 export interface Track {
+	album?: string | null;
 	artist?: string;
 	bpm?: number;
 	count?: number;

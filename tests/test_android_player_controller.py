@@ -110,6 +110,7 @@ async def test_android_player_controller_syncs_notification_from_orchestrator_st
 				"path": "/storage/B6F2-55E6/musica/tema.mp3",
 				"display_title": "Barro Tal Vez",
 				"display_artist": "Luis Alberto Spinetta",
+				"album": "Kamikaze",
 			}
 		],
 		url_metadata={},
@@ -126,6 +127,7 @@ async def test_android_player_controller_syncs_notification_from_orchestrator_st
 		15000,
 		True,
 		True,
+		"Kamikaze",
 	)
 
 	# Si no cambió nada relevante de metadatos, no spamea a Kotlin

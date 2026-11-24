@@ -80,4 +80,20 @@ class MainActivityPolicyTest {
         org.junit.Assert.assertEquals(100, WebViewDisplayPolicy.computeTextZoom(0f))
         org.junit.Assert.assertEquals(100, WebViewDisplayPolicy.computeTextZoom(-1f))
     }
+
+    @Test
+    fun `throttler de progreso back omite micro variaciones pero siempre emite fin o salto`() {
+        val throttler = BackProgressThrottler(minDelta = 0.02f, minIntervalMs = 16L)
+
+        // Primera emisión pasa siempre
+        assertTrue(throttler.shouldEmit(0.05f, nowMs = 100L))
+        // Delta < 0.02 y tiempo < 16ms -> bloqueado
+        assertFalse(throttler.shouldEmit(0.06f, nowMs = 108L))
+        // Tiempo >= 16ms aunque delta chico -> emite
+        assertTrue(throttler.shouldEmit(0.065f, nowMs = 120L))
+        // Delta >= 0.02 inmediato -> emite
+        assertTrue(throttler.shouldEmit(0.10f, nowMs = 122L))
+        // Vuelta a 0f (cancelación / fin) siempre emite aunque sea inmediato
+        assertTrue(throttler.shouldEmit(0f, nowMs = 123L))
+    }
 }

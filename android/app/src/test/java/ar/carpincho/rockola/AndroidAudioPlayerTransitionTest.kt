@@ -104,4 +104,41 @@ class AndroidAudioPlayerTransitionTest {
         assertEquals(0.5f, AndroidAudioPlayer.computeBedFadeEnvelope(elapsedMs = 9250L, durationMs = 10000L), 0.001f)
         assertEquals(0.0f, AndroidAudioPlayer.computeBedFadeEnvelope(elapsedMs = 10000L, durationMs = 10000L), 0.001f)
     }
+
+    @Test
+    fun `cortina radial acompaña supresion transitoria y ducking de audio focus`() {
+        // Sin supresión ni ducking -> factor 1.0
+        assertEquals(
+            1.0f,
+            AndroidAudioPlayer.computeBedFocusScale(
+                suppressionReason = Player.PLAYBACK_SUPPRESSION_REASON_NONE,
+                playerVolume = 0.8f,
+                expectedMasterGain = 0.8f,
+            ),
+            0.001f,
+        )
+        // Pérdida transitoria de foco (ej. llamada o indicación) -> silencia cortina (0.0)
+        assertEquals(
+            0.0f,
+            AndroidAudioPlayer.computeBedFocusScale(
+                suppressionReason = Player.PLAYBACK_SUPPRESSION_REASON_TRANSIENT_AUDIO_FOCUS_LOSS,
+                playerVolume = 0.8f,
+                expectedMasterGain = 0.8f,
+            ),
+            0.001f,
+        )
+        // Ducking activo (ExoPlayer bajó volume de 0.8 a 0.2) -> escala cortina proporcionalmente (0.25)
+        assertEquals(
+            0.25f,
+            AndroidAudioPlayer.computeBedFocusScale(
+                suppressionReason = Player.PLAYBACK_SUPPRESSION_REASON_NONE,
+                playerVolume = 0.2f,
+                expectedMasterGain = 0.8f,
+            ),
+            0.001f,
+        )
+        // Referencia explícita al método renombrado getPlayerVolumePercent
+        val methodRef: (AndroidAudioPlayer) -> Int = AndroidAudioPlayer::getPlayerVolumePercent
+        assertTrue(methodRef.toString().isNotEmpty())
+    }
 }

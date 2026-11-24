@@ -14,6 +14,7 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.Icon
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -24,18 +25,20 @@ import android.view.animation.DecelerateInterpolator
 import android.webkit.WebView
 import androidx.activity.BackEventCompat
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AlertDialog
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.ViewCompat
-import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 import androidx.webkit.WebViewCompat
 import com.getcapacitor.BridgeActivity
+import com.getcapacitor.JSObject
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -67,6 +70,33 @@ internal object WebViewDisplayPolicy {
     fun computeTextZoom(fontScale: Float): Int {
         if (!fontScale.isFinite() || fontScale <= 0f) return 100
         return (fontScale * 100f).roundToInt().coerceIn(MIN_TEXT_ZOOM, MAX_TEXT_ZOOM)
+    }
+}
+
+/**
+ * Filtra micro-variaciones en el gesto atrás predictivo para no saturar el WebView.
+ */
+internal class BackProgressThrottler(
+    private val minDelta: Float = 0.02f,
+    private val minIntervalMs: Long = 16L,
+) {
+    private var lastProgress: Float = -1f
+    private var lastEmitMs: Long = -1L
+
+    @Synchronized
+    fun shouldEmit(progress: Float, nowMs: Long): Boolean {
+        val p = progress.coerceIn(0f, 1f)
+        if (lastEmitMs < 0L || p == 0f || p == 1f) {
+            lastProgress = p
+            lastEmitMs = nowMs
+            return true
+        }
+        val deltaOk = abs(p - lastProgress) >= minDelta
+        val timeOk = (nowMs - lastEmitMs) >= minIntervalMs
+        if (!deltaOk && !timeOk) return false
+        lastProgress = p
+        lastEmitMs = nowMs
+        return true
     }
 }
 
@@ -190,15 +220,15 @@ class MainActivity : BridgeActivity() {
     private fun buildPipActions(): List<RemoteAction> {
         val isPlaying = RockolaForegroundService.isMediaPlaying
         val playPauseIconRes = if (isPlaying) {
-            android.R.drawable.ic_media_pause
+            R.drawable.ic_media_pause
         } else {
-            android.R.drawable.ic_media_play
+            R.drawable.ic_media_play
         }
         val playPauseLabel = if (isPlaying) "Pausar" else "Reproducir"
 
         return listOf(
             createPipAction(
-                iconRes = android.R.drawable.ic_media_previous,
+                iconRes = R.drawable.ic_media_previous,
                 title = "Anterior",
                 serviceAction = RockolaForegroundService.ACTION_MEDIA_PREV,
                 requestCode = REQ_PIP_PREV,
@@ -210,7 +240,7 @@ class MainActivity : BridgeActivity() {
                 requestCode = REQ_PIP_PLAY_PAUSE,
             ),
             createPipAction(
-                iconRes = android.R.drawable.ic_media_next,
+                iconRes = R.drawable.ic_media_next,
                 title = "Siguiente",
                 serviceAction = RockolaForegroundService.ACTION_MEDIA_NEXT,
                 requestCode = REQ_PIP_NEXT,
@@ -237,11 +267,11 @@ class MainActivity : BridgeActivity() {
         return RemoteAction(Icon.createWithResource(this, iconRes), title, title, pendingIntent)
     }
 
-    private var notificationPermissionRequested = false
     private var pendingNotificationPermissionCallback: ((Boolean) -> Unit)? = null
     private val uiReady = AtomicBoolean(false)
     private var splashStartedAtMs: Long = 0L
     private var backCallback: OnBackPressedCallback? = null
+    private val backProgressThrottler = BackProgressThrottler()
     private var lastImeBottomCssPx: Int = -1
 
     fun markUiReady() {
@@ -296,7 +326,11 @@ class MainActivity : BridgeActivity() {
         }
         super.onCreate(savedInstanceState)
 
-        applyHeadbarSystemBars()
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+        )
+        volumeControlStream = AudioManager.STREAM_MUSIC
         registerImeInsetsObserver()
         registerBackNavigationHandler()
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
@@ -314,7 +348,7 @@ class MainActivity : BridgeActivity() {
             }
         }
         if (MainActivityPolicy.shouldHandleShortcutOnCreate(savedInstanceState != null, intent?.action)) {
-            handleShortcutIntent(intent)
+            pendingShortcutAction = intent?.action
         }
         ShortcutHelper.refreshDynamicShortcuts(this)
         checkWebViewCompatibility()
@@ -372,10 +406,9 @@ class MainActivity : BridgeActivity() {
 
     override fun onResume() {
         super.onResume()
-        applyHeadbarSystemBars()
         bridge?.webView?.settings?.mediaPlaybackRequiresUserGesture = false
         val inPip = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode
-        evaluateJsSafely("window.__rockolaSetPipMode && window.__rockolaSetPipMode($inPip)")
+        RockolaServerPlugin.emitNativeEvent("pipModeChanged", JSObject().put("active", inPip))
     }
 
     override fun onPause() {
@@ -401,7 +434,10 @@ class MainActivity : BridgeActivity() {
         newConfig: Configuration,
     ) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
-        evaluateJsSafely("window.__rockolaSetPipMode && window.__rockolaSetPipMode($isInPictureInPictureMode)")
+        RockolaServerPlugin.emitNativeEvent(
+            "pipModeChanged",
+            JSObject().put("active", isInPictureInPictureMode),
+        )
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -413,15 +449,19 @@ class MainActivity : BridgeActivity() {
         val callback = object : OnBackPressedCallback(false) {
             override fun handleOnBackProgressed(backEvent: BackEventCompat) {
                 val p = backEvent.progress.coerceIn(0f, 1f)
-                evaluateJsSafely("window.__rockolaOnBackProgress && window.__rockolaOnBackProgress($p)")
+                if (backProgressThrottler.shouldEmit(p, SystemClock.elapsedRealtime())) {
+                    RockolaServerPlugin.emitNativeEvent("backProgress", JSObject().put("progress", p))
+                }
             }
 
             override fun handleOnBackCancelled() {
-                evaluateJsSafely("window.__rockolaOnBackProgress && window.__rockolaOnBackProgress(0)")
+                backProgressThrottler.shouldEmit(0f, SystemClock.elapsedRealtime())
+                RockolaServerPlugin.emitNativeEvent("backProgress", JSObject().put("progress", 0f))
             }
 
             override fun handleOnBackPressed() {
-                evaluateJsSafely("window.__rockolaOnBackProgress && window.__rockolaOnBackProgress(0)")
+                backProgressThrottler.shouldEmit(0f, SystemClock.elapsedRealtime())
+                RockolaServerPlugin.emitNativeEvent("backProgress", JSObject().put("progress", 0f))
                 val webView = bridge?.webView
                 if (webView == null) {
                     isEnabled = false
@@ -447,27 +487,9 @@ class MainActivity : BridgeActivity() {
             val imeCssPx = (imeBottomPx / density).roundToInt().coerceAtLeast(0)
             if (imeCssPx != lastImeBottomCssPx) {
                 lastImeBottomCssPx = imeCssPx
-                evaluateJsSafely("window.__rockolaSetImeInsets && window.__rockolaSetImeInsets($imeCssPx)")
+                RockolaServerPlugin.emitNativeEvent("imeInsetsChanged", JSObject().put("bottomCssPx", imeCssPx))
             }
             ViewCompat.onApplyWindowInsets(view, insets)
-        }
-    }
-
-    private fun applyHeadbarSystemBars() {
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        @Suppress("DEPRECATION")
-        window.apply {
-            statusBarColor = Color.TRANSPARENT
-            navigationBarColor = Color.TRANSPARENT
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                isStatusBarContrastEnforced = false
-                isNavigationBarContrastEnforced = false
-            }
-        }
-        WindowCompat.getInsetsController(window, window.decorView).apply {
-            isAppearanceLightStatusBars = false
-            isAppearanceLightNavigationBars = false
-            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
     }
 
@@ -488,7 +510,6 @@ class MainActivity : BridgeActivity() {
             onResult(true)
             return
         }
-        notificationPermissionRequested = true
         pendingNotificationPermissionCallback = onResult
         getSharedPreferences(RockolaForegroundService.PREFS_NAME, MODE_PRIVATE)
             .edit()
@@ -515,32 +536,10 @@ class MainActivity : BridgeActivity() {
         }
     }
 
-    private fun evaluateJsSafely(script: String, callback: ((String?) -> Unit)? = null) {
-        if (isFinishing || isDestroyed) return
-        val webView = bridge?.webView ?: return
-        webView.post {
-            if (isFinishing || isDestroyed) return@post
-            bridge?.webView?.evaluateJavascript(script, callback)
-        }
-    }
-
     private fun handleShortcutIntent(intent: Intent?) {
         val action = intent?.action ?: return
-        val jsHook = when (action) {
-            ACTION_OPEN_FOGON -> "__rockolaOpenFogon"
-            ACTION_OPEN_LIBRARY -> "__rockolaOpenLibrary"
-            ACTION_OPEN_QUEUE -> "__rockolaOpenQueue"
-            ACTION_OPEN_TOPS -> "__rockolaOpenTops"
-            ACTION_RESUME_LAST -> "__rockolaResumeLast"
-            else -> return
-        }
-        pendingShortcutAction = action
-        evaluateJsSafely(
-            "(function(){ if (typeof window.$jsHook === 'function') { window.$jsHook(); return 'ok'; } return 'pending'; })()",
-        ) { result ->
-            if (result == "\"ok\"") {
-                pendingShortcutAction = null
-            }
-        }
+        if (!MainActivityPolicy.isSupportedShortcutAction(action)) return
+        val delivered = RockolaServerPlugin.emitNativeEvent("shortcutAction", JSObject().put("action", action))
+        pendingShortcutAction = if (delivered) null else action
     }
 }

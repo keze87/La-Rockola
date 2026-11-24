@@ -164,7 +164,7 @@ class EmbeddedPythonHostTest {
     @Test
     fun `recupera backup previo si hubo interrupcion durante reemplazo anterior`() {
         val distDir = File(tmp.root, "dist")
-        val backupDir = File(tmp.root, "dist.bak-999")
+        val backupDir = File(tmp.root, "dist.bak")
         DistAssetExtractor(validSource()).ensureExtracted(backupDir, currentStamp = "99-0")
         // Simula carpeta dist incompleta dejada por caída durante reemplazo
         distDir.mkdirs()

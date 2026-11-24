@@ -134,14 +134,27 @@ def _set_screen_state(serial: str, awake: bool) -> None:
 			raise RuntimeError("No se pudo encender la pantalla del dispositivo antes de la prueba")
 
 
-def _assert_process_and_foreground(serial: str) -> str:
+def _assert_process_alive(serial: str) -> str:
 	pid = _run_adb(serial, ["shell", "pidof", PACKAGE_NAME], check=False)
 	if not pid:
 		raise RuntimeError(f"El proceso {PACKAGE_NAME} murió o no está ejecutándose")
+	return pid.strip()
+
+
+def _assert_process_and_foreground(serial: str) -> str:
+	pid = _assert_process_alive(serial)
 	svc_dump = _run_adb(serial, ["shell", "dumpsys", "activity", "services", PACKAGE_NAME], check=False)
 	if "isForeground=true" not in svc_dump:
 		raise RuntimeError("RockolaForegroundService no figura con isForeground=true")
-	return pid.strip()
+	return pid
+
+
+def _assert_foreground_released(serial: str) -> str:
+	pid = _assert_process_alive(serial)
+	svc_dump = _run_adb(serial, ["shell", "dumpsys", "activity", "services", PACKAGE_NAME], check=False)
+	if "isForeground=true" in svc_dump:
+		raise RuntimeError("RockolaForegroundService sigue con isForeground=true tras pausar sin clientes remotos")
+	return pid
 
 
 def _assert_no_fatal_logcat(serial: str) -> None:
@@ -173,8 +186,8 @@ def _run_server_mode_checks(serial: str, base_url: str, screen_awake: bool) -> l
 		# Aguantamos 2.5s con pantalla apagada para validar que no muere ni cae el foreground
 		time.sleep(2.5)
 
-	pid = _assert_process_and_foreground(serial)
-	results.append(E2EResult(f"server_{label}_foreground", True, f"pid={pid}, isForeground=true"))
+	pid = _assert_process_alive(serial)
+	results.append(E2EResult(f"server_{label}_alive", True, f"pid={pid}, alive=True"))
 
 	st_h, health = _http_json(f"{base_url}/health")
 	assert st_h == 200 and health.get("status") == "ok"
@@ -225,7 +238,7 @@ def _run_server_mode_checks(serial: str, base_url: str, screen_awake: bool) -> l
 def _run_client_mode_checks(serial: str, base_url: str, screen_awake: bool) -> list[E2EResult]:
 	results: list[E2EResult] = []
 	label = "pantalla_prendida" if screen_awake else "pantalla_apagada"
-	_set_screen_state(serial, awake=screen_awake)
+	_set_screen_state(serial, awake=True)
 
 	_, lib = _http_json(f"{base_url}/library")
 	tracks = lib.get("data") or []
@@ -237,6 +250,9 @@ def _run_client_mode_checks(serial: str, base_url: str, screen_awake: bool) -> l
 	t1, t2 = random.sample(tracks, 2)
 	_http_json(f"{base_url}/command", "POST", {"cmd": "play", "path": t1["path"]})
 	time.sleep(1.5)
+	if not screen_awake:
+		# Apagamos la pantalla con reproducción activa (en Android 12+ una app ya detenida no puede promover FGS vía HTTP puro)
+		_set_screen_state(serial, awake=False)
 	_http_json(f"{base_url}/command", "POST", {"cmd": "toggle_queue", "path": t2["path"]})
 	_http_json(f"{base_url}/command", "POST", {"cmd": "set_volume", "value": 65})
 	_http_json(f"{base_url}/command", "POST", {"cmd": "seek_absolute", "value": 10})
@@ -244,6 +260,7 @@ def _run_client_mode_checks(serial: str, base_url: str, screen_awake: bool) -> l
 	_http_json(f"{base_url}/command", "POST", {"cmd": "skip"})
 	time.sleep(1.8)
 
+	_assert_process_and_foreground(serial)
 	session_play = _get_media_session_state(serial)
 	if "RockolaMediaSession" not in session_play:
 		raise RuntimeError("RockolaMediaSession no registrada tras comandos de reproducción")
@@ -254,7 +271,7 @@ def _run_client_mode_checks(serial: str, base_url: str, screen_awake: bool) -> l
 	if "PAUSED(2)" not in session_pause and "PLAYING(3)" not in session_pause:
 		raise RuntimeError("Estado de MediaSession inesperado tras pause")
 
-	_assert_process_and_foreground(serial)
+	_assert_foreground_released(serial)
 	_assert_no_fatal_logcat(serial)
 	results.append(
 		E2EResult(
@@ -341,8 +358,11 @@ def _run_screen_off_soak_check(serial: str, base_url: str, soak_seconds: int) ->
 	if not tracks:
 		raise RuntimeError("No hay pistas en biblioteca para ejecutar la prueba prolongada con pantalla apagada")
 
-	initial_pid = _assert_process_and_foreground(serial)
+	_set_screen_state(serial, awake=True)
+	initial_pid = _assert_process_alive(serial)
 	_http_json(f"{base_url}/command", "POST", {"cmd": "play", "path": random.choice(tracks)["path"]})
+	time.sleep(1.0)
+	_assert_process_and_foreground(serial)
 	_set_screen_state(serial, awake=False)
 
 	print(f"⏳ Iniciando soak con cliente activo y pantalla apagada ({soak_seconds}s, pid={initial_pid})...")
@@ -371,7 +391,7 @@ def _run_shortcut_checks(serial: str) -> list[E2EResult]:
 	for _, action in shortcuts:
 		_run_adb(serial, ["shell", "am", "start", "-W", "-a", action, "-n", MAIN_ACTIVITY], timeout=20.0)
 		time.sleep(0.5)
-	pid = _assert_process_and_foreground(serial)
+	pid = _assert_process_alive(serial)
 	_assert_no_fatal_logcat(serial)
 	return [E2EResult("shortcuts_pantalla_prendida", True, f"4/4 shortcuts OK (pid={pid})")]
 
@@ -392,6 +412,7 @@ def _run_radio_test_checks(serial: str, base_url: str) -> list[E2EResult]:
 			raise RuntimeError(f"POST /api/radio/test ({label}) no inició reproducción: {data}")
 		if payload["play"]:
 			time.sleep(1.5)
+			_assert_process_and_foreground(serial)
 			session_dump = _get_media_session_state(serial)
 			if "RockolaMediaSession" not in session_dump:
 				raise RuntimeError(f"RockolaMediaSession ausente tras radio test ({label})")
@@ -404,7 +425,7 @@ def _run_radio_test_checks(serial: str, base_url: str) -> list[E2EResult]:
 		)
 
 	_http_json(f"{base_url}/command", "POST", {"cmd": "pause", "state": True})
-	_assert_process_and_foreground(serial)
+	_assert_process_alive(serial)
 	_assert_no_fatal_logcat(serial)
 	return results
 
@@ -414,7 +435,7 @@ def _run_idle_paused_soak_check(serial: str, base_url: str, idle_seconds: int) -
 	if idle_seconds <= 0:
 		return []
 
-	initial_pid = _assert_process_and_foreground(serial)
+	initial_pid = _assert_process_alive(serial)
 	_http_json(f"{base_url}/command", "POST", {"cmd": "pause", "state": True})
 	_set_screen_state(serial, awake=False)
 

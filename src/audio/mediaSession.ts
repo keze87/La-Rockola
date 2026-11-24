@@ -50,6 +50,7 @@ export function syncMediaSessionMetadata(
 		void syncAndroidMediaNotification({
 			title: info?.display_title || 'La Rockola del Carpincho',
 			artist: info?.display_artist || (trackPath ? 'Desconocido' : 'En espera'),
+			...(info?.album ? { album: info.album } : {}),
 			paused: trackPath ? paused : true,
 			coverUrl: artworkSrc,
 			trackPath,
