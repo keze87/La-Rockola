@@ -29,6 +29,7 @@ export function usePlaybackControls() {
 	return {
 		addUrl: (path: string) => execute('add_url', { path }, 'Procesando link...'),
 		clearQueue: () => execute('clear_queue', undefined, 'La fila quedó limpita.'),
+		clearRound: () => execute('clear_round', undefined, '¡Ronda limpia! Arrancamos de cero.'),
 		fullscreen: () => execute('fullscreen'),
 		jumpToHistory: (index: number) => execute('jump', { type: 'history', index }),
 		jumpToQueue: (index: number) => execute('jump', { type: 'queue', index }),

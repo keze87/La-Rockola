@@ -79,6 +79,7 @@ export interface CommandPayloads {
 	prev: undefined;
 	toggle_queue: { path: string };
 	clear_queue: undefined;
+	clear_round: undefined;
 	seek: { amount: number };
 	seek_absolute: { amount: number };
 	set_volume: { vollevel: number };

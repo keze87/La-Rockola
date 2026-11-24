@@ -584,4 +584,23 @@ describe('QueueTab.vue', () => {
 			isNativeSpy.mockRestore();
 		}
 	});
+
+	it('renders "Limpiar ronda" button when round has items and dispatches clear_round command', async () => {
+		historyState.value = ['/music/h1.mp3'];
+		currentTrackPath.value = '/music/current.mp3';
+		queueState.value = ['/music/q1.mp3'];
+
+		const wrapper = mount(QueueTab);
+		const clearBtn = wrapper.find('button[aria-label="Limpiar ronda"]');
+		expect(clearBtn.exists()).toBe(true);
+
+		await clearBtn.trigger('click');
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({
+				method: 'POST',
+				body: JSON.stringify({ cmd: 'clear_round' }),
+			})
+		);
+	});
 });

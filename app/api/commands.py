@@ -89,6 +89,12 @@ async def _cmd_clear_queue(state: PlaybackOrchestrator, _req: CommandRequest, _m
 	state.queue_manager.clear()
 
 
+async def _cmd_clear_round(state: PlaybackOrchestrator, _req: CommandRequest, _mgr: Any) -> None:
+	state.queue_manager.clear()
+	state.queue_manager.pause_after_path = None
+	await state.stop_playback(reset_ui_state=True)
+
+
 async def _cmd_vol_up(state: PlaybackOrchestrator, _req: CommandRequest, _mgr: Any) -> None:
 	await state.set_volume(state.volume + 5)
 	_schedule_volume_persist(state.volume)
@@ -387,6 +393,7 @@ COMMAND_HANDLERS: dict[str, CommandHandlerFn] = {
 	"prev": _cmd_prev,
 	"stop": _cmd_stop,
 	"clear_queue": _cmd_clear_queue,
+	"clear_round": _cmd_clear_round,
 	"vol_up": _cmd_vol_up,
 	"vol_down": _cmd_vol_down,
 	"set_volume": _cmd_set_volume,

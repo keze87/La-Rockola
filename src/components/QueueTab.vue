@@ -33,6 +33,7 @@
 
 	const {
 		addUrl: addUrlCmd,
+		clearRound,
 		jumpToHistory,
 		jumpToQueue,
 		moveInPlaylist,
@@ -155,6 +156,30 @@
 					<i class="material-icons !text-[18px]">add</i>
 				</button>
 			</div>
+		</div>
+
+		<!-- Barra de acciones rápidas de la ronda -->
+		<div
+			v-if="unifiedQueue.length > 0"
+			class="flex items-center justify-between border-b border-[var(--hairline)] px-4 py-2"
+		>
+			<span
+				class="text-[12px] font-semibold tracking-[0.04em] text-[var(--text-secondary)] uppercase tabular-nums"
+			>
+				{{ unifiedQueue.length }} {{ unifiedQueue.length === 1 ? 'tema en ronda' : 'temas en ronda' }}
+			</span>
+			<button
+				type="button"
+				aria-label="Limpiar ronda"
+				class="tap-feedback inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-[var(--accent-danger)]/35 bg-[var(--accent-danger)]/12 px-3 py-1 text-[12px] font-semibold text-[var(--accent-danger)] transition-colors hover:bg-[var(--accent-danger)]/20"
+				@click="
+					clearRound();
+					haptic();
+				"
+			>
+				<i class="material-icons !text-[15px]" aria-hidden="true">delete_sweep</i>
+				<span>Limpiar ronda</span>
+			</button>
 		</div>
 
 		<!-- Encabezado de la grilla (oculto en portrait < 720px para dar aire a títulos y artistas) -->

@@ -40,6 +40,7 @@
 	import WeatherLocationModal from './WeatherLocationModal.vue';
 
 	const {
+		clearRound,
 		fullscreen,
 		setMute,
 		setDjMode: setDjModeCmd,
@@ -447,42 +448,55 @@
 	>
 		<!-- Control deslizante de volumen -->
 		<div
-			class="mx-auto mb-7 flex max-w-lg items-center gap-3 rounded-[var(--radius-lg)] border border-[var(--hairline)] bg-[var(--bg-grouped)] px-4 py-3 text-[var(--accent-primary)]"
+			class="mx-auto mb-7 max-w-lg rounded-[var(--radius-lg)] border border-[var(--hairline)] bg-[var(--bg-grouped)] px-4 py-3.5"
 		>
-			<button
-				type="button"
-				:aria-label="serverMuted ? 'Desmutear audio' : 'Mutear audio'"
-				:title="serverMuted ? 'Desmutear' : 'Mutear'"
-				class="touch-target inline-flex shrink-0 cursor-pointer items-center justify-center rounded-full text-[var(--accent-primary)] transition-colors hover:text-[var(--text-primary)]"
-				@click="
-					setMute(!serverMuted);
-					haptic();
-				"
-			>
-				<i class="material-icons !text-[22px]" aria-hidden="true">
-					{{ volIcon }}
-				</i>
-			</button>
-			<div
-				class="no-tab-swipe group flex h-9 w-full cursor-pointer touch-none items-center"
-				:class="{ 'opacity-45': serverMuted }"
-				@pointerdown="startVol"
-				@pointermove="moveVol"
-				@pointerup="endVol"
-				@pointercancel="endVol"
-			>
+			<div class="mb-2 flex items-center justify-between">
+				<span class="text-[12px] font-semibold tracking-[0.06em] text-[var(--text-secondary)] uppercase">
+					Volumen
+				</span>
+				<span class="text-[12px] font-bold text-[var(--accent-primary)] tabular-nums">
+					{{ serverMuted ? 'Muteado' : `${Math.round(volPercent)}%` }}
+				</span>
+			</div>
+			<div class="flex items-center gap-3">
+				<button
+					type="button"
+					:aria-label="serverMuted ? 'Desmutear audio' : 'Mutear audio'"
+					:title="serverMuted ? 'Desmutear' : 'Mutear'"
+					class="touch-target tap-feedback inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full bg-[var(--bg-input)] text-[var(--text-primary)] opacity-85 transition-opacity hover:opacity-100"
+					@click="
+						setMute(!serverMuted);
+						haptic();
+					"
+				>
+					<i class="material-icons !text-[19px]" aria-hidden="true">
+						{{ volIcon }}
+					</i>
+				</button>
 				<div
-					class="relative h-[6px] w-full rounded-full bg-[rgba(255,236,210,0.14)] transition-[height] duration-150 group-active:h-[10px]"
+					class="no-tab-swipe group flex h-9 w-full cursor-pointer touch-none items-center"
+					:class="{ 'opacity-45': serverMuted }"
+					@pointerdown="startVol"
+					@pointermove="moveVol"
+					@pointerup="endVol"
+					@pointercancel="endVol"
 				>
 					<div
-						class="absolute top-0 left-0 h-full rounded-full bg-[var(--accent-primary)]"
-						:style="{ width: volPercent + '%' }"
-					/>
-					<div
-						class="absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full bg-[var(--text-primary)] shadow-[0_2px_6px_rgba(0,0,0,0.45)] transition-transform group-active:scale-110"
-						:style="{ left: volPercent + '%', marginLeft: '-8px' }"
-					/>
+						class="relative h-[8px] w-full overflow-hidden rounded-full bg-[rgba(255,236,210,0.12)] transition-[height] duration-150 group-active:h-[10px]"
+					>
+						<div
+							class="absolute top-0 left-0 h-full rounded-full bg-[var(--accent-primary)]"
+							:style="{ width: volPercent + '%' }"
+						/>
+						<div
+							class="absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--text-primary)] shadow-[0_1px_4px_rgba(0,0,0,0.45)] transition-transform group-active:scale-110"
+							:style="{ left: `clamp(7px, ${volPercent}%, calc(100% - 7px))` }"
+						/>
+					</div>
 				</div>
+				<i class="material-icons shrink-0 !text-[18px] text-[var(--text-secondary)]" aria-hidden="true">
+					volume_up
+				</i>
 			</div>
 		</div>
 
@@ -787,6 +801,17 @@
 				@click="stop"
 			>
 				Cortala de una
+			</PillButton>
+
+			<PillButton
+				icon="delete_sweep"
+				color-class="border border-[var(--accent-danger)]/40 bg-[var(--accent-danger)]/15 text-[var(--accent-danger)] hover:bg-[var(--accent-danger)]/25"
+				@click="
+					clearRound();
+					haptic();
+				"
+			>
+				Limpiar ronda
 			</PillButton>
 
 			<PillButton
