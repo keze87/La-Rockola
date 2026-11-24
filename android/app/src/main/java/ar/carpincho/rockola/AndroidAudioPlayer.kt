@@ -87,18 +87,8 @@ class AndroidAudioPlayer(
             return master * safeRatio * safeEnv
         }
 
-        fun computeBedFocusScale(
-            suppressionReason: Int,
-            playerVolume: Float,
-            expectedMasterGain: Float,
-        ): Float {
-            if (suppressionReason == Player.PLAYBACK_SUPPRESSION_REASON_TRANSIENT_AUDIO_FOCUS_LOSS) {
-                return 0f
-            }
-            if (expectedMasterGain > 0.001f && playerVolume < expectedMasterGain) {
-                return (playerVolume / expectedMasterGain).coerceIn(0f, 1f)
-            }
-            return 1f
+        fun isBedSuppressed(suppressionReason: Int): Boolean {
+            return suppressionReason == Player.PLAYBACK_SUPPRESSION_REASON_TRANSIENT_AUDIO_FOCUS_LOSS
         }
 
         fun computeBedFadeEnvelope(elapsedMs: Long, durationMs: Long): Float {
@@ -125,7 +115,6 @@ class AndroidAudioPlayer(
     private var isMuted: Boolean = false
     private var bedTargetVolumeRatio: Float = 0.1f
     private var bedFadeEnvelope: Float = 0f
-    private var bedFocusScale: Float = 1f
     private var consecutiveErrors: Int = 0
     private var lastReportedPaused: Boolean? = null
     private var isLoadingMedia: Boolean = false
@@ -165,8 +154,7 @@ class AndroidAudioPlayer(
     }
 
     private fun applyBedVolume() {
-        val base = computeBedGain(currentVolumePercent, isMuted, bedTargetVolumeRatio, bedFadeEnvelope)
-        bedPlayer?.volume = base * bedFocusScale
+        bedPlayer?.volume = computeBedGain(currentVolumePercent, isMuted, bedTargetVolumeRatio, bedFadeEnvelope)
     }
 
     private fun parseMediaUri(pathOrUrl: String): Uri {
@@ -213,31 +201,19 @@ class AndroidAudioPlayer(
                         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                             bedPlayer?.let { bp ->
                                 if (bp.playbackState != Player.STATE_IDLE) {
-                                    val suppressed =
-                                        playbackSuppressionReason == Player.PLAYBACK_SUPPRESSION_REASON_TRANSIENT_AUDIO_FOCUS_LOSS
-                                    bp.playWhenReady = playWhenReady && !suppressed
+                                    bp.playWhenReady = playWhenReady && !isBedSuppressed(playbackSuppressionReason)
                                 }
                             }
                             emitPauseIfChanged(!playWhenReady)
                         }
 
                         override fun onPlaybackSuppressionReasonChanged(playbackSuppressionReason: Int) {
-                            val suppressed =
-                                playbackSuppressionReason == Player.PLAYBACK_SUPPRESSION_REASON_TRANSIENT_AUDIO_FOCUS_LOSS
-                            val masterGain = computePlayerGain(currentVolumePercent, isMuted)
-                            bedFocusScale = computeBedFocusScale(playbackSuppressionReason, volume, masterGain)
+                            val suppressed = isBedSuppressed(playbackSuppressionReason)
                             bedPlayer?.let { bp ->
                                 if (bp.playbackState != Player.STATE_IDLE) {
                                     bp.playWhenReady = playWhenReady && !suppressed
-                                    applyBedVolume()
                                 }
                             }
-                        }
-
-                        override fun onVolumeChanged(volume: Float) {
-                            val masterGain = computePlayerGain(currentVolumePercent, isMuted)
-                            bedFocusScale = computeBedFocusScale(playbackSuppressionReason, volume, masterGain)
-                            applyBedVolume()
                         }
 
                         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -350,17 +326,11 @@ class AndroidAudioPlayer(
                 bedTargetVolumeRatio = volumeRatio.toFloat().coerceIn(0f, 1f)
                 bedFadeEnvelope = 0f
                 val p = player
-                val masterGain = computePlayerGain(currentVolumePercent, isMuted)
-                bedFocusScale = if (p != null) {
-                    computeBedFocusScale(p.playbackSuppressionReason, p.volume, masterGain)
-                } else {
-                    1f
-                }
                 bp.volume = 0f
                 val startMs = (offsetSec * 1000.0).toLong().coerceAtLeast(0L)
                 bp.setMediaItem(MediaItem.fromUri(parseMediaUri(pathOrUrl)), startMs)
                 bp.prepare()
-                val suppressed = p?.playbackSuppressionReason == Player.PLAYBACK_SUPPRESSION_REASON_TRANSIENT_AUDIO_FOCUS_LOSS
+                val suppressed = p != null && isBedSuppressed(p.playbackSuppressionReason)
                 bp.playWhenReady = (p?.playWhenReady ?: true) && !suppressed
                 mainHandler.removeCallbacks(bedFadeTicker)
                 mainHandler.post(bedFadeTicker)
@@ -415,7 +385,6 @@ class AndroidAudioPlayer(
         mainHandler.post {
             val p = player ?: return@post
             p.volume = computePlayerGain(clamped, isMuted)
-            bedFocusScale = computeBedFocusScale(p.playbackSuppressionReason, p.volume, p.volume)
             applyBedVolume()
         }
     }
@@ -463,7 +432,6 @@ class AndroidAudioPlayer(
         mainHandler.post {
             val p = player ?: return@post
             p.volume = computePlayerGain(currentVolumePercent, muted)
-            bedFocusScale = computeBedFocusScale(p.playbackSuppressionReason, p.volume, p.volume)
             applyBedVolume()
         }
     }

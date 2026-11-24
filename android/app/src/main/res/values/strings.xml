@@ -4,12 +4,4 @@
     <string name="title_activity_main">Rockola</string>
     <string name="package_name">ar.carpincho.rockola</string>
     <string name="custom_url_scheme">ar.carpincho.rockola</string>
-    <string name="shortcut_fogon_short">Modo Fogón</string>
-    <string name="shortcut_fogon_long">Abrir en Modo Fogón</string>
-    <string name="shortcut_library_short">Librería</string>
-    <string name="shortcut_library_long">Abrir la librería de temas</string>
-    <string name="shortcut_queue_short">Cola</string>
-    <string name="shortcut_queue_long">Abrir la cola de reproducción</string>
-    <string name="shortcut_tops_short">Tops</string>
-    <string name="shortcut_tops_long">Abrir los temas más sonados</string>
 </resources>

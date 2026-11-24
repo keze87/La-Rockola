@@ -35,7 +35,6 @@ internal object ServicePowerPolicy {
     }
 
     fun shouldStopForeground(
-        keepDismissibleNotification: Boolean,
         isHostRunning: Boolean,
         hasRemoteClients: Boolean = false,
         forceStop: Boolean = false,
@@ -392,6 +391,10 @@ class RockolaForegroundService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             Intent.ACTION_MEDIA_BUTTON -> {
+                if (!isInForeground) {
+                    // MediaButtonReceiver inicia con startForegroundService() en Android 8+: cumplir contrato antes de retornar
+                    promoteToForeground("La Rockola", ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+                }
                 notificationManager.handleMediaButtonIntent(intent)
                 return START_NOT_STICKY
             }
@@ -696,7 +699,6 @@ class RockolaForegroundService : Service() {
     private fun demoteFromForeground(keepDismissibleNotification: Boolean, forceStop: Boolean = false) {
         releaseLocks()
         val shouldStopFg = ServicePowerPolicy.shouldStopForeground(
-            keepDismissibleNotification = keepDismissibleNotification,
             isHostRunning = isRunning,
             hasRemoteClients = hasConnectedRemoteClients(),
             forceStop = forceStop,

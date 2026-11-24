@@ -44,6 +44,7 @@ class RockolaServerPlugin : Plugin() {
 
         fun emitNativeEvent(eventName: String, data: JSObject): Boolean {
             val plugin = activePluginRef?.get() ?: return false
+            if (!plugin.hasListeners(eventName)) return false
             val webView = plugin.bridge?.webView ?: return false
             webView.post {
                 plugin.notifyListeners(eventName, data)
@@ -386,12 +387,8 @@ class RockolaServerPlugin : Plugin() {
     @PluginMethod
     fun updateMediaNotification(call: PluginCall) {
         val isRemote = RockolaForegroundService.currentMediaTarget.mode == MediaTargetMode.REMOTE
-        if (!isRemote && RockolaForegroundService.isRunning) {
+        if (!isRemote) {
             // En modo HOST la única fuente de verdad es Python/ExoPlayer
-            call.resolve(JSObject().apply { put("updated", false) })
-            return
-        }
-        if (!RockolaForegroundService.isRunning && !isRemote) {
             call.resolve(JSObject().apply { put("updated", false) })
             return
         }
@@ -418,10 +415,9 @@ class RockolaServerPlugin : Plugin() {
             isFavorite = isFavorite,
             isPauseAfter = isPauseAfter,
         )
-        if (!handledDirectly && isRemote && !paused && !trackPath.isNullOrBlank()) {
+        if (!handledDirectly && !paused && !trackPath.isNullOrBlank()) {
             val intent = Intent(context, RockolaForegroundService::class.java).apply {
                 action = RockolaForegroundService.ACTION_UPDATE_MEDIA
-                putExtra(RockolaForegroundService.EXTRA_STARTED_AS_FOREGROUND, true)
                 putExtra(RockolaForegroundService.EXTRA_TITLE, title)
                 putExtra(RockolaForegroundService.EXTRA_ARTIST, artist)
                 putExtra(RockolaForegroundService.EXTRA_PAUSED, paused)
