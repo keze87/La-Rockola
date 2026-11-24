@@ -708,4 +708,27 @@ Dialogue: 0,0:00:20.00,0:00:24.00,Default,,0,0,0,,{\\kf100}Verso {\\kf100}tres
 		expect(headbar.classes()).toContain('[backdrop-filter:var(--glass-blur)]');
 		wrapper.unmount();
 	});
+
+	it('syncs --headbar-h CSS variable from actual rendered headbar height', async () => {
+		const wrapper = mount(App);
+		const headbar = wrapper.find('nav.head-bar');
+		expect(headbar.exists()).toBe(true);
+		vi.spyOn(headbar.element, 'getBoundingClientRect').mockReturnValue({
+			height: 92,
+			width: 390,
+			top: 0,
+			left: 0,
+			bottom: 92,
+			right: 390,
+			x: 0,
+			y: 0,
+			toJSON: () => {},
+		});
+
+		window.dispatchEvent(new Event('resize'));
+		await wrapper.vm.$nextTick();
+		expect(document.documentElement.style.getPropertyValue('--headbar-h')).toBe('92px');
+		document.documentElement.style.removeProperty('--headbar-h');
+		wrapper.unmount();
+	});
 });

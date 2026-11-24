@@ -172,4 +172,37 @@ describe('CoverImage.vue', () => {
 		await wrapper.vm.$nextTick();
 		expect(wrapper.find('img.cover-main-img').classes()).toContain('opacity-100');
 	});
+
+	it('keeps image mounted by default (unloadWhenHidden=false) even if IntersectionObserver reports false', async () => {
+		let observerCallback: any = null;
+		class MockIntersectionObserver {
+			constructor(callback: any) {
+				observerCallback = callback;
+			}
+			observe() {}
+			unobserve() {}
+			disconnect() {}
+		}
+		const origWindowIO = (window as any).IntersectionObserver;
+		const origGlobalIO = (globalThis as any).IntersectionObserver;
+		(window as any).IntersectionObserver = MockIntersectionObserver;
+		(globalThis as any).IntersectionObserver = MockIntersectionObserver;
+
+		try {
+			const wrapper = mount(CoverImage, {
+				props: {
+					path: '/music/album.flac',
+				},
+			});
+			await wrapper.vm.$nextTick();
+			if (observerCallback) {
+				observerCallback([{ isIntersecting: false }]);
+				await wrapper.vm.$nextTick();
+			}
+			expect(wrapper.find('img.cover-main-img').exists()).toBe(true);
+		} finally {
+			(window as any).IntersectionObserver = origWindowIO;
+			(globalThis as any).IntersectionObserver = origGlobalIO;
+		}
+	});
 });

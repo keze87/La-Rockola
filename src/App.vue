@@ -1,5 +1,5 @@
 <script setup lang="ts">
-	import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+	import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 	import { Toaster } from 'vue-sonner';
 	import { apiUrl } from './composables/useApi';
 	import {
@@ -461,12 +461,30 @@
 	}
 
 	let stopUiPersistence: (() => void) | null = null;
+	const headbarRef = ref<HTMLElement | null>(null);
+	let headbarResizeObserver: ResizeObserver | null = null;
+
+	function syncHeadbarHeight() {
+		if (typeof document === 'undefined' || !headbarRef.value) return;
+		const h = headbarRef.value.getBoundingClientRect().height;
+		if (h > 0) {
+			document.documentElement.style.setProperty('--headbar-h', `${Math.round(h)}px`);
+		}
+	}
 
 	onMounted(() => {
 		initRouter();
 		if (typeof window !== 'undefined') {
 			restoreUiState({ restoreTab: extractSpaRoute(window.location.pathname) === '/' });
+			window.addEventListener('resize', syncHeadbarHeight);
 		}
+		nextTick(() => {
+			syncHeadbarHeight();
+			if (typeof ResizeObserver !== 'undefined' && headbarRef.value) {
+				headbarResizeObserver = new ResizeObserver(() => syncHeadbarHeight());
+				headbarResizeObserver.observe(headbarRef.value);
+			}
+		});
 		stopUiPersistence = initUiPersistence();
 		window.__rockolaHandleBack = handleAndroidBack;
 		window.__rockolaOnBackProgress = handleAndroidBackProgress;
@@ -528,6 +546,11 @@
 	onUnmounted(() => {
 		stopUiPersistence?.();
 		stopUiPersistence = null;
+		headbarResizeObserver?.disconnect();
+		headbarResizeObserver = null;
+		if (typeof window !== 'undefined') {
+			window.removeEventListener('resize', syncHeadbarHeight);
+		}
 		if (typeof document !== 'undefined') {
 			document.removeEventListener('focusin', syncInputFocusState);
 			document.removeEventListener('focusout', handleFocusOut);
@@ -642,6 +665,7 @@
 	>
 		<!-- BARRA SUPERIOR DE NAVEGACIÓN (fixed con efecto glass cubriendo también la barra de estado) -->
 		<nav
+			ref="headbarRef"
 			class="head-bar fixed top-0 right-0 left-0 z-40 cursor-pointer overflow-hidden border-b-[0.5px] border-[var(--glass-border)] bg-[var(--glass-bg-strong)] px-4 pt-[calc(10px+var(--rockola-safe-top))] pb-2.5 [backdrop-filter:var(--glass-blur)] [-webkit-backdrop-filter:var(--glass-blur)]"
 			@click="
 				isFogonMode = true;

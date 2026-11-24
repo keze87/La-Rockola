@@ -23,7 +23,7 @@
 			buttonSize: 'h-[22px] w-[22px]',
 			buttonIconSize: '!text-[13px]',
 			sizePx: 512,
-			unloadWhenHidden: true,
+			unloadWhenHidden: false,
 			showFavorite: true,
 			buttonPosition: '-right-2 -bottom-2',
 		}

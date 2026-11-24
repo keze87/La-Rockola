@@ -21,7 +21,7 @@
 			rounded: 'rounded',
 			iconSize: '!text-lg',
 			sizePx: 512,
-			unloadWhenHidden: true,
+			unloadWhenHidden: false,
 		}
 	);
 
