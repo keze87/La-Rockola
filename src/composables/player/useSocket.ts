@@ -65,9 +65,19 @@ import {
 } from './state';
 import type { PlayerState, Track } from '../../types';
 
+const LOCAL_HOST_DISCONNECT_TOAST_DELAY_MS = 5000;
+
 let socketGeneration = 0;
 let socketRequested = false;
 let activeCloseHandle: (() => void) | null = null;
+let disconnectToastTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearDisconnectToastTimer(): void {
+	if (disconnectToastTimer !== null) {
+		clearTimeout(disconnectToastTimer);
+		disconnectToastTimer = null;
+	}
+}
 
 export function useSocket() {
 	const { showToast } = useToasts();
@@ -75,6 +85,7 @@ export function useSocket() {
 	function disconnectWebSocket(): void {
 		socketRequested = false;
 		socketGeneration += 1;
+		clearDisconnectToastTimer();
 		const closeFn = activeCloseHandle;
 		activeCloseHandle = null;
 		closeFn?.();
@@ -112,6 +123,7 @@ export function useSocket() {
 			onConnected() {
 				if (intentionallyClosed || gen !== socketGeneration) return;
 				consecutiveDisconnects = 0;
+				clearDisconnectToastTimer();
 				connectionState.value = 'connected';
 				if (listenLocally.value) {
 					send(JSON.stringify({ type: 'local_player_claim' }));
@@ -122,9 +134,25 @@ export function useSocket() {
 				if (intentionallyClosed || gen !== socketGeneration) return;
 				consecutiveDisconnects += 1;
 				connectionState.value = 'reconnecting';
-				showToast('Se cortó la señal. Reconectando...', 'warning');
-				if (isNativeAndroidHost() && isHostMode.value && consecutiveDisconnects >= 2) {
-					void ensureLocalAndroidServerAlive();
+				const isLocalAndroidHost = isNativeAndroidHost() && isHostMode.value;
+				if (isLocalAndroidHost) {
+					if (disconnectToastTimer === null) {
+						disconnectToastTimer = setTimeout(() => {
+							disconnectToastTimer = null;
+							if (
+								!intentionallyClosed &&
+								gen === socketGeneration &&
+								connectionState.value === 'reconnecting'
+							) {
+								showToast('Se cortó la señal. Reconectando...', 'warning');
+							}
+						}, LOCAL_HOST_DISCONNECT_TOAST_DELAY_MS);
+					}
+					if (consecutiveDisconnects >= 2) {
+						void ensureLocalAndroidServerAlive();
+					}
+				} else {
+					showToast('Se cortó la señal. Reconectando...', 'warning');
 				}
 			},
 

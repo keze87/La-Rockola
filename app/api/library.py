@@ -33,7 +33,7 @@ async def get_library() -> dict[str, Any]:
 
 
 @router.get("/scan")
-async def scan_library(dir: str | None = None, dir2: str | None = None) -> dict[str, Any]:
+async def scan_library(dir: str | None = None, dir2: str | None = None, silent: bool = False) -> dict[str, Any]:
 	"""Dispara el proceso de escaneo de carpetas de música."""
 	state = get_container().ensure_orchestrator()
 	if not state:
@@ -63,42 +63,49 @@ async def scan_library(dir: str | None = None, dir2: str | None = None) -> dict[
 		if norm2:
 			target_dirs.append(norm2)
 
-	logger.info(f"Iniciando escaneo de directorios: {target_dirs}")
-	state.is_scanning = True
-	state.scan_phase = "discovering"
-	state.scan_current = 0
-	state.scan_total = 0
-	state.scan_message = "Buscando archivos de audio..."
-
-	await broadcast_state()
-
+	logger.info(f"Iniciando escaneo {'silencioso ' if silent else ''}de directorios: {target_dirs}")
 	stop_ticker = asyncio.Event()
+	ticker_task: asyncio.Task[None] | None = None
 
-	async def _progress_ticker() -> None:
-		while not stop_ticker.is_set():
-			try:
-				await asyncio.sleep(0.4)
-				await broadcast_state()
-			except asyncio.CancelledError:
-				break
-			except Exception:
-				pass
+	if not silent:
+		state.is_scanning = True
+		state.scan_phase = "discovering"
+		state.scan_current = 0
+		state.scan_total = 0
+		state.scan_message = "Buscando archivos de audio..."
 
-	ticker_task = asyncio.create_task(_progress_ticker())
+		await broadcast_state()
+
+		async def _progress_ticker() -> None:
+			while not stop_ticker.is_set():
+				try:
+					await asyncio.sleep(0.4)
+					await broadcast_state()
+				except asyncio.CancelledError:
+					break
+				except Exception:
+					pass
+
+		ticker_task = asyncio.create_task(_progress_ticker())
 
 	try:
 		if hasattr(state, "scan_directory"):
-			state.tracks_cache = await asyncio.to_thread(state.scan_directory, target_dirs, False)
+			if silent:
+				state.tracks_cache = await asyncio.to_thread(state.scan_directory, target_dirs, False, silent=True)
+			else:
+				state.tracks_cache = await asyncio.to_thread(state.scan_directory, target_dirs, False)
 	finally:
-		state.is_scanning = False
-		state.scan_phase = "idle"
-		state.scan_message = ""
+		if not silent:
+			state.is_scanning = False
+			state.scan_phase = "idle"
+			state.scan_message = ""
 		stop_ticker.set()
-		ticker_task.cancel()
-		try:
-			await ticker_task
-		except asyncio.CancelledError:
-			pass
+		if ticker_task is not None:
+			ticker_task.cancel()
+			try:
+				await ticker_task
+			except asyncio.CancelledError:
+				pass
 
 	await broadcast_state(include_library=True)
 	if hasattr(state, "start_background_mood_analysis"):

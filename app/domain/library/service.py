@@ -318,20 +318,22 @@ class LibraryService:
 		max_workers: int | None = None,
 		extract_fingerprint: bool | None = None,
 		state: Any = None,
+		silent: bool = False,
 	) -> list[dict[str, Any]]:
 		"""Escanea directorios en búsqueda de archivos de audio reconciliando caché y huellas."""
 		if extract_fingerprint is None:
 			extract_fingerprint = extract_mood
 
+		progress_state = None if silent else state
 		logger.info(f"Pegando una ojeada por estas carpetas: {target_dirs}")
 		audio_extensions = {".flac", ".m4a", ".mp3", ".ogg", ".wav", ".mp4", ".mkv", ".avi", ".webm"}
 		raw_entries: list[tuple[str | Path, float | None, int | None]] = []
 
-		if state:
-			state.scan_phase = "discovering"
-			state.scan_current = 0
-			state.scan_total = 0
-			state.scan_message = "Buscando archivos de audio..."
+		if progress_state:
+			progress_state.scan_phase = "discovering"
+			progress_state.scan_current = 0
+			progress_state.scan_total = 0
+			progress_state.scan_message = "Buscando archivos de audio..."
 
 		for target_dir in target_dirs:
 			if not target_dir:
@@ -376,8 +378,8 @@ class LibraryService:
 						).strip()
 				for entry in outcome.files:
 					raw_entries.append((entry.path, entry.mtime, entry.size))
-					if state and len(raw_entries) % 50 == 0:
-						state.scan_total = len(raw_entries)
+					if progress_state and len(raw_entries) % 50 == 0:
+						progress_state.scan_total = len(raw_entries)
 				continue
 
 			music_dir = Path(target_dir).expanduser()
@@ -400,15 +402,15 @@ class LibraryService:
 							raw_entries.append((fp, float(st.st_mtime), int(st.st_size)))
 						except OSError:
 							continue
-						if state and len(raw_entries) % 50 == 0:
-							state.scan_total = len(raw_entries)
+						if progress_state and len(raw_entries) % 50 == 0:
+							progress_state.scan_total = len(raw_entries)
 
 		logger.info(f"Encontré {len(raw_entries)} archivos en total. Revisando cuáles son nuevos o cambiaron...")
-		if state:
-			state.scan_phase = "metadata"
-			state.scan_total = len(raw_entries)
-			state.scan_current = 0
-			state.scan_message = (
+		if progress_state:
+			progress_state.scan_phase = "metadata"
+			progress_state.scan_total = len(raw_entries)
+			progress_state.scan_current = 0
+			progress_state.scan_message = (
 				f"Encontré {len(raw_entries)} archivos en total. Revisando cuáles son nuevos o cambiaron..."
 			)
 
@@ -496,10 +498,10 @@ class LibraryService:
 		logger.info(
 			f"⏱️ [scan] Caché evaluada: {len(cache_hits)} hits, {len(miss_files)} nuevos/modificados (total={len(raw_entries)})."
 		)
-		if state:
-			state.scan_current = len(cache_hits)
+		if progress_state:
+			progress_state.scan_current = len(cache_hits)
 			if miss_files:
-				state.scan_message = f"Leyendo metadatos ({len(cache_hits)}/{len(raw_entries)})..."
+				progress_state.scan_message = f"Leyendo metadatos ({len(cache_hits)}/{len(raw_entries)})..."
 
 		miss_results: dict[str, tuple[float, dict[str, Any], str, tuple[Any, ...], str | None]] = {}
 		if miss_files:
@@ -543,10 +545,10 @@ class LibraryService:
 					if res:
 						f_str, mtime, t_dict, t_hash, db_tup, fp = res
 						miss_results[f_str] = (mtime, t_dict, t_hash, db_tup, fp)
-					if state:
+					if progress_state:
 						current_total = len(cache_hits) + processed_count
-						state.scan_current = current_total
-						state.scan_message = f"Leyendo metadatos ({current_total}/{len(raw_entries)})..."
+						progress_state.scan_current = current_total
+						progress_state.scan_message = f"Leyendo metadatos ({current_total}/{len(raw_entries)})..."
 					if processed_count % 50 == 0:
 						logger.info(
 							f"Ya procesé la data de {processed_count}/{len(miss_files)} joyitas nuevas/modificadas..."
@@ -576,8 +578,8 @@ class LibraryService:
 				new_path_to_id[file_str] = track_hash
 
 		missing_db_tracks = [t for t in db_cache.values() if t["track_hash"] not in seen_track_ids]
-		if state and missing_db_tracks and new_tracks_for_reconciliation:
-			state.scan_message = "Reconciliando huellas acústicas..."
+		if progress_state and missing_db_tracks and new_tracks_for_reconciliation:
+			progress_state.scan_message = "Reconciliando huellas acústicas..."
 		self.reconcile_chromaprint(
 			new_tracks_for_reconciliation=new_tracks_for_reconciliation,
 			missing_db_tracks=missing_db_tracks,
@@ -588,9 +590,9 @@ class LibraryService:
 			seen_track_ids=seen_track_ids,
 		)
 
-		self._mark_duplicate_tracks(tracks, state=state, max_workers=max_workers)
-		if state:
-			state.scan_message = "Calculando puntajes de vibra..."
+		self._mark_duplicate_tracks(tracks, state=progress_state, max_workers=max_workers)
+		if progress_state:
+			progress_state.scan_message = "Calculando puntajes de vibra..."
 		calculate_mood_scores(tracks)
 		id_to_current_path.clear()
 		id_to_current_path.update(new_id_to_current_path)
@@ -601,8 +603,8 @@ class LibraryService:
 			state.track_cache_by_path = new_cache
 
 		if tracks_to_insert:
-			if state:
-				state.scan_message = f"Guardando {len(tracks_to_insert)} temas en base de datos..."
+			if progress_state:
+				progress_state.scan_message = f"Guardando {len(tracks_to_insert)} temas en base de datos..."
 			t_db = time.perf_counter()
 			try:
 				self.track_repo.save_many(tracks_to_insert)
@@ -612,10 +614,10 @@ class LibraryService:
 			except Exception as e:
 				logger.error(f"Error guardando tracks en la DB: {e}")
 
-		if state:
-			state.scan_current = len(tracks)
-			state.scan_total = len(tracks)
-			state.scan_message = "¡Listo el escaneo, maestro!"
+		if progress_state:
+			progress_state.scan_current = len(tracks)
+			progress_state.scan_total = len(tracks)
+			progress_state.scan_message = "¡Listo el escaneo, maestro!"
 		logger.info("¡Listo el escaneo, maestro!")
 		return tracks
 

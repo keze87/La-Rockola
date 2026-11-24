@@ -63,7 +63,7 @@ def test_lifespan_serves_cached_library_before_background_scan_finishes(tmp_path
 	container = get_container()
 	container.db_path = db_path
 
-	async def slow_scan() -> None:
+	async def slow_scan(*, silent: bool = False) -> None:
 		await asyncio.sleep(5.0)
 
 	monkeypatch.setattr("app.main.scan_library", slow_scan)
@@ -77,8 +77,8 @@ def test_lifespan_serves_cached_library_before_background_scan_finishes(tmp_path
 		assert orch.path_to_id.get(str(song)) == "id-cached"
 
 
-def test_lifespan_skips_auto_scan_on_android_when_cache_preloaded(tmp_path: Path, monkeypatch) -> None:
-	"""En Android con caché precargada desde SQLite no se dispara scan_library automático al iniciar."""
+def test_lifespan_runs_silent_scan_when_cache_preloaded(tmp_path: Path, monkeypatch) -> None:
+	"""Con caché precargada desde SQLite, el reescaneo inicial corre en modo silent=True sin mostrar cartel en UI."""
 	music_dir = tmp_path / "music"
 	music_dir.mkdir()
 	song = music_dir / "tema.mp3"
@@ -95,13 +95,11 @@ def test_lifespan_skips_auto_scan_on_android_when_cache_preloaded(tmp_path: Path
 	container = get_container()
 	container.db_path = db_path
 
-	scan_calls = 0
+	captured_calls: list[bool] = []
 
-	async def spy_scan() -> None:
-		nonlocal scan_calls
-		scan_calls += 1
+	async def spy_scan(*, silent: bool = False) -> None:
+		captured_calls.append(silent)
 
-	monkeypatch.setattr("app.infrastructure.binaries.manager.is_android", lambda: True)
 	monkeypatch.setattr("app.main.scan_library", spy_scan)
 
 	app = create_app()
@@ -109,8 +107,10 @@ def test_lifespan_skips_auto_scan_on_android_when_cache_preloaded(tmp_path: Path
 		orch = get_container().orchestrator
 		assert orch is not None
 		assert len(orch.tracks_cache) == 1
+		assert orch.is_scanning is False
+		assert orch.scan_message == ""
 
-	assert scan_calls == 0
+	assert captured_calls == [True]
 
 
 def test_get_library_returns_cached_tracks_immediately_while_scanning(tmp_path: Path) -> None:

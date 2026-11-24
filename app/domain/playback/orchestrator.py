@@ -669,6 +669,7 @@ class PlaybackOrchestrator:
 		extract_mood: bool = True,
 		max_workers: int | None = None,
 		extract_fingerprint: bool | None = None,
+		silent: bool = False,
 	) -> list[dict[str, Any]]:
 		return self.library_service.scan_directory(
 			target_dirs,
@@ -676,6 +677,7 @@ class PlaybackOrchestrator:
 			max_workers=max_workers,
 			extract_fingerprint=extract_fingerprint,
 			state=self,
+			silent=silent,
 		)
 
 	def start_background_mood_analysis(self) -> asyncio.Task[Any] | None:

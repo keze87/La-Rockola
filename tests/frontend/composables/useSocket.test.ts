@@ -141,6 +141,44 @@ describe('useSocket.ts', () => {
 		expect(() => capturedOptions.onDisconnected()).not.toThrow();
 	});
 
+	it('delays disconnect toast on native Android host mode and cancels if reconnected early', async () => {
+		vi.useFakeTimers();
+		try {
+			const androidHostMod = await import('@/composables/useAndroidHost');
+			const connStore = await import('@/stores/useServerConnectionStore');
+			const toastsMod = await import('@/composables/player/useToasts');
+			const toastSpy = vi.fn();
+			vi.spyOn(toastsMod, 'useToasts').mockReturnValue({ showToast: toastSpy } as never);
+			vi.spyOn(androidHostMod, 'isNativeAndroidHost').mockReturnValue(true);
+			connStore.setHostMode();
+
+			const { connectWebSocket, disconnectWebSocket } = useSocket();
+			connectWebSocket();
+			capturedOptions.onConnected();
+			capturedOptions.onDisconnected();
+
+			expect(toastSpy).not.toHaveBeenCalled();
+
+			await vi.advanceTimersByTimeAsync(4999);
+			expect(toastSpy).not.toHaveBeenCalled();
+
+			await vi.advanceTimersByTimeAsync(1);
+			expect(toastSpy).toHaveBeenCalledWith('Se cortó la señal. Reconectando...', 'warning');
+
+			toastSpy.mockClear();
+			capturedOptions.onDisconnected();
+			await vi.advanceTimersByTimeAsync(2000);
+			capturedOptions.onConnected();
+			await vi.advanceTimersByTimeAsync(5000);
+			expect(toastSpy).not.toHaveBeenCalled();
+
+			disconnectWebSocket();
+			vi.restoreAllMocks();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it('handles local_player_seek message', () => {
 		const applySeekSpy = vi.spyOn(localPlayback, 'applyRemoteSeek').mockImplementation(() => {});
 		const { connectWebSocket } = useSocket();

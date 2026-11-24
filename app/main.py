@@ -98,11 +98,7 @@ async def lifespan(app: FastAPI):
 		except Exception as e:
 			logger.debug(f"No se pudo precargar pista restaurada en el reproductor: {e}")
 
-	from app.infrastructure.binaries.manager import is_android
-
-	android_mode = is_android()
-	if not (android_mode and preloaded > 0):
-		asyncio.create_task(scan_library())
+	asyncio.create_task(scan_library(silent=preloaded > 0))
 
 	async def _bg_update_ytdlp() -> None:
 		try:
