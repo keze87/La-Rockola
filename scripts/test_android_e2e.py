@@ -50,7 +50,15 @@ def _run_adb(serial: str | None, args: list[str], check: bool = True, timeout: f
 	if serial:
 		cmd.extend(["-s", serial])
 	cmd.extend(args)
-	proc = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=timeout)
+	proc = subprocess.run(
+		cmd,
+		capture_output=True,
+		text=True,
+		encoding="utf-8",
+		errors="replace",
+		check=False,
+		timeout=timeout,
+	)
 	if check and proc.returncode != 0:
 		raise RuntimeError(
 			f"Falló `{' '.join(cmd)}` (exit={proc.returncode}): {proc.stderr.strip() or proc.stdout.strip()}"
