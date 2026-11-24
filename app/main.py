@@ -64,6 +64,7 @@ async def lifespan(app: FastAPI):
 		logger.error(f"Error preparando base de datos en arranque: {e}")
 
 	state = container.ensure_orchestrator()
+	preloaded = 0
 	if state:
 		from app.core.config import get_settings
 		from app.domain.library.service import LibraryService
@@ -97,7 +98,11 @@ async def lifespan(app: FastAPI):
 		except Exception as e:
 			logger.debug(f"No se pudo precargar pista restaurada en el reproductor: {e}")
 
-	asyncio.create_task(scan_library())
+	from app.infrastructure.binaries.manager import is_android
+
+	android_mode = is_android()
+	if not (android_mode and preloaded > 0):
+		asyncio.create_task(scan_library())
 
 	async def _bg_update_ytdlp() -> None:
 		try:

@@ -37,14 +37,20 @@ internal object ServicePowerPolicy {
     fun shouldStopForeground(
         isHostRunning: Boolean,
         hasRemoteClients: Boolean = false,
+        isUiVisible: Boolean = false,
         forceStop: Boolean = false,
     ): Boolean {
         if (forceStop || !isHostRunning) return true
+        if (isUiVisible) return false
         return !hasRemoteClients
     }
 
-    fun foregroundServiceType(isMediaPlaying: Boolean, hasRemoteClients: Boolean): Int {
-        return if (!isMediaPlaying && hasRemoteClients) {
+    fun foregroundServiceType(
+        isMediaPlaying: Boolean,
+        hasRemoteClients: Boolean,
+        isUiVisible: Boolean = false,
+    ): Int {
+        return if (!isMediaPlaying && (hasRemoteClients || isUiVisible)) {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
         } else {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
@@ -175,10 +181,22 @@ class RockolaForegroundService : Service() {
             internal set
 
         @Volatile
+        var isUiVisible: Boolean = false
+            private set
+
+        @Volatile
         internal var onPipStateNeedsRefresh: (() -> Unit)? = null
 
         @Volatile
         internal var onNativeCommandError: ((cmd: String, code: String, message: String) -> Unit)? = null
+
+        internal fun setUiVisible(visible: Boolean) {
+            isUiVisible = visible
+            val instance = activeInstance ?: return
+            instance.mainHandler.post {
+                instance.syncForegroundWithUiVisibility(visible)
+            }
+        }
 
         internal fun persistTargetMode(context: Context, mode: MediaTargetMode) {
             val wire = if (mode == MediaTargetMode.REMOTE) "remote" else "host"
@@ -487,10 +505,10 @@ class RockolaForegroundService : Service() {
 
         mainHandler.removeCallbacks(remoteIdleCheckRunnable)
         val startedAsForeground = intent?.getBooleanExtra(EXTRA_STARTED_AS_FOREGROUND, false) ?: false
-        if (startedAsForeground && !isInForeground) {
-            promoteToForeground("La Rockola", ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+        if ((startedAsForeground || isUiVisible) && !isInForeground) {
+            promoteToForeground("La Rockola")
         }
-        if (!isMediaPlaying && !hasConnectedRemoteClients()) {
+        if (!isMediaPlaying && !hasConnectedRemoteClients() && !isUiVisible) {
             demoteFromForeground(keepDismissibleNotification = notificationManager.hasActiveTrack)
         }
 
@@ -673,9 +691,24 @@ class RockolaForegroundService : Service() {
         }
     }
 
+    private fun syncForegroundWithUiVisibility(visible: Boolean) {
+        if (currentMediaTarget.mode != MediaTargetMode.HOST) return
+        if (visible) {
+            if (isRunning && !isInForeground) {
+                promoteToForeground("La Rockola")
+            }
+        } else if (!isMediaPlaying && !hasConnectedRemoteClients() && isInForeground) {
+            demoteFromForeground(keepDismissibleNotification = notificationManager.hasActiveTrack)
+        }
+    }
+
     private fun promoteToForeground(
         text: String,
-        serviceType: Int = ServicePowerPolicy.foregroundServiceType(isMediaPlaying, hasConnectedRemoteClients()),
+        serviceType: Int = ServicePowerPolicy.foregroundServiceType(
+            isMediaPlaying,
+            hasConnectedRemoteClients(),
+            isUiVisible,
+        ),
     ) {
         if (isInForeground) {
             notificationManager.notifyCurrentState()
@@ -701,6 +734,7 @@ class RockolaForegroundService : Service() {
         val shouldStopFg = ServicePowerPolicy.shouldStopForeground(
             isHostRunning = isRunning,
             hasRemoteClients = hasConnectedRemoteClients(),
+            isUiVisible = isUiVisible,
             forceStop = forceStop,
         )
         if (isInForeground && shouldStopFg) {

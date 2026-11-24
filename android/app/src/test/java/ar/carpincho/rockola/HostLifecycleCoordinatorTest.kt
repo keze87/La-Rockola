@@ -318,6 +318,14 @@ class HostLifecycleCoordinatorTest {
             ServicePowerPolicy.shouldStopForeground(
                 isHostRunning = true,
                 hasRemoteClients = false,
+                isUiVisible = false,
+            ),
+        )
+        assertFalse(
+            ServicePowerPolicy.shouldStopForeground(
+                isHostRunning = true,
+                hasRemoteClients = false,
+                isUiVisible = true,
             ),
         )
         assertFalse(
@@ -330,10 +338,11 @@ class HostLifecycleCoordinatorTest {
             ServicePowerPolicy.shouldStopForeground(
                 isHostRunning = true,
                 hasRemoteClients = true,
+                isUiVisible = true,
                 forceStop = true,
             ),
         )
-        assertTrue(ServicePowerPolicy.shouldStopForeground(isHostRunning = false))
+        assertTrue(ServicePowerPolicy.shouldStopForeground(isHostRunning = false, isUiVisible = true))
     }
 
     @Test

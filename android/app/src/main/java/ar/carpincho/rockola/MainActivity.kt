@@ -536,6 +536,16 @@ class MainActivity : BridgeActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        RockolaForegroundService.setUiVisible(true)
+    }
+
+    override fun onStop() {
+        RockolaForegroundService.setUiVisible(false)
+        super.onStop()
+    }
+
     private fun handleShortcutIntent(intent: Intent?) {
         val action = intent?.action ?: return
         if (!MainActivityPolicy.isSupportedShortcutAction(action)) return

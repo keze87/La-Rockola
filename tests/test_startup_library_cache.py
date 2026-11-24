@@ -77,6 +77,42 @@ def test_lifespan_serves_cached_library_before_background_scan_finishes(tmp_path
 		assert orch.path_to_id.get(str(song)) == "id-cached"
 
 
+def test_lifespan_skips_auto_scan_on_android_when_cache_preloaded(tmp_path: Path, monkeypatch) -> None:
+	"""En Android con caché precargada desde SQLite no se dispara scan_library automático al iniciar."""
+	music_dir = tmp_path / "music"
+	music_dir.mkdir()
+	song = music_dir / "tema.mp3"
+	song.write_bytes(b"ID3")
+
+	db_path = tmp_path / "rockola.db"
+	apply_migrations(db_path)
+	TrackRepository(db_path).save_many(
+		[("id-cached", str(song), "Tema Cacheado", "Album", "Artista", "03:00", 1.0, 3, 0.0, 0.0, 0.0, None, "ah")]
+	)
+
+	monkeypatch.setenv("ROCKOLA_DATA_DIR", str(tmp_path))
+	config_mod.set_settings(config_mod.Settings(music_dir=str(music_dir), music_dir_configured=True, no_mpv=True))
+	container = get_container()
+	container.db_path = db_path
+
+	scan_calls = 0
+
+	async def spy_scan() -> None:
+		nonlocal scan_calls
+		scan_calls += 1
+
+	monkeypatch.setattr("app.infrastructure.binaries.manager.is_android", lambda: True)
+	monkeypatch.setattr("app.main.scan_library", spy_scan)
+
+	app = create_app()
+	with TestClient(app):
+		orch = get_container().orchestrator
+		assert orch is not None
+		assert len(orch.tracks_cache) == 1
+
+	assert scan_calls == 0
+
+
 def test_get_library_returns_cached_tracks_immediately_while_scanning(tmp_path: Path) -> None:
 	"""GET /library no debe bloquearse esperando a is_scanning cuando ya hay caché disponible."""
 	db_path = tmp_path / "rockola.db"
