@@ -170,8 +170,8 @@ dialog::backdrop {
 	scroll-padding-top: calc(var(--headbar-h) + 8px);
 	padding-bottom: calc(var(--floating-player-h) + var(--safe-bottom) + 28px + var(--rockola-ime-height)) !important;
 	scroll-padding-bottom: calc(var(--floating-player-h) + var(--safe-bottom) + 36px + var(--rockola-ime-height));
-	--scrollbar-thumb: rgba(255, 235, 208, 0.24);
-	--scrollbar-track: var(--bg-canvas);
+	--scrollbar-thumb: rgba(255, 235, 208, 0.3);
+	--scrollbar-track: rgba(255, 235, 208, 0.04);
 }
 
 /* Utilidades para la transición fade entre pestañas (respeta prefers-reduced-motion) */
@@ -391,8 +391,10 @@ button,
 	position: relative;
 }
 
-/* Scrollbars visibles en escritorio y horizontal: ::-webkit-scrollbar para Blink/WebKit y scrollbar-color solo en Firefox */
-@supports (-moz-appearance: none) {
+/* Scrollbars visibles en escritorio y horizontal:
+   - En Firefox (@supports not selector(::-webkit-scrollbar)) usamos scrollbar-width/color estándar
+   - En Blink/WebKit dejamos ::-webkit-scrollbar sin scrollbar-color para no desactivarlo */
+@supports not selector(::-webkit-scrollbar) {
 	.tab-content {
 		scrollbar-width: thin;
 		scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
@@ -407,18 +409,18 @@ button,
 
 .tab-content::-webkit-scrollbar-track,
 ::-webkit-scrollbar-track {
-	background: var(--scrollbar-track, var(--bg-canvas));
+	background: var(--scrollbar-track, rgba(255, 235, 208, 0.04));
 }
 
 .tab-content::-webkit-scrollbar-thumb,
 ::-webkit-scrollbar-thumb {
-	background: var(--scrollbar-thumb, rgba(255, 235, 208, 0.24));
+	background: var(--scrollbar-thumb, rgba(255, 235, 208, 0.3));
 	border-radius: 4px;
 }
 
 .tab-content::-webkit-scrollbar-thumb:hover,
 ::-webkit-scrollbar-thumb:hover {
-	background: rgba(255, 235, 208, 0.4);
+	background: rgba(255, 235, 208, 0.48);
 }
 
 /* En pantallas táctiles ampliamos el mínimo táctil a 48px, ocultamos scrollbars y quitamos cursor-pointer */

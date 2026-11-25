@@ -124,7 +124,7 @@
 
 		<!-- Separador hairline inset estilo iOS -->
 		<div
-			class="pointer-events-none absolute right-0 bottom-0 left-[76px] h-[0.5px] bg-[var(--hairline)] min-[720px]:left-0"
+			class="pointer-events-none absolute right-0 bottom-0 left-[76px] h-px bg-[var(--hairline)] min-[720px]:left-0"
 			aria-hidden="true"
 		/>
 	</div>
