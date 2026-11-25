@@ -323,7 +323,7 @@ dialog:modal {
 
 @media (min-width: 768px) {
 	:root {
-		--dock-nav-w: 222px;
+		--dock-nav-w: 268px;
 	}
 
 	.bottom-dock-scrim {

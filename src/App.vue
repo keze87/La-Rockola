@@ -888,7 +888,7 @@
 			>
 				<div
 					role="tablist"
-					class="flex w-full items-center justify-around gap-1 md:w-auto md:flex-row md:justify-start md:gap-1 md:p-0 lg:w-full lg:justify-evenly"
+					class="flex w-full items-center justify-around gap-1 md:w-auto md:flex-row md:justify-start md:gap-0.5 md:p-0 lg:w-full lg:justify-evenly"
 				>
 					<button
 						v-for="tab in tabs"
@@ -899,17 +899,17 @@
 						:aria-label="tab.name"
 						:title="tab.name"
 						:class="[
-							'touch-target tap-feedback relative flex flex-1 cursor-pointer touch-manipulation flex-col items-center justify-center gap-0.5 rounded-xl py-1 text-center transition-colors duration-150 md:h-12 md:w-12 md:flex-none md:rounded-full md:p-0',
+							'touch-target tap-feedback relative flex flex-1 cursor-pointer touch-manipulation flex-col items-center justify-center gap-0.5 rounded-xl py-1 text-center transition-colors duration-150 md:min-w-[60px] md:flex-none md:rounded-full md:px-2 md:py-1 lg:min-w-0 lg:flex-1',
 							tab.id === 'queue' ? 'lg:hidden' : '',
 							activeTab === tab.id
-								? 'text-[var(--accent-primary)] md:bg-[var(--accent-primary-soft)]'
+								? 'text-[var(--accent-primary)]'
 								: 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text-primary)]',
 						]"
 						@click="switchTab(tab.id, { onScrollToTop: () => haptic('tick') })"
 					>
 						<div
-							class="relative flex items-center justify-center rounded-full px-3 py-0.5 transition-colors duration-150 md:p-0"
-							:class="activeTab === tab.id ? 'bg-[var(--accent-primary-soft)] md:bg-transparent' : ''"
+							class="relative flex items-center justify-center rounded-full px-3 py-0.5 transition-colors duration-150"
+							:class="activeTab === tab.id ? 'bg-[var(--accent-primary-soft)]' : ''"
 						>
 							<i class="material-icons !text-[22px]" aria-hidden="true">{{ tab.icon }}</i>
 							<span
@@ -919,9 +919,7 @@
 								{{ queueState.length > 99 ? '99+' : queueState.length }}
 							</span>
 						</div>
-						<span
-							class="px-0.5 text-[11px] leading-tight font-semibold tracking-tight whitespace-nowrap md:sr-only"
-						>
+						<span class="px-0.5 text-[11px] leading-tight font-semibold tracking-tight whitespace-nowrap">
 							{{ tab.name }}
 						</span>
 					</button>
