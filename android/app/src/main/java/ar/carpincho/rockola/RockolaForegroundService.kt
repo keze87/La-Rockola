@@ -747,11 +747,12 @@ class RockolaForegroundService : Service() {
     private fun syncForegroundWithUiVisibility(visible: Boolean) {
         if (currentMediaTarget.mode != MediaTargetMode.HOST) return
         if (visible) {
+            cancelPendingDemote()
             if (isRunning && !isInForeground) {
                 promoteToForeground("La Rockola")
             }
         } else if (!isMediaPlaying && !isRadioSynthesizing() && !hasConnectedRemoteClients() && isInForeground) {
-            demoteFromForeground(keepDismissibleNotification = notificationManager.hasActiveTrack)
+            scheduleDemoteFromForeground(keepDismissibleNotification = notificationManager.hasActiveTrack)
         }
     }
 

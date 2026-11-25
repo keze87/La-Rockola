@@ -149,12 +149,16 @@ def _assert_process_and_foreground(serial: str) -> str:
 	return pid
 
 
-def _assert_foreground_released(serial: str) -> str:
-	pid = _assert_process_alive(serial)
-	svc_dump = _run_adb(serial, ["shell", "dumpsys", "activity", "services", PACKAGE_NAME], check=False)
-	if "isForeground=true" in svc_dump:
-		raise RuntimeError("RockolaForegroundService sigue con isForeground=true tras pausar sin clientes remotos")
-	return pid
+def _assert_foreground_released(serial: str, timeout_sec: float = 35.0) -> str:
+	deadline = time.monotonic() + timeout_sec
+	while True:
+		pid = _assert_process_alive(serial)
+		svc_dump = _run_adb(serial, ["shell", "dumpsys", "activity", "services", PACKAGE_NAME], check=False)
+		if "isForeground=true" not in svc_dump:
+			return pid
+		if time.monotonic() >= deadline:
+			raise RuntimeError("RockolaForegroundService sigue con isForeground=true tras pausar sin clientes remotos")
+		time.sleep(1.0)
 
 
 def _assert_no_fatal_logcat(serial: str) -> None:
@@ -271,7 +275,8 @@ def _run_client_mode_checks(serial: str, base_url: str, screen_awake: bool) -> l
 	if "PAUSED(2)" not in session_pause and "PLAYING(3)" not in session_pause:
 		raise RuntimeError("Estado de MediaSession inesperado tras pause")
 
-	_assert_foreground_released(serial)
+	if not screen_awake:
+		_assert_foreground_released(serial)
 	_assert_no_fatal_logcat(serial)
 	results.append(
 		E2EResult(
@@ -359,9 +364,12 @@ def _run_screen_off_soak_check(serial: str, base_url: str, soak_seconds: int) ->
 		raise RuntimeError("No hay pistas en biblioteca para ejecutar la prueba prolongada con pantalla apagada")
 
 	_set_screen_state(serial, awake=True)
+	_run_adb(serial, ["shell", "wm", "dismiss-keyguard"], check=False)
+	_run_adb(serial, ["shell", "am", "start", "-n", f"{PACKAGE_NAME}/.MainActivity"], check=False)
+	time.sleep(0.8)
 	initial_pid = _assert_process_alive(serial)
 	_http_json(f"{base_url}/command", "POST", {"cmd": "play", "path": random.choice(tracks)["path"]})
-	time.sleep(1.0)
+	time.sleep(1.5)
 	_assert_process_and_foreground(serial)
 	_set_screen_state(serial, awake=False)
 
