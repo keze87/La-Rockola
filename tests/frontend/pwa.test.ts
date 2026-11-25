@@ -15,28 +15,60 @@ describe('PWA service worker registration & native cleanup', () => {
 	beforeEach(() => {
 		capState.isNative = false;
 		capState.platform = 'web';
+		if (typeof localStorage !== 'undefined') {
+			localStorage.clear();
+		}
 		vi.restoreAllMocks();
 	});
 
-	it('unregisters existing service workers on native Android instead of registering sw.js', async () => {
+	it('unregisters own service workers on native Android without registering sw.js, leaving foreign SW/caches intact', async () => {
 		capState.isNative = true;
 		capState.platform = 'android';
 
-		const unregisterMock = vi.fn().mockResolvedValue(true);
+		const unregisterOwn = vi.fn().mockResolvedValue(true);
+		const unregisterForeign = vi.fn().mockResolvedValue(true);
 		const registerMock = vi.fn().mockResolvedValue({});
 		Object.defineProperty(navigator, 'serviceWorker', {
 			configurable: true,
 			value: {
-				getRegistrations: vi.fn().mockResolvedValue([{ unregister: unregisterMock }]),
+				getRegistrations: vi.fn().mockResolvedValue([
+					{ active: { scriptURL: 'https://localhost/sw.js' }, unregister: unregisterOwn },
+					{ active: { scriptURL: 'https://localhost/other-sw.js' }, unregister: unregisterForeign },
+				]),
 				register: registerMock,
 			},
 		});
 
-		const { setupServiceWorker } = await import('@/pwa/registerSw');
+		const cacheStore = new Set(['rockola-shell-v1', 'rockola-shell-v3', 'external-cache', 'other-app-v1']);
+		const deleteMock = vi.fn(async (key: string) => cacheStore.delete(key));
+		const keysMock = vi.fn(async () => [...cacheStore]);
+		Object.defineProperty(globalThis, 'caches', {
+			configurable: true,
+			value: {
+				keys: keysMock,
+				delete: deleteMock,
+			},
+		});
+
+		const { setupServiceWorker, NATIVE_SW_CLEANUP_STORAGE_KEY } = await import('@/pwa/registerSw');
 		await setupServiceWorker({ isProd: true });
 
-		expect(unregisterMock).toHaveBeenCalledTimes(1);
+		expect(unregisterOwn).toHaveBeenCalledTimes(1);
+		expect(unregisterForeign).not.toHaveBeenCalled();
 		expect(registerMock).not.toHaveBeenCalled();
+		expect(deleteMock).toHaveBeenCalledWith('rockola-shell-v1');
+		expect(deleteMock).toHaveBeenCalledWith('rockola-shell-v3');
+		expect(deleteMock).not.toHaveBeenCalledWith('external-cache');
+		expect(deleteMock).not.toHaveBeenCalledWith('other-app-v1');
+		expect(localStorage.getItem(NATIVE_SW_CLEANUP_STORAGE_KEY)).toBe('1');
+
+		// Segundo arranque tras migración ya completada: no repite limpieza de caches
+		deleteMock.mockClear();
+		keysMock.mockClear();
+		(navigator.serviceWorker.getRegistrations as ReturnType<typeof vi.fn>).mockResolvedValueOnce([]);
+		await setupServiceWorker({ isProd: true });
+		expect(keysMock).not.toHaveBeenCalled();
+		expect(deleteMock).not.toHaveBeenCalled();
 	});
 
 	it('registers ./sw.js on web production builds', async () => {
