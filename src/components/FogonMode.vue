@@ -469,6 +469,41 @@
 		}
 	}
 
+	function onCloseHandleTouchStart(e: TouchEvent) {
+		onCoverTouchStart(e);
+	}
+
+	function onCloseHandleTouchMove(e: TouchEvent) {
+		if (!isCoverSwiping.value) return;
+		const touch = e.touches[0];
+		if (!touch) return;
+		const dx = touch.clientX - coverTouchStartX;
+		const dy = touch.clientY - coverTouchStartY;
+
+		if (!coverSwipeAxis && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+			coverSwipeAxis = dy > 0 && dy >= Math.abs(dx) ? 'vertical' : 'horizontal';
+		}
+
+		if (coverSwipeAxis === 'vertical') {
+			coverSwipeY.value = Math.max(0, Math.min(240, dy));
+			coverSwipeX.value = 0;
+			if (!coverThresholdHapticFired && coverSwipeY.value >= COVER_SWIPE_CLOSE_THRESHOLD) {
+				coverThresholdHapticFired = true;
+				haptic('tick');
+			}
+			if (e.cancelable) e.preventDefault();
+		}
+	}
+
+	function onCloseHandleTouchEnd() {
+		if (!isCoverSwiping.value) return;
+		const shouldClose = coverSwipeAxis === 'vertical' && coverSwipeY.value >= COVER_SWIPE_CLOSE_THRESHOLD;
+		resetCoverSwipe();
+		if (shouldClose) {
+			closeFogon();
+		}
+	}
+
 	function goToQueueFromFogon() {
 		closeFogon();
 		player.switchTab('queue');
@@ -651,8 +686,12 @@
 				<button
 					type="button"
 					aria-label="Cerrar vista de fogón"
-					class="fogon-close-btn tap-feedback pointer-events-auto flex min-h-[36px] min-w-[72px] cursor-pointer items-center justify-center justify-self-center rounded-full"
+					class="fogon-close-btn tap-feedback pointer-events-auto flex min-h-[36px] min-w-[72px] cursor-pointer touch-none items-center justify-center justify-self-center rounded-full"
 					@click="closeFogon"
+					@touchstart.passive="onCloseHandleTouchStart"
+					@touchmove="onCloseHandleTouchMove"
+					@touchend="onCloseHandleTouchEnd"
+					@touchcancel="resetCoverSwipe"
 				>
 					<span class="h-[5px] w-[36px] rounded-full bg-[rgba(255,240,220,0.28)]" aria-hidden="true" />
 				</button>
@@ -1403,8 +1442,8 @@
 	/* Soporte adaptativo para dispositivos móviles en apaisado / pantallas de altura reducida */
 	@media (min-height: 261px) and (max-height: 550px) {
 		.fogon-container {
-			padding: calc(44px + var(--rockola-safe-top) + 4px) max(1.25rem, var(--rockola-safe-right))
-				max(12px, var(--rockola-safe-bottom)) max(1.25rem, var(--rockola-safe-left)) !important;
+			padding: calc(36px + var(--rockola-safe-top)) max(1.25rem, var(--rockola-safe-right))
+				max(10px, var(--rockola-safe-bottom)) max(1.25rem, var(--rockola-safe-left)) !important;
 		}
 
 		.fogon-main-layout {
@@ -1413,19 +1452,19 @@
 
 		.fogon-main-layout.has-lyrics .fogon-player-column {
 			width: 44% !important;
-			max-width: 320px !important;
+			max-width: 340px !important;
 			height: 100% !important;
 			justify-content: center !important;
-			gap: 6px !important;
+			gap: 4px !important;
 			padding-top: 0 !important;
 			padding-bottom: 0 !important;
 		}
 
 		.fogon-cover-wrapper {
-			height: clamp(104px, 28vh, 144px) !important;
-			width: clamp(104px, 28vh, 144px) !important;
-			max-height: min(30vh, 148px) !important;
-			max-width: min(30vh, 148px) !important;
+			height: clamp(120px, 38vh, 210px) !important;
+			width: clamp(120px, 38vh, 210px) !important;
+			max-height: min(40vh, 210px) !important;
+			max-width: min(40vh, 210px) !important;
 			aspect-ratio: 1 / 1 !important;
 			flex-shrink: 0 !important;
 			margin-bottom: 0 !important;

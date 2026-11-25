@@ -860,6 +860,26 @@ Dialogue: 0,0:00:01.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Letra {\\kf100}animad
 		expect(isFogonMode.value).toBe(false);
 	});
 
+	it('closes fogon mode when swiping downward on the close handle button', async () => {
+		isFogonMode.value = true;
+		const wrapper = mount(FogonMode);
+		const fogonContainer = wrapper.find('.fogon-container');
+		const closeBtn = wrapper.find('.fogon-close-btn');
+		expect(closeBtn.exists()).toBe(true);
+
+		await closeBtn.trigger('touchstart', {
+			touches: [{ clientX: 160, clientY: 16 }],
+		});
+		await closeBtn.trigger('touchmove', {
+			touches: [{ clientX: 162, clientY: 120 }],
+		});
+
+		expect(fogonContainer.attributes('style')).toContain('translateY(104px)');
+
+		await closeBtn.trigger('touchend');
+		expect(isFogonMode.value).toBe(false);
+	});
+
 	it('does not close fogon mode on short, upward, or horizontal cover swipe', async () => {
 		isFogonMode.value = true;
 		const wrapper = mount(FogonMode);
