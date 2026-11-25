@@ -201,25 +201,56 @@ jobs:
               if: always()
               run: rm -f "${{ runner.temp }}/rockola-release.jks"
 
-    publish-release:
-        name: Publish GitHub Release
+    publish-desktop-release:
+        name: Publish Desktop GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
-        needs: [build-windows, build-linux-appimage, build-android]
+        needs: [build-windows, build-linux-appimage]
         runs-on: ubuntu-latest
         steps:
-            - name: Download all release artifacts
+            - name: Download desktop release artifacts
               uses: actions/download-artifact@v4
               with:
                   path: release-artifacts
 
-            - name: Publish single GitHub Release
+            - name: Publish desktop artifacts to GitHub Release
               uses: softprops/action-gh-release@v3
               with:
                   files: |
                       release-artifacts/**/*.zip
                       release-artifacts/**/*.AppImage
-                      release-artifacts/**/*.apk
-                      release-artifacts/**/*.apk.sha256
                   draft: false
                   prerelease: false
+                  fail_on_unmatched_files: true
                   generate_release_notes: true
+
+    publish-android-release:
+        name: Publish Android GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        needs: [build-android]
+        runs-on: ubuntu-latest
+        steps:
+            - name: Download Android release artifact
+              uses: actions/download-artifact@v4
+              with:
+                  name: larockola-android-arm64-release
+                  path: release-artifacts/android
+
+            - name: Verify downloaded APK & SHA-256 checksum before publishing
+              run: |
+                  APK_FILE="$(ls release-artifacts/android/*.apk | head -n 1)"
+                  SHA_FILE="${APK_FILE}.sha256"
+                  if [ -z "$APK_FILE" ] || [ ! -s "$APK_FILE" ] || [ ! -s "$SHA_FILE" ]; then
+                    echo "❌ Faltan artefactos APK o SHA-256 para publicar release Android" >&2
+                    exit 1
+                  fi
+                  (cd release-artifacts/android && sha256sum -c "$(basename "$SHA_FILE")")
+
+            - name: Attach signed Android APK to GitHub Release
+              uses: softprops/action-gh-release@v3
+              with:
+                  files: |
+                      release-artifacts/android/*.apk
+                      release-artifacts/android/*.apk.sha256
+                  draft: false
+                  prerelease: false
+                  fail_on_unmatched_files: true
