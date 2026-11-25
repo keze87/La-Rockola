@@ -346,6 +346,17 @@ dialog:modal {
 	}
 }
 
+@media (min-width: 1024px) {
+	:root {
+		--queue-col-w: clamp(21rem, 28vw, 25rem);
+	}
+
+	.floating-player {
+		left: calc(var(--queue-col-w) + 16px);
+		right: 16px;
+	}
+}
+
 html,
 body {
 	overscroll-behavior-y: contain;

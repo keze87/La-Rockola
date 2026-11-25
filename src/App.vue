@@ -879,7 +879,7 @@
 			<!-- PESTAÑAS (anclada borde a borde en móvil cubriendo safe-bottom, riel lateral desde md) -->
 			<nav
 				aria-label="Secciones principales"
-				class="floating-tab-bar fixed z-40 order-2 flex min-h-[var(--tabbar-h)] shrink-0 items-center overflow-hidden border-t-[0.5px] border-[var(--glass-border)] bg-[var(--glass-bg-strong)] px-2 pt-1.5 [backdrop-filter:var(--glass-blur)] transition-all duration-200 ease-out [-webkit-backdrop-filter:var(--glass-blur)] md:top-auto md:right-auto md:bottom-[calc(12px+var(--safe-bottom))] md:left-4 md:z-50 md:order-1 md:h-[var(--floating-player-h)] md:min-h-0 md:w-auto md:flex-row md:items-center md:overflow-visible md:rounded-full md:border md:border-[var(--glass-border)] md:bg-[var(--glass-bg-strong)] md:px-2 md:py-1.5 md:pt-1.5 md:pb-1.5 md:[box-shadow:var(--glass-highlight),0_12px_32px_rgba(0,0,0,0.45)]"
+				class="floating-tab-bar fixed z-40 order-2 flex min-h-[var(--tabbar-h)] shrink-0 items-center overflow-hidden border-t-[0.5px] border-[var(--glass-border)] bg-[var(--glass-bg-strong)] px-2 pt-1.5 [backdrop-filter:var(--glass-blur)] transition-all duration-200 ease-out [-webkit-backdrop-filter:var(--glass-blur)] md:top-auto md:right-auto md:bottom-[calc(12px+var(--safe-bottom))] md:left-4 md:z-50 md:order-1 md:h-[var(--floating-player-h)] md:min-h-0 md:w-auto md:flex-row md:items-center md:overflow-visible md:rounded-full md:border md:border-[var(--glass-border)] md:bg-[var(--glass-bg-strong)] md:px-2 md:py-1.5 md:pt-1.5 md:pb-1.5 md:[box-shadow:var(--glass-highlight),0_12px_32px_rgba(0,0,0,0.45)] lg:w-[calc(var(--queue-col-w)-32px)] lg:justify-center"
 				:class="[
 					isTabsBarHidden && isShortScreen
 						? 'pointer-events-none max-h-0 translate-y-2 border-0 py-0 opacity-0 md:pointer-events-auto md:max-h-none md:translate-y-0 md:py-1.5 md:opacity-100'
@@ -888,7 +888,7 @@
 			>
 				<div
 					role="tablist"
-					class="flex w-full items-center justify-around gap-1 md:w-auto md:flex-row md:justify-start md:gap-1 md:p-0"
+					class="flex w-full items-center justify-around gap-1 md:w-auto md:flex-row md:justify-start md:gap-1 md:p-0 lg:w-full lg:justify-evenly"
 				>
 					<button
 						v-for="tab in tabs"
@@ -900,6 +900,7 @@
 						:title="tab.name"
 						:class="[
 							'touch-target tap-feedback relative flex flex-1 cursor-pointer touch-manipulation flex-col items-center justify-center gap-0.5 rounded-xl py-1 text-center transition-colors duration-150 md:h-12 md:w-12 md:flex-none md:rounded-full md:p-0',
+							tab.id === 'queue' ? 'lg:hidden' : '',
 							activeTab === tab.id
 								? 'text-[var(--accent-primary)] md:bg-[var(--accent-primary-soft)]'
 								: 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text-primary)]',
@@ -927,23 +928,32 @@
 				</div>
 			</nav>
 
-			<!-- CONTENIDO DE PESTAÑAS (dos paneles en >= lg para biblioteca/tops + cola lateral) -->
+			<!-- CONTENIDO DE PESTAÑAS (dos paneles en >= lg: cola fija a la izquierda y sección activa a la derecha) -->
 			<div
-				class="tab-swipe-container relative order-1 min-h-0 w-full flex-1 overflow-hidden md:order-2"
-				:class="[
-					activeTab === 'library' || activeTab === 'top'
-						? 'lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(21rem,26rem)]'
-						: '',
-					{ 'predictive-back-target': isPredictiveBackOnTab },
-				]"
+				class="tab-swipe-container relative order-1 min-h-0 w-full flex-1 overflow-hidden md:order-2 lg:grid lg:grid-cols-[var(--queue-col-w)_minmax(0,1fr)]"
+				:class="[{ 'predictive-back-target': isPredictiveBackOnTab }]"
 				@touchstart.passive="onTabContentTouchStart"
 				@touchmove.passive="onTabContentTouchMove"
 				@touchend="onTabContentTouchEnd"
 				@touchcancel="resetTabSwipe"
 			>
-				<div v-show="activeTab !== 'queue'" class="relative h-full min-h-0 w-full overflow-hidden">
+				<div
+					:class="[
+						'relative h-full min-h-0 w-full overflow-hidden border-[var(--hairline)] lg:order-1 lg:block lg:border-r',
+						activeTab === 'queue' ? 'block' : 'hidden',
+					]"
+				>
+					<QueueTab />
+				</div>
+
+				<div
+					:class="[
+						'relative h-full min-h-0 w-full overflow-hidden lg:order-2 lg:block',
+						activeTab !== 'queue' ? 'block' : 'hidden',
+					]"
+				>
 					<Transition name="tab-fade">
-						<LibraryTab v-show="activeTab === 'library'" />
+						<LibraryTab v-show="activeTab === 'library' || activeTab === 'queue'" />
 					</Transition>
 
 					<Transition name="tab-fade">
@@ -953,19 +963,6 @@
 					<Transition name="tab-fade">
 						<ControlsTab v-show="activeTab === 'controls'" />
 					</Transition>
-				</div>
-
-				<div
-					:class="[
-						'relative h-full min-h-0 w-full overflow-hidden border-[var(--hairline)]',
-						activeTab === 'queue'
-							? 'block'
-							: activeTab === 'library' || activeTab === 'top'
-								? 'hidden lg:block lg:border-l'
-								: 'hidden',
-					]"
-				>
-					<QueueTab v-show="activeTab === 'queue' || activeTab === 'library' || activeTab === 'top'" />
 				</div>
 			</div>
 		</div>
