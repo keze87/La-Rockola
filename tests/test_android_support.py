@@ -1020,3 +1020,26 @@ def test_stop_persistence_coalesces_updates_isolates_generations_and_handles_err
 	container.orchestrator = BoomOrch()
 	android_entry.stop_embedded_server()
 	assert android_entry.wait_for_stop_persistence(timeout_sec=2.0) is True
+
+
+def test_is_radio_synthesizing(monkeypatch) -> None:
+	from types import SimpleNamespace
+
+	from app import android_entry
+
+	class FakeContainer:
+		def __init__(self, orchestrator: object | None) -> None:
+			self.orchestrator = orchestrator
+
+	monkeypatch.setattr(android_entry, "get_container", lambda: FakeContainer(None))
+	assert android_entry.is_radio_synthesizing() is False
+
+	monkeypatch.setattr(
+		android_entry, "get_container", lambda: FakeContainer(SimpleNamespace(is_synthesizing_radio=False))
+	)
+	assert android_entry.is_radio_synthesizing() is False
+
+	monkeypatch.setattr(
+		android_entry, "get_container", lambda: FakeContainer(SimpleNamespace(is_synthesizing_radio=True))
+	)
+	assert android_entry.is_radio_synthesizing() is True

@@ -26,8 +26,16 @@ internal enum class TimeoutResolution {
  * Reglas puras de energía y ciclo de vida en segundo plano (testeables en JVM).
  */
 internal object ServicePowerPolicy {
-    fun shouldAcquireWifiLock(mode: MediaTargetMode, hasRemoteClients: Boolean): Boolean {
-        return mode == MediaTargetMode.REMOTE || hasRemoteClients
+    fun shouldAcquireWifiLock(
+        mode: MediaTargetMode,
+        hasRemoteClients: Boolean,
+        isActivePlaybackOrRadio: Boolean = false,
+    ): Boolean {
+        return mode == MediaTargetMode.REMOTE || hasRemoteClients || isActivePlaybackOrRadio
+    }
+
+    fun shouldDelayDemote(isMediaPlaying: Boolean, isRadioSynthesizing: Boolean): Boolean {
+        return isMediaPlaying || isRadioSynthesizing
     }
 
     fun shouldStopOnTaskRemoved(isMediaPlaying: Boolean, hasRemoteClients: Boolean): Boolean {
@@ -38,10 +46,11 @@ internal object ServicePowerPolicy {
         isHostRunning: Boolean,
         hasRemoteClients: Boolean = false,
         isUiVisible: Boolean = false,
+        isRadioSynthesizing: Boolean = false,
         forceStop: Boolean = false,
     ): Boolean {
         if (forceStop || !isHostRunning) return true
-        if (isUiVisible) return false
+        if (isUiVisible || isRadioSynthesizing) return false
         return !hasRemoteClients
     }
 
@@ -125,7 +134,7 @@ class RockolaForegroundService : Service() {
         private const val DEFAULT_PORT = 1729
         private const val STOP_JOIN_TIMEOUT_MS = 4000L
         private const val WAKELOCK_TIMEOUT_MS = 4 * 60 * 60 * 1000L
-        private const val DEMOTE_DEBOUNCE_MS = 8000L
+        private const val DEMOTE_DEBOUNCE_MS = 30_000L
 
         @Volatile
         var hostState: HostServerState = HostServerState.STOPPED
@@ -300,8 +309,12 @@ class RockolaForegroundService : Service() {
         }
         val runnable = Runnable {
             pendingDemoteRunnable = null
-            if (!isMediaPlaying) {
+            val radioBusy = isRadioSynthesizing()
+            if (!ServicePowerPolicy.shouldDelayDemote(isMediaPlaying, radioBusy)) {
                 demoteFromForeground(keepDismissibleNotification = keepDismissibleNotification)
+            } else if (!isMediaPlaying && radioBusy) {
+                // Seguimos esperando mientras la radio sintetiza entre temas para no soltar wake ni foreground
+                scheduleDemoteFromForeground(keepDismissibleNotification = keepDismissibleNotification)
             }
         }
         pendingDemoteRunnable = runnable
@@ -649,6 +662,16 @@ class RockolaForegroundService : Service() {
         }
     }
 
+    private fun isRadioSynthesizing(): Boolean {
+        if (!isRunning) return false
+        return try {
+            val py = com.chaquo.python.Python.getInstance()
+            py.getModule("app.android_entry").callAttr("is_radio_synthesizing").toBoolean()
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
     private fun acquireLocks() {
         if (wakeLock == null) {
             val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -664,6 +687,7 @@ class RockolaForegroundService : Service() {
         val needsWifi = ServicePowerPolicy.shouldAcquireWifiLock(
             currentMediaTarget.mode,
             hasConnectedRemoteClients(),
+            isActivePlaybackOrRadio = isMediaPlaying || isRadioSynthesizing(),
         )
         if (needsWifi) {
             if (wifiLock == null) {
@@ -726,7 +750,7 @@ class RockolaForegroundService : Service() {
             if (isRunning && !isInForeground) {
                 promoteToForeground("La Rockola")
             }
-        } else if (!isMediaPlaying && !hasConnectedRemoteClients() && isInForeground) {
+        } else if (!isMediaPlaying && !isRadioSynthesizing() && !hasConnectedRemoteClients() && isInForeground) {
             demoteFromForeground(keepDismissibleNotification = notificationManager.hasActiveTrack)
         }
     }
@@ -763,14 +787,18 @@ class RockolaForegroundService : Service() {
 
     private fun demoteFromForeground(keepDismissibleNotification: Boolean, forceStop: Boolean = false) {
         cancelPendingDemote()
-        releaseLocks()
         val shouldStopFg = ServicePowerPolicy.shouldStopForeground(
             isHostRunning = isRunning,
             hasRemoteClients = hasConnectedRemoteClients(),
             isUiVisible = isUiVisible,
+            isRadioSynthesizing = isRadioSynthesizing(),
             forceStop = forceStop,
         )
-        if (isInForeground && shouldStopFg) {
+        if (!shouldStopFg) {
+            return
+        }
+        releaseLocks()
+        if (isInForeground) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                 val mode = if (keepDismissibleNotification) STOP_FOREGROUND_DETACH else STOP_FOREGROUND_REMOVE
                 stopForeground(mode)

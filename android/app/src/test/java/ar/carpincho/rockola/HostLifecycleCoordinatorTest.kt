@@ -343,6 +343,35 @@ class HostLifecycleCoordinatorTest {
             ),
         )
         assertTrue(ServicePowerPolicy.shouldStopForeground(isHostRunning = false, isUiVisible = true))
+
+        // Mientras la radio sintetiza entre temas, no se debe bajar el foreground ni soltar locks Wi-Fi
+        assertFalse(
+            ServicePowerPolicy.shouldStopForeground(
+                isHostRunning = true,
+                hasRemoteClients = false,
+                isUiVisible = false,
+                isRadioSynthesizing = true,
+            ),
+        )
+        assertTrue(
+            ServicePowerPolicy.shouldAcquireWifiLock(
+                MediaTargetMode.HOST,
+                hasRemoteClients = false,
+                isActivePlaybackOrRadio = true,
+            ),
+        )
+        assertTrue(
+            ServicePowerPolicy.shouldDelayDemote(
+                isMediaPlaying = false,
+                isRadioSynthesizing = true,
+            ),
+        )
+        assertFalse(
+            ServicePowerPolicy.shouldDelayDemote(
+                isMediaPlaying = false,
+                isRadioSynthesizing = false,
+            ),
+        )
     }
 
     @Test

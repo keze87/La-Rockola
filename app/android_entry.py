@@ -116,6 +116,15 @@ def get_connected_remote_clients() -> int:
 	return ws_count + http_count
 
 
+def is_radio_synthesizing() -> bool:
+	"""Indica si el orquestador está sintetizando una locución radial entre temas."""
+	try:
+		orch = get_container().orchestrator
+		return bool(getattr(orch, "is_synthesizing_radio", False))
+	except Exception:
+		return False
+
+
 def _invoke_ready_callback(callback: Any) -> None:
 	"""Invoca callback Python o Runnable Java sin propagar errores al ciclo de Uvicorn."""
 	if callback is None:
