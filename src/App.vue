@@ -879,14 +879,17 @@
 			<!-- PESTAÑAS (anclada borde a borde en móvil cubriendo safe-bottom, riel lateral desde md) -->
 			<nav
 				aria-label="Secciones principales"
-				class="floating-tab-bar fixed z-40 order-2 flex min-h-[var(--tabbar-h)] shrink-0 items-center overflow-hidden border-t-[0.5px] border-[var(--glass-border)] bg-[var(--glass-bg-strong)] px-2 pt-1.5 [backdrop-filter:var(--glass-blur)] transition-all duration-200 ease-out [-webkit-backdrop-filter:var(--glass-blur)] md:top-auto md:right-auto md:bottom-[calc(12px+var(--safe-bottom))] md:left-3.5 md:z-30 md:order-1 md:h-auto md:min-h-0 md:w-[62px] md:flex-col md:items-center md:overflow-visible md:rounded-full md:border md:border-[var(--glass-border)] md:bg-[var(--glass-bg-strong)] md:px-1.5 md:py-2 md:pt-2 md:pb-2 md:[box-shadow:var(--glass-highlight),0_12px_32px_rgba(0,0,0,0.45)]"
+				class="floating-tab-bar fixed z-40 order-2 flex min-h-[var(--tabbar-h)] shrink-0 items-center overflow-hidden border-t-[0.5px] border-[var(--glass-border)] bg-[var(--glass-bg-strong)] px-2 pt-1.5 [backdrop-filter:var(--glass-blur)] transition-all duration-200 ease-out [-webkit-backdrop-filter:var(--glass-blur)] md:top-auto md:right-auto md:bottom-[calc(12px+var(--safe-bottom))] md:left-4 md:z-50 md:order-1 md:h-[var(--floating-player-h)] md:min-h-0 md:w-auto md:flex-row md:items-center md:overflow-visible md:rounded-full md:border md:border-[var(--glass-border)] md:bg-[var(--glass-bg-strong)] md:px-2 md:py-1.5 md:pt-1.5 md:pb-1.5 md:[box-shadow:var(--glass-highlight),0_12px_32px_rgba(0,0,0,0.45)]"
 				:class="[
 					isTabsBarHidden && isShortScreen
-						? 'pointer-events-none max-h-0 translate-y-2 border-0 py-0 opacity-0 md:pointer-events-auto md:max-h-none md:translate-y-0 md:py-2 md:opacity-100'
+						? 'pointer-events-none max-h-0 translate-y-2 border-0 py-0 opacity-0 md:pointer-events-auto md:max-h-none md:translate-y-0 md:py-1.5 md:opacity-100'
 						: 'translate-y-0 opacity-100',
 				]"
 			>
-				<div role="tablist" class="flex w-full items-center justify-around gap-1 md:flex-col md:gap-1.5 md:p-0">
+				<div
+					role="tablist"
+					class="flex w-full items-center justify-around gap-1 md:w-auto md:flex-row md:justify-start md:gap-1 md:p-0"
+				>
 					<button
 						v-for="tab in tabs"
 						:key="tab.id"
@@ -926,7 +929,7 @@
 
 			<!-- CONTENIDO DE PESTAÑAS (dos paneles en >= lg para biblioteca/tops + cola lateral) -->
 			<div
-				class="tab-swipe-container relative order-1 min-h-0 w-full flex-1 overflow-hidden md:order-2 md:pl-[var(--rail-w)]"
+				class="tab-swipe-container relative order-1 min-h-0 w-full flex-1 overflow-hidden md:order-2"
 				:class="[
 					activeTab === 'library' || activeTab === 'top'
 						? 'lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(21rem,26rem)]'

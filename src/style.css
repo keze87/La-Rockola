@@ -170,10 +170,8 @@ dialog::backdrop {
 	scroll-padding-top: calc(var(--headbar-h) + 8px);
 	padding-bottom: calc(var(--floating-player-h) + var(--safe-bottom) + 28px + var(--rockola-ime-height)) !important;
 	scroll-padding-bottom: calc(var(--floating-player-h) + var(--safe-bottom) + 36px + var(--rockola-ime-height));
-	--scrollbar-thumb: var(--hairline-strong);
+	--scrollbar-thumb: rgba(255, 235, 208, 0.24);
 	--scrollbar-track: var(--bg-canvas);
-	scrollbar-width: thin;
-	scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
 
 /* Utilidades para la transición fade entre pestañas (respeta prefers-reduced-motion) */
@@ -325,11 +323,11 @@ dialog:modal {
 
 @media (min-width: 768px) {
 	:root {
-		--rail-w: 88px;
+		--dock-nav-w: 222px;
 	}
 
 	.bottom-dock-scrim {
-		left: var(--rail-w);
+		left: 0;
 		right: 0;
 		bottom: 0;
 		height: calc(var(--floating-player-h) + var(--safe-bottom) + 32px);
@@ -337,7 +335,7 @@ dialog:modal {
 
 	.floating-player {
 		bottom: calc(12px + var(--safe-bottom));
-		left: var(--rail-w);
+		left: calc(16px + var(--dock-nav-w) + 12px);
 		right: 16px;
 		max-width: none;
 		width: auto;
@@ -345,12 +343,6 @@ dialog:modal {
 
 	[data-sonner-toaster] {
 		bottom: calc(var(--floating-player-h) + var(--safe-bottom) + 24px) !important;
-	}
-}
-
-@media (min-width: 1024px) {
-	:root {
-		--rail-w: 88px;
 	}
 }
 
@@ -399,28 +391,34 @@ button,
 	position: relative;
 }
 
-/* Fallback legacy para motores WebKit/Blink sin scrollbar-color estándar */
-@supports not (scrollbar-color: auto) {
+/* Scrollbars visibles en escritorio y horizontal: ::-webkit-scrollbar para Blink/WebKit y scrollbar-color solo en Firefox */
+@supports (-moz-appearance: none) {
 	.tab-content {
-		scrollbar-width: auto;
+		scrollbar-width: thin;
+		scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 	}
+}
 
-	.tab-content::-webkit-scrollbar,
-	::-webkit-scrollbar {
-		width: 6px;
-		height: 6px;
-	}
+.tab-content::-webkit-scrollbar,
+::-webkit-scrollbar {
+	width: 8px;
+	height: 8px;
+}
 
-	.tab-content::-webkit-scrollbar-track,
-	::-webkit-scrollbar-track {
-		background: var(--scrollbar-track, var(--bg-canvas));
-	}
+.tab-content::-webkit-scrollbar-track,
+::-webkit-scrollbar-track {
+	background: var(--scrollbar-track, var(--bg-canvas));
+}
 
-	.tab-content::-webkit-scrollbar-thumb,
-	::-webkit-scrollbar-thumb {
-		background: var(--scrollbar-thumb, var(--hairline-strong));
-		border-radius: 4px;
-	}
+.tab-content::-webkit-scrollbar-thumb,
+::-webkit-scrollbar-thumb {
+	background: var(--scrollbar-thumb, rgba(255, 235, 208, 0.24));
+	border-radius: 4px;
+}
+
+.tab-content::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:hover {
+	background: rgba(255, 235, 208, 0.4);
 }
 
 /* En pantallas táctiles ampliamos el mínimo táctil a 48px, ocultamos scrollbars y quitamos cursor-pointer */
