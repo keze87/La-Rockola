@@ -324,6 +324,10 @@ dialog:modal {
 }
 
 @media (min-width: 768px) {
+	:root {
+		--rail-w: 88px;
+	}
+
 	.bottom-dock-scrim {
 		left: var(--rail-w);
 		right: 0;
@@ -333,7 +337,7 @@ dialog:modal {
 
 	.floating-player {
 		bottom: calc(12px + var(--safe-bottom));
-		left: calc(var(--rail-w) + 16px);
+		left: var(--rail-w);
 		right: 16px;
 		max-width: none;
 		width: auto;
@@ -346,7 +350,7 @@ dialog:modal {
 
 @media (min-width: 1024px) {
 	:root {
-		--rail-w: 104px;
+		--rail-w: 88px;
 	}
 }
 
@@ -436,7 +440,10 @@ button,
 		position: absolute;
 		inset: -12px;
 	}
+}
 
+/* En móvil táctil vertical ocultamos scrollbars; en modo horizontal vuelven a mostrarse */
+@media (pointer: coarse) and (max-width: 767px) and (orientation: portrait) {
 	.tab-content {
 		scrollbar-width: none;
 	}

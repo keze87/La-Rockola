@@ -11,7 +11,7 @@
 	import TrackRow from './ui/TrackRow.vue';
 
 	// Clases de estructura y maquetado extraídas
-	const trackGridClass = 'min-[720px]:grid min-[720px]:grid-cols-[3.5rem_minmax(0,2fr)_minmax(0,1.1fr)_auto]';
+	const trackGridClass = '@min-[600px]:grid @min-[600px]:grid-cols-[3.5rem_minmax(0,2fr)_minmax(0,1.1fr)_auto]';
 	const btnBaseClass =
 		'tap-feedback flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-[var(--radius-sm)] bg-[var(--bg-input)] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface-active)] hover:text-[var(--text-primary)]';
 
@@ -132,7 +132,7 @@
 	<section
 		ref="queueSectionRef"
 		v-bind="{ 'data-tab-panel': 'queue' }"
-		class="tab-content h-full overflow-y-auto bg-[var(--bg-canvas)]"
+		class="tab-content @container h-full overflow-y-auto bg-[var(--bg-canvas)]"
 		@scroll.passive="onTabScroll"
 	>
 		<!-- Agregador de URLs -->

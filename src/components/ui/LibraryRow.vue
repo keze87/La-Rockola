@@ -53,7 +53,7 @@
 <template>
 	<div
 		:id="isCurrent ? 'current-library-row' : undefined"
-		class="tap-feedback relative flex h-[72px] cursor-pointer items-center gap-3 px-4 transition-colors [contain:layout_style_paint] select-none hover:bg-[var(--bg-surface-hover)] min-[720px]:grid min-[720px]:grid-cols-[5rem_minmax(0,1fr)_minmax(0,1fr)_5rem] min-[720px]:gap-0 min-[720px]:px-0"
+		class="tap-feedback relative flex h-[72px] cursor-pointer items-center gap-3 px-4 transition-colors [contain:layout_style_paint] select-none hover:bg-[var(--bg-surface-hover)] min-[720px]:grid min-[720px]:grid-cols-[5rem_minmax(0,1fr)_minmax(0,1fr)_6rem] min-[720px]:gap-0 min-[720px]:px-0"
 		:class="isCurrent ? 'bg-[var(--accent-primary-soft)]' : ''"
 		v-on="bindings"
 		@click="emit('click', track)"

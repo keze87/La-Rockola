@@ -284,12 +284,12 @@
 
 			<!-- Encabezado de la tabla (solo pantallas anchas >= 720px) -->
 			<div
-				class="hidden border-b border-[var(--hairline)] bg-[var(--bg-elevated)] text-[12px] font-semibold tracking-wide text-[var(--text-secondary)] uppercase min-[720px]:grid min-[720px]:grid-cols-[5rem_minmax(0,1fr)_minmax(0,1fr)_5rem] min-[720px]:items-center"
+				class="hidden border-b border-[var(--hairline)] bg-[var(--bg-elevated)] text-[12px] font-semibold tracking-wide text-[var(--text-secondary)] uppercase min-[720px]:grid min-[720px]:grid-cols-[5rem_minmax(0,1fr)_minmax(0,1fr)_6rem] min-[720px]:items-center"
 			>
 				<div class="p-3 text-center">Orden</div>
-				<div class="p-3">El Temón</div>
-				<div class="p-3">Artista</div>
-				<div class="p-3 text-right">Duración</div>
+				<div class="px-4 py-3">El Temón</div>
+				<div class="px-4 py-3">Artista</div>
+				<div class="px-4 py-3 text-right">Duración</div>
 			</div>
 
 			<!-- Filas virtualizadas de canciones -->

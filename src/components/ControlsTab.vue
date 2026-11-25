@@ -449,7 +449,7 @@
 	>
 		<!-- Control deslizante de volumen -->
 		<div
-			class="mx-auto mb-7 max-w-lg rounded-[var(--radius-lg)] border border-[var(--hairline)] bg-[var(--bg-grouped)] px-4 py-3.5"
+			class="mx-auto mt-3 mb-7 max-w-lg rounded-[var(--radius-lg)] border border-[var(--hairline)] bg-[var(--bg-grouped)] px-4 py-3.5"
 		>
 			<div class="mb-2 flex items-center justify-between">
 				<span class="text-[12px] font-semibold tracking-[0.06em] text-[var(--text-secondary)] uppercase">
