@@ -56,6 +56,10 @@ class HostLifecycleCoordinator(
 
     private val lock = Any()
     private val notificationLock = Any()
+
+    @Volatile
+    private var stateListener: ((HostServerState, String?) -> Unit)? = onStateChanged
+
     private var stateVersion: Long = 0L
     private var lastNotifiedVersion: Long = 0L
     private var runIdCounter: Long = 0L
@@ -69,11 +73,15 @@ class HostLifecycleCoordinator(
     private var pendingTerminalError: String? = null
 
     private val stopHookExecutor = Executors.newSingleThreadExecutor { runnable ->
-        Thread(runnable, "RockolaStopHook").apply { isDaemon = true }
+        threadFactory("RockolaStopHook", runnable)
     }
     private val reaperExecutor = Executors.newSingleThreadExecutor { runnable ->
-        Thread(runnable, "RockolaWorkerReaper").apply { isDaemon = true }
+        threadFactory("RockolaWorkerReaper", runnable)
     }
+
+    @Volatile
+    var isShutdownRequested: Boolean = false
+        private set
 
     @Volatile
     var state: HostServerState = HostServerState.STOPPED
@@ -94,6 +102,9 @@ class HostLifecycleCoordinator(
     val isRunning: Boolean
         get() = state == HostServerState.STARTING || state == HostServerState.READY
 
+    val isWorkerAlive: Boolean
+        get() = synchronized(lock) { activeThread?.isAlive == true }
+
     val hasActiveWorker: Boolean
         get() = synchronized(lock) {
             activeThread != null ||
@@ -103,6 +114,17 @@ class HostLifecycleCoordinator(
                 state == HostServerState.STOPPING ||
                 state == HostServerState.STOP_TIMED_OUT
         }
+
+    val hasPendingCleanup: Boolean
+        get() = synchronized(lock) {
+            hasActiveWorker || (activeStopFuture != null && !activeStopFuture!!.isDone)
+        }
+
+    fun setStateListener(listener: ((HostServerState, String?) -> Unit)?) {
+        synchronized(notificationLock) {
+            stateListener = listener
+        }
+    }
 
     fun start(
         port: Int,
@@ -207,7 +229,16 @@ class HostLifecycleCoordinator(
             try {
                 workerThread.join()
             } catch (_: InterruptedException) {
-                Thread.currentThread().interrupt()
+                // Si el reaper fue interrumpido pero el worker sigue vivo, NO declaramos STOPPED ni soltamos el thread
+                if (workerThread.isAlive && !reaperExecutor.isShutdown) {
+                    try {
+                        reaperExecutor.execute {
+                            reapWorkerThread(runId, workerThread)
+                        }
+                    } catch (_: RejectedExecutionException) {
+                        // El stop() posterior puede completar el join cuando termine el worker
+                    }
+                }
                 return
             }
         }
@@ -233,15 +264,19 @@ class HostLifecycleCoordinator(
             val targetError = if (targetState == HostServerState.FAILED) pendingTerminalError else null
             activeThread = null
             activeStopHook = null
-            activeStopFuture = null
+            if (activeStopFuture?.isDone == true) {
+                activeStopFuture = null
+            }
             finishingRunId = 0L
             pendingTerminalState = null
             pendingTerminalError = null
-            if (targetState != null) {
+            val snapshot = if (targetState != null) {
                 setStateLocked(targetState, targetError)
             } else {
                 null
             }
+            maybeCompleteDeferredShutdownLocked()
+            snapshot
         }
     }
 
@@ -257,7 +292,10 @@ class HostLifecycleCoordinator(
                     if (finishingRunId == 0L && (alive == null || !alive.isAlive)) {
                         activeThread = null
                         activeStopHook = null
-                        activeStopFuture = null
+                        if (activeStopFuture?.isDone == true) {
+                            activeStopFuture = null
+                        }
+                        maybeCompleteDeferredShutdownLocked()
                         return true
                     }
                     stopRequestedForRun = true
@@ -324,10 +362,13 @@ class HostLifecycleCoordinator(
                 if (state == HostServerState.STOPPED || state == HostServerState.FAILED) {
                     activeThread = null
                     activeStopHook = null
-                    activeStopFuture = null
+                    if (activeStopFuture?.isDone == true) {
+                        activeStopFuture = null
+                    }
                     finishingRunId = 0L
                     pendingTerminalState = null
                     pendingTerminalError = null
+                    maybeCompleteDeferredShutdownLocked()
                     resultSnapshot = null
                 } else {
                     val targetState = if (pendingTerminalState == HostServerState.FAILED && !stopRequestedForRun) {
@@ -338,11 +379,14 @@ class HostLifecycleCoordinator(
                     val targetError = if (targetState == HostServerState.FAILED) pendingTerminalError else null
                     activeThread = null
                     activeStopHook = null
-                    activeStopFuture = null
+                    if (activeStopFuture?.isDone == true) {
+                        activeStopFuture = null
+                    }
                     finishingRunId = 0L
                     pendingTerminalState = null
                     pendingTerminalError = null
                     resultSnapshot = setStateLocked(targetState, targetError)
+                    maybeCompleteDeferredShutdownLocked()
                 }
             } else {
                 timedOut = state == HostServerState.STOP_TIMED_OUT || (threadToJoin != null && threadToJoin.isAlive)
@@ -396,6 +440,7 @@ class HostLifecycleCoordinator(
             synchronized(lock) {
                 if (activeRunId == runId && activeStopFuture === futureToAwait && futureToAwait.isDone) {
                     activeStopFuture = null
+                    maybeCompleteDeferredShutdownLocked()
                 }
             }
             res
@@ -411,8 +456,29 @@ class HostLifecycleCoordinator(
     }
 
     fun shutdown() {
-        stopHookExecutor.shutdownNow()
-        reaperExecutor.shutdownNow()
+        synchronized(lock) {
+            isShutdownRequested = true
+            maybeCompleteDeferredShutdownLocked()
+        }
+    }
+
+    private fun maybeCompleteDeferredShutdownLocked() {
+        if (!isShutdownRequested) return
+        val hasPending = activeThread != null ||
+            finishingRunId != 0L ||
+            state == HostServerState.STARTING ||
+            state == HostServerState.READY ||
+            state == HostServerState.STOPPING ||
+            state == HostServerState.STOP_TIMED_OUT ||
+            (activeStopFuture != null && !activeStopFuture!!.isDone)
+        if (!hasPending) {
+            if (!stopHookExecutor.isShutdown) {
+                stopHookExecutor.shutdown()
+            }
+            if (!reaperExecutor.isShutdown) {
+                reaperExecutor.shutdown()
+            }
+        }
     }
 
     private fun setStateLocked(next: HostServerState, err: String?): StateSnapshot {
@@ -426,7 +492,7 @@ class HostLifecycleCoordinator(
         synchronized(notificationLock) {
             if (snapshot.version <= lastNotifiedVersion) return
             lastNotifiedVersion = snapshot.version
-            onStateChanged(snapshot.state, snapshot.error)
+            stateListener?.invoke(snapshot.state, snapshot.error)
         }
     }
 }

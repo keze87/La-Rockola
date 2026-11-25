@@ -652,4 +652,158 @@ class HostLifecycleCoordinatorTest {
         }
         assertEquals(1, maxConcurrentRunners.get())
     }
+
+    @Test
+    fun `shutdown con servidor detenido cierra limpio y con worker bloqueado difiere cierre sin matar el reaper`() {
+        val idleCoord = HostLifecycleCoordinator()
+        assertFalse(idleCoord.hasPendingCleanup)
+        idleCoord.shutdown()
+        assertTrue(idleCoord.isShutdownRequested)
+
+        // Worker bloqueado: shutdown() NO debe destruir el reaper antes de que el worker termine físicamente
+        val coord = HostLifecycleCoordinator()
+        val started = CountDownLatch(1)
+        val allowExit = CountDownLatch(1)
+        val workerFinished = AtomicBoolean(false)
+
+        assertTrue(
+            coord.start(
+                port = 1760,
+                musicDir = null,
+                onRequestStop = {},
+            ) { onReady ->
+                onReady()
+                started.countDown()
+                allowExit.await(5, TimeUnit.SECONDS)
+                workerFinished.set(true)
+            },
+        )
+        assertTrue(started.await(2, TimeUnit.SECONDS))
+        assertFalse(coord.stop(timeoutMs = 80L))
+        assertEquals(HostServerState.STOP_TIMED_OUT, coord.state)
+        assertTrue(coord.isWorkerAlive)
+        assertTrue(coord.hasPendingCleanup)
+
+        // Solicitamos shutdown con el worker aún bloqueado: el reaper debe seguir vivo para recolectarlo
+        coord.shutdown()
+        assertTrue(coord.isShutdownRequested)
+        assertTrue(coord.hasActiveWorker)
+        assertFalse(workerFinished.get())
+
+        // Destrabamos el worker: el reaper debe recolectar el thread y completar el cierre diferido
+        allowExit.countDown()
+        val deadline = System.currentTimeMillis() + 3000L
+        while (coord.hasPendingCleanup && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10L)
+        }
+        assertTrue(workerFinished.get())
+        assertFalse(coord.isWorkerAlive)
+        assertFalse(coord.hasActiveWorker)
+        assertFalse(coord.hasPendingCleanup)
+        assertEquals(HostServerState.STOPPED, coord.state)
+    }
+
+    @Test
+    fun `recrear servicio con worker anterior vivo bloquea segundo arranque y desacopla callbacks viejos`() {
+        val sharedCoordinator = HostLifecycleCoordinator()
+        val oldServiceEvents = CopyOnWriteArrayList<HostServerState>()
+        val newServiceEvents = CopyOnWriteArrayList<HostServerState>()
+        val started = CountDownLatch(1)
+        val allowExit = CountDownLatch(1)
+
+        sharedCoordinator.setStateListener { st, _ -> oldServiceEvents.add(st) }
+        assertTrue(
+            sharedCoordinator.start(
+                port = 1761,
+                musicDir = null,
+                onRequestStop = { allowExit.countDown() },
+            ) { onReady ->
+                onReady()
+                started.countDown()
+                allowExit.await(5, TimeUnit.SECONDS)
+            },
+        )
+        assertTrue(started.await(2, TimeUnit.SECONDS))
+
+        // Simulamos onDestroy del primer Service sin esperar que el worker cuelgue el main thread
+        sharedCoordinator.setStateListener(null)
+        val oldEventsAtDestroy = oldServiceEvents.size
+
+        // Nuevo Service se crea y se adjunta al coordinador único del proceso mientras el worker viejo sigue vivo
+        sharedCoordinator.setStateListener { st, _ -> newServiceEvents.add(st) }
+        assertTrue(sharedCoordinator.hasActiveWorker)
+        assertFalse(
+            sharedCoordinator.start(
+                port = 1761,
+                musicDir = null,
+                onRequestStop = {},
+            ) {},
+        )
+
+        // Detenemos el worker viejo y verificamos que el viejo listener no recibe nada y luego permite nuevo arranque
+        assertTrue(sharedCoordinator.stop(timeoutMs = 2000L))
+        assertEquals(oldEventsAtDestroy, oldServiceEvents.size)
+        assertTrue(newServiceEvents.contains(HostServerState.STOPPED))
+        assertFalse(sharedCoordinator.hasActiveWorker)
+
+        assertTrue(
+            sharedCoordinator.start(
+                port = 1761,
+                musicDir = null,
+                onRequestStop = {},
+            ) { onReady -> onReady() },
+        )
+        assertTrue(sharedCoordinator.stop(timeoutMs = 2000L))
+    }
+
+    @Test
+    fun `si el reaper se interrumpe mientras el worker sigue vivo no declara STOPPED y conserva hasActiveWorker`() {
+        val started = CountDownLatch(1)
+        val allowExit = CountDownLatch(1)
+        val persistedDuringShutdown = AtomicBoolean(false)
+        val reaperThreadRef = java.util.concurrent.atomic.AtomicReference<Thread?>(null)
+
+        val coord = HostLifecycleCoordinator(
+            threadFactory = { name, runnable ->
+                Thread(runnable, name).apply {
+                    isDaemon = true
+                    if (name == "RockolaWorkerReaper") {
+                        reaperThreadRef.set(this)
+                    }
+                }
+            },
+        )
+
+        assertTrue(
+            coord.start(
+                port = 1762,
+                musicDir = null,
+                onRequestStop = {
+                    persistedDuringShutdown.set(true)
+                    allowExit.countDown()
+                },
+            ) { onReady ->
+                onReady()
+                started.countDown()
+                allowExit.await(5, TimeUnit.SECONDS)
+                Thread.sleep(60L)
+            },
+        )
+        assertTrue(started.await(2, TimeUnit.SECONDS))
+
+        // Esperamos a que se haya instanciado el reaper o forzamos un ciclo stop breve para iniciarlo
+        assertFalse(coord.stop(timeoutMs = 10L))
+        assertTrue(coord.hasActiveWorker)
+        reaperThreadRef.get()?.interrupt()
+
+        // Mientras el worker siga vivo tras la interrupción, NO puede haber declarado STOPPED
+        assertTrue(coord.isWorkerAlive)
+        assertTrue(coord.hasActiveWorker)
+        assertFalse(coord.state == HostServerState.STOPPED)
+
+        assertTrue(coord.stop(timeoutMs = 2500L))
+        assertTrue(persistedDuringShutdown.get())
+        assertEquals(HostServerState.STOPPED, coord.state)
+        assertFalse(coord.hasActiveWorker)
+    }
 }

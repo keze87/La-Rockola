@@ -155,6 +155,19 @@ class RockolaForegroundService : Service() {
         @Volatile
         private var activeInstance: RockolaForegroundService? = null
 
+        // Coordinador y executor de apagado con alcance de proceso para sobrevivir recreaciones del Service
+        private val processHostCoordinator = HostLifecycleCoordinator()
+        private val processShutdownExecutor: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "RockolaProcessShutdown").apply { isDaemon = true }
+        }
+
+        private fun syncProcessCoordinatorSnapshot() {
+            hostState = processHostCoordinator.state
+            lastHostError = processHostCoordinator.lastError
+            isRunning = processHostCoordinator.isRunning
+            hasActiveWorker = processHostCoordinator.hasActiveWorker
+        }
+
         @Volatile
         var isActivelyPlaying: Boolean = false
             private set
@@ -268,6 +281,11 @@ class RockolaForegroundService : Service() {
             if (instance != null) {
                 return instance.stopServerBlocking(timeoutMs)
             }
+            if (processHostCoordinator.hasActiveWorker) {
+                val clean = processHostCoordinator.stop(timeoutMs)
+                syncProcessCoordinatorSnapshot()
+                return clean
+            }
             if (isRunning) {
                 val intent = Intent(context, RockolaForegroundService::class.java).apply {
                     action = ACTION_STOP
@@ -275,10 +293,11 @@ class RockolaForegroundService : Service() {
                 try {
                     context.startService(intent)
                 } catch (_: Exception) {
-                    // Si Android bloquea startService en segundo plano al pedir stop, respetamos !isRunning
+                    // Si Android bloquea startService en segundo plano al pedir stop, respetamos !hasActiveWorker
                 }
             }
-            return !isRunning
+            syncProcessCoordinatorSnapshot()
+            return !processHostCoordinator.hasActiveWorker
         }
     }
 
@@ -335,27 +354,29 @@ class RockolaForegroundService : Service() {
         AndroidStorageBridge.initialize(this)
         commandClient = MediaCommandClient(initialTarget = currentMediaTarget)
         pythonHost = EmbeddedPythonHost(this)
-        hostCoordinator = HostLifecycleCoordinator(
-            onStateChanged = { nextState, err ->
-                hostState = nextState
-                lastHostError = err
-                isRunning = hostCoordinator.isRunning
-                hasActiveWorker = hostCoordinator.hasActiveWorker
-                if ((nextState == HostServerState.FAILED || nextState == HostServerState.STOP_TIMED_OUT) && err != null) {
-                    onNativeCommandError?.invoke("host_server", "HOST_FAILED", err)
-                }
-                if (nextState == HostServerState.STOPPED ||
-                    nextState == HostServerState.FAILED ||
-                    nextState == HostServerState.STOP_TIMED_OUT
-                ) {
-                    if (currentMediaTarget.mode == MediaTargetMode.HOST) {
-                        isActivelyPlaying = false
-                        isMediaPlaying = false
-                        mainHandler.post { demoteFromForeground(keepDismissibleNotification = false) }
+        hostCoordinator = processHostCoordinator
+        syncProcessCoordinatorSnapshot()
+        hostCoordinator.setStateListener { nextState, err ->
+            syncProcessCoordinatorSnapshot()
+            if (activeInstance !== this) return@setStateListener
+            if ((nextState == HostServerState.FAILED || nextState == HostServerState.STOP_TIMED_OUT) && err != null) {
+                onNativeCommandError?.invoke("host_server", "HOST_FAILED", err)
+            }
+            if (nextState == HostServerState.STOPPED ||
+                nextState == HostServerState.FAILED ||
+                nextState == HostServerState.STOP_TIMED_OUT
+            ) {
+                if (currentMediaTarget.mode == MediaTargetMode.HOST) {
+                    isActivelyPlaying = false
+                    isMediaPlaying = false
+                    mainHandler.post {
+                        if (activeInstance === this) {
+                            demoteFromForeground(keepDismissibleNotification = false)
+                        }
                     }
                 }
-            },
-        )
+            }
+        }
         notificationManager = MediaNotificationManager(
             service = this,
             channelId = CHANNEL_ID,
@@ -917,31 +938,33 @@ class RockolaForegroundService : Service() {
 
     override fun onDestroy() {
         mainHandler.removeCallbacks(remoteIdleCheckRunnable)
-        if (activeInstance === this) {
-            activeInstance = null
+        cancelPendingDemote()
+        val wasActiveInstance = activeInstance === this
+        if (wasActiveInstance) {
+            hostCoordinator.setStateListener(null)
+            onPipStateNeedsRefresh = null
+            onNativeCommandError = null
         }
         isActivelyPlaying = false
         isMediaPlaying = false
-        onPipStateNeedsRefresh = null
-        onNativeCommandError = null
         demoteFromForeground(keepDismissibleNotification = false, forceStop = true)
         notificationManager.release()
         if (::audioPlayer.isInitialized) {
             audioPlayer.release()
         }
         commandClient.shutdown()
-        if (hostCoordinator.hasActiveWorker) {
-            backgroundExecutor.execute {
-                hostCoordinator.stop(STOP_JOIN_TIMEOUT_MS)
-                syncCoordinatorSnapshot()
-                hostCoordinator.shutdown()
-            }
-            backgroundExecutor.shutdown()
-        } else {
-            backgroundExecutor.shutdownNow()
-            hostCoordinator.shutdown()
+        backgroundExecutor.shutdownNow()
+        if (wasActiveInstance) {
+            activeInstance = null
         }
-        syncCoordinatorSnapshot()
+        if (hostCoordinator.hasActiveWorker) {
+            // No bloquear el main thread ni destruir el coordinador del proceso mientras el worker siga vivo
+            processShutdownExecutor.execute {
+                hostCoordinator.stop(STOP_JOIN_TIMEOUT_MS)
+                syncProcessCoordinatorSnapshot()
+            }
+        }
+        syncProcessCoordinatorSnapshot()
         super.onDestroy()
     }
 }
