@@ -153,6 +153,32 @@ export const androidBootStage = ref<string>('idle');
 export const androidExtractProgress = ref<number>(0);
 export const androidNotificationPermission = ref<'unknown' | 'granted' | 'prompt' | 'denied'>('unknown');
 export const showNotificationPermissionRationale = ref<boolean>(false);
+export const mediaTargetSynced = ref<boolean>(true);
+export const mediaTargetSyncError = ref<string | null>(null);
+
+export interface MediaTargetSyncResult {
+	ok: boolean;
+	synced: boolean;
+	generation: number;
+	stale?: boolean;
+	error?: string | null;
+}
+
+let targetSyncChain: Promise<MediaTargetSyncResult> = Promise.resolve({
+	ok: true,
+	synced: true,
+	generation: 0,
+});
+
+export function resetMediaTargetSyncStateForTests(): void {
+	mediaTargetSynced.value = true;
+	mediaTargetSyncError.value = null;
+	targetSyncChain = Promise.resolve({
+		ok: true,
+		synced: true,
+		generation: activeMediaTarget.value.generation,
+	});
+}
 
 const STORAGE_KEY_NOTIF_DISMISSED = 'rockola_notif_prompt_dismissed';
 
@@ -359,21 +385,65 @@ export async function toggleAndroidFullscreen(): Promise<boolean> {
 	return next;
 }
 
-export async function syncAndroidMediaTarget(): Promise<void> {
-	if (!isNativeAndroidHost()) return;
-	if (typeof RockolaServer.setMediaTarget !== 'function') return;
-	try {
-		const target = activeMediaTarget.value;
-		await RockolaServer.setMediaTarget({
-			mode: target.mode,
-			origin: target.origin,
-			authHeader: target.authHeader,
-			generation: target.generation,
-		});
-	} catch {
-		// Ignoramos si la versión del plugin nativo no expone setMediaTarget durante tests aislados
+export function syncAndroidMediaTarget(): Promise<MediaTargetSyncResult> {
+	const snapshot = { ...activeMediaTarget.value };
+	if (!isNativeAndroidHost()) {
+		mediaTargetSynced.value = true;
+		mediaTargetSyncError.value = null;
+		return Promise.resolve({ ok: true, synced: true, generation: snapshot.generation });
 	}
+
+	mediaTargetSynced.value = false;
+	const next = targetSyncChain
+		.catch(() => ({ ok: false, synced: false, generation: snapshot.generation }))
+		.then(async (): Promise<MediaTargetSyncResult> => {
+			if (activeMediaTarget.value.generation !== snapshot.generation) {
+				return { ok: false, synced: false, generation: snapshot.generation, stale: true };
+			}
+			if (typeof RockolaServer.setMediaTarget !== 'function') {
+				const msg = 'El plugin nativo no soporta sincronización de destino multimedia';
+				mediaTargetSynced.value = false;
+				mediaTargetSyncError.value = msg;
+				setServerError('MEDIA_TARGET_SYNC_FAILED', msg);
+				return { ok: false, synced: false, generation: snapshot.generation, error: msg };
+			}
+			try {
+				const res = await RockolaServer.setMediaTarget({
+					mode: snapshot.mode,
+					origin: snapshot.origin,
+					authHeader: snapshot.authHeader,
+					generation: snapshot.generation,
+				});
+				if (activeMediaTarget.value.generation !== snapshot.generation) {
+					return { ok: false, synced: false, generation: snapshot.generation, stale: true };
+				}
+				if (res && res.updated === false) {
+					const msg = 'El plugin nativo rechazó el cambio de destino multimedia';
+					mediaTargetSynced.value = false;
+					mediaTargetSyncError.value = msg;
+					setServerError('MEDIA_TARGET_SYNC_FAILED', msg);
+					return { ok: false, synced: false, generation: snapshot.generation, error: msg };
+				}
+				mediaTargetSynced.value = true;
+				mediaTargetSyncError.value = null;
+				clearServerError();
+				return { ok: true, synced: true, generation: snapshot.generation };
+			} catch (err) {
+				const msg = err instanceof Error ? err.message : 'Error sincronizando destino multimedia nativo';
+				if (activeMediaTarget.value.generation === snapshot.generation) {
+					mediaTargetSynced.value = false;
+					mediaTargetSyncError.value = msg;
+					setServerError('MEDIA_TARGET_SYNC_FAILED', msg);
+				}
+				return { ok: false, synced: false, generation: snapshot.generation, error: msg };
+			}
+		});
+
+	targetSyncChain = next;
+	return next;
 }
+
+export const retrySyncAndroidMediaTarget = syncAndroidMediaTarget;
 
 export function normalizeServerOrigin(raw: string | null | undefined): string | null {
 	const cleaned = (raw ?? '').trim().replace(/\/+$/, '');
@@ -480,18 +550,21 @@ export async function connectToRemoteServer(
 	return normalized;
 }
 
-export function disconnectFromRemoteServer(opts?: { onServerChanged?: () => void }): void {
+export async function disconnectFromRemoteServer(opts?: {
+	onServerChanged?: () => void;
+}): Promise<MediaTargetSyncResult> {
 	setHostMode();
 	clearServerError();
 	resetPlaybackAndLibraryState();
 	setApiOrigin(`http://127.0.0.1:${localServerPort.value || 1729}`);
-	void syncAndroidMediaTarget();
+	const syncResult = await syncAndroidMediaTarget();
 
 	if (opts?.onServerChanged) {
 		opts.onServerChanged();
 	} else {
 		requestSocketReconnect({ onlyIfActive: true });
 	}
+	return syncResult;
 }
 
 export const resetToLocalServer = disconnectFromRemoteServer;
@@ -867,7 +940,7 @@ export function subscribeAndroidNativeEvents(handlers: AndroidNativeEventHandler
 }
 
 export async function syncAndroidMediaNotification(payload: MediaNotificationPayload): Promise<void> {
-	if (!isNativeAndroidHost()) return;
+	if (!isNativeAndroidHost() || !mediaTargetSynced.value) return;
 	const duration = payload.duration ?? 0;
 	const position = payload.position ?? 0;
 	lastPosSentAt = Date.now();
@@ -893,7 +966,7 @@ export async function syncAndroidMediaNotification(payload: MediaNotificationPay
 }
 
 export async function syncAndroidMediaPosition(payload: MediaPositionPayload): Promise<void> {
-	if (!isNativeAndroidHost()) return;
+	if (!isNativeAndroidHost() || !mediaTargetSynced.value) return;
 
 	const now = Date.now();
 	const isFirst = lastPausedValue === null;

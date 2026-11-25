@@ -597,7 +597,9 @@ describe('useAndroidHost.ts', () => {
 		);
 
 		playback.currentTrackPath.value = '/remote/track.mp3';
-		mod.disconnectFromRemoteServer({ onServerChanged: onModeSwitch });
+		const disconnectRes = await mod.disconnectFromRemoteServer({ onServerChanged: onModeSwitch });
+		expect(disconnectRes.ok).toBe(true);
+		expect(disconnectRes.synced).toBe(true);
 		expect(store.serverMode.value).toBe('host');
 		expect(playback.currentTrackPath.value).toBeNull();
 		expect(onModeSwitch).toHaveBeenCalledTimes(2);
@@ -739,5 +741,99 @@ describe('useAndroidHost.ts', () => {
 
 		cleanup();
 		expect(removeFn).toHaveBeenCalledTimes(6);
+	});
+
+	it('serializes MediaTarget sync, discards stale A->B responses, blocks commands until synced, and supports retries', async () => {
+		const mod = await import('@/composables/useAndroidHost');
+		const store = await import('@/stores/useServerConnectionStore');
+
+		state.isNative = true;
+		state.platform = 'android';
+		store.resetServerConnectionStore();
+		mod.resetMediaTargetSyncStateForTests();
+
+		// 1. Plugin nativo no disponible -> mediaTargetSynced=false y error accionable
+		const origSetTarget = pluginMock.setMediaTarget;
+		(pluginMock as unknown as Record<string, unknown>).setMediaTarget = undefined;
+		store.setRemoteMode('http://192.168.0.10:1729');
+		const unavailRes = await mod.syncAndroidMediaTarget();
+		expect(unavailRes.ok).toBe(false);
+		expect(unavailRes.synced).toBe(false);
+		expect(mod.mediaTargetSynced.value).toBe(false);
+		expect(mod.mediaTargetSyncError.value).toBeTruthy();
+
+		// Mientras mediaTargetSynced=false, bloquea envíos al destino nativo anterior
+		await mod.syncAndroidMediaNotification({
+			title: 'Tema',
+			artist: 'Artista',
+			paused: false,
+		});
+		await mod.syncAndroidMediaPosition({ duration: 120, position: 10, paused: false });
+		expect(pluginMock.updateMediaNotification).not.toHaveBeenCalled();
+		expect(pluginMock.updateMediaPosition).not.toHaveBeenCalled();
+
+		// 2. Sincronización fallida y reintento exitoso
+		pluginMock.setMediaTarget = origSetTarget;
+		pluginMock.setMediaTarget.mockRejectedValueOnce(new Error('IPC caído'));
+		const failRes = await mod.syncAndroidMediaTarget();
+		expect(failRes.ok).toBe(false);
+		expect(mod.mediaTargetSynced.value).toBe(false);
+		expect(mod.mediaTargetSyncError.value).toContain('IPC caído');
+
+		pluginMock.setMediaTarget.mockResolvedValueOnce({ updated: true });
+		const retryRes = await mod.retrySyncAndroidMediaTarget();
+		expect(retryRes.ok).toBe(true);
+		expect(retryRes.synced).toBe(true);
+		expect(mod.mediaTargetSynced.value).toBe(true);
+		expect(mod.mediaTargetSyncError.value).toBeNull();
+
+		// Una vez sincronizado, permite enviar notificaciones/posición
+		await mod.syncAndroidMediaNotification({
+			title: 'Tema OK',
+			artist: 'Artista OK',
+			paused: false,
+		});
+		expect(pluginMock.updateMediaNotification).toHaveBeenCalledTimes(1);
+
+		// 3. Cambio A -> B mientras A responde tarde: descarta A como obsoleta por generación
+		let resolveA!: (val: { updated: boolean }) => void;
+		const promiseA = new Promise<{ updated: boolean }>((resolve) => {
+			resolveA = resolve;
+		});
+		pluginMock.setMediaTarget.mockImplementationOnce(() => promiseA).mockResolvedValueOnce({ updated: true });
+
+		store.setRemoteMode('http://192.168.0.20:1729');
+		const genA = store.mediaTargetGeneration.value;
+		const syncA = mod.syncAndroidMediaTarget();
+		expect(mod.mediaTargetSynced.value).toBe(false);
+
+		// Durante la transición hacia A, los comandos nativos NO deben dispararse al destino anterior
+		await mod.syncAndroidMediaNotification({
+			title: 'Durante transición',
+			artist: 'Nadie',
+			paused: false,
+		});
+		expect(pluginMock.updateMediaNotification).toHaveBeenCalledTimes(1);
+
+		store.setRemoteMode('http://192.168.0.30:1729');
+		const genB = store.mediaTargetGeneration.value;
+		const syncB = mod.syncAndroidMediaTarget();
+
+		resolveA({ updated: true });
+		const [resA, resB] = await Promise.all([syncA, syncB]);
+		expect(resA.generation).toBe(genA);
+		expect(resA.stale).toBe(true);
+		expect(resA.synced).toBe(false);
+		expect(resB.generation).toBe(genB);
+		expect(resB.ok).toBe(true);
+		expect(resB.synced).toBe(true);
+		expect(mod.mediaTargetSynced.value).toBe(true);
+
+		// 4. Desconexión hacia host local devuelve promesa verificable
+		pluginMock.setMediaTarget.mockResolvedValueOnce({ updated: true });
+		const hostRes = await mod.disconnectFromRemoteServer();
+		expect(hostRes.ok).toBe(true);
+		expect(hostRes.synced).toBe(true);
+		expect(store.serverMode.value).toBe('host');
 	});
 });

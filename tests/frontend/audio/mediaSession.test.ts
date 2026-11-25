@@ -162,7 +162,9 @@ describe('mediaSession.ts', () => {
 		const { resetServerConnectionStore, setHostMode, setRemoteMode } =
 			await import('@/stores/useServerConnectionStore');
 		vi.spyOn(androidHost, 'isNativeAndroidHost').mockReturnValue(true);
-		const syncTargetSpy = vi.spyOn(androidHost, 'syncAndroidMediaTarget').mockResolvedValue();
+		const syncTargetSpy = vi
+			.spyOn(androidHost, 'syncAndroidMediaTarget')
+			.mockResolvedValue({ ok: true, synced: true, generation: 0 });
 
 		resetServerConnectionStore();
 		setRemoteMode('http://192.168.0.55:1729');

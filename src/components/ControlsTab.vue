@@ -271,7 +271,7 @@
 		}
 	}
 
-	function handleToggleRemoteServerSwitch(next: boolean) {
+	async function handleToggleRemoteServerSwitch(next: boolean) {
 		haptic(next ? 'toggle_on' : 'toggle_off');
 		if (next) {
 			remoteServerInput.value = activeRemoteServerUrl.value ?? lastRemoteServerUrl.value ?? '';
@@ -279,9 +279,13 @@
 		} else {
 			isRemoteServerModalOpen.value = false;
 			if (isRemoteMode.value) {
-				disconnectFromRemoteServer();
+				const syncRes = await disconnectFromRemoteServer();
 				void loadLibrary(false);
-				showToast('Volviste al servidor de este teléfono', 'info');
+				if (syncRes.synced) {
+					showToast('Volviste al servidor de este teléfono', 'info');
+				} else if (syncRes.error) {
+					showToast(syncRes.error, 'error');
+				}
 			}
 		}
 	}
@@ -304,12 +308,16 @@
 		}
 	}
 
-	function handleUseLocalServer() {
-		disconnectFromRemoteServer();
+	async function handleUseLocalServer() {
+		const syncRes = await disconnectFromRemoteServer();
 		isRemoteServerModalOpen.value = false;
 		haptic();
 		void loadLibrary(false);
-		showToast('Volviste al servidor de este teléfono', 'info');
+		if (syncRes.synced) {
+			showToast('Volviste al servidor de este teléfono', 'info');
+		} else if (syncRes.error) {
+			showToast(syncRes.error, 'error');
+		}
 	}
 
 	async function handlePickMusicFolder() {
