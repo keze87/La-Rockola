@@ -25,6 +25,8 @@ export interface UseQueueDragDropOptions {
 	moveInPlaylist: (fromIndex: number, toIndex: number) => void;
 	moveQueueItem: (index: number, target: 'first' | 'last' | number) => void;
 	removeQueueItemCmd: (index: number) => void;
+	addHistoryToQueueCmd: (path: string) => void;
+	removeHistoryItemCmd: (index: number) => void;
 }
 
 export function useQueueDragDrop(options: UseQueueDragDropOptions) {
@@ -38,10 +40,13 @@ export function useQueueDragDrop(options: UseQueueDragDropOptions) {
 		moveInPlaylist,
 		moveQueueItem,
 		removeQueueItemCmd,
+		addHistoryToQueueCmd,
+		removeHistoryItemCmd,
 	} = options;
 
 	const dragFromIndex = ref<number | null>(null);
 	const longPressPathByIndex = new Map<number, string>();
+	const historyLongPressPathByIndex = new Map<number, string>();
 
 	const {
 		swipeOffsets,
@@ -59,6 +64,29 @@ export function useQueueDragDrop(options: UseQueueDragDropOptions) {
 		},
 		onSwipeLeft: (index) => removeQueueItemCmd(index),
 		onSwipeRight: (index) => moveQueueItem(index, 'first'),
+	});
+
+	const {
+		swipeOffsets: historySwipeOffsets,
+		touchStart: baseHistoryTouchStart,
+		touchMove: historyTouchMove,
+		touchEnd: historyTouchEnd,
+		cancelTouch: cancelHistoryTouch,
+	} = useRowSwipe<number>({
+		haptic,
+		onLongPress: (e, historyIndex) => {
+			const path = historyLongPressPathByIndex.get(historyIndex) ?? historyState.value[historyIndex];
+			if (path) {
+				openCtxMenu(e, getTrackInfo(path), 'history', historyIndex);
+			}
+		},
+		onSwipeLeft: (historyIndex) => removeHistoryItemCmd(historyIndex),
+		onSwipeRight: (historyIndex) => {
+			const path = historyState.value[historyIndex] ?? historyLongPressPathByIndex.get(historyIndex);
+			if (path) {
+				addHistoryToQueueCmd(path);
+			}
+		},
 	});
 
 	const unifiedQueue = computed<UnifiedTrackItem[]>(() => {
@@ -102,6 +130,11 @@ export function useQueueDragDrop(options: UseQueueDragDropOptions) {
 	function queueTouchStart(e: TouchEvent, path: string, i: number) {
 		longPressPathByIndex.set(i, path);
 		baseTouchStart(e, i);
+	}
+
+	function historyTouchStart(e: TouchEvent, path: string, historyIndex: number) {
+		historyLongPressPathByIndex.set(historyIndex, path);
+		baseHistoryTouchStart(e, historyIndex);
 	}
 
 	function dragStart(e: DragEvent, index: number) {
@@ -185,6 +218,11 @@ export function useQueueDragDrop(options: UseQueueDragDropOptions) {
 		queueTouchMove,
 		queueTouchEnd,
 		cancelQueueTouch,
+		historySwipeOffsets,
+		historyTouchStart,
+		historyTouchMove,
+		historyTouchEnd,
+		cancelHistoryTouch,
 		dragStart,
 		dragOver,
 		dragLeave,

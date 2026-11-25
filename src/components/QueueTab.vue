@@ -34,11 +34,13 @@
 	const {
 		addUrl: addUrlCmd,
 		clearRound,
+		insertQueueItem,
 		jumpToHistory,
 		jumpToQueue,
 		moveInPlaylist,
 		moveQueueItem: moveQueueItemCmd,
 		pause,
+		removeHistoryItem: removeHistoryItemCmd,
 		removeQueueItem: removeQueueItemCmd,
 	} = usePlaybackControls();
 
@@ -83,6 +85,11 @@
 		queueTouchMove,
 		queueTouchEnd,
 		cancelQueueTouch,
+		historySwipeOffsets,
+		historyTouchStart,
+		historyTouchMove,
+		historyTouchEnd,
+		cancelHistoryTouch,
 		dragStart,
 		dragOver,
 		dragLeave,
@@ -99,6 +106,12 @@
 		moveInPlaylist,
 		moveQueueItem,
 		removeQueueItemCmd,
+		addHistoryToQueueCmd: (path) => {
+			void insertQueueItem(path, queueState.value.length);
+		},
+		removeHistoryItemCmd: (historyIndex) => {
+			void removeHistoryItemCmd(historyIndex);
+		},
 	});
 
 	function onTrackClick(item: UnifiedTrackItem) {
@@ -113,6 +126,7 @@
 
 	function onTabScroll(e: Event) {
 		cancelQueueTouch();
+		cancelHistoryTouch();
 		const target = e.target as HTMLElement;
 		if (target) {
 			handleScroll(target.scrollTop);
@@ -211,32 +225,61 @@
 					<!-- Fondo fijo estilo Gmail revelado detrás de la fila al deslizar -->
 					<div
 						v-if="
-							item.status === 'queue' &&
-							item.queueIndex !== undefined &&
-							swipeOffsets.has(item.queueIndex)
+							(item.status === 'queue' &&
+								item.queueIndex !== undefined &&
+								swipeOffsets.has(item.queueIndex)) ||
+							(item.status === 'history' &&
+								item.historyIndex !== undefined &&
+								historySwipeOffsets.has(item.historyIndex))
 						"
 						class="pointer-events-none absolute inset-0 flex items-center justify-between bg-[var(--bg-elevated)] px-5"
 						aria-hidden="true"
 					>
 						<div class="flex items-center">
 							<span
-								v-if="(swipeOffsets.get(item.queueIndex) ?? 0) > 0"
+								v-if="item.status === 'queue' && (swipeOffsets.get(item.queueIndex!) ?? 0) > 0"
 								:class="[
 									'swipe-promote-indicator inline-flex h-10 w-10 items-center justify-center rounded-full transition-all duration-150',
-									(swipeOffsets.get(item.queueIndex) ?? 0) >= 80
+									(swipeOffsets.get(item.queueIndex!) ?? 0) >= 80
 										? 'swipe-promote-ready scale-110 bg-[var(--accent-primary)] text-[#120e0b] shadow-sm'
 										: 'scale-90 bg-[var(--bg-surface)] text-[var(--text-secondary)]',
 								]"
 							>
 								<i class="material-icons !text-[20px]">vertical_align_top</i>
 							</span>
+							<span
+								v-else-if="
+									item.status === 'history' && (historySwipeOffsets.get(item.historyIndex!) ?? 0) > 0
+								"
+								:class="[
+									'history-swipe-add-indicator inline-flex h-10 w-10 items-center justify-center rounded-full transition-all duration-150',
+									(historySwipeOffsets.get(item.historyIndex!) ?? 0) >= 80
+										? 'swipe-promote-ready scale-110 bg-[var(--accent-primary)] text-[#120e0b] shadow-sm'
+										: 'scale-90 bg-[var(--bg-surface)] text-[var(--text-secondary)]',
+								]"
+							>
+								<i class="material-icons !text-[20px]">playlist_add</i>
+							</span>
 						</div>
 						<div class="flex items-center">
 							<span
-								v-if="(swipeOffsets.get(item.queueIndex) ?? 0) < 0"
+								v-if="item.status === 'queue' && (swipeOffsets.get(item.queueIndex!) ?? 0) < 0"
 								:class="[
 									'swipe-delete-indicator inline-flex h-10 w-10 items-center justify-center rounded-full transition-all duration-150',
-									(swipeOffsets.get(item.queueIndex) ?? 0) <= -80
+									(swipeOffsets.get(item.queueIndex!) ?? 0) <= -80
+										? 'swipe-delete-ready scale-110 bg-[var(--accent-danger)] text-[#120e0b] shadow-sm'
+										: 'scale-90 bg-[var(--bg-surface)] text-[var(--text-secondary)]',
+								]"
+							>
+								<i class="material-icons !text-[20px]">delete</i>
+							</span>
+							<span
+								v-else-if="
+									item.status === 'history' && (historySwipeOffsets.get(item.historyIndex!) ?? 0) < 0
+								"
+								:class="[
+									'history-swipe-delete-indicator inline-flex h-10 w-10 items-center justify-center rounded-full transition-all duration-150',
+									(historySwipeOffsets.get(item.historyIndex!) ?? 0) <= -80
 										? 'swipe-delete-ready scale-110 bg-[var(--accent-danger)] text-[#120e0b] shadow-sm'
 										: 'scale-90 bg-[var(--bg-surface)] text-[var(--text-secondary)]',
 								]"
@@ -249,7 +292,9 @@
 					<TrackRow
 						:id="item.status === 'current' ? 'current-queue-row' : undefined"
 						:class="[
-							item.status === 'history' ? 'opacity-[0.52] transition-opacity' : '',
+							item.status === 'history'
+								? 'history-swipe-row bg-[var(--bg-canvas)] transition-opacity [&>*]:opacity-[0.52]'
+								: '',
 							item.status === 'queue' ? 'swipe-row bg-[var(--bg-canvas)]' : '',
 							rowPos >= 12 ? 'deferred-row' : '',
 							trackGridClass,
@@ -269,7 +314,7 @@
 									? item.queueIndex
 									: null
 						"
-						:context-menu-only="item.status === 'queue'"
+						:context-menu-only="item.status === 'queue' || item.status === 'history'"
 						:style="
 							item.status === 'queue' &&
 							item.queueIndex !== undefined &&
@@ -278,7 +323,14 @@
 										transform: `translateX(${swipeOffsets.get(item.queueIndex)}px)`,
 										transition: 'none',
 									}
-								: undefined
+								: item.status === 'history' &&
+									  item.historyIndex !== undefined &&
+									  historySwipeOffsets.has(item.historyIndex)
+									? {
+											transform: `translateX(${historySwipeOffsets.get(item.historyIndex)}px)`,
+											transition: 'none',
+										}
+									: undefined
 						"
 						draggable="true"
 						@click="onTrackClick(item)"
@@ -290,22 +342,30 @@
 						@touchstart="
 							item.status === 'queue' && item.queueIndex !== undefined
 								? queueTouchStart($event, item.path, item.queueIndex)
-								: undefined
+								: item.status === 'history' && item.historyIndex !== undefined
+									? historyTouchStart($event, item.path, item.historyIndex)
+									: undefined
 						"
 						@touchend="
 							item.status === 'queue' && item.queueIndex !== undefined
 								? queueTouchEnd($event, item.queueIndex)
-								: undefined
+								: item.status === 'history' && item.historyIndex !== undefined
+									? historyTouchEnd($event, item.historyIndex)
+									: undefined
 						"
 						@touchmove="
 							item.status === 'queue' && item.queueIndex !== undefined
 								? queueTouchMove($event, item.queueIndex)
-								: undefined
+								: item.status === 'history' && item.historyIndex !== undefined
+									? historyTouchMove($event, item.historyIndex)
+									: undefined
 						"
 						@touchcancel="
 							item.status === 'queue' && item.queueIndex !== undefined
 								? cancelQueueTouch(item.queueIndex)
-								: undefined
+								: item.status === 'history' && item.historyIndex !== undefined
+									? cancelHistoryTouch(item.historyIndex)
+									: undefined
 						"
 					>
 						<template #prefix>

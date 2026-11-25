@@ -425,60 +425,29 @@ Dialogue: 0,0:00:20.00,0:00:24.00,Default,,0,0,0,,{\\kf100}Verso {\\kf100}tres
 		expect(window.__rockolaHandleBack).toBeUndefined();
 	});
 
-	it('switches tabs on horizontal swipe and ignores swipes inside queue rows or sliders', async () => {
+	it('does not switch tabs on horizontal swipe over tab content to avoid interfering with row swipes', async () => {
 		const wrapper = mount(App);
 		await wrapper.vm.$nextTick();
 
 		const container = wrapper.find('.tab-swipe-container');
 		expect(container.exists()).toBe(true);
+		expect(activeTab.value).toBe('library');
 
-		// Swipe izquierda desde library -> queue
+		// Swipe horizontal izquierdo ya no cambia a Ronda
 		await container.trigger('touchstart', { touches: [{ clientX: 280, clientY: 200 }] });
-		await container.trigger('touchmove', { touches: [{ clientX: 140, clientY: 205 }] });
+		await container.trigger('touchmove', { touches: [{ clientX: 100, clientY: 205 }] });
 		await container.trigger('touchend');
-		expect(activeTab.value).toBe('queue');
+		expect(activeTab.value).toBe('library');
 
-		// Swipe iniciado sobre una fila de La Ronda ([data-queue-index]) se ignora
-		const protectedTarget = document.createElement('div');
-		protectedTarget.setAttribute('data-queue-index', '0');
-		container.element.appendChild(protectedTarget);
-
-		protectedTarget.dispatchEvent(
-			new TouchEvent('touchstart', {
-				bubbles: true,
-				touches: [{ clientX: 280, clientY: 200 } as Touch],
-			})
-		);
-		protectedTarget.dispatchEvent(
-			new TouchEvent('touchmove', {
-				bubbles: true,
-				touches: [{ clientX: 140, clientY: 205 } as Touch],
-			})
-		);
-		protectedTarget.dispatchEvent(new TouchEvent('touchend', { bubbles: true }));
-		expect(activeTab.value).toBe('queue');
-		protectedTarget.remove();
-
-		// Swipe izquierda desde queue -> top
-		await container.trigger('touchstart', { touches: [{ clientX: 280, clientY: 200 }] });
-		await container.trigger('touchmove', { touches: [{ clientX: 140, clientY: 205 }] });
-		await container.trigger('touchend');
-		expect(activeTab.value).toBe('top');
-
-		// Swipe derecha desde top -> queue
+		// Tampoco desde Ronda cambia hacia otra pestaña
+		activeTab.value = 'queue';
+		await wrapper.vm.$nextTick();
 		await container.trigger('touchstart', { touches: [{ clientX: 100, clientY: 200 }] });
-		await container.trigger('touchmove', { touches: [{ clientX: 240, clientY: 205 }] });
+		await container.trigger('touchmove', { touches: [{ clientX: 280, clientY: 205 }] });
 		await container.trigger('touchend');
 		expect(activeTab.value).toBe('queue');
 
-		// Swipe ignorado cuando hay un modal abierto (ej. mapa del clima)
-		const { registerOpenModal, unregisterOpenModal } = await import('@/stores/useUiStore');
-		registerOpenModal('weather-location', () => {});
-		await container.trigger('touchstart', { touches: [{ clientX: 280, clientY: 200 }] });
-		await container.trigger('touchmove', { touches: [{ clientX: 140, clientY: 205 }] });
-		await container.trigger('touchend');
-		expect(activeTab.value).toBe('queue');
-		unregisterOpenModal('weather-location');
+		wrapper.unmount();
 	});
 
 	it('consumes pending Android shortcut on mount and handles warm shortcut events via Capacitor bus', async () => {
@@ -749,37 +718,6 @@ Dialogue: 0,0:00:20.00,0:00:24.00,Default,,0,0,0,,{\\kf100}Verso {\\kf100}tres
 		expect(document.documentElement.style.getPropertyValue('--headbar-h')).toBe('92px');
 		document.documentElement.style.removeProperty('--headbar-h');
 		wrapper.unmount();
-	});
-
-	it('ignores horizontal tab swipes starting within 24px of screen edges for Android predictive back', async () => {
-		const origInnerWidth = window.innerWidth;
-		Object.defineProperty(window, 'innerWidth', { configurable: true, value: 400 });
-
-		try {
-			const wrapper = mount(App);
-			await wrapper.vm.$nextTick();
-
-			const container = wrapper.find('.tab-swipe-container');
-			expect(container.exists()).toBe(true);
-
-			// Borde izquierdo (< 24px) no debe cambiar de pestaña
-			activeTab.value = 'queue';
-			await wrapper.vm.$nextTick();
-			await container.trigger('touchstart', { touches: [{ clientX: 12, clientY: 200 }] });
-			await container.trigger('touchmove', { touches: [{ clientX: 180, clientY: 202 }] });
-			await container.trigger('touchend');
-			expect(activeTab.value).toBe('queue');
-
-			// Borde derecho (> width - 24px) tampoco debe cambiar de pestaña
-			await container.trigger('touchstart', { touches: [{ clientX: 388, clientY: 200 }] });
-			await container.trigger('touchmove', { touches: [{ clientX: 200, clientY: 202 }] });
-			await container.trigger('touchend');
-			expect(activeTab.value).toBe('queue');
-
-			wrapper.unmount();
-		} finally {
-			Object.defineProperty(window, 'innerWidth', { configurable: true, value: origInnerWidth });
-		}
 	});
 
 	it('uses history.replaceState instead of pushState on native Android when switching tabs or fogon', async () => {

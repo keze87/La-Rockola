@@ -347,88 +347,6 @@
 		document.documentElement.classList.toggle('ime-open', px > 0);
 	}
 
-	// Swipe horizontal entre pestañas sin interferir con filas de cola ni sliders ni bordes de atrás predictivo
-	const TAB_SWIPE_MIN_PX = 72;
-	const TAB_SWIPE_EDGE_EXCLUSION_PX = 24;
-	let tabTouchStartX = 0;
-	let tabTouchStartY = 0;
-	let tabTouchLastX = 0;
-	let tabSwipeAxis: 'horizontal' | 'vertical' | null = null;
-	let tabSwipeTracking = false;
-
-	function resetTabSwipe() {
-		tabSwipeTracking = false;
-		tabSwipeAxis = null;
-	}
-
-	function onTabContentTouchStart(e: TouchEvent) {
-		if (hasOpenModal.value || e.touches.length !== 1) {
-			resetTabSwipe();
-			return;
-		}
-		const target = e.target as HTMLElement | null;
-		if (
-			target?.closest(
-				'[data-queue-index], [data-history-path], input, textarea, [role="slider"], .drag-slider, .no-tab-swipe, .leaflet-container, dialog'
-			)
-		) {
-			resetTabSwipe();
-			return;
-		}
-		const touch = e.touches[0];
-		if (!touch) {
-			resetTabSwipe();
-			return;
-		}
-		const vw = typeof window !== 'undefined' ? window.innerWidth : 0;
-		if (
-			touch.clientX < TAB_SWIPE_EDGE_EXCLUSION_PX ||
-			(vw > TAB_SWIPE_EDGE_EXCLUSION_PX * 2 && touch.clientX > vw - TAB_SWIPE_EDGE_EXCLUSION_PX)
-		) {
-			resetTabSwipe();
-			return;
-		}
-		tabTouchStartX = touch.clientX;
-		tabTouchStartY = touch.clientY;
-		tabTouchLastX = touch.clientX;
-		tabSwipeAxis = null;
-		tabSwipeTracking = true;
-	}
-
-	function onTabContentTouchMove(e: TouchEvent) {
-		if (!tabSwipeTracking || e.touches.length !== 1) return;
-		const touch = e.touches[0];
-		tabTouchLastX = touch.clientX;
-		const dx = touch.clientX - tabTouchStartX;
-		const dy = touch.clientY - tabTouchStartY;
-
-		if (!tabSwipeAxis && (Math.abs(dx) > 12 || Math.abs(dy) > 12)) {
-			tabSwipeAxis = Math.abs(dx) > Math.abs(dy) * 1.5 ? 'horizontal' : 'vertical';
-			if (tabSwipeAxis === 'vertical') {
-				resetTabSwipe();
-			}
-		}
-	}
-
-	function onTabContentTouchEnd() {
-		if (!tabSwipeTracking || tabSwipeAxis !== 'horizontal') {
-			resetTabSwipe();
-			return;
-		}
-		const dx = tabTouchLastX - tabTouchStartX;
-		resetTabSwipe();
-
-		if (Math.abs(dx) < TAB_SWIPE_MIN_PX) return;
-		const currentIdx = tabs.findIndex((t) => t.id === activeTab.value);
-		if (currentIdx === -1) return;
-
-		const nextIdx = dx < 0 ? currentIdx + 1 : currentIdx - 1;
-		if (nextIdx >= 0 && nextIdx < tabs.length) {
-			switchTab(tabs[nextIdx].id);
-			haptic();
-		}
-	}
-
 	function openFogonFromAndroid(): void {
 		isLyricsEditorOpen.value = false;
 		isFogonMode.value = true;
@@ -879,7 +797,7 @@
 			<!-- PESTAÑAS (anclada borde a borde en móvil cubriendo safe-bottom, riel lateral desde md) -->
 			<nav
 				aria-label="Secciones principales"
-				class="floating-tab-bar fixed z-40 order-2 flex min-h-[var(--tabbar-h)] shrink-0 items-center overflow-hidden border-t-[0.5px] border-[var(--glass-border)] bg-[var(--glass-bg-strong)] px-2 pt-1.5 [backdrop-filter:var(--glass-blur)] transition-all duration-200 ease-out [-webkit-backdrop-filter:var(--glass-blur)] md:top-auto md:right-auto md:bottom-[calc(12px+var(--safe-bottom))] md:left-4 md:z-50 md:order-1 md:h-[var(--floating-player-h)] md:min-h-0 md:w-auto md:flex-row md:items-center md:overflow-visible md:rounded-full md:border md:border-[var(--glass-border)] md:bg-[var(--glass-bg-strong)] md:px-2 md:py-1.5 md:pt-1.5 md:pb-1.5 md:[box-shadow:var(--glass-highlight),0_12px_32px_rgba(0,0,0,0.45)] lg:w-[calc(var(--queue-col-w)-32px)] lg:justify-center"
+				class="floating-tab-bar fixed z-40 order-2 flex min-h-[var(--tabbar-h)] shrink-0 items-center overflow-hidden border-t-[0.5px] border-[var(--glass-border)] bg-[var(--glass-bg-strong)] px-2 pt-1.5 [backdrop-filter:var(--glass-blur)] transition-all duration-200 ease-out [-webkit-backdrop-filter:var(--glass-blur)] md:top-auto md:right-auto md:bottom-[calc(12px+var(--safe-bottom))] md:left-4 md:z-50 md:order-1 md:h-[var(--floating-player-h)] md:min-h-0 md:w-auto md:flex-row md:items-center md:overflow-visible md:rounded-[var(--radius-lg)] md:border md:border-[var(--glass-border)] md:bg-[var(--glass-bg-strong)] md:px-2 md:py-1.5 md:pt-1.5 md:pb-1.5 md:[box-shadow:var(--glass-highlight),0_12px_32px_rgba(0,0,0,0.45)] lg:w-[calc(var(--queue-col-w)-32px)] lg:justify-center"
 				:class="[
 					isTabsBarHidden && isShortScreen
 						? 'pointer-events-none max-h-0 translate-y-2 border-0 py-0 opacity-0 md:pointer-events-auto md:max-h-none md:translate-y-0 md:py-1.5 md:opacity-100'
@@ -899,7 +817,7 @@
 						:aria-label="tab.name"
 						:title="tab.name"
 						:class="[
-							'touch-target tap-feedback relative flex flex-1 cursor-pointer touch-manipulation flex-col items-center justify-center gap-0.5 rounded-xl py-1 text-center transition-colors duration-150 md:min-w-[60px] md:flex-none md:rounded-full md:px-2 md:py-1 lg:min-w-0 lg:flex-1',
+							'touch-target tap-feedback relative flex flex-1 cursor-pointer touch-manipulation flex-col items-center justify-center gap-0.5 rounded-xl py-1 text-center transition-colors duration-150 md:min-w-[60px] md:flex-none md:rounded-[var(--radius-md)] md:px-2 md:py-1 lg:min-w-0 lg:flex-1',
 							tab.id === 'queue' ? 'lg:hidden' : '',
 							activeTab === tab.id
 								? 'text-[var(--accent-primary)]'
@@ -930,10 +848,6 @@
 			<div
 				class="tab-swipe-container relative order-1 min-h-0 w-full flex-1 overflow-hidden md:order-2 lg:grid lg:grid-cols-[var(--queue-col-w)_minmax(0,1fr)]"
 				:class="[{ 'predictive-back-target': isPredictiveBackOnTab }]"
-				@touchstart.passive="onTabContentTouchStart"
-				@touchmove.passive="onTabContentTouchMove"
-				@touchend="onTabContentTouchEnd"
-				@touchcancel="resetTabSwipe"
 			>
 				<div
 					:class="[

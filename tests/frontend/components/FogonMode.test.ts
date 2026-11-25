@@ -841,8 +841,10 @@ Dialogue: 0,0:00:01.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Letra {\\kf100}animad
 	it('closes fogon mode when swiping downward on the cover art', async () => {
 		isFogonMode.value = true;
 		const wrapper = mount(FogonMode);
+		const fogonContainer = wrapper.find('.fogon-container');
 		const coverWrapper = wrapper.find('.fogon-cover-wrapper');
 		expect(coverWrapper.exists()).toBe(true);
+		expect(fogonContainer.exists()).toBe(true);
 
 		await coverWrapper.trigger('touchstart', {
 			touches: [{ clientX: 160, clientY: 100 }],
@@ -851,7 +853,8 @@ Dialogue: 0,0:00:01.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Letra {\\kf100}animad
 			touches: [{ clientX: 164, clientY: 220 }],
 		});
 
-		expect(coverWrapper.attributes('style')).toContain('translateY(120px)');
+		expect(fogonContainer.attributes('style')).toContain('translateY(120px)');
+		expect(coverWrapper.attributes('style') || '').not.toContain('translateY(120px)');
 
 		await coverWrapper.trigger('touchend');
 		expect(isFogonMode.value).toBe(false);
@@ -860,6 +863,7 @@ Dialogue: 0,0:00:01.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Letra {\\kf100}animad
 	it('does not close fogon mode on short, upward, or horizontal cover swipe', async () => {
 		isFogonMode.value = true;
 		const wrapper = mount(FogonMode);
+		const fogonContainer = wrapper.find('.fogon-container');
 		const coverWrapper = wrapper.find('.fogon-cover-wrapper');
 
 		// Deslizamiento corto hacia abajo (< umbral)
@@ -867,6 +871,7 @@ Dialogue: 0,0:00:01.00,0:00:05.00,Default,,0,0,0,,{\\kf100}Letra {\\kf100}animad
 		await coverWrapper.trigger('touchmove', { touches: [{ clientX: 160, clientY: 135 }] });
 		await coverWrapper.trigger('touchend');
 		expect(isFogonMode.value).toBe(true);
+		expect(fogonContainer.attributes('style') || '').not.toContain('translateY(35px)');
 		expect(coverWrapper.attributes('style') || '').not.toContain('translateY(35px)');
 
 		// Deslizamiento hacia arriba

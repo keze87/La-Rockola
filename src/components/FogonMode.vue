@@ -380,19 +380,21 @@
 	let coverSwipeAxis: 'vertical' | 'horizontal' | null = null;
 	let coverThresholdHapticFired = false;
 
-	const coverSwipeStyle = computed(() => {
-		if (coverSwipeX.value !== 0) {
-			const opacity = Math.max(0.55, 1 - Math.abs(coverSwipeX.value) / 240);
-			return {
-				transform: `translateX(${Math.round(coverSwipeX.value)}px)`,
-				opacity: opacity.toFixed(2),
-				transition: isCoverSwiping.value ? 'none' : undefined,
-			};
-		}
+	const fogonSwipeStyle = computed(() => {
 		if (coverSwipeY.value <= 0) return undefined;
 		const opacity = Math.max(0.45, 1 - coverSwipeY.value / 280);
 		return {
 			transform: `translateY(${Math.round(coverSwipeY.value)}px)`,
+			opacity: opacity.toFixed(2),
+			transition: isCoverSwiping.value ? 'none' : undefined,
+		};
+	});
+
+	const coverSwipeStyle = computed(() => {
+		if (coverSwipeX.value === 0) return undefined;
+		const opacity = Math.max(0.55, 1 - Math.abs(coverSwipeX.value) / 240);
+		return {
+			transform: `translateX(${Math.round(coverSwipeX.value)}px)`,
 			opacity: opacity.toFixed(2),
 			transition: isCoverSwiping.value ? 'none' : undefined,
 		};
@@ -627,6 +629,7 @@
 			v-if="isFogonMode"
 			class="fogon-container fixed inset-0 z-[10000] flex items-center justify-center overflow-hidden overscroll-contain bg-[var(--bg-canvas)] px-4 pt-[calc(2.5rem+var(--rockola-safe-top))] pb-[calc(1rem+var(--rockola-safe-bottom))] text-[var(--text-primary)] sm:p-6 sm:pt-[calc(2.5rem+var(--rockola-safe-top))] sm:pb-[calc(1.5rem+var(--rockola-safe-bottom))] md:p-10 md:pt-[calc(3rem+var(--rockola-safe-top))] md:pb-[calc(2.5rem+var(--rockola-safe-bottom))]"
 			:class="[{ 'cursor-none [&_*]:cursor-none': isCursorInactive }, { 'is-android-pip': isAndroidPipMode }]"
+			:style="fogonSwipeStyle"
 		>
 			<!-- Fondo ambiental dinámico estilo Apple Music -->
 			<div class="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden="true">

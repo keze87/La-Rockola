@@ -676,4 +676,54 @@ describe('QueueTab.vue', () => {
 		expect(input.attributes('autocorrect')).toBe('off');
 		expect(input.attributes('spellcheck')).toBe('false');
 	});
+
+	it('handles swipe gestures on history rows (right swipe adds to queue, left swipe removes from history)', async () => {
+		historyState.value = ['/music/h1.mp3'];
+		queueState.value = ['/music/q1.mp3'];
+		const wrapper = mount(QueueTab);
+
+		const historyRows = wrapper.findAll('.history-swipe-row');
+		expect(historyRows.length).toBe(1);
+
+		// 1. Swipe derecha sobre historial -> insertar al final de la fila con indicador visual
+		await historyRows[0].trigger('touchstart', {
+			touches: [{ screenX: 40, clientX: 40, screenY: 100, clientY: 100 }],
+			changedTouches: [{ screenX: 40, clientX: 40, screenY: 100, clientY: 100 }],
+		});
+		await historyRows[0].trigger('touchmove', {
+			touches: [{ screenX: 130, clientX: 130, screenY: 100, clientY: 100 }],
+		});
+		expect(wrapper.find('.history-swipe-add-indicator').classes()).toContain('swipe-promote-ready');
+		await historyRows[0].trigger('touchend', {
+			changedTouches: [{ screenX: 150, clientX: 150, screenY: 100, clientY: 100 }],
+		});
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({
+				body: JSON.stringify({ cmd: 'insert_queue_item', path: '/music/h1.mp3', index: 1 }),
+			})
+		);
+
+		// 2. Swipe izquierda sobre historial -> borrar del historial con indicador visual
+		fetchMock.mockClear();
+		await historyRows[0].trigger('touchstart', {
+			touches: [{ screenX: 200, clientX: 200, screenY: 100, clientY: 100 }],
+			changedTouches: [{ screenX: 200, clientX: 200, screenY: 100, clientY: 100 }],
+		});
+		await historyRows[0].trigger('touchmove', {
+			touches: [{ screenX: 110, clientX: 110, screenY: 100, clientY: 100 }],
+		});
+		expect(wrapper.find('.history-swipe-delete-indicator').classes()).toContain('swipe-delete-ready');
+		await historyRows[0].trigger('touchend', {
+			changedTouches: [{ screenX: 80, clientX: 80, screenY: 100, clientY: 100 }],
+		});
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({
+				body: JSON.stringify({ cmd: 'remove_history_item', index: 0 }),
+			})
+		);
+	});
 });

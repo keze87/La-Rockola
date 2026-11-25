@@ -438,6 +438,162 @@ def _run_radio_test_checks(serial: str, base_url: str) -> list[E2EResult]:
 	return results
 
 
+def _parse_duration_sec(track: dict[str, object]) -> float:
+	raw_dur = track.get("duration")
+	if isinstance(raw_dur, (int, float)) and raw_dur > 0:
+		return float(raw_dur)
+	dur_str = str(track.get("duration_str") or "").strip()
+	if not dur_str or ":" not in dur_str:
+		return 0.0
+	parts = dur_str.split(":")
+	try:
+		nums = [int(p) for p in parts]
+		if len(nums) == 2:
+			return float(nums[0] * 60 + nums[1])
+		if len(nums) == 3:
+			return float(nums[0] * 3600 + nums[1] * 60 + nums[2])
+	except ValueError:
+		return 0.0
+	return 0.0
+
+
+async def _wait_ws_track(
+	ws_url: str,
+	predicate: object,
+	timeout_sec: float = 35.0,
+) -> dict[str, object]:
+	deadline = time.monotonic() + timeout_sec
+	state_snapshot: dict[str, object] = {}
+	async with websockets.connect(ws_url, open_timeout=10, ping_interval=20, ping_timeout=10) as ws_conn:
+		while True:
+			left = deadline - time.monotonic()
+			if left <= 0:
+				raise RuntimeError(
+					f"Timeout ({timeout_sec:.0f}s) esperando estado WebSocket (último track={state_snapshot.get('current_track')})"
+				)
+			try:
+				raw = await asyncio.wait_for(ws_conn.recv(), timeout=left)
+			except TimeoutError as exc:
+				raise RuntimeError(
+					f"Timeout ({timeout_sec:.0f}s) esperando estado WebSocket "
+					f"(track={state_snapshot.get('current_track')}, pos={state_snapshot.get('time_pos')}, dur={state_snapshot.get('duration')})"
+				) from exc
+			msg = json.loads(raw)
+			if isinstance(msg, dict):
+				state_snapshot.update(msg)
+				if predicate(state_snapshot):  # type: ignore[operator]
+					return dict(state_snapshot)
+
+
+def _run_screen_off_eof_and_radio_checks(serial: str, base_url: str) -> list[E2EResult]:
+	"""Verifica transición natural por EOF entre canciones y reproducción de radio con pantalla apagada."""
+	if websockets is None:
+		return [E2EResult("pantalla_apagada_eof_y_radio", True, "omitido (falta paquete Python websockets)")]
+
+	_, lib = _http_json(f"{base_url}/library")
+	tracks = lib.get("data") or []
+	long_tracks = [t for t in tracks if _parse_duration_sec(t) >= 20.0]
+	pool = long_tracks if len(long_tracks) >= 2 else tracks
+	if len(pool) < 2:
+		raise RuntimeError("Se necesitan al menos 2 pistas para probar transición por EOF con pantalla apagada")
+
+	t1, t2 = random.sample(pool, 2)
+	_set_screen_state(serial, awake=True)
+	_run_adb(serial, ["shell", "wm", "dismiss-keyguard"], check=False)
+	_run_adb(serial, ["shell", "am", "start", "-n", MAIN_ACTIVITY], check=False)
+	time.sleep(0.8)
+	initial_pid = _assert_process_alive(serial)
+
+	ws_url = _ws_url_from_http(base_url)
+	_http_json(f"{base_url}/command", "POST", {"cmd": "clear_round"})
+	_http_json(f"{base_url}/command", "POST", {"cmd": "play", "path": t1["path"]})
+	_http_json(f"{base_url}/command", "POST", {"cmd": "toggle_queue", "path": t2["path"]})
+
+	started_state = asyncio.run(
+		_wait_ws_track(
+			ws_url,
+			lambda s: s.get("current_track") == t1["path"] and float(s.get("duration") or 0.0) > 10.0,
+			timeout_sec=25.0,
+		)
+	)
+	dur1 = float(started_state.get("duration") or _parse_duration_sec(t1) or 60.0)
+	_assert_process_and_foreground(serial)
+
+	# Apagamos pantalla ANTES del final natural (EOF) y hacemos seek al cierre del tema
+	_set_screen_state(serial, awake=False)
+	time.sleep(1.5)
+	seek_pos = max(0.0, dur1 - 5.0)
+	_http_json(f"{base_url}/command", "POST", {"cmd": "seek_absolute", "amount": seek_pos})
+
+	saw_radio_on_eof = False
+
+	def _reached_next_track(s: dict[str, object]) -> bool:
+		nonlocal saw_radio_on_eof
+		cur = str(s.get("current_track") or "")
+		if "radio_announcement" in cur or bool(s.get("is_playing_radio_announcement")):
+			saw_radio_on_eof = True
+		return cur == t2["path"]
+
+	asyncio.run(
+		_wait_ws_track(
+			ws_url,
+			_reached_next_track,
+			timeout_sec=75.0,
+		)
+	)
+	time.sleep(1.5)
+	eof_pid = _assert_process_and_foreground(serial)
+	if eof_pid != initial_pid:
+		raise RuntimeError(f"El proceso cambió de PID durante transición EOF ({initial_pid} -> {eof_pid})")
+	st_h, health = _http_json(f"{base_url}/health", timeout=5.0)
+	if st_h != 200 or health.get("status") != "ok":
+		raise RuntimeError(f"/health falló tras EOF con pantalla apagada: {st_h}")
+	_assert_no_fatal_logcat(serial)
+
+	radio_note = " (con locución radial intermedia)" if saw_radio_on_eof else ""
+	results: list[E2EResult] = [
+		E2EResult(
+			"pantalla_apagada_eof_transicion",
+			True,
+			f"EOF {t1.get('display_title')} -> {t2.get('display_title')}{radio_note} OK (pid={initial_pid})",
+		)
+	]
+
+	# Con pantalla aún apagada, disparamos reproducción real de radio y verificamos estabilidad
+	st_r, radio_data = _http_json(
+		f"{base_url}/api/radio/test",
+		"POST",
+		{"play": True, "outro_mode": "continue"},
+		timeout=30.0,
+	)
+	if st_r != 200 or not radio_data.get("ok") or not radio_data.get("played"):
+		raise RuntimeError(f"POST /api/radio/test falló con pantalla apagada: status={st_r}, data={radio_data}")
+
+	time.sleep(5.0)
+	radio_pid = _assert_process_and_foreground(serial)
+	if radio_pid != initial_pid:
+		raise RuntimeError(
+			f"El proceso cambió de PID durante radio con pantalla apagada ({initial_pid} -> {radio_pid})"
+		)
+	session_dump = _get_media_session_state(serial)
+	if "RockolaMediaSession" not in session_dump:
+		raise RuntimeError("RockolaMediaSession ausente durante radio con pantalla apagada")
+	st_h2, health2 = _http_json(f"{base_url}/health", timeout=5.0)
+	if st_h2 != 200 or health2.get("status") != "ok":
+		raise RuntimeError(f"/health falló durante radio con pantalla apagada: {st_h2}")
+	_assert_no_fatal_logcat(serial)
+
+	results.append(
+		E2EResult(
+			"pantalla_apagada_radio_reproduccion",
+			True,
+			f"radio play OK 5s con pantalla apagada (pid={initial_pid}, script={len(radio_data.get('script', ''))}ch)",
+		)
+	)
+	_http_json(f"{base_url}/command", "POST", {"cmd": "pause", "state": True})
+	return results
+
+
 def _run_idle_paused_soak_check(serial: str, base_url: str, idle_seconds: int) -> list[E2EResult]:
 	"""Observa qué ocurre sin clientes conectados y el servidor en pausa (informativo: no falla si Android lo mata)."""
 	if idle_seconds <= 0:
@@ -536,6 +692,7 @@ def run_e2e(
 		if mode in ("client", "all"):
 			all_results.extend(_run_client_mode_checks(serial, base_url, screen_awake=True))
 			all_results.extend(_run_client_mode_checks(serial, base_url, screen_awake=False))
+			all_results.extend(_run_screen_off_eof_and_radio_checks(serial, base_url))
 		all_results.extend(_run_screen_off_soak_check(serial, base_url, soak_seconds=soak_seconds))
 		all_results.extend(_run_idle_paused_soak_check(serial, base_url, idle_seconds=idle_soak_seconds))
 	finally:
