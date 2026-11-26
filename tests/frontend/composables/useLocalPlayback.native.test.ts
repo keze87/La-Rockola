@@ -96,4 +96,27 @@ describe('useLocalPlayback en Android nativo (ExoPlayer remoto)', () => {
 		await nextTick();
 		expect(remotePauseSpy).toHaveBeenCalledWith(false);
 	});
+
+	it('en modo servidor Android sincroniza STREAM_MUSIC y tambien notifica set_volume al backend', async () => {
+		const { setHostMode } = await import('@/stores/useServerConnectionStore');
+		setHostMode();
+		listenLocally.value = false;
+		const setMediaVolSpy = vi.spyOn(androidHost, 'setAndroidMediaVolume').mockResolvedValue(70);
+		const fetchMock = vi.fn().mockResolvedValue({
+			ok: true,
+			json: () => Promise.resolve({ status: 'ok' }),
+		} as unknown as Response);
+		global.fetch = fetchMock;
+
+		const { setVolume } = useLocalPlayback();
+		await setVolume(70);
+
+		expect(setMediaVolSpy).toHaveBeenCalledWith(70);
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/command',
+			expect.objectContaining({
+				body: JSON.stringify({ cmd: 'set_volume', vollevel: 70 }),
+			})
+		);
+	});
 });

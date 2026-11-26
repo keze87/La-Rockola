@@ -1,6 +1,7 @@
 package ar.carpincho.rockola
 
 import android.content.Context
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -93,6 +94,17 @@ class AndroidAudioPlayer(
             return (volPercent.coerceIn(0.0, 100.0) / 100.0).toFloat()
         }
 
+        fun computeStreamIndex(volPercent: Double, maxStreamVolume: Int): Int {
+            val maxVol = maxStreamVolume.coerceAtLeast(1)
+            val clamped = if (volPercent.isFinite()) volPercent.coerceIn(0.0, 100.0) else 0.0
+            return ((clamped / 100.0) * maxVol).roundToInt().coerceIn(0, maxVol)
+        }
+
+        fun computePercentFromStream(currentStreamVolume: Int, maxStreamVolume: Int): Int {
+            val maxVol = maxStreamVolume.coerceAtLeast(1)
+            return ((currentStreamVolume.coerceIn(0, maxVol) * 100f) / maxVol).roundToInt().coerceIn(0, 100)
+        }
+
         fun computeBedGain(
             volPercent: Double,
             muted: Boolean,
@@ -179,7 +191,8 @@ class AndroidAudioPlayer(
     }
 
     private fun applyBedVolume() {
-        bedPlayer?.volume = computeBedGain(currentVolumePercent, isMuted, bedTargetVolumeRatio, bedFadeEnvelope)
+        // El volumen maestro en Android lo gobierna STREAM_MUSIC; ExoPlayer queda a ganancia 100% salvo mute.
+        bedPlayer?.volume = computeBedGain(100.0, isMuted, bedTargetVolumeRatio, bedFadeEnvelope)
     }
 
     private fun parseMediaUri(pathOrUrl: String): Uri {
@@ -418,11 +431,21 @@ class AndroidAudioPlayer(
     }
 
     fun setVolume(volPercent: Double) {
-        val clamped = volPercent.coerceIn(0.0, 100.0)
+        val clamped = if (volPercent.isFinite()) volPercent.coerceIn(0.0, 100.0) else 0.0
         currentVolumePercent = clamped
         mainHandler.post {
+            try {
+                val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+                if (am != null) {
+                    val maxVol = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+                    val targetIdx = computeStreamIndex(clamped, maxVol)
+                    am.setStreamVolume(AudioManager.STREAM_MUSIC, targetIdx, 0)
+                }
+            } catch (_: Exception) {
+                // Algunos entornos restringidos o de test pueden bloquear setStreamVolume
+            }
             val p = player ?: return@post
-            p.volume = computePlayerGain(clamped, isMuted)
+            p.volume = computePlayerGain(100.0, isMuted)
             applyBedVolume()
         }
     }
@@ -469,7 +492,7 @@ class AndroidAudioPlayer(
         isMuted = muted
         mainHandler.post {
             val p = player ?: return@post
-            p.volume = computePlayerGain(currentVolumePercent, muted)
+            p.volume = computePlayerGain(100.0, muted)
             applyBedVolume()
         }
     }

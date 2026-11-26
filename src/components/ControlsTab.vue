@@ -461,7 +461,11 @@
 		>
 			<div class="mb-2 flex items-center justify-between">
 				<span class="text-[12px] font-semibold tracking-[0.06em] text-[var(--text-secondary)] uppercase">
-					{{ isNativeAndroidHost() && listenLocally ? 'Volumen del dispositivo' : 'Volumen del reproductor' }}
+					{{
+						isNativeAndroidHost() && (isHostMode || listenLocally)
+							? 'Volumen del dispositivo'
+							: 'Volumen del reproductor'
+					}}
 				</span>
 				<span class="text-[12px] font-bold text-[var(--accent-primary)] tabular-nums">
 					{{ serverMuted ? 'Muteado' : `${Math.round(volPercent)}%` }}

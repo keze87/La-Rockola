@@ -89,6 +89,16 @@ class AndroidAudioPlayerTransitionTest {
     }
 
     @Test
+    fun `conversion de porcentaje a indice STREAM_MUSIC clampa y redondea`() {
+        assertEquals(0, AndroidAudioPlayer.computeStreamIndex(-5.0, maxStreamVolume = 15))
+        assertEquals(8, AndroidAudioPlayer.computeStreamIndex(50.0, maxStreamVolume = 15))
+        assertEquals(15, AndroidAudioPlayer.computeStreamIndex(120.0, maxStreamVolume = 15))
+        assertEquals(0, AndroidAudioPlayer.computePercentFromStream(0, maxStreamVolume = 15))
+        assertEquals(53, AndroidAudioPlayer.computePercentFromStream(8, maxStreamVolume = 15))
+        assertEquals(100, AndroidAudioPlayer.computePercentFromStream(15, maxStreamVolume = 15))
+    }
+
+    @Test
     fun `ganancia de cortina radial escala por volumen maestro, ratio, fade y mute`() {
         assertEquals(0.05f, AndroidAudioPlayer.computeBedGain(50.0, muted = false, bedRatio = 0.1f, fadeEnvelope = 1.0f), 0.0001f)
         assertEquals(0.025f, AndroidAudioPlayer.computeBedGain(50.0, muted = false, bedRatio = 0.1f, fadeEnvelope = 0.5f), 0.0001f)

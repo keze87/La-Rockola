@@ -5,6 +5,7 @@
 
 import { watch, watchEffect } from 'vue';
 import { useEventListener, useMediaControls, useTitle } from '@vueuse/core';
+import { isHostMode } from '../../stores/useServerConnectionStore';
 import { apiUrl } from '../useApi';
 import {
 	isNativeAndroidHost,
@@ -155,6 +156,9 @@ export function useLocalPlayback() {
 		if (isNativeAndroidHost() && listenLocally.value) {
 			void setAndroidMediaVolume(targetVol);
 			return;
+		}
+		if (isNativeAndroidHost() && isHostMode.value) {
+			void setAndroidMediaVolume(targetVol);
 		}
 		sendCmd('set_volume', { vollevel: targetVol });
 	}
