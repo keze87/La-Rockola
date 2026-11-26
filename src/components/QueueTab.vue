@@ -66,7 +66,7 @@
 
 	function onRemoveClick(index: number, event: Event) {
 		const target = event.currentTarget as HTMLElement | null;
-		removeQueueItem(index, target?.closest('tr'));
+		removeQueueItem(index, target?.closest<HTMLElement>('[data-queue-index]'));
 	}
 
 	function moveQueueItem(index: number, target: 'first' | 'last' | number) {
@@ -230,7 +230,11 @@
 		<div class="overflow-hidden pt-1">
 			<!-- Lista única unificada de temas (virtualizada para colas de 100+ canciones) -->
 			<div v-bind="wrapperProps" class="relative w-full">
-				<div v-for="{ data: item } in virtualQueue" :key="item.id" class="relative h-[72px] overflow-hidden">
+				<div
+					v-for="{ data: item } in virtualQueue"
+					:key="item.id"
+					class="queue-row-enter relative h-[72px] overflow-hidden"
+				>
 					<!-- Fondo fijo estilo Gmail revelado detrás de la fila al deslizar -->
 					<div
 						v-if="
@@ -518,6 +522,29 @@
 </template>
 
 <style scoped>
+	/* Entrada liviana solo por compositor GPU (sin FLIP ni reflow) */
+	@keyframes queue-row-in {
+		from {
+			opacity: 0;
+			transform: translateY(6px);
+		}
+
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+
+	.queue-row-enter {
+		animation: queue-row-in 0.16s ease-out both;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.queue-row-enter {
+			animation: none;
+		}
+	}
+
 	.swipe-row {
 		transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
 		touch-action: pan-y;
@@ -544,7 +571,7 @@
 		}
 	}
 
-	tr.deleting {
+	:deep(.deleting) {
 		animation: delete-flash 0.45s ease forwards;
 		pointer-events: none;
 		overflow: hidden;

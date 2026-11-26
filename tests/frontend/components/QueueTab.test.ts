@@ -561,14 +561,21 @@ describe('QueueTab.vue', () => {
 			expect.objectContaining({ body: JSON.stringify({ cmd: 'move_queue_item', index: 0, new_index: 2 }) })
 		);
 
-		// Click "Sacar de la fila" on index 0
-		const removeBtns = wrapper.findAll('button[title="Sacar de la fila"]');
-		expect(removeBtns.length).toBeGreaterThan(0);
-		await removeBtns[0].trigger('click');
-		expect(fetchMock).toHaveBeenCalledWith(
-			'/command',
-			expect.objectContaining({ body: JSON.stringify({ cmd: 'remove_queue_item', index: 0 }) })
-		);
+		// Click "Sacar de la fila" on index 0 (aplica animación .deleting antes de enviar comando)
+		vi.useFakeTimers();
+		try {
+			const removeBtns = wrapper.findAll('button[title="Sacar de la fila"]');
+			expect(removeBtns.length).toBeGreaterThan(0);
+			await removeBtns[0].trigger('click');
+			expect(wrapper.find('[data-queue-index="0"]').classes()).toContain('deleting');
+			await vi.advanceTimersByTimeAsync(450);
+			expect(fetchMock).toHaveBeenCalledWith(
+				'/command',
+				expect.objectContaining({ body: JSON.stringify({ cmd: 'remove_queue_item', index: 0 }) })
+			);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('updates swipe row transform style when touchmove triggers swipeOffsets', async () => {
