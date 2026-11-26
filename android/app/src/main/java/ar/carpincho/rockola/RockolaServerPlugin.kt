@@ -7,9 +7,12 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.database.ContentObserver
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.view.WindowManager
 import androidx.activity.result.ActivityResult
@@ -30,6 +33,33 @@ import java.util.concurrent.Executors
 import kotlin.math.roundToInt
 
 /**
+ * Registra cambios efectivos de volumen multimedia evitando emitir eventos duplicados.
+ */
+internal class VolumeChangeTracker {
+    private var initialized = false
+    private var lastLevel = -1
+    private var lastMuted = false
+
+    @Synchronized
+    fun seed(level: Int, muted: Boolean) {
+        initialized = true
+        lastLevel = level
+        lastMuted = muted
+    }
+
+    @Synchronized
+    fun updateIfChanged(level: Int, muted: Boolean): Boolean {
+        if (initialized && lastLevel == level && lastMuted == muted) {
+            return false
+        }
+        initialized = true
+        lastLevel = level
+        lastMuted = muted
+        return true
+    }
+}
+
+/**
  * Plugin nativo de Capacitor para controlar el servidor embebido, enrutar eventos
  * multimedia hacia host/remoto y gestionar permisos y ventana PiP.
  */
@@ -38,6 +68,7 @@ class RockolaServerPlugin : Plugin() {
 
     companion object {
         private const val VOLUME_CHANGED_ACTION = "android.media.VOLUME_CHANGED_ACTION"
+        private const val VOLUME_POLL_INTERVAL_MS = 1000L
 
         @Volatile
         private var activePluginRef: WeakReference<RockolaServerPlugin>? = null
@@ -54,14 +85,25 @@ class RockolaServerPlugin : Plugin() {
     }
 
     private var volumeReceiver: BroadcastReceiver? = null
-    private var lastNotifiedVolumeState: Pair<Int, Boolean>? = null
+    private var volumeContentObserver: ContentObserver? = null
+    private val volumeTracker = VolumeChangeTracker()
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var isUiResumed = false
+    private val volumePollRunnable = object : Runnable {
+        override fun run() {
+            if (!isUiResumed) return
+            notifyMediaVolumeIfChanged()
+            mainHandler.postDelayed(this, VOLUME_POLL_INTERVAL_MS)
+        }
+    }
     private val pluginExecutor: ExecutorService = Executors.newSingleThreadExecutor()
 
     override fun load() {
         super.load()
         activePluginRef = WeakReference(this)
         AndroidStorageBridge.initialize(context)
-        lastNotifiedVolumeState = readMediaVolumeState()
+        val (initialLevel, initialMuted) = readMediaVolumeState()
+        volumeTracker.seed(initialLevel, initialMuted)
 
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context?, intent: Intent?) {
@@ -77,6 +119,23 @@ class RockolaServerPlugin : Plugin() {
             IntentFilter(VOLUME_CHANGED_ACTION),
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
+
+        val observer = object : ContentObserver(mainHandler) {
+            override fun onChange(selfChange: Boolean) {
+                super.onChange(selfChange)
+                notifyMediaVolumeIfChanged()
+            }
+        }
+        volumeContentObserver = observer
+        try {
+            context.contentResolver.registerContentObserver(
+                Settings.System.CONTENT_URI,
+                true,
+                observer,
+            )
+        } catch (_: Exception) {
+            // Algunos entornos restringidos pueden bloquear ContentObserver sobre Settings.System
+        }
 
         RockolaForegroundService.onPipStateNeedsRefresh = {
             (activity as? MainActivity)?.let { act ->
@@ -98,10 +157,21 @@ class RockolaServerPlugin : Plugin() {
 
     override fun handleOnResume() {
         super.handleOnResume()
+        isUiResumed = true
         notifyMediaVolumeIfChanged()
+        mainHandler.removeCallbacks(volumePollRunnable)
+        mainHandler.postDelayed(volumePollRunnable, VOLUME_POLL_INTERVAL_MS)
+    }
+
+    override fun handleOnPause() {
+        isUiResumed = false
+        mainHandler.removeCallbacks(volumePollRunnable)
+        super.handleOnPause()
     }
 
     override fun handleOnDestroy() {
+        isUiResumed = false
+        mainHandler.removeCallbacks(volumePollRunnable)
         if (activePluginRef?.get() === this) {
             activePluginRef = null
         }
@@ -114,15 +184,20 @@ class RockolaServerPlugin : Plugin() {
             }
         }
         volumeReceiver = null
+        volumeContentObserver?.let {
+            try {
+                context.contentResolver.unregisterContentObserver(it)
+            } catch (_: Exception) {
+            }
+        }
+        volumeContentObserver = null
         pluginExecutor.shutdownNow()
         super.handleOnDestroy()
     }
 
     private fun notifyMediaVolumeIfChanged() {
-        val current = readMediaVolumeState()
-        if (current == lastNotifiedVolumeState) return
-        lastNotifiedVolumeState = current
-        val (percent, muted) = current
+        val (percent, muted) = readMediaVolumeState()
+        if (!volumeTracker.updateIfChanged(percent, muted)) return
         emitNativeEvent(
             "mediaVolumeChanged",
             JSObject().apply {
