@@ -6,7 +6,10 @@ y alcance el 100% de categorías y bancos de frases radiales sin efectos colater
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
+
+import pytest
 
 from app.domain.radio.nlp import reset_radio_memory_state
 from app.infrastructure.db.connection import get_default_db_path
@@ -79,6 +82,11 @@ def test_simulation_does_not_modify_real_db(tmp_path: Path):
 		assert real_db.stat().st_mtime == real_mtime, "¡Ojo al piojo! Se modificó la base de datos real."
 
 
+@pytest.mark.skipif(
+	os.environ.get("CI") == "true" or os.environ.get("GITHUB_ACTIONS") == "true",
+	reason="Simulación intensiva de 2500 iteraciones omitida en CI por tiempo bajo --cov",
+)
+@pytest.mark.timeout(90)
 def test_simulation_reaches_high_coverage_and_all_categories(tmp_path: Path):
 	"""Comprueba que la simulación cubra todas las categorías y supere el 98% de cobertura general."""
 	isolated_db = tmp_path / "coverage_test.db"

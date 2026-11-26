@@ -113,13 +113,15 @@ def test_lifespan_restores_session_on_startup(tmp_path: Path, monkeypatch: pytes
 	from fastapi.testclient import TestClient
 
 	from app.core import config as config_mod
-	from app.core.container import get_container
+	from app.core.container import AppContainer, get_container, set_container
 	from app.main import create_app
 
 	music_dir = tmp_path / "music"
 	music_dir.mkdir()
 	monkeypatch.setenv("ROCKOLA_DATA_DIR", str(tmp_path))
-	config_mod.set_settings(config_mod.Settings(music_dir=str(music_dir), music_dir_configured=True, no_mpv=True))
+	new_settings = config_mod.Settings(music_dir=str(music_dir), music_dir_configured=True, no_mpv=True)
+	config_mod.set_settings(new_settings)
+	set_container(AppContainer(settings=new_settings, db_path=tmp_path / "rockola.db"))
 
 	(tmp_path / "playback_session.json").write_text(
 		json.dumps(
