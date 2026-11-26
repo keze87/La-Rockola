@@ -18,7 +18,6 @@ from app.domain.radio.classification import CARPINCHO_PHRASES
 from app.domain.radio.dialogue import (
 	get_all_fortune_reaction_segments,
 	get_all_intro_segments,
-	get_all_outro_segments,
 	get_all_reaction_segments,
 	get_all_time_segments,
 	get_all_weather_handoff_segments,
@@ -28,7 +27,17 @@ from app.domain.radio.linguistics import (
 	apply_rioplatense_tts_phonetics,
 	format_fortune_for_speech,
 )
-from app.domain.radio.segments import RADIO_LEAD_INS
+from app.domain.radio.segments import (
+	OUTROS_BY_CATEGORY,
+	RADIO_LEAD_INS,
+	RADIO_OUTROS,
+	RADIO_OUTROS_BREAK,
+	RADIO_OUTROS_DJ,
+	RADIO_OUTROS_NIGHT,
+	RADIO_OUTROS_PAUSE,
+	RADIO_OUTROS_PREVIA,
+	RADIO_OUTROS_ROMANCE,
+)
 from app.domain.radio.templates import expand_phrase_variants
 from app.domain.radio.voices import DEFAULT_TTS_TIMEOUT, VOICE_NAMES, VOICES
 from app.infrastructure.binaries.manager import is_android, is_internet_available
@@ -69,8 +78,20 @@ def collect_preload_phrases() -> list[tuple[str, str]]:
 		for variant in expand_phrase_variants(speech_phrase):
 			items.append((phrase.category, variant))
 
-	for outro in get_all_outro_segments():
-		items.append(("salida", outro))
+	outro_groups: list[tuple[str, Sequence[str]]] = [
+		("salida", RADIO_OUTROS),
+		("salida", RADIO_OUTROS_ROMANCE),
+		("salida", RADIO_OUTROS_PREVIA),
+		("salida", RADIO_OUTROS_NIGHT),
+		("salida_pause", RADIO_OUTROS_PAUSE),
+		("salida_break", RADIO_OUTROS_BREAK),
+		("salida_dj", RADIO_OUTROS_DJ),
+		*(("salida", cat_outros) for cat_outros in OUTROS_BY_CATEGORY.values()),
+	]
+	for outro_cat, outro_pool in outro_groups:
+		for outro in outro_pool:
+			for variant in expand_phrase_variants(outro):
+				items.append((outro_cat, variant))
 
 	for time_str in get_all_time_segments():
 		items.append(("hora", time_str))

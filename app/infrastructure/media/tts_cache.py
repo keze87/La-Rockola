@@ -14,6 +14,7 @@ import logging
 import sqlite3
 import tempfile
 import time
+import weakref
 from pathlib import Path
 from typing import Any
 
@@ -102,6 +103,14 @@ def init_tts_cache_db(db_path: Path | str | None = None) -> Path:
 			"""
 		)
 		conn.execute("CREATE INDEX IF NOT EXISTS idx_tts_cache_cat_voice ON tts_cache (category, voice)")
+		conn.execute(
+			"""
+			UPDATE tts_cache
+			SET category = 'salida_dj'
+			WHERE category = 'salida'
+			  AND (LOWER(text) LIKE '%dj bara%' OR LOWER(text) LIKE '%bandejas%')
+			"""
+		)
 		conn.commit()
 	return target_path
 
@@ -146,36 +155,64 @@ def get_cached_audio(
 	return None
 
 
-def get_cached_audio_by_category(
+def get_cached_audio_fallback(
 	category: str,
 	voice: str = "",
 	db_path: Path | str | None = None,
-) -> bytes | None:
-	"""Recupera cualquier segmento de audio MP3 de la misma categoría desde la base SQLite como salvavidas."""
+) -> tuple[bytes, str] | None:
+	"""Recupera y rota un segmento de audio MP3 de la misma categoría desde SQLite (audio, texto)."""
 	target_path = Path(db_path) if db_path else (get_carpincho_data_dir() / "tts_cache.db")
 	if not target_path.exists():
 		return None
 	try:
 		with contextlib.closing(sqlite3.connect(target_path, timeout=5.0)) as conn:
 			cur = conn.cursor()
+			row = None
 			if voice:
 				cur.execute(
-					"SELECT audio_blob FROM tts_cache WHERE category = ? AND voice = ? ORDER BY use_count DESC, last_used DESC LIMIT 1",
+					"""
+					SELECT cache_key, audio_blob, text
+					FROM tts_cache
+					WHERE category = ? AND voice = ?
+					ORDER BY last_used ASC, use_count ASC
+					LIMIT 1
+					""",
 					(category, voice),
 				)
 				row = cur.fetchone()
-				if row and row[0]:
-					return row[0]
-			cur.execute(
-				"SELECT audio_blob FROM tts_cache WHERE category = ? ORDER BY use_count DESC, last_used DESC LIMIT 1",
-				(category,),
-			)
-			row = cur.fetchone()
-			if row and row[0]:
-				return row[0]
+			if not row or not row[1]:
+				cur.execute(
+					"""
+					SELECT cache_key, audio_blob, text
+					FROM tts_cache
+					WHERE category = ?
+					ORDER BY last_used ASC, use_count ASC
+					LIMIT 1
+					""",
+					(category,),
+				)
+				row = cur.fetchone()
+			if row and row[1]:
+				now = time.time()
+				cur.execute(
+					"UPDATE tts_cache SET last_used = ?, use_count = use_count + 1 WHERE cache_key = ?",
+					(now, row[0]),
+				)
+				conn.commit()
+				return bytes(row[1]), str(row[2] or "")
 	except Exception as e:
 		logger.debug(f"Error consultando salvavidas de caché por categoría: {e}")
 	return None
+
+
+def get_cached_audio_by_category(
+	category: str,
+	voice: str = "",
+	db_path: Path | str | None = None,
+) -> bytes | None:
+	"""Recupera cualquier segmento de audio MP3 de la misma categoría desde la base SQLite como salvavidas."""
+	res = get_cached_audio_fallback(category, voice=voice, db_path=db_path)
+	return res[0] if res else None
 
 
 def save_cached_audio(
@@ -325,14 +362,17 @@ def get_tts_cache_stats(limit: int = 10, db_path: Path | str | None = None) -> d
 		return empty_result
 
 
-_tts_lock: asyncio.Lock | None = None
+_tts_locks: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock] = weakref.WeakKeyDictionary()
 
 
 def _get_tts_lock() -> asyncio.Lock:
-	global _tts_lock
-	if _tts_lock is None:
-		_tts_lock = asyncio.Lock()
-	return _tts_lock
+	"""Devuelve un lock ligado al event loop activo para sobrevivir reinicios de Uvicorn en Android."""
+	loop = asyncio.get_running_loop()
+	lock = _tts_locks.get(loop)
+	if lock is None:
+		lock = asyncio.Lock()
+		_tts_locks[loop] = lock
+	return lock
 
 
 async def synthesize_segment(
@@ -345,13 +385,16 @@ async def synthesize_segment(
 	db_path: Path | str | None = None,
 	boundary: str = "SentenceBoundary",
 	return_cues: bool = False,
+	cache_category: str | None = None,
 ) -> bytes | tuple[bytes, list[tuple[float, float, str]]]:
 	"""Sintetiza un parlamento radial mediante Edge-TTS con estrategia Cache-First y respaldo en SQLite."""
+	effective_cache_cat = cache_category or category
+
 	# 1. Estrategia Cache-First: si ya lo tenemos grabado en la base, lo servimos al toque
 	if allow_cache:
-		cached_blob = get_cached_audio(category, voice, text, db_path=db_path)
+		cached_blob = get_cached_audio(effective_cache_cat, voice, text, db_path=db_path)
 		if cached_blob:
-			logger.debug(f"⚡ [TTS Cache HIT] '{category}' ({voice}): '{text}'")
+			logger.debug(f"⚡ [TTS Cache HIT] '{effective_cache_cat}' ({voice}): '{text}'")
 			if return_cues:
 				clip_dur = estimate_mp3_duration(cached_blob) or 1.0
 				return cached_blob, [(0.0, clip_dur, text.strip())]
@@ -455,7 +498,7 @@ async def synthesize_segment(
 		if audio_bytes:
 			if allow_cache:
 				clip_dur = estimate_mp3_duration(audio_bytes)
-				save_cached_audio(category, voice, text, audio_bytes, duration=clip_dur, db_path=db_path)
+				save_cached_audio(effective_cache_cat, voice, text, audio_bytes, duration=clip_dur, db_path=db_path)
 			if return_cues:
 				if not captured_cues:
 					clip_dur = estimate_mp3_duration(audio_bytes) or 1.0
@@ -471,14 +514,17 @@ async def synthesize_segment(
 		logger.info("edge-tts no está disponible en el entorno. Recurriendo a caché SQLite como fallback...")
 
 	if allow_cache:
-		cached_blob = get_cached_audio(category, voice, text, db_path=db_path)
+		cached_blob = get_cached_audio(effective_cache_cat, voice, text, db_path=db_path)
+		fallback_text = text
 		if not cached_blob and category not in _TIME_SENSITIVE_CATEGORIES:
-			cached_blob = get_cached_audio_by_category(category, voice, db_path=db_path)
+			fallback_hit = get_cached_audio_fallback(effective_cache_cat, voice, db_path=db_path)
+			if fallback_hit:
+				cached_blob, fallback_text = fallback_hit
 		if cached_blob:
-			logger.info(f"⚡ [TTS Cache Fallback HIT] '{category}' ({voice}): '{text}'")
+			logger.info(f"⚡ [TTS Cache Fallback HIT] '{effective_cache_cat}' ({voice}): '{fallback_text}'")
 			if return_cues:
 				clip_dur = estimate_mp3_duration(cached_blob) or 1.0
-				return cached_blob, [(0.0, clip_dur, text.strip())]
+				return cached_blob, [(0.0, clip_dur, fallback_text.strip() or text.strip())]
 			return cached_blob
 
 	err_suffix = f": {last_err}" if last_err else ""

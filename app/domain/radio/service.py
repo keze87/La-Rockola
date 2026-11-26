@@ -681,6 +681,17 @@ def assemble_announcement_audio(
 		shutil.rmtree(work_dir, ignore_errors=True)
 
 
+def get_outro_cache_category(outro_mode: str) -> str:
+	"""Devuelve la categoría de caché TTS según el modo de salida para no mezclar DJ con salidas normales."""
+	if outro_mode == "dj":
+		return "salida_dj"
+	if outro_mode == "pause":
+		return "salida_pause"
+	if outro_mode == "break":
+		return "salida_break"
+	return "salida"
+
+
 async def create_radio_announcement(
 	output_path: Path | str,
 	voice: str | None = None,
@@ -811,6 +822,7 @@ async def create_radio_announcement(
 				max_retries=max_retries,
 				db_path=db_path,
 				return_cues=True,
+				cache_category=(get_outro_cache_category(outro_mode) if category == "salida" else None),
 			)
 			for text, v, category, allow_cache in speech_turns
 		]
@@ -1023,6 +1035,7 @@ async def replace_announcement_outro(
 			max_retries=max_retries,
 			db_path=db_path,
 			return_cues=True,
+			cache_category=get_outro_cache_category(outro_mode),
 		)
 		if isinstance(res, tuple) and len(res) == 2:
 			outro_bytes, outro_cues = res
