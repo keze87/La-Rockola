@@ -46,7 +46,9 @@ internal object ServicePowerPolicy {
         isMediaPlaying: Boolean,
         isRadioSynthesizing: Boolean = false,
         hasRemoteClients: Boolean = false,
+        isRemotePlaybackActive: Boolean = false,
     ): Boolean {
+        if (isRemotePlaybackActive && isMediaPlaying) return true
         return isHostRunning && (isMediaPlaying || isRadioSynthesizing || hasRemoteClients)
     }
 
@@ -56,8 +58,11 @@ internal object ServicePowerPolicy {
         @Suppress("UNUSED_PARAMETER") isUiVisible: Boolean = false,
         isRadioSynthesizing: Boolean = false,
         forceStop: Boolean = false,
+        isRemotePlaybackActive: Boolean = false,
     ): Boolean {
-        if (forceStop || !isHostRunning) return true
+        if (forceStop) return true
+        if (isRemotePlaybackActive) return false
+        if (!isHostRunning) return true
         // Si la UI está visible sin reproducción ni clientes remotos, la Activity ya da prioridad de primer plano:
         // no retenemos un servicio foreground dataSync para no consumir el cupo de 6 h de Android 15.
         if (isRadioSynthesizing) return false
@@ -117,6 +122,7 @@ class RockolaForegroundService : Service() {
         }
         const val ACTION_MEDIA_PAUSE_AFTER = "ar.carpincho.rockola.ACTION_MEDIA_PAUSE_AFTER"
         const val ACTION_UPDATE_MEDIA = "ar.carpincho.rockola.ACTION_UPDATE_MEDIA"
+        const val ACTION_REMOTE_PLAY = "ar.carpincho.rockola.ACTION_REMOTE_PLAY"
 
         const val CUSTOM_ACTION_FAVORITE = "ar.carpincho.rockola.CUSTOM_FAVORITE"
         const val CUSTOM_ACTION_PAUSE_AFTER = "ar.carpincho.rockola.CUSTOM_PAUSE_AFTER"
@@ -124,6 +130,7 @@ class RockolaForegroundService : Service() {
         const val EXTRA_PORT = "port"
         const val EXTRA_MUSIC_DIR = "music_dir"
         const val EXTRA_STARTED_AS_FOREGROUND = "started_as_foreground"
+        const val EXTRA_REMOTE_URL = "remote_url"
         const val EXTRA_TITLE = "media_title"
         const val EXTRA_ARTIST = "media_artist"
         const val EXTRA_ALBUM = "media_album"
@@ -218,6 +225,51 @@ class RockolaForegroundService : Service() {
 
         @Volatile
         internal var onNativeCommandError: ((cmd: String, code: String, message: String) -> Unit)? = null
+
+        @Volatile
+        internal var onRemotePlaybackEvent: ((eventName: String, payload: Map<String, Any?>) -> Unit)? = null
+
+        internal fun remotePlayDirect(url: String, startPaused: Boolean): Boolean {
+            val instance = activeInstance ?: return false
+            instance.audioPlayer.loadRemoteUrl(url, startPaused)
+            return true
+        }
+
+        internal fun remoteSetPausedDirect(paused: Boolean): Boolean {
+            val instance = activeInstance ?: return false
+            if (instance.audioPlayer.isRemoteMode) {
+                instance.audioPlayer.setPause(paused)
+                return true
+            }
+            return false
+        }
+
+        internal fun remoteSeekDirect(positionSec: Double): Boolean {
+            val instance = activeInstance ?: return false
+            if (instance.audioPlayer.isRemoteMode) {
+                instance.audioPlayer.seekAbsolute(positionSec)
+                return true
+            }
+            return false
+        }
+
+        internal fun remoteStopDirect(): Boolean {
+            val instance = activeInstance ?: return false
+            if (instance.audioPlayer.isRemoteMode) {
+                instance.audioPlayer.stopPlayback()
+                return true
+            }
+            return false
+        }
+
+        internal fun remoteSetMuteDirect(muted: Boolean): Boolean {
+            val instance = activeInstance ?: return false
+            if (instance.audioPlayer.isRemoteMode) {
+                instance.audioPlayer.setMute(muted)
+                return true
+            }
+            return false
+        }
 
         internal fun setUiVisible(visible: Boolean) {
             isUiVisible = visible
@@ -437,14 +489,15 @@ class RockolaForegroundService : Service() {
         audioPlayer = AndroidAudioPlayer(
             context = this,
             onPlaybackActiveChanged = { active ->
-                if (currentMediaTarget.mode != MediaTargetMode.HOST) return@AndroidAudioPlayer
-                isActivelyPlaying = isRunning && active
-                isMediaPlaying = isActivelyPlaying
+                val isRemotePlayback = currentMediaTarget.mode == MediaTargetMode.REMOTE && audioPlayer.isRemoteMode
+                if (currentMediaTarget.mode != MediaTargetMode.HOST && !isRemotePlayback) return@AndroidAudioPlayer
+                isActivelyPlaying = isRunning && active && !isRemotePlayback
+                isMediaPlaying = active && (isRunning || isRemotePlayback)
                 onPipStateNeedsRefresh?.invoke()
-                if (isActivelyPlaying) {
+                if (isMediaPlaying) {
                     cancelPendingDemote()
                     acquireLocks()
-                    promoteToForeground("Reproduciendo")
+                    promoteToForeground("Reproduciendo", ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
                 } else {
                     scheduleDemoteFromForeground(keepDismissibleNotification = notificationManager.hasActiveTrack)
                 }
@@ -470,6 +523,38 @@ class RockolaForegroundService : Service() {
                 applyPositionUpdate(durationMs, positionMs, paused)
             },
         )
+        audioPlayer.remotePlaybackListener = object : AndroidAudioPlayer.RemotePlaybackListener {
+            override fun onRemoteDuration(durationSec: Double) {
+                if (currentMediaTarget.mode != MediaTargetMode.REMOTE) return
+                onRemotePlaybackEvent?.invoke("remotePlaybackDuration", mapOf("duration" to durationSec))
+            }
+
+            override fun onRemotePosition(positionSec: Double, durationSec: Double) {
+                if (currentMediaTarget.mode != MediaTargetMode.REMOTE) return
+                val durMs = (durationSec * 1000.0).toLong().coerceAtLeast(0L)
+                val posMs = (positionSec * 1000.0).toLong().coerceAtLeast(0L)
+                notificationManager.updatePosition(durMs, posMs, paused = !isMediaPlaying)
+                onRemotePlaybackEvent?.invoke(
+                    "remotePlaybackPosition",
+                    mapOf("position" to positionSec, "duration" to durationSec),
+                )
+            }
+
+            override fun onRemotePauseChanged(paused: Boolean) {
+                if (currentMediaTarget.mode != MediaTargetMode.REMOTE) return
+                onRemotePlaybackEvent?.invoke("remotePlaybackPauseChanged", mapOf("paused" to paused))
+            }
+
+            override fun onRemoteEnded() {
+                if (currentMediaTarget.mode != MediaTargetMode.REMOTE) return
+                onRemotePlaybackEvent?.invoke("remotePlaybackEnded", emptyMap())
+            }
+
+            override fun onRemoteError(message: String) {
+                if (currentMediaTarget.mode != MediaTargetMode.REMOTE) return
+                onRemotePlaybackEvent?.invoke("remotePlaybackError", mapOf("message" to message))
+            }
+        }
         audioPlayer.initialize()
     }
 
@@ -538,6 +623,18 @@ class RockolaForegroundService : Service() {
                     isFavorite = isFavorite,
                     isPauseAfter = isPauseAfter,
                 )
+                return START_NOT_STICKY
+            }
+            ACTION_REMOTE_PLAY -> {
+                val startedAsForeground = intent.getBooleanExtra(EXTRA_STARTED_AS_FOREGROUND, false)
+                if (startedAsForeground && !isInForeground) {
+                    promoteToForeground("La Rockola", ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+                }
+                val url = intent.getStringExtra(EXTRA_REMOTE_URL)?.trim().orEmpty()
+                val paused = intent.getBooleanExtra(EXTRA_PAUSED, false)
+                if (url.isNotEmpty()) {
+                    audioPlayer.loadRemoteUrl(url, paused)
+                }
                 return START_NOT_STICKY
             }
         }
@@ -828,12 +925,15 @@ class RockolaForegroundService : Service() {
 
     private fun demoteFromForeground(keepDismissibleNotification: Boolean, forceStop: Boolean = false) {
         cancelPendingDemote()
+        val isRemoteActive = currentMediaTarget.mode == MediaTargetMode.REMOTE &&
+            ::audioPlayer.isInitialized && audioPlayer.isRemoteMode && isMediaPlaying
         val shouldStopFg = ServicePowerPolicy.shouldStopForeground(
             isHostRunning = isRunning,
             hasRemoteClients = hasConnectedRemoteClients(),
             isUiVisible = isUiVisible,
             isRadioSynthesizing = isRadioSynthesizing(),
             forceStop = forceStop,
+            isRemotePlaybackActive = isRemoteActive,
         )
         if (!shouldStopFg) {
             return
@@ -949,6 +1049,7 @@ class RockolaForegroundService : Service() {
             hostCoordinator.setStateListener(null)
             onPipStateNeedsRefresh = null
             onNativeCommandError = null
+            onRemotePlaybackEvent = null
         }
         isActivelyPlaying = false
         isMediaPlaying = false

@@ -375,6 +375,20 @@ class MainActivity : BridgeActivity() {
         }
         super.onCreate(savedInstanceState)
 
+        val prefs = getSharedPreferences(RockolaForegroundService.PREFS_NAME, MODE_PRIVATE)
+        val shouldOnboard = OnboardingPolicy.shouldShowOnboarding(
+            savedMusicDir = prefs.getString(RockolaForegroundService.KEY_MUSIC_DIR, null),
+            savedTargetMode = prefs.getString(RockolaForegroundService.KEY_TARGET_MODE, "host"),
+            savedRemoteUrl = prefs.getString(OnboardingActivity.KEY_REMOTE_URL, null),
+            onboardingSkipped = prefs.getBoolean(OnboardingActivity.KEY_ONBOARDING_SKIPPED, false),
+            hasShortcutAction = MainActivityPolicy.isSupportedShortcutAction(intent?.action),
+        )
+        if (savedInstanceState == null && shouldOnboard) {
+            startActivity(Intent(this, OnboardingActivity::class.java))
+            finish()
+            return
+        }
+
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),

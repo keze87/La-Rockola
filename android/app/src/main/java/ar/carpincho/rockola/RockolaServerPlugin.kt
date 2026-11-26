@@ -196,6 +196,13 @@ class RockolaServerPlugin : Plugin() {
                 },
             )
         }
+
+        RockolaForegroundService.onRemotePlaybackEvent = { eventName, payload ->
+            val data = JSObject().apply {
+                payload.forEach { (k, v) -> put(k, v) }
+            }
+            emitNativeEvent(eventName, data)
+        }
     }
 
     override fun handleOnResume() {
@@ -220,6 +227,7 @@ class RockolaServerPlugin : Plugin() {
         }
         RockolaForegroundService.onPipStateNeedsRefresh = null
         RockolaForegroundService.onNativeCommandError = null
+        RockolaForegroundService.onRemotePlaybackEvent = null
         volumeReceiver?.let {
             try {
                 context.unregisterReceiver(it)
@@ -617,6 +625,58 @@ class RockolaServerPlugin : Plugin() {
         if (updated && mainActivity?.isFogonActive == true) {
             mainActivity.refreshPipParams()
         }
+        call.resolve(JSObject().apply { put("updated", updated) })
+    }
+
+    @PluginMethod
+    fun remotePlayUrl(call: PluginCall) {
+        val url = call.getString("url")?.trim().orEmpty()
+        if (url.isEmpty()) {
+            call.reject("URL requerida para reproducción remota", "INVALID_URL")
+            return
+        }
+        val paused = call.getBoolean("paused") ?: false
+        val handled = RockolaForegroundService.remotePlayDirect(url, paused)
+        if (!handled) {
+            val intent = Intent(context, RockolaForegroundService::class.java).apply {
+                action = RockolaForegroundService.ACTION_REMOTE_PLAY
+                putExtra(RockolaForegroundService.EXTRA_REMOTE_URL, url)
+                putExtra(RockolaForegroundService.EXTRA_PAUSED, paused)
+                putExtra(RockolaForegroundService.EXTRA_STARTED_AS_FOREGROUND, true)
+            }
+            val startErr = safeStartService(intent, foreground = true)
+            if (startErr != null) {
+                call.reject(startErr, "SERVICE_START_NOT_ALLOWED")
+                return
+            }
+        }
+        call.resolve(JSObject().apply { put("started", true) })
+    }
+
+    @PluginMethod
+    fun remoteSetPaused(call: PluginCall) {
+        val paused = call.getBoolean("paused") ?: false
+        val updated = RockolaForegroundService.remoteSetPausedDirect(paused)
+        call.resolve(JSObject().apply { put("updated", updated) })
+    }
+
+    @PluginMethod
+    fun remoteSeek(call: PluginCall) {
+        val positionSec = call.getDouble("positionSec") ?: 0.0
+        val updated = RockolaForegroundService.remoteSeekDirect(positionSec)
+        call.resolve(JSObject().apply { put("updated", updated) })
+    }
+
+    @PluginMethod
+    fun remoteStop(call: PluginCall) {
+        val stopped = RockolaForegroundService.remoteStopDirect()
+        call.resolve(JSObject().apply { put("stopped", stopped) })
+    }
+
+    @PluginMethod
+    fun remoteSetMute(call: PluginCall) {
+        val muted = call.getBoolean("muted") ?: false
+        val updated = RockolaForegroundService.remoteSetMuteDirect(muted)
         call.resolve(JSObject().apply { put("updated", updated) })
     }
 

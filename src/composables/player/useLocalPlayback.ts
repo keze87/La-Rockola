@@ -6,7 +6,16 @@
 import { watch, watchEffect } from 'vue';
 import { useEventListener, useMediaControls, useTitle } from '@vueuse/core';
 import { apiUrl } from '../useApi';
-import { isNativeAndroidHost, setAndroidMediaVolume } from '../useAndroidHost';
+import {
+	isNativeAndroidHost,
+	remotePlayAudio,
+	remoteSeekAudio,
+	remoteSetMuteAudio,
+	remoteSetPausedAudio,
+	remoteStopAudio,
+	setAndroidMediaVolume,
+	subscribeRemotePlaybackEvents,
+} from '../useAndroidHost';
 import { useCommands } from './useCommands';
 import { useLibrary } from './useLibrary';
 import { usePlaybackControls } from '../usePlaybackControls';
@@ -56,21 +65,29 @@ export function playWhenBuffered(lp: HTMLAudioElement, minBufferSeconds = 6, max
 }
 
 export function _startLocalPlayer(path: string) {
-	const lp = localPlayerRef.value;
-	if (!lp) return;
-
 	markTrackChanging();
 	// Reiniciamos el progreso local al arrancar una pista nueva para que la barra no quede clavada en el final del tema anterior
 	localTimePos.value = 0;
 	timePos.value = 0;
 	pendingSeekTime.value = null;
+
+	const isRadioStream = path.includes('radio_announcement') || path.includes('radio_pregenerated');
+	const streamUrl = apiUrl('/stream?path=' + encodeURIComponent(path) + (isRadioStream ? `&t=${Date.now()}` : ''));
+
+	if (isNativeAndroidHost() && listenLocally.value) {
+		void remotePlayAudio({ url: streamUrl, paused: Boolean(isPaused.value) });
+		return;
+	}
+
+	const lp = localPlayerRef.value;
+	if (!lp) return;
+
 	if (mediaControls) {
 		mediaControls.currentTime.value = 0;
 		mediaControls.ended.value = false;
 	}
 	lp.preload = 'auto';
-	const isRadioStream = path.includes('radio_announcement') || path.includes('radio_pregenerated');
-	lp.src = apiUrl('/stream?path=' + encodeURIComponent(path) + (isRadioStream ? `&t=${Date.now()}` : ''));
+	lp.src = streamUrl;
 	lp.currentTime = 0;
 	lp.volume = isNativeAndroidHost()
 		? 1
@@ -86,20 +103,36 @@ export function _startLocalPlayer(path: string) {
 }
 
 export function _stopLocalPlayer() {
-	const lp = localPlayerRef.value;
-	if (!lp) return;
-
 	cleanupBufferWait();
 	markTrackChanging();
 	localTimePos.value = 0;
 	timePos.value = 0;
 	pendingSeekTime.value = null;
+
+	if (isNativeAndroidHost() && listenLocally.value) {
+		void remoteStopAudio();
+		return;
+	}
+
+	const lp = localPlayerRef.value;
+	if (!lp) return;
+
 	lp.pause();
 	lp.removeAttribute('src');
 	lp.load();
 }
 
 export function applyRemoteSeek(data: { mode: string; amount: number }) {
+	if (isNativeAndroidHost() && listenLocally.value) {
+		const basePos = localTimePos.value || 0;
+		const maxDur = duration.value > 0 ? duration.value : Infinity;
+		const newTime = Math.max(0, Math.min(data.mode === 'absolute' ? data.amount : basePos + data.amount, maxDur));
+		localTimePos.value = newTime;
+		void remoteSeekAudio(newTime);
+		_sendLocalPlayerUpdate({ time_pos: newTime });
+		return;
+	}
+
 	const lp = localPlayerRef.value;
 
 	if (lp && lp.src && mediaControls) {
@@ -136,6 +169,9 @@ export function useLocalPlayback() {
 		watch(
 			[localPlayerRef, volume, serverMuted],
 			([lp, newVol, newMuted]) => {
+				if (isNativeAndroidHost() && listenLocally.value) {
+					void remoteSetMuteAudio(Boolean(newMuted));
+				}
 				if (!lp) return;
 				lp.volume = isNativeAndroidHost()
 					? 1
@@ -146,6 +182,44 @@ export function useLocalPlayback() {
 			},
 			{ immediate: true }
 		);
+
+		let lastRemoteSent = 0;
+		subscribeRemotePlaybackEvents({
+			onDuration: (d) => {
+				if (listenLocally.value && d > 0) {
+					duration.value = d;
+					_sendLocalPlayerUpdate({ duration: d });
+				}
+			},
+			onPosition: (pos) => {
+				if (!listenLocally.value) return;
+				clearTrackChanging();
+				localTimePos.value = pos;
+				const now = Date.now();
+				if (now - lastRemoteSent >= 5000) {
+					lastRemoteSent = now;
+					_sendLocalPlayerUpdate({ time_pos: pos });
+				}
+			},
+			onPauseChanged: (pausedState) => {
+				if (!listenLocally.value || isChangingTrack.value) return;
+				if (pausedState !== isPaused.value) {
+					_sendLocalPlayerUpdate({ paused: pausedState });
+				}
+			},
+			onEnded: () => {
+				if (listenLocally.value && !isChangingTrack.value) {
+					markTrackChanging();
+					_sendLocalPlayerUpdate({ song_ended: true });
+				}
+			},
+			onError: () => {
+				clearTrackChanging();
+				if (listenLocally.value && currentTrackPath.value) {
+					_sendLocalPlayerUpdate({ song_ended: true });
+				}
+			},
+		});
 
 		watch(elementDuration, (d) => {
 			if (listenLocally.value && d > 0) {
@@ -281,6 +355,11 @@ export function useLocalPlayback() {
 		});
 
 		watch(isPaused, (val) => {
+			if (isNativeAndroidHost() && listenLocally.value && currentTrackPath.value) {
+				void remoteSetPausedAudio(val);
+				_sendLocalPlayerUpdate({ paused: val });
+				return;
+			}
 			const lp = localPlayerRef.value;
 			if (lp && lp.src) {
 				if (val) lp.pause();

@@ -43,6 +43,14 @@ class AndroidAudioPlayer(
         paused: Boolean,
     ) -> Unit)? = null,
 ) {
+    interface RemotePlaybackListener {
+        fun onRemoteDuration(durationSec: Double)
+        fun onRemotePosition(positionSec: Double, durationSec: Double)
+        fun onRemotePauseChanged(paused: Boolean)
+        fun onRemoteEnded()
+        fun onRemoteError(message: String)
+    }
+
     companion object {
         private const val TAG = "RockolaExoPlayer"
         private const val POSITION_TICK_MS = 500L
@@ -56,6 +64,16 @@ class AndroidAudioPlayer(
 
         @JvmStatic
         fun getActiveInstance(): AndroidAudioPlayer? = activeInstance
+
+        fun clampSeekPositionMs(positionSec: Double, durationMs: Long): Long {
+            val rawMs = if (positionSec.isFinite()) (positionSec * 1000.0).toLong() else 0L
+            val nonNegMs = rawMs.coerceAtLeast(0L)
+            return if (durationMs > 0L && durationMs != C.TIME_UNSET) {
+                nonNegMs.coerceAtMost(durationMs)
+            } else {
+                nonNegMs
+            }
+        }
 
         fun shouldKeepPlaybackActive(
             isPlaying: Boolean,
@@ -125,6 +143,13 @@ class AndroidAudioPlayer(
     @Volatile
     private var pyCallbackHandler: PyObject? = null
 
+    @Volatile
+    var isRemoteMode: Boolean = false
+        private set
+
+    @Volatile
+    var remotePlaybackListener: RemotePlaybackListener? = null
+
     private val positionTicker = object : Runnable {
         override fun run() {
             val p = player ?: return
@@ -132,7 +157,7 @@ class AndroidAudioPlayer(
                 val posSec = (p.currentPosition.coerceAtLeast(0L)) / 1000.0
                 val durMs = p.duration
                 val durSec = if (durMs > 0L && durMs != C.TIME_UNSET) durMs / 1000.0 else 0.0
-                dispatchToPython("on_position", posSec, durSec)
+                emitPlayerEvent("on_position", posSec, durSec)
                 mainHandler.postDelayed(this, POSITION_TICK_MS)
             }
         }
@@ -180,7 +205,7 @@ class AndroidAudioPlayer(
     private fun emitPauseIfChanged(paused: Boolean) {
         if (lastReportedPaused == paused) return
         lastReportedPaused = paused
-        dispatchToPython("on_pause_changed", paused)
+        emitPlayerEvent("on_pause_changed", paused)
     }
 
     fun initialize() {
@@ -195,6 +220,7 @@ class AndroidAudioPlayer(
             player = ExoPlayer.Builder(context.applicationContext)
                 .setAudioAttributes(audioAttrs, true)
                 .setHandleAudioBecomingNoisy(true)
+                .setWakeMode(C.WAKE_MODE_NETWORK)
                 .build()
                 .apply {
                     addListener(object : Player.Listener {
@@ -238,14 +264,14 @@ class AndroidAudioPlayer(
                                 consecutiveErrors = 0
                                 val durMs = p.duration
                                 if (durMs > 0L && durMs != C.TIME_UNSET) {
-                                    dispatchToPython("on_duration", durMs / 1000.0)
+                                    emitPlayerEvent("on_duration", durMs / 1000.0)
                                 }
                             } else if (playbackState == Player.STATE_ENDED) {
                                 isLoadingMedia = false
                                 consecutiveErrors = 0
                                 mainHandler.removeCallbacks(positionTicker)
                                 stopBedInternal()
-                                dispatchToPython("on_eof")
+                                emitPlayerEvent("on_eof")
                             }
                         }
 
@@ -257,9 +283,9 @@ class AndroidAudioPlayer(
                             if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
                                 stopInternal()
                                 emitPauseIfChanged(true)
-                                dispatchToPython("on_playback_error", error.message ?: "Error en ExoPlayer")
+                                emitPlayerEvent("on_playback_error", error.message ?: "Error en ExoPlayer")
                             } else {
-                                dispatchToPython("on_eof")
+                                emitPlayerEvent("on_eof")
                             }
                         }
                     })
@@ -281,13 +307,25 @@ class AndroidAudioPlayer(
     }
 
     fun loadFile(pathOrUrl: String) {
+        prepareMediaSource(pathOrUrl, remote = false, startPausedOverride = null)
+    }
+
+    fun loadRemoteUrl(url: String, startPaused: Boolean = false) {
+        prepareMediaSource(url, remote = true, startPausedOverride = startPaused)
+    }
+
+    private fun prepareMediaSource(pathOrUrl: String, remote: Boolean, startPausedOverride: Boolean?) {
         mainHandler.post {
             stopBedInternal()
             val p = player ?: return@post
             try {
+                isRemoteMode = remote
+                if (remote) {
+                    consecutiveErrors = 0
+                }
                 val uri = parseMediaUri(pathOrUrl)
                 lastReportedPaused = null
-                val shouldStartPaused = pendingPauseState == true
+                val shouldStartPaused = startPausedOverride ?: (pendingPauseState == true)
                 pendingPauseState = null
                 isLoadingMedia = true
                 p.setMediaItem(MediaItem.fromUri(uri))
@@ -296,7 +334,7 @@ class AndroidAudioPlayer(
             } catch (e: Exception) {
                 isLoadingMedia = false
                 Log.e(TAG, "No pude cargar audio en ExoPlayer: $pathOrUrl", e)
-                dispatchToPython("on_eof")
+                emitPlayerEvent("on_eof")
             }
         }
     }
@@ -360,11 +398,11 @@ class AndroidAudioPlayer(
     fun seekAbsolute(positionSec: Double) {
         mainHandler.post {
             val p = player ?: return@post
-            val targetMs = (positionSec * 1000.0).toLong().coerceAtLeast(0L)
+            val targetMs = clampSeekPositionMs(positionSec, p.duration)
             p.seekTo(targetMs)
             val durMs = p.duration
             val durSec = if (durMs > 0L && durMs != C.TIME_UNSET) durMs / 1000.0 else 0.0
-            dispatchToPython("on_position", targetMs / 1000.0, durSec)
+            emitPlayerEvent("on_position", targetMs / 1000.0, durSec)
         }
     }
 
@@ -375,7 +413,7 @@ class AndroidAudioPlayer(
             p.seekTo(targetMs)
             val durMs = p.duration
             val durSec = if (durMs > 0L && durMs != C.TIME_UNSET) durMs / 1000.0 else 0.0
-            dispatchToPython("on_position", targetMs / 1000.0, durSec)
+            emitPlayerEvent("on_position", targetMs / 1000.0, durSec)
         }
     }
 
@@ -460,6 +498,24 @@ class AndroidAudioPlayer(
             player?.release()
             player = null
         }
+    }
+
+    private fun emitPlayerEvent(method: String, vararg args: Any) {
+        if (isRemoteMode) {
+            val listener = remotePlaybackListener ?: return
+            when (method) {
+                "on_duration" -> listener.onRemoteDuration((args.getOrNull(0) as? Double) ?: 0.0)
+                "on_position" -> listener.onRemotePosition(
+                    (args.getOrNull(0) as? Double) ?: 0.0,
+                    (args.getOrNull(1) as? Double) ?: 0.0,
+                )
+                "on_pause_changed" -> listener.onRemotePauseChanged((args.getOrNull(0) as? Boolean) ?: false)
+                "on_eof" -> listener.onRemoteEnded()
+                "on_playback_error" -> listener.onRemoteError((args.getOrNull(0) as? String) ?: "Error en ExoPlayer")
+            }
+            return
+        }
+        dispatchToPython(method, *args)
     }
 
     private fun dispatchToPython(method: String, vararg args: Any) {

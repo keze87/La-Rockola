@@ -105,6 +105,11 @@ export interface RockolaServerPlugin {
 	updateMediaNotification(options: MediaNotificationPayload): Promise<{ updated: boolean }>;
 	updateMediaPosition(options: MediaPositionPayload): Promise<{ updated: boolean }>;
 	setMediaTarget?(options: MediaTargetPayload): Promise<{ updated: boolean }>;
+	remotePlayUrl?(options: { url: string; paused?: boolean }): Promise<{ started: boolean }>;
+	remoteSetPaused?(options: { paused: boolean }): Promise<{ updated: boolean }>;
+	remoteSeek?(options: { positionSec: number }): Promise<{ updated: boolean }>;
+	remoteStop?(): Promise<{ stopped: boolean }>;
+	remoteSetMute?(options: { muted: boolean }): Promise<{ updated: boolean }>;
 	hapticFeedback(options?: { kind?: HapticKind; heavy?: boolean }): Promise<{ performed: boolean }>;
 	setKeepScreenOn(options: { enabled: boolean }): Promise<{ enabled: boolean }>;
 	shareUrl(options: { url: string; title?: string; text?: string }): Promise<{ shared: boolean }>;
@@ -1051,4 +1056,103 @@ export async function syncAndroidMediaPosition(payload: MediaPositionPayload): P
 	} catch {
 		// Ignoramos errores transitorios si el servicio todavía está levantando
 	}
+}
+
+export async function remotePlayAudio(options: { url: string; paused?: boolean }): Promise<boolean> {
+	if (!isNativeAndroidHost() || !RockolaServer.remotePlayUrl) return false;
+	try {
+		const res = await RockolaServer.remotePlayUrl(options);
+		return Boolean(res?.started);
+	} catch {
+		return false;
+	}
+}
+
+export async function remoteSetPausedAudio(paused: boolean): Promise<boolean> {
+	if (!isNativeAndroidHost() || !RockolaServer.remoteSetPaused) return false;
+	try {
+		const res = await RockolaServer.remoteSetPaused({ paused });
+		return Boolean(res?.updated);
+	} catch {
+		return false;
+	}
+}
+
+export async function remoteSeekAudio(positionSec: number): Promise<boolean> {
+	if (!isNativeAndroidHost() || !RockolaServer.remoteSeek) return false;
+	try {
+		const res = await RockolaServer.remoteSeek({ positionSec });
+		return Boolean(res?.updated);
+	} catch {
+		return false;
+	}
+}
+
+export async function remoteStopAudio(): Promise<boolean> {
+	if (!isNativeAndroidHost() || !RockolaServer.remoteStop) return false;
+	try {
+		const res = await RockolaServer.remoteStop();
+		return Boolean(res?.stopped);
+	} catch {
+		return false;
+	}
+}
+
+export async function remoteSetMuteAudio(muted: boolean): Promise<boolean> {
+	if (!isNativeAndroidHost() || !RockolaServer.remoteSetMute) return false;
+	try {
+		const res = await RockolaServer.remoteSetMute({ muted });
+		return Boolean(res?.updated);
+	} catch {
+		return false;
+	}
+}
+
+export function subscribeRemotePlaybackEvents(callbacks: {
+	onDuration?: (durationSec: number) => void;
+	onPosition?: (positionSec: number, durationSec: number) => void;
+	onPauseChanged?: (paused: boolean) => void;
+	onEnded?: () => void;
+	onError?: (message: string) => void;
+}): () => void {
+	if (!isNativeAndroidHost() || typeof RockolaServer.addListener !== 'function') {
+		return () => {};
+	}
+	let disposed = false;
+	const handles: PluginListenerHandle[] = [];
+	const register = (eventName: string, handler: (data: Record<string, unknown>) => void) => {
+		void RockolaServer.addListener!(eventName, (data) => {
+			if (!disposed) handler(data);
+		})
+			.then((h) => {
+				if (disposed) void h.remove().catch(() => {});
+				else handles.push(h);
+			})
+			.catch(() => {});
+	};
+
+	register('remotePlaybackDuration', (data) => {
+		const dur = Number(data.duration);
+		if (Number.isFinite(dur) && dur > 0) callbacks.onDuration?.(dur);
+	});
+	register('remotePlaybackPosition', (data) => {
+		const pos = Number(data.position);
+		const dur = Number(data.duration);
+		if (Number.isFinite(pos)) callbacks.onPosition?.(pos, Number.isFinite(dur) ? dur : 0);
+	});
+	register('remotePlaybackPauseChanged', (data) => {
+		if (typeof data.paused === 'boolean') callbacks.onPauseChanged?.(data.paused);
+	});
+	register('remotePlaybackEnded', () => callbacks.onEnded?.());
+	register('remotePlaybackError', (data) => {
+		callbacks.onError?.(typeof data.message === 'string' ? data.message : 'Error de reproducción');
+	});
+
+	return () => {
+		disposed = true;
+		while (handles.length > 0) {
+			const h = handles.pop();
+			void h?.remove().catch(() => {});
+		}
+	};
 }
