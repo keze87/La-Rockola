@@ -92,18 +92,33 @@ async def lifespan(app: FastAPI):
 		except Exception as e:
 			logger.warning(f"No se pudo arrancar MPV en el inicio: {e}")
 
-	if restored_session and state and getattr(state.mpv, "is_running", False):
-		try:
-			await state.mpv.set_volume(state.volume)
-			await state.mpv.set_mute(True if state._has_local_player() else state.server_muted)
-			if state.current_track:
-				await state.mpv.set_pause(True)
-				await state.mpv.load_file(str(state.current_track))
-				await state.mpv.set_pause(True)
-				if state.time_pos > 0:
-					await state.mpv.seek_absolute(state.time_pos)
-		except Exception as e:
-			logger.debug(f"No se pudo precargar pista restaurada en el reproductor: {e}")
+	if restored_session and state:
+		if state.current_track and getattr(state, "duration", 0.0) <= 0:
+			cached_info = getattr(state, "track_cache_by_path", {}).get(str(state.current_track))
+			if isinstance(cached_info, dict) and cached_info.get("duration"):
+				state.duration = float(cached_info["duration"])
+		if getattr(state.mpv, "is_running", False):
+			try:
+				await state.mpv.set_volume(state.volume)
+				await state.mpv.set_mute(True if state._has_local_player() else state.server_muted)
+				if state.current_track:
+					await state.mpv.set_pause(True)
+					await state.mpv.load_file(str(state.current_track))
+					await state.mpv.set_pause(True)
+					if state.time_pos > 0:
+						await state.mpv.seek_absolute(state.time_pos)
+			except Exception as e:
+				logger.debug(f"No se pudo precargar pista restaurada en el reproductor: {e}")
+		if hasattr(state, "notify_mpris"):
+			state.notify_mpris()
+		sync_notif = getattr(state.mpv, "sync_notification_from_state", None)
+		if callable(sync_notif):
+			try:
+				sync_res = sync_notif(state)
+				if asyncio.iscoroutine(sync_res):
+					await sync_res
+			except Exception:
+				pass
 
 	asyncio.create_task(scan_library(silent=preloaded > 0))
 

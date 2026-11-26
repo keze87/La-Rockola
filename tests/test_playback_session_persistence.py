@@ -193,3 +193,98 @@ def test_get_top_played_includes_saf_uris_in_library(tmp_path: Path) -> None:
 
 	top = orch.get_top_played()
 	assert top == [{"path": saf_uri, "count": 7}]
+
+
+def test_saves_and_restores_duration_and_radio_timing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+	"""Debe persistir y restaurar duration, last_radio_time y radio_time_until_next tras morir el backend."""
+	monkeypatch.setenv("ROCKOLA_DATA_DIR", str(tmp_path))
+	db_path = tmp_path / "rockola.db"
+
+	orch1 = PlaybackOrchestrator(initial_dir=str(tmp_path), db_path=db_path, use_mpv=False)
+	orch1.current_track = "/music/tema.mp3"
+	orch1.duration = 214.5
+	orch1.last_radio_time = 1700000123.0
+	orch1.radio_time_until_next = 640.0
+	orch1.save_playback_session(force=True)
+
+	orch2 = PlaybackOrchestrator(initial_dir=str(tmp_path), db_path=db_path, use_mpv=False)
+	assert orch2.restore_playback_session(max_age_sec=3600) is True
+	assert orch2.duration == pytest.approx(214.5)
+	assert orch2.last_radio_time == pytest.approx(1700000123.0)
+	assert orch2.radio_time_until_next == pytest.approx(640.0)
+
+
+def test_restore_clears_missing_ephemeral_radio_announcement_track(
+	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+	"""Si el backend murió durante una locución radial temporal ya borrada, no debe intentar cargarla."""
+	monkeypatch.setenv("ROCKOLA_DATA_DIR", str(tmp_path))
+	db_path = tmp_path / "rockola.db"
+	missing_radio = str(tmp_path / "carpincho_radio_12345.mp3")
+
+	(tmp_path / "playback_session.json").write_text(
+		json.dumps(
+			{
+				"saved_at": time.time(),
+				"current_track": missing_radio,
+				"is_playing_radio_announcement": True,
+				"time_pos": 4.2,
+				"duration": 12.0,
+				"queue": ["/music/siguiente.mp3"],
+			}
+		),
+		encoding="utf-8",
+	)
+
+	orch = PlaybackOrchestrator(initial_dir=str(tmp_path), db_path=db_path, use_mpv=False)
+	assert orch.restore_playback_session(max_age_sec=3600) is True
+	assert orch.current_track is None
+	assert orch.time_pos == 0.0
+	assert orch.duration == 0.0
+	assert orch.is_playing_radio_announcement is False
+	assert orch.queue == ["/music/siguiente.mp3"]
+
+
+def test_save_playback_session_persists_progress_every_5_seconds(
+	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+	"""Si avanza el tiempo >= 5s en reproducción, save_playback_session(force=False) guarda time_pos."""
+	monkeypatch.setenv("ROCKOLA_DATA_DIR", str(tmp_path))
+	db_path = tmp_path / "rockola.db"
+
+	orch = PlaybackOrchestrator(initial_dir=str(tmp_path), db_path=db_path, use_mpv=False)
+	orch.current_track = "/music/tema.mp3"
+	orch.mpv_paused = False
+	orch.time_pos = 10.0
+	orch.save_playback_session(force=True)
+
+	session_file = tmp_path / "playback_session.json"
+	orch._last_session_save_at -= 6.0
+	orch.time_pos = 16.5
+	orch.save_playback_session(force=False)
+
+	data = json.loads(session_file.read_text(encoding="utf-8"))
+	assert data["time_pos"] == pytest.approx(16.5)
+
+
+@pytest.mark.asyncio
+async def test_broadcast_state_and_audio_error_do_not_leak_async_mock_coroutines(
+	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+	"""Evita RuntimeWarning cuando state.mpv es AsyncMock en tests de CI."""
+	from app.core.container import get_container
+	from app.domain.playback.orchestrator import broadcast_state
+
+	monkeypatch.setenv("ROCKOLA_DATA_DIR", str(tmp_path))
+	orch = PlaybackOrchestrator(initial_dir=str(tmp_path), db_path=tmp_path / "rockola.db", use_mpv=False)
+	orch.mpv = AsyncMock()
+	ws_mgr = MagicMock()
+	ws_mgr.broadcast_json = AsyncMock()
+	container = get_container()
+	container.orchestrator = orch
+	container.ws_manager = ws_mgr
+
+	orch.queue = ["/music/1.mp3"]
+	await broadcast_state()
+	state_dict = orch.get_full_state_dict()
+	assert "audio_error" in state_dict
