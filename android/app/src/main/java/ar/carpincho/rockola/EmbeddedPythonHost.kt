@@ -275,51 +275,61 @@ class EmbeddedPythonHost(
         onConfigured: (ServerEndpointInfo) -> Unit,
         onReady: () -> Unit,
     ) {
-        currentBootStage = "starting_python"
-        RockolaApplication.ensurePythonStarted(context)
+        try {
+            currentBootStage = "starting_python"
+            RockolaApplication.ensurePythonStarted(context)
 
-        val dataDir = File(context.filesDir, "rockola_data").apply { mkdirs() }
-        val distDir = File(context.filesDir, "dist")
-        ensureDistExtracted(distDir)
+            val dataDir = File(context.filesDir, "rockola_data").apply { mkdirs() }
+            val distDir = File(context.filesDir, "dist")
+            ensureDistExtracted(distDir)
 
-        currentBootStage = "starting_server"
-        val py = Python.getInstance()
-        val entry = py.getModule("app.android_entry")
+            currentBootStage = "starting_server"
+            val py = Python.getInstance()
+            val entry = py.getModule("app.android_entry")
 
-        val infoObj = entry.callAttr(
-            "configure_android_environment",
-            dataDir.absolutePath,
-            distDir.absolutePath,
-            musicDir ?: "",
-            port,
-            "0.0.0.0",
-        )
-        val infoMap = infoObj.asMap()
-        val localIp = infoMap[py.builtins.callAttr("str", "local_ip")]?.toString() ?: "127.0.0.1"
-        val serverUrl = infoMap[py.builtins.callAttr("str", "server_url")]?.toString()
-            ?: "http://$localIp:$port"
+            val infoObj = entry.callAttr(
+                "configure_android_environment",
+                dataDir.absolutePath,
+                distDir.absolutePath,
+                musicDir ?: "",
+                port,
+                "0.0.0.0",
+            )
+            val infoMap = infoObj.asMap()
+            val localIp = infoMap[py.builtins.callAttr("str", "local_ip")]?.toString() ?: "127.0.0.1"
+            val serverUrl = infoMap[py.builtins.callAttr("str", "server_url")]?.toString()
+                ?: "http://$localIp:$port"
 
-        onConfigured(ServerEndpointInfo(localIp = localIp, serverUrl = serverUrl))
+            onConfigured(ServerEndpointInfo(localIp = localIp, serverUrl = serverUrl))
 
-        Log.i("RockolaPythonHost", "Arrancando Uvicorn embebido en $serverUrl...")
-        val started = entry.callAttr(
-            "start_embedded_server",
-            dataDir.absolutePath,
-            distDir.absolutePath,
-            musicDir ?: "",
-            port,
-            "0.0.0.0",
-            true,
-            Runnable {
-                currentBootStage = "ready"
-                currentExtractProgress = 100
-                onReady()
-            },
-        ).toBoolean()
-        if (!started) {
-            val statusObj = entry.callAttr("get_server_info").asMap()
-            val currentState = statusObj[py.builtins.callAttr("str", "host_state")]?.toString() ?: "desconocido"
-            throw IllegalStateException("El servidor embebido rechazó el arranque (estado: $currentState)")
+            Log.i("RockolaPythonHost", "Arrancando Uvicorn embebido en $serverUrl...")
+            val started = entry.callAttr(
+                "start_embedded_server",
+                dataDir.absolutePath,
+                distDir.absolutePath,
+                musicDir ?: "",
+                port,
+                "0.0.0.0",
+                true,
+                Runnable {
+                    currentBootStage = "ready"
+                    currentExtractProgress = 100
+                    onReady()
+                },
+            ).toBoolean()
+            if (!started) {
+                val statusObj = entry.callAttr("get_server_info").asMap()
+                val currentState = statusObj[py.builtins.callAttr("str", "host_state")]?.toString() ?: "desconocido"
+                throw IllegalStateException("El servidor embebido rechazó el arranque (estado: $currentState)")
+            }
+        } catch (t: Throwable) {
+            LocalCrashDiagnostics.recordError(
+                context,
+                "python",
+                t.message ?: t::class.java.simpleName,
+                t,
+            )
+            throw t
         }
     }
 

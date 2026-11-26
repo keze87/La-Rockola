@@ -380,8 +380,27 @@ class RockolaServerPlugin : Plugin() {
         val source = call.getString("source")?.trim().orEmpty().take(200)
         if (message.isNotEmpty()) {
             android.util.Log.e("RockolaWebError", if (source.isNotEmpty()) "[$source] $message" else message)
+            val appCtx = context.applicationContext
+            val srcLabel = if (source.isNotEmpty()) "webview:$source" else "webview"
+            pluginExecutor.execute {
+                LocalCrashDiagnostics.recordError(appCtx, srcLabel, message)
+            }
         }
         call.resolve(JSObject().apply { put("logged", true) })
+    }
+
+    @PluginMethod
+    fun getLastDiagnostics(call: PluginCall) {
+        val appCtx = context.applicationContext
+        pluginExecutor.execute {
+            val snap = LocalCrashDiagnostics.readDiagnosticsSnapshot(appCtx)
+            call.resolve(
+                JSObject().apply {
+                    put("lastError", snap.lastError ?: JSONObject.NULL)
+                    put("lastExit", snap.lastExit ?: JSONObject.NULL)
+                },
+            )
+        }
     }
 
     @PluginMethod

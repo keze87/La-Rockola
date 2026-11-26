@@ -1,6 +1,7 @@
 package ar.carpincho.rockola
 
 import android.app.Application
+import android.os.StrictMode
 import android.os.SystemClock
 import android.util.Log
 import androidx.appcompat.app.AppCompatDelegate
@@ -36,8 +37,35 @@ class RockolaApplication : Application() {
     override fun onCreate() {
         processStartElapsedMs = SystemClock.elapsedRealtime()
         Log.i("RockolaStartup", "stage=app_on_create elapsedMs=0")
+        LocalCrashDiagnostics.installUncaughtExceptionHandler(this)
+        if (BuildConfig.DEBUG) {
+            StrictMode.setThreadPolicy(
+                StrictMode.ThreadPolicy.Builder()
+                    .detectDiskReads()
+                    .detectDiskWrites()
+                    .detectNetwork()
+                    .penaltyLog()
+                    .build(),
+            )
+            StrictMode.setVmPolicy(
+                StrictMode.VmPolicy.Builder()
+                    .detectLeakedClosableObjects()
+                    .penaltyLog()
+                    .build(),
+            )
+        }
         super.onCreate()
         AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
+        Thread(
+            {
+                LocalCrashDiagnostics.logAndPersistLastExitInfo(this)
+            },
+            "RockolaDiagnostics",
+        ).apply {
+            isDaemon = true
+            priority = Thread.MIN_PRIORITY
+            start()
+        }
         val prefs = getSharedPreferences(RockolaForegroundService.PREFS_NAME, MODE_PRIVATE)
         val savedMode = prefs.getString(RockolaForegroundService.KEY_TARGET_MODE, "host")
         if (savedMode == "remote") {
