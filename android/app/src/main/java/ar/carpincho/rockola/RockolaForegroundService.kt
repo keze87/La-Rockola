@@ -374,6 +374,9 @@ class RockolaForegroundService : Service() {
 
     private var pendingDemoteRunnable: Runnable? = null
 
+    @Volatile
+    private var startGeneration: Long = 0L
+
     private fun cancelPendingDemote() {
         pendingDemoteRunnable?.let { mainHandler.removeCallbacks(it) }
         pendingDemoteRunnable = null
@@ -639,6 +642,7 @@ class RockolaForegroundService : Service() {
             }
         }
 
+        startGeneration += 1L
         val requestedPort = intent?.getIntExtra(EXTRA_PORT, -1) ?: -1
         val extraDir = intent?.getStringExtra(EXTRA_MUSIC_DIR)?.trim()
 
@@ -765,9 +769,10 @@ class RockolaForegroundService : Service() {
     }
 
     private fun startEmbeddedPythonServer(port: Int, musicDir: String?) {
-        hostCoordinator.start(
+        hostCoordinator.startWaitingForCleanup(
             port = port,
             musicDir = musicDir,
+            waitTimeoutMs = STOP_JOIN_TIMEOUT_MS + 1000L,
             onRequestStop = { pythonHost.stop() },
         ) { onReady ->
             pythonHost.startBlocking(
@@ -1027,6 +1032,7 @@ class RockolaForegroundService : Service() {
     }
 
     private fun stopServerAndService() {
+        val stopGen = startGeneration
         isActivelyPlaying = false
         isMediaPlaying = false
         demoteFromForeground(keepDismissibleNotification = false, forceStop = true)
@@ -1035,7 +1041,9 @@ class RockolaForegroundService : Service() {
             syncCoordinatorSnapshot()
             if (clean) {
                 mainHandler.post {
-                    stopSelf()
+                    if (startGeneration == stopGen) {
+                        stopSelf()
+                    }
                 }
             }
         }

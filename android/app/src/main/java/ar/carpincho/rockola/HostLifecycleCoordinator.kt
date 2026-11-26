@@ -182,6 +182,37 @@ class HostLifecycleCoordinator(
         return true
     }
 
+    fun startWaitingForCleanup(
+        port: Int,
+        musicDir: String?,
+        waitTimeoutMs: Long = 5000L,
+        onRequestStop: () -> Unit,
+        runner: (onReady: () -> Unit) -> Unit,
+    ): Boolean {
+        val deadlineMs = System.nanoTime() / 1_000_000L + waitTimeoutMs.coerceAtLeast(0L)
+        synchronized(lock) {
+            while (
+                state != HostServerState.STARTING &&
+                state != HostServerState.READY &&
+                (state == HostServerState.STOPPING ||
+                    state == HostServerState.STOP_TIMED_OUT ||
+                    finishingRunId != 0L ||
+                    activeThread != null)
+            ) {
+                val nowMs = System.nanoTime() / 1_000_000L
+                val remainingMs = deadlineMs - nowMs
+                if (remainingMs <= 0L) break
+                try {
+                    (lock as Object).wait(remainingMs.coerceAtMost(200L))
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    break
+                }
+            }
+        }
+        return start(port = port, musicDir = musicDir, onRequestStop = onRequestStop, runner = runner)
+    }
+
     private fun markReady(runId: Long) {
         val snapshot = synchronized(lock) {
             if (activeRunId == runId && state == HostServerState.STARTING && !stopRequestedForRun) {
@@ -276,6 +307,7 @@ class HostLifecycleCoordinator(
                 null
             }
             maybeCompleteDeferredShutdownLocked()
+            (lock as Object).notifyAll()
             snapshot
         }
     }
