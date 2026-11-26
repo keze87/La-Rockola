@@ -195,8 +195,8 @@ def test_get_top_played_includes_saf_uris_in_library(tmp_path: Path) -> None:
 	assert top == [{"path": saf_uri, "count": 7}]
 
 
-def test_saves_and_restores_duration_and_radio_timing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-	"""Debe persistir y restaurar duration, last_radio_time y radio_time_until_next tras morir el backend."""
+def test_saves_and_restores_duration_and_last_radio_time(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+	"""Debe persistir y restaurar duration y last_radio_time tras morir el backend."""
 	monkeypatch.setenv("ROCKOLA_DATA_DIR", str(tmp_path))
 	db_path = tmp_path / "rockola.db"
 
@@ -204,14 +204,12 @@ def test_saves_and_restores_duration_and_radio_timing(tmp_path: Path, monkeypatc
 	orch1.current_track = "/music/tema.mp3"
 	orch1.duration = 214.5
 	orch1.last_radio_time = 1700000123.0
-	orch1.radio_time_until_next = 640.0
 	orch1.save_playback_session(force=True)
 
 	orch2 = PlaybackOrchestrator(initial_dir=str(tmp_path), db_path=db_path, use_mpv=False)
 	assert orch2.restore_playback_session(max_age_sec=3600) is True
 	assert orch2.duration == pytest.approx(214.5)
 	assert orch2.last_radio_time == pytest.approx(1700000123.0)
-	assert orch2.radio_time_until_next == pytest.approx(640.0)
 
 
 def test_restore_clears_missing_ephemeral_radio_announcement_track(
@@ -243,28 +241,6 @@ def test_restore_clears_missing_ephemeral_radio_announcement_track(
 	assert orch.duration == 0.0
 	assert orch.is_playing_radio_announcement is False
 	assert orch.queue == ["/music/siguiente.mp3"]
-
-
-def test_save_playback_session_persists_progress_every_5_seconds(
-	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-	"""Si avanza el tiempo >= 5s en reproducción, save_playback_session(force=False) guarda time_pos."""
-	monkeypatch.setenv("ROCKOLA_DATA_DIR", str(tmp_path))
-	db_path = tmp_path / "rockola.db"
-
-	orch = PlaybackOrchestrator(initial_dir=str(tmp_path), db_path=db_path, use_mpv=False)
-	orch.current_track = "/music/tema.mp3"
-	orch.mpv_paused = False
-	orch.time_pos = 10.0
-	orch.save_playback_session(force=True)
-
-	session_file = tmp_path / "playback_session.json"
-	orch._last_session_save_at -= 6.0
-	orch.time_pos = 16.5
-	orch.save_playback_session(force=False)
-
-	data = json.loads(session_file.read_text(encoding="utf-8"))
-	assert data["time_pos"] == pytest.approx(16.5)
 
 
 @pytest.mark.asyncio

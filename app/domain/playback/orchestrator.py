@@ -165,7 +165,6 @@ class PlaybackOrchestrator:
 		self.volume: int = max(0, min(110, int(volume)))
 		self.server_muted: bool = False
 		self._last_session_save_at: float = 0.0
-		self._last_saved_time_pos: float = 0.0
 		self._last_session_sig: tuple[Any, ...] | None = None
 
 		# Modo Radio
@@ -522,20 +521,13 @@ class PlaybackOrchestrator:
 	def save_playback_session(self, force: bool = False) -> None:
 		"""Persiste cola, orden, historial, pista actual y configuraciones de forma atómica."""
 		sig = self._build_session_signature()
-		now = time.time()
-		cur_pos = float(self.time_pos or 0.0)
-		progress_due = bool(
-			self.current_track
-			and not self.mpv_paused
-			and abs(cur_pos - float(getattr(self, "_last_saved_time_pos", 0.0))) >= 5.0
-			and (now - float(getattr(self, "_last_session_save_at", 0.0))) >= 5.0
-		)
-		if not force and sig == self._last_session_sig and not progress_due:
+		if not force and sig == self._last_session_sig:
 			return
+		now = time.time()
 		payload = {
 			"saved_at": now,
 			"current_track": self.current_track,
-			"time_pos": cur_pos,
+			"time_pos": float(self.time_pos or 0.0),
 			"duration": float(self.duration or 0.0),
 			"paused": bool(self.mpv_paused),
 			"queue": list(self.queue),
@@ -547,7 +539,6 @@ class PlaybackOrchestrator:
 			"dj_mode": str(self.dj_mode),
 			"radio_mode_enabled": bool(self.radio_mode_enabled),
 			"last_radio_time": float(getattr(self, "last_radio_time", 0.0) or 0.0),
-			"radio_time_until_next": float(getattr(self, "radio_time_until_next", 600.0) or 600.0),
 			"is_playing_radio_announcement": bool(getattr(self, "is_playing_radio_announcement", False)),
 			"default_sort": str(getattr(self, "default_sort", "time")),
 			"volume": int(self.volume),
@@ -561,7 +552,6 @@ class PlaybackOrchestrator:
 			tmp_path.replace(session_path)
 			self._last_session_sig = sig
 			self._last_session_save_at = now
-			self._last_saved_time_pos = cur_pos
 		except Exception as exc:
 			logger.debug(f"No se pudo persistir playback_session.json: {exc}")
 
@@ -619,8 +609,6 @@ class PlaybackOrchestrator:
 				self.radio_mode_enabled = bool(data["radio_mode_enabled"])
 			if "last_radio_time" in data:
 				self.last_radio_time = max(0.0, float(data["last_radio_time"] or 0.0))
-			if "radio_time_until_next" in data:
-				self.radio_time_until_next = max(30.0, float(data["radio_time_until_next"] or 600.0))
 			if isinstance(data.get("default_sort"), str) and data["default_sort"] in (
 				"time",
 				"artist",
@@ -635,7 +623,6 @@ class PlaybackOrchestrator:
 
 			self._last_session_sig = self._build_session_signature()
 			self._last_session_save_at = time.time()
-			self._last_saved_time_pos = self.time_pos
 			return True
 		except Exception as exc:
 			logger.debug(f"No se pudo restaurar playback_session.json: {exc}")
