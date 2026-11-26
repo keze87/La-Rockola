@@ -29,11 +29,20 @@ try:
 except ImportError:  # pragma: no cover - fallback si no está instalado websockets
 	websockets = None
 
-PACKAGE_NAME = "ar.carpincho.rockola"
-MAIN_ACTIVITY = f"{PACKAGE_NAME}/.MainActivity"
-SERVICE_NAME = f"{PACKAGE_NAME}/.RockolaForegroundService"
+APP_NAMESPACE = "ar.carpincho.rockola"
+PACKAGE_NAME = APP_NAMESPACE
+MAIN_ACTIVITY = f"{PACKAGE_NAME}/{APP_NAMESPACE}.MainActivity"
+SERVICE_NAME = f"{PACKAGE_NAME}/{APP_NAMESPACE}.RockolaForegroundService"
 DEFAULT_DEVICE_PORT = 1729
 DEFAULT_LOCAL_FORWARD_PORT = 11729
+
+
+def configure_target_package(package_name: str) -> None:
+	"""Configura el applicationId objetivo (release o `.debug`) manteniendo el namespace Kotlin."""
+	global PACKAGE_NAME, MAIN_ACTIVITY, SERVICE_NAME
+	PACKAGE_NAME = package_name.strip() or APP_NAMESPACE
+	MAIN_ACTIVITY = f"{PACKAGE_NAME}/{APP_NAMESPACE}.MainActivity"
+	SERVICE_NAME = f"{PACKAGE_NAME}/{APP_NAMESPACE}.RockolaForegroundService"
 
 
 @dataclass(slots=True)
@@ -365,7 +374,7 @@ def _run_screen_off_soak_check(serial: str, base_url: str, soak_seconds: int) ->
 
 	_set_screen_state(serial, awake=True)
 	_run_adb(serial, ["shell", "wm", "dismiss-keyguard"], check=False)
-	_run_adb(serial, ["shell", "am", "start", "-n", f"{PACKAGE_NAME}/.MainActivity"], check=False)
+	_run_adb(serial, ["shell", "am", "start", "-n", MAIN_ACTIVITY], check=False)
 	time.sleep(0.8)
 	initial_pid = _assert_process_alive(serial)
 	_http_json(f"{base_url}/command", "POST", {"cmd": "play", "path": random.choice(tracks)["path"]})
@@ -391,10 +400,10 @@ def _run_shortcut_checks(serial: str) -> list[E2EResult]:
 	"""Dispara todos los shortcuts de Android con pantalla encendida y verifica estabilidad."""
 	_set_screen_state(serial, awake=True)
 	shortcuts = (
-		("library", f"{PACKAGE_NAME}.ACTION_OPEN_LIBRARY"),
-		("queue", f"{PACKAGE_NAME}.ACTION_OPEN_QUEUE"),
-		("tops", f"{PACKAGE_NAME}.ACTION_OPEN_TOPS"),
-		("fogon", f"{PACKAGE_NAME}.ACTION_OPEN_FOGON"),
+		("library", f"{APP_NAMESPACE}.ACTION_OPEN_LIBRARY"),
+		("queue", f"{APP_NAMESPACE}.ACTION_OPEN_QUEUE"),
+		("tops", f"{APP_NAMESPACE}.ACTION_OPEN_TOPS"),
+		("fogon", f"{APP_NAMESPACE}.ACTION_OPEN_FOGON"),
 	)
 	for _, action in shortcuts:
 		_run_adb(serial, ["shell", "am", "start", "-W", "-a", action, "-n", MAIN_ACTIVITY], timeout=20.0)
@@ -718,6 +727,11 @@ def main(argv: list[str] | None = None) -> int:
 	)
 	parser.add_argument("--install", type=Path, default=None, help="Ruta a APK para instalar antes de probar.")
 	parser.add_argument("--server-url", default=None, help="URL HTTP remota opcional (omite adb forward).")
+	parser.add_argument(
+		"--package",
+		default=APP_NAMESPACE,
+		help="applicationId de la app instalada (ej: ar.carpincho.rockola o ar.carpincho.rockola.debug).",
+	)
 	parser.add_argument("--if-available", action="store_true", help="Sale con 0 si no hay dispositivo ADB conectado.")
 	parser.add_argument(
 		"--soak-seconds",
@@ -732,6 +746,7 @@ def main(argv: list[str] | None = None) -> int:
 		help="Segundos en pausa sin cliente para observar comportamiento de Android (default: 30, 0 desactiva).",
 	)
 	args = parser.parse_args(argv)
+	configure_target_package(args.package)
 
 	try:
 		return run_e2e(

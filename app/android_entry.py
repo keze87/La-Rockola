@@ -186,6 +186,7 @@ def configure_android_environment(
 	set_settings(settings)
 	save_config(config_path, settings.model_dump())
 
+	from app.api import media as _media_preload  # noqa: F401
 	from app.domain.playback.orchestrator import PlaybackOrchestrator
 	from app.infrastructure.db.migrations import apply_migrations
 	from app.infrastructure.mpv.android_controller import AndroidPlayerController, resolve_native_android_player

@@ -5,6 +5,7 @@ import android.content.Intent
 import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.core.graphics.drawable.IconCompat
+import java.util.concurrent.Executors
 
 internal data class ShortcutSpec(
     val id: String,
@@ -74,17 +75,32 @@ internal object ShortcutPolicy {
  */
 internal object ShortcutHelper {
     private const val KEY_LAST_TRACK_TITLE = "last_track_title"
+    private val shortcutExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "RockolaShortcuts").apply { isDaemon = true }
+    }
 
     fun saveLastTrackTitleAndRefresh(context: Context, title: String?) {
         val cleaned = title?.trim()?.takeIf { it.isNotEmpty() && it != "La Rockola del Carpincho" } ?: return
-        val prefs = context.getSharedPreferences(RockolaForegroundService.PREFS_NAME, Context.MODE_PRIVATE)
-        if (prefs.getString(KEY_LAST_TRACK_TITLE, null) != cleaned) {
-            prefs.edit().putString(KEY_LAST_TRACK_TITLE, cleaned).apply()
-            refreshDynamicShortcuts(context, cleaned)
+        val appCtx = context.applicationContext
+        shortcutExecutor.execute {
+            runCatching {
+                val prefs = appCtx.getSharedPreferences(RockolaForegroundService.PREFS_NAME, Context.MODE_PRIVATE)
+                if (prefs.getString(KEY_LAST_TRACK_TITLE, null) != cleaned) {
+                    prefs.edit().putString(KEY_LAST_TRACK_TITLE, cleaned).apply()
+                    refreshDynamicShortcutsSync(appCtx, cleaned)
+                }
+            }
         }
     }
 
     fun refreshDynamicShortcuts(context: Context, overrideLastTitle: String? = null) {
+        val appCtx = context.applicationContext
+        shortcutExecutor.execute {
+            refreshDynamicShortcutsSync(appCtx, overrideLastTitle)
+        }
+    }
+
+    private fun refreshDynamicShortcutsSync(context: Context, overrideLastTitle: String? = null) {
         try {
             val prefs = context.getSharedPreferences(RockolaForegroundService.PREFS_NAME, Context.MODE_PRIVATE)
             val lastTitle = overrideLastTitle ?: prefs.getString(KEY_LAST_TRACK_TITLE, null)

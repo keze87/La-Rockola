@@ -542,33 +542,8 @@ class RockolaForegroundService : Service() {
             }
         }
 
-        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val requestedPort = intent?.getIntExtra(EXTRA_PORT, -1) ?: -1
-        val port = if (requestedPort > 0) requestedPort else prefs.getInt(KEY_PORT, DEFAULT_PORT)
-
         val extraDir = intent?.getStringExtra(EXTRA_MUSIC_DIR)?.trim()
-        val savedDir = prefs.getString(KEY_MUSIC_DIR, null)?.trim()
-        val musicDir = if (!extraDir.isNullOrEmpty()) extraDir else savedDir
-
-        prefs.edit().apply {
-            putInt(KEY_PORT, port)
-            if (!musicDir.isNullOrEmpty()) {
-                putString(KEY_MUSIC_DIR, musicDir)
-            }
-            apply()
-        }
-
-        currentPort = port
-        currentMusicDir = musicDir
-        if (currentMediaTarget.mode == MediaTargetMode.HOST) {
-            val hostTarget = MediaTarget(
-                mode = MediaTargetMode.HOST,
-                origin = "http://127.0.0.1:$port",
-                generation = currentMediaTarget.generation,
-            )
-            currentMediaTarget = hostTarget
-            commandClient.setTarget(hostTarget)
-        }
 
         mainHandler.removeCallbacks(remoteIdleCheckRunnable)
         val startedAsForeground = intent?.getBooleanExtra(EXTRA_STARTED_AS_FOREGROUND, false) ?: false
@@ -585,7 +560,34 @@ class RockolaForegroundService : Service() {
             demoteFromForeground(keepDismissibleNotification = notificationManager.hasActiveTrack)
         }
 
-        startEmbeddedPythonServer(port, musicDir)
+        backgroundExecutor.execute {
+            val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val port = if (requestedPort > 0) requestedPort else prefs.getInt(KEY_PORT, DEFAULT_PORT)
+            val savedDir = prefs.getString(KEY_MUSIC_DIR, null)?.trim()
+            val musicDir = if (!extraDir.isNullOrEmpty()) extraDir else savedDir
+
+            prefs.edit().apply {
+                putInt(KEY_PORT, port)
+                if (!musicDir.isNullOrEmpty()) {
+                    putString(KEY_MUSIC_DIR, musicDir)
+                }
+                apply()
+            }
+
+            currentPort = port
+            currentMusicDir = musicDir
+            if (currentMediaTarget.mode == MediaTargetMode.HOST) {
+                val hostTarget = MediaTarget(
+                    mode = MediaTargetMode.HOST,
+                    origin = "http://127.0.0.1:$port",
+                    generation = currentMediaTarget.generation,
+                )
+                currentMediaTarget = hostTarget
+                commandClient.setTarget(hostTarget)
+            }
+
+            startEmbeddedPythonServer(port, musicDir)
+        }
 
         return START_NOT_STICKY
     }
