@@ -21,26 +21,62 @@ La app maneja dos modos explícitos desde un único store reactivo (`src/stores/
 
 ## 🔋 Ciclo de Vida del Servicio y Políticas de Android
 
-El servidor HTTP embebido y el servicio en primer plano **no** abusan de `FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK` cuando no hay música sonando:
+El servidor HTTP embebido y el servicio en primer plano **no** abusan de `FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK` ni del cupo `dataSync` cuando no corresponden:
 
-- **Reproducción activa**: El servicio se promueve a foreground (`mediaPlayback`) junto con la notificación MediaStyle, carátula, barra de progreso y `PARTIAL_WAKE_LOCK` (tope 4 h renovables). El `WifiLock` (`WIFI_MODE_FULL_LOW_LATENCY` o `WIFI_MODE_FULL_HIGH_PERF` en API < 29) solo se adquiere en modo Cliente Remoto o cuando hay clientes remotos conectados.
-- **En pausa**: Soltamos `WakeLock`/`WifiLock` para ahorrar batería, manteniendo el servicio en foreground mientras el servidor local siga activo (`isRunning`) para evitar que Android 12+ revoque `mAllowStartForeground` con la pantalla apagada.
+- **Reproducción activa o síntesis radial**: El servicio se promueve a foreground (`mediaPlayback`) junto con la notificación MediaStyle, carátula, barra de progreso y `PARTIAL_WAKE_LOCK` (tope 4 h renovables). El `WifiLock` (`WIFI_MODE_FULL_LOW_LATENCY` o `WIFI_MODE_FULL_HIGH_PERF` en API < 29) solo se adquiere en modo Cliente Remoto, cuando hay clientes remotos conectados o durante reproducción/síntesis radial.
+- **UI visible sin música ni clientes remotos (política Android 15 `dataSync`)**: Cuando la UI (`MainActivity`) está en primer plano pero no hay música sonando, síntesis radial ni clientes remotos conectados, el proceso ya cuenta con prioridad de primer plano por la Activity; **no** se levanta ni retiene un servicio foreground `dataSync` para no quemar el cupo acumulado de **6 horas / 24 horas** introducido en Android 15.
+- **En pausa**: Soltamos `WakeLock`/`WifiLock` y bajamos del modo foreground tras el margen de transición (`DEMOTE_DEBOUNCE_MS = 30 s`, reteniendo si la radio está sintetizando entre temas), manteniendo la notificación descartable cuando corresponde.
 - **Detenido / cambio de destino**: Desmontamos el modo foreground con `STOP_FOREGROUND_REMOVE` al apagar el servidor (`forceStop = true`) antes de cancelar la notificación.
 - **Apagado acotado y `onDestroy`**: `stop_embedded_server()` señala `should_exit = True` en Uvicorn de inmediato (y `force_exit = True` en un segundo intento) y ejecuta `flush_pending_volume_persist()` + `save_playback_session(force=True)` coalesciendo snapshots y aislando generaciones (`_server_generation`) sin bloquear `HostLifecycleCoordinator`. El coordinador usa un `reaperExecutor` dedicado que ejecuta `Thread.join()` antes de limpiar `activeThread`/`activeStopHook` y diferencia explícitamente `StopHookOutcome` (`COMPLETED`, `FAILED`, `TIMED_OUT`, `REJECTED`, `NONE`); si el worker sigue vivo tras el presupuesto único de 4 s, pasa a `STOP_TIMED_OUT` con `hasActiveWorker = true` impidiendo arranques concurrentes hasta su terminación física. `DistAssetExtractor` extrae los assets web a un directorio temporal, valida `index.html`, JS, CSS y `manifest.webmanifest`, sella `.dist_stamp` después de validar y realiza reemplazo atómico con backup/rollback para no dejar una carpeta `dist/` truncada.
-- **Cierre desde Recientes (`onTaskRemoved`) y hosting remoto**: Si no hay reproducción local ni clientes remotos activos (WebSockets no-loopback o streams HTTP `/stream` activos / dentro de 30 s de gracia), el servicio detiene el servidor y se cierra limpio. Si hay clientes remotos sin audio local, promueve temporalmente con tipo `dataSync` (no `mediaPlayback`) y monitorea cada 15 s para apagar el servidor apenas se cierre el último cliente y venza la gracia.
-- **Servidor embebido sin reproducción y límite `dataSync` en Android 15 (`onTimeout`)**:
-    - Cuando no hay música sonando ni clientes remotos conectados y el usuario cierra la app desde Recientes, el servidor embebido se apaga de inmediato. Si la app sigue en primer plano (o en pausa con el servidor corriendo), no se mantiene un lock de CPU activo.
-    - Solo se utiliza `foregroundServiceType="dataSync"` cuando la app fue quitada de Recientes pero quedan clientes remotos conectados sin reproducción local. En **Android 15+ (API 35+)**, `dataSync` tiene un cupo acumulado de 6 horas cada 24 horas en segundo plano; `RockolaForegroundService` implementa `onTimeout(startId, fgsType)` (y `onTimeout(startId)`): si justo está sonando música local (`isMediaPlaying == true`), migra inmediatamente el tipo foreground a `mediaPlayback`; si no hay reproducción local, notifica a la UI (`FGS_TIMEOUT`), detiene el servidor embebido limpiamente y llama a `stopSelf(startId)` para evitar `ForegroundServiceDidNotStopInTimeException`.
-- **Permisos mínimos y contextuales**: Se eliminaron `READ_MEDIA_AUDIO`, `READ_EXTERNAL_STORAGE` y `FileProvider` (acceso 100% SAF), se desactivó `allowBackup` (`false`), se habilitó gesto atrás predictivo (`enableOnBackInvokedCallback="true"`), y `POST_NOTIFICATIONS` se solicita de forma contextual al iniciar el servidor local (no en el arranque en frío).
+- **Cierre desde Recientes (`onTaskRemoved`) y hosting remoto**: Si no hay reproducción local ni clientes remotos activos (WebSockets no-loopback o streams HTTP `/stream` activos / dentro de 30 s de gracia), el servicio detiene el servidor y se cierra limpio. Si hay clientes remotos sin audio local en segundo plano, promueve con tipo `dataSync` (no `mediaPlayback`) y monitorea cada 15 s para apagar el servidor apenas se cierre el último cliente y venza la gracia.
+- **Límite `dataSync` en Android 15 (`onTimeout`)**:
+    - `foregroundServiceType="dataSync"` se usa **únicamente** cuando la app está en segundo plano con clientes remotos conectados sin reproducción local ni síntesis radial.
+    - Al agotarse el cupo acumulado en Android 15+ (API 35+), el sistema retira el estado foreground e invoca `onTimeout(startId, fgsType)` exigiendo detener el servicio de inmediato. `RockolaForegroundService` **no** intenta migrar a `mediaPlayback` dentro de `onTimeout`: emite el evento `nativeCommandError` (`FGS_TIMEOUT`, buffereado si la UI no está escuchando para mostrar aviso claro cuando el usuario vuelva), desmonta locks, solicita apagar el servidor embebido en `processShutdownExecutor` y llama síncronamente a `stopSelf(startId)` para evitar `ForegroundServiceDidNotStopInTimeException`.
+- **Permisos mínimos y contextuales**: Se eliminaron `READ_MEDIA_AUDIO`, `READ_EXTERNAL_STORAGE` y `FileProvider` (acceso 100% SAF), se desactivó `allowBackup` (`false`), se habilitó gesto atrás predictivo (`enableOnBackInvokedCallback="true"`), y `POST_NOTIFICATIONS` se solicita de forma contextual al elegir carpeta SAF o iniciar reproducción (no en el arranque en frío).
+
+---
+
+## 🔔 Contrato de Eventos Nativos, Volumen, Edge-to-Edge y Diagnóstico
+
+### Eventos nativos por listeners (`RockolaServerPlugin` ↔ `useAndroidHost.ts`)
+
+Se reemplazaron los hooks globales `window.__rockola*` (excepto el puente síncrono puntual `window.__rockolaHandleBack` invocado por `evaluateJavascript` al confirmar un atrás interceptado) por `notifyListeners` de Capacitor y `subscribeAndroidNativeEvents`:
+
+- **Eventos de estado** (`mediaVolumeChanged`, `pipModeChanged`, `imeInsetsChanged`, `backProgress`):
+    - No se bufferean en nativo si todavía no hay listener en JS.
+    - Al suscribirse, `subscribeAndroidNativeEvents` consulta `RockolaServer.getUiRuntimeState()` (con fallback a `getMediaVolume()`) para hidratar el estado vigente de PiP, altura IME y volumen sin sobreescribir eventos en vivo más recientes.
+- **Eventos de error o acción** (`nativeCommandError`, `shortcutAction`):
+    - Usan `NativeEventBuffer` (cola FIFO acotada a `16` entradas por evento).
+    - Si Kotlin emite un evento antes de que Vue llame a `addListener`, el evento queda retenido y se drena automáticamente en `RockolaServerPlugin.addListener` apenas se registra el primer listener.
+
+### Volumen del reproductor vs botones físicos
+
+- **Slider de la interfaz**: Representa el **volumen del reproductor** (`AndroidAudioPlayer.setVolume` / `ExoPlayer.volume`, `0–100%`), persistido en `rockola_config.json` y aplicado al iniciar `configure_android_environment` igual que en escritorio (`mpv`). La interfaz lo rotula explícitamente como _"Volumen del reproductor"_ (o _"Volumen del dispositivo"_ solo en modo escucha local).
+- **Botones físicos (`volumeControlStream = AudioManager.STREAM_MUSIC`)**: `MainActivity` fija `STREAM_MUSIC` para que subir/bajar volumen controle la música incluso sin audio sonando.
+- **Observador multi-vía de cambios de volumen (`VolumeChangeTracker`)**: `RockolaServerPlugin` combina `BroadcastReceiver` (`android.media.VOLUME_CHANGED_ACTION`), `ContentObserver` sobre `Settings.System.CONTENT_URI`, relectura en `handleOnResume()` y polling liviano cada `1000 ms` **únicamente mientras la Activity está visible** (detenido en `handleOnPause()` y `handleOnDestroy()`), filtrando duplicados mediante `VolumeChangeTracker` para emitir `mediaVolumeChanged` solo ante cambios efectivos de nivel o mute.
+
+### Edge-to-Edge, teclado (IME), PiP, MediaButton y Atajos
+
+- **`enableEdgeToEdge` + `SystemBars`**: `MainActivity` configura barras transparentes oscuras con `enableEdgeToEdge(...)` y delega `--safe-area-inset-*` a `@capacitor/core` (`SystemBars` con `insetsHandling: 'css'` sobre `window.decorView`).
+- **IME (`registerImeInsetsObserver`)**: Se adjunta sobre `android.R.id.content` (nunca sobre `window.decorView`) para no pisar el listener de `SystemBars`, exponiendo `--rockola-ime-height` y `html.ime-open` mientras `.floating-player` se oculta automáticamente con el teclado abierto.
+- **Atrás predictivo y `BackProgressThrottler`**: `OnBackPressedCallback` inicia deshabilitado (`false`) y se habilita reactivamente con `hasClosableLayer`. `BackProgressThrottler` filtra micro-deltas (`< 0.02` y `< 16 ms`) pero **siempre** emite `0f` y `1f` para evitar que la animación `--rockola-back-progress` quede pegada al cancelar el gesto.
+- **PiP y `MediaButtonReceiver`**: El modo Picture-in-Picture (1:1 con auto-enter en Android 12+ cuando el Fogón está activo) usa íconos propios en blanco (`ic_media_previous`, `ic_media_play`, `ic_media_pause`, `ic_media_next`). `androidx.media.session.MediaButtonReceiver` permanece `exported="true"`, mientras que `RockolaForegroundService` es `exported="false"` sin `<intent-filter>` redundante de `MEDIA_BUTTON`.
+- **Atajos exclusivamente dinámicos (`ShortcutHelper`)**: Los accesos (`open_library`, `open_queue`, `open_tops`, `open_fogon` y `resume_last` cuando hay último tema) se actualizan en `shortcutExecutor` fuera del hilo principal. En arranque en frío, `ACTION_RESUME_LAST` cambia a la pestaña Ronda y difiere la reanudación (`pause()`) hasta que `localServerState === 'ready'`.
+
+### Diagnóstico local sin telemetría (`LocalCrashDiagnostics`)
+
+- Sin envío de datos a servidores externos:
+    - **Último error no capturado**: Captura excepciones Kotlin (`UncaughtExceptionHandler` encadenado), errores fatales Python (`EmbeddedPythonHost.startBlocking`) y errores de JS/Vue (`logWebError`), guardándolos en `filesDir/rockola_last_error.log` acotado a `16 KB`.
+    - **Historial de muerte de proceso (`ApplicationExitInfo`, API 30+)**: Al arrancar en hilo de fondo (`RockolaDiagnostics`), consulta `ActivityManager.getHistoricalProcessExitReasons`, traduce códigos (`ANR`, `LOW_MEMORY`, `CRASH`, `EXCESSIVE_RESOURCE_USAGE`, etc.), lo loguea bajo el tag `RockolaDiagnostics` y lo guarda en `filesDir/rockola_last_exit.log`.
+    - **Consulta desde plugin**: `RockolaServer.getLastDiagnostics()` expone ambos snapshots bajo demanda.
 
 ---
 
 ## 🌐 Seguridad de Red (LAN), Precarga TTS y Permisos
 
 - **Network Security Config (`network_security_config.xml`)**: Se reemplazó `usesCleartextTraffic="true"` global por una configuración explícita de `localhost` / `127.0.0.1` junto con `base-config` documentando que el modo Cliente Remoto se conecta por HTTP plano a IPs LAN privadas (`192.168.x.x`, `10.x.x.x`) que no admiten CIDR en `<domain-config>`.
-- **Permisos mínimos y backup**: Se eliminaron `READ_MEDIA_AUDIO`, `READ_EXTERNAL_STORAGE` y `FileProvider` (acceso 100% SAF), y se desactivó `allowBackup` (`false`) con gesto atrás predictivo (`enableOnBackInvokedCallback="true"`).
-- **Precarga TTS controlada**: En Android, `run_tts_preload` arranca automáticamente en segundo plano **solo en Wi-Fi / Ethernet no medida** (`ConnectivityManager` + `NET_CAPABILITY_NOT_METERED`) y corta por tandas al alcanzar **333 MB** en `tts_cache.db` (podando por `last_used`).
-- **Volumen del reproductor (`ExoPlayer.volume`)**: El control de volumen de La Rockola ajusta la ganancia propia de `ExoPlayer` (`0.0`–`1.0`, conservando el nivel al mutear/desmutear) sin alterar el volumen multimedia global del dispositivo, manteniendo consistencia con escritorio (`mpv`) y modo remoto.
+- **Sin `addJavascriptInterface` ni acceso a archivos WebView**: El WebView no registra interfaces JS heredadas y mantiene `allowMixedContent: false` con `androidScheme: 'http'`.
+- **Precarga TTS controlada**: En Android, `run_tts_preload` corta por tandas al alcanzar **333 MB** en `tts_cache.db` (podando por `last_used`). _(Nota: en la revisión actual, el arranque en segundo plano sigue activo automáticamente al iniciar en red no medida / Wi-Fi sin flag opt-in dedicado)._
 
 ---
 
@@ -57,7 +93,7 @@ La aplicación **no solicita** `MANAGE_EXTERNAL_STORAGE` y **no copia** tu bibli
 
 ---
 
-## ⚙️ Requisitos, ABIs, Alineamiento 16 KB y Firma Release
+## ⚙️ Requisitos, ABIs, Alineamiento 16 KB, Variantes y CI/CD
 
 ### Requisitos de compilación
 
@@ -66,26 +102,17 @@ La aplicación **no solicita** `MANAGE_EXTERNAL_STORAGE` y **no copia** tu bibli
 - **Android SDK** (`ANDROID_HOME` o `android/local.properties` con `compileSdk 36`, `minSdk 24`)
 - **Python 3.14** disponible para `buildPython` de Chaquopy `17.2.0`
 
-### ABIs y verificación binaria de 16 KB (`0x4000`)
+### Variantes (`debug`, `release`, `releaseSmoke`) y convivencia
 
-- **Arquitecturas y versionado monotónico**: `arm64` (`arm64-v8a`) y `x86_64` con `versionCode` monotónico por minuto en UTC (`(año - 2020) * 1000000 + día_año * 1440 + min_día`, o `ROCKOLA_VERSION_CODE`) multiplicado por ABI (`base * 10 + 1` y `base * 10 + 2`). Se removió `armv7` (32 bits) ya que el stack `cp314` (Python 3.14) de Play exige 64-bit y 16 KB.
-- **Decisión Python 3.14 + wheels nativos sin reetiquetado Linux**: Se adoptó **Python 3.14** sobre **Chaquopy 17.2.0** para contar con wheels `cp314` compilados nativamente con alineamiento 16 KB (`pydantic==2.14.3`, `pydantic-core==2.50.4`, `aiohttp==3.14.5`, `frozenlist==1.8.0`, `multidict==7.2.1`, `yarl==1.25.1`) desde `https://pypi.flet.dev` / PyPI sin reetiquetado manual, eliminando `pillow`/`libfreetype.so` mediante `AndroidImageResizer.kt` (`BitmapFactory`).
-- **Pines estrictos sin `--require-hashes` en Chaquopy**: Todas las dependencias Python en `android/app/build.gradle` están fijadas con `==`. No se habilita `--require-hashes` porque `chaquopy-pip` resuelve wheels específicos por ABI (`arm64-v8a` / `x86_64`) entre PyPI y `--extra-index-url https://pypi.flet.dev` con dependencias transitivas cuyo conjunto de hashes difiere por arquitectura/plataforma.
-- **Verificador automático (`scripts/verify_android_apk.py`)**: Audita cada `.so` dentro de `lib/` y archivos comprimidos `.imy`/`.zip` (rechazando ZIPs corruptos), validando `PT_LOAD p_align >= 0x4000`, potencia de 2, congruencia `p_offset % p_align == p_vaddr % p_align`, límites de archivo y ausencia de `RUNPATH/RPATH` apuntando a `com.termux`. En APKs valida también `zipalign -c -P 16 -v 4` cuando está disponible en el SDK; en AABs verifica `BundleConfig.pb` y `PAGE_ALIGNMENT_16K` vía `bundletool dump config` (`--strict-aab`).
+- **`debug`**: Usa `applicationIdSuffix ".debug"` (`ar.carpincho.rockola.debug`), nombre _"La Rockola (Debug)"_, habilita `StrictMode` (detección de disco/red en main thread con `penaltyLog()`) y `WebView.setWebContentsDebuggingEnabled(true)`. Puede convivir instalada junto a la versión `release` (`ar.carpincho.rockola`) sin colisión de preferencias ni autoridades.
+- **`release`**: `minifyEnabled true`, `shrinkResources true`, firma obligatoria (`keystore.properties` o variables `ROCKOLA_KEYSTORE_*`), reglas R8 acotadas en `android/app/proguard-rules.pro` (7 clases propias de puente/Android).
+- **`releaseSmoke`**: Hereda de `release` con R8 activo para `connected*ReleaseSmokeAndroidTest`, usando `proguard-releasesmoke.pro` y `proguard-androidtest.pro` exclusivamente para el runner de instrumentación (`kotlin.**`, `androidx.tracing.**`, `-dontobfuscate`) sin alterar `proguard-rules.pro` de producción.
 
-### Firma obligatoria en Release
+### ABIs, verificación 16 KB y Workflow de Release
 
-Los builds **Release fallan explícitamente** si falta firma (nunca caen silenciosamente en `signingConfigs.debug`). Podés configurarla de dos formas:
-
-1. Archivo local `android/keystore.properties` (ignorado por Git):
-    ```properties
-    storeFile=/ruta/absoluta/a/tu-keystore.jks
-    storePassword=...
-    keyAlias=rockola
-    keyPassword=...
-    ```
-2. Variables de entorno (CI/CD):
-   `ROCKOLA_KEYSTORE_PATH`, `ROCKOLA_KEYSTORE_PASSWORD`, `ROCKOLA_KEY_ALIAS`, `ROCKOLA_KEY_PASSWORD`.
+- **Arquitecturas y versionado monotónico**: `arm64` (`arm64-v8a`) y `x86_64` con `versionCode` monotónico por minuto en UTC multiplicado por ABI (`base * 10 + 1` y `base * 10 + 2`).
+- **Verificador automático (`scripts/verify_android_apk.py`)**: Audita cada `.so` dentro de `lib/` validando `PT_LOAD p_align >= 0x4000`, congruencia `p_offset % p_align == p_vaddr % p_align`, ausencia de `RUNPATH/RPATH` apuntando a `com.termux`, `zipalign -c -P 16 -v 4` en APK y `PAGE_ALIGNMENT_16K` vía `bundletool` en AAB (`--strict-aab`).
+- **Workflow de Release (`.github/workflows/release.yml`)**: Separado en jobs independientes de compilación (`build-windows`, `build-linux-appimage`, `build-android`) y jobs de publicación desacoplados (`publish-desktop-release` y `publish-android-release`) que adjuntan cada artefacto con verificación SHA-256 previa.
 
 ### Comandos principales
 
@@ -97,8 +124,12 @@ python3 scripts/build_android.py --flavor arm64
 python3 scripts/build_android.py --flavor arm64 --release
 python3 scripts/build_android.py --flavor arm64 --release --bundle
 
-# Correr pruebas unitarias JVM de Kotlin y compilación de test instrumentado
-./android/gradlew -p android testArm64DebugUnitTest compileArm64DebugAndroidTestKotlin
+# Correr pruebas unitarias JVM de Kotlin y smoke test R8 en dispositivo/emulador
+JAVA_HOME=/usr/lib/jvm/java-21-openjdk ./android/gradlew -p android testArm64DebugUnitTest
+JAVA_HOME=/usr/lib/jvm/java-21-openjdk ./android/gradlew -p android -PROCKOLA_TEST_BUILD_TYPE=releaseSmoke connectedArm64ReleaseSmokeAndroidTest --no-daemon
+
+# E2E en dispositivo real (acepta --package ar.carpincho.rockola.debug)
+python3 scripts/test_android_e2e.py --if-available
 ```
 
 ---
@@ -119,51 +150,41 @@ python3 scripts/build_android.py --flavor arm64 --release --bundle
 
 ---
 
-## 📱 Experiencia Nativa (Decisiones, Métricas y Checklist)
+## 📱 Experiencia Nativa, Métricas Comparables y Resolución de Problemas
 
-### Decisiones técnicas
+### Decisiones técnicas vigentes
 
-- **Splash único sin doble pantalla (`SplashHoldPolicy`)**: `MainActivity` retiene el splash del sistema con `setKeepOnScreenCondition` hasta que Vue dispara `markUiReady()` (tope de seguridad de `2500 ms`), usando un ícono vectorial dedicado (`ic_splash_carpincho.xml` sobre `288 dp` en zona segura de 2/3) y el color `@color/rockola_bg` unificado. El placeholder HTML `#web-boot-splash` de `index.html` se oculta automáticamente en Capacitor y queda solo para PWA/web.
-- **Snapshot local, precalentamiento Python e imports diferidos**:
-    - `useLocalSnapshot.ts` guarda hasta `80` temas, cola, favoritos y pista actual en `localStorage` para hidratar la interfaz antes de que Python responda `/health`, mostrando `"Actualizando lista..."`.
-    - `RockolaApplication` precalienta `Python.start(AndroidPlatform(...))` en segundo plano al crear el proceso (`onCreate`), y `EmbeddedPythonHost` expone progreso real de extracción (`extractStage` / `extractProgress`).
-    - `tts_cache.py` y `radio/service.py` difieren la importación de `edge_tts` (y su árbol `aiohttp`) hasta la primera síntesis TTS (`importlib.util.find_spec` para `HAS_EDGE_TTS`).
-- **Versión mínima de WebView (`WebViewVersionPolicy`)**: El frontend usa `100dvh`, `content-visibility` y `:has()`, cuyo piso real es **Chromium 108**. Si `WebViewCompat.getCurrentWebViewPackage` reporta una versión mayor `< 108`, `MainActivity` muestra un diálogo nativo oscuro con enlace directo a Play Store; si el proveedor no informa versión, aplica política fail-open.
-- **Atrás predictivo real (`BackNavigationPolicy`)**: El `OnBackPressedCallback` nativo inicia deshabilitado (`false`) y Vue empuja `setBackHandlerEnabled(hasClosableLayer)` reactivamente según haya foco en un input (lo desenfoca), modales/`<dialog>` abiertos, menú contextual, editor de letras, Modo Fogón o pestaña distinta de Biblioteca. Cuando no hay capas cerrables, el callback queda deshabilitado para que Android ejecute su animación predictiva nativa de volver al inicio. Además `handleOnBackProgressed` expone `--rockola-back-progress` a JS.
-- **Teclado (IME) con edge-to-edge**: `MainActivity` declara `android:windowSoftInputMode="adjustResize"` y escucha `WindowInsetsCompat.Type.ime()` vía `ViewCompat.setOnApplyWindowInsetsListener` para empujar `--rockola-ime-height` y `html.ime-open` al CSS (una única vía explícita). Cuando el teclado está abierto se oculta `.floating-player` y se suma `--rockola-ime-height` al padding inferior de listados y modales.
-- **Evaluación de Media3 `MediaSession` (decisión: mantener `MediaSessionCompat` endurecido)**: Como el origen activo de reproducción puede alternar en caliente entre Host local (`ExoPlayer`) y Cliente Remoto (`HTTP/WS` hacia otro dispositivo), exponer un `Player` fachada (`SimpleBasePlayer`) que emule toda la máquina de estados remota duplicaría lógica ya resuelta en Python/JS sin beneficio inmediato para Android Auto/Wear. Se mantuvo `MediaSessionCompat` endurecido con `setSessionActivity` hacia `MainActivity`, `MediaSessionPolicy.computePlaybackActions` (habilitando `ACTION_SEEK_TO` solo con duración positiva) y `HeadsetDoubleTapDetector` (1 toque = play/pausa, doble toque <= 350 ms = siguiente).
-- **Permiso de notificaciones contextual**: Se quitó `requestNotificationPermissionIfNeeded()` de `startServer()`. El permiso se solicita con explicación previa al terminar de elegir la carpeta SAF o al iniciar la primera reproducción; si se deniega, la app sigue operando normal y `ControlsTab` ofrece acceso directo a `Settings.ACTION_APP_NOTIFICATION_SETTINGS`.
-- **Háptica semántica (`HapticPolicy`)**: Se eliminó `Vibrator` y el permiso `VIBRATE` del manifest. `RockolaServerPlugin.hapticFeedback` invoca `webView.performHapticFeedback(constant)` **sin** `FLAG_IGNORE_VIEW_SETTING`/`FLAG_IGNORE_GLOBAL_SETTING`, mapeando acciones semánticas (`tap`, `long_press`, `confirm`, `reject`, `gesture_start`, `gesture_end`, `toggle_on`, `toggle_off`, `tick`) al nivel de API correspondiente (24 / 30 / 34).
-- **Accesos directos dinámicos e intents externos**: `ShortcutHelper` usa `ShortcutManagerCompat` para publicar dinámicamente los 4 accesos base (`open_library`, `open_queue`, `open_tops`, `open_fogon`) y suma `resume_last` (`ACTION_RESUME_LAST`) al haber último tema conocido. Se **descarta** soportar `ACTION_VIEW`/`ACTION_SEND` de audio/URLs externas porque la biblioteca Android opera exclusivamente sobre árbol SAF de solo lectura y la jukebox colaborativa en red local centraliza la cola en el servidor.
-- **Tema nativo solo oscuro**: `AppTheme` hereda de `Theme.AppCompat.DayNight.NoActionBar` con `AppCompatDelegate.setDefaultNightMode(MODE_NIGHT_YES)` y `color-scheme: dark` en CSS. Se decidió soportar **solo modo oscuro** (sin modo claro ni color dinámico Material You) para preservar la estética cálida nocturna de La Rockola y el contraste de portadas/letras.
-- **Navegación adaptativa y pantallas grandes**: En teléfonos (`< 768 px`) las pestañas pasan a una barra inferior estilo Material 3 con etiquetas siempre visibles y `FloatingPlayer` encima; desde `768 px` (`md`) pasan a un riel lateral izquierdo; y desde `1024 px` (`lg`) se activa vista de dos paneles cuando está abierta Biblioteca o Clásicos (panel principal + `QueueTab` lateral). Targets táctiles elevados a `48 px` en `pointer: coarse`, `:focus-visible` de alto contraste y atajos de teclado (`/` para buscar, `MediaPlayPause`, `MediaTrackNext`, `MediaTrackPrevious`).
-- **Higiene de release**: `capacitor.config.ts` fija `allowMixedContent: false` manteniendo `androidScheme: 'http'` para que los servidores remotos LAN (`http://192.168.x.x`) sigan siendo HTTP→HTTP sin bloqueo de contenido mixto. `WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)` queda restringido a builds debug; producción elimina `console.log`/`console.debug`/`debugger` y errores no capturados del WebView se registran en logcat bajo el tag `RockolaWebError`.
+- **Splash único sin doble pantalla (`SplashHoldPolicy`)**: `MainActivity` retiene el splash del sistema con `setKeepOnScreenCondition` hasta que Vue dispara `markUiReady()` desde `src/main.ts` apenas pinta el primer frame (tope de seguridad reducido a `1200 ms`, bajado desde `2500 ms`), y dispara `reportFullyDrawn()` al renderizar el primer contenido útil (snapshot hidratado, biblioteca u onboarding). La prioridad del hilo `RockolaPythonWarmup` se bajó a `Thread.MIN_PRIORITY` para evitar contención con el WebView en el arranque en frío.
+- **Snapshot local (`useLocalSnapshot.ts`)**: Guarda hasta `80` temas, cola, favoritos y pista actual en `localStorage` para hidratar la interfaz antes de que Python responda `/health`.
+- **Versión mínima de WebView (`WebViewVersionPolicy`)**: Piso **Chromium 108**; si es menor, muestra diálogo nativo oscuro con enlace a la tienda (fail-open si el proveedor no informa versión).
+- **Tema nativo solo oscuro**: `AppTheme` con `AppCompatDelegate.setDefaultNightMode(MODE_NIGHT_YES)` y `color-scheme: dark`.
 
-### Métricas medidas (Antes / Después)
+### Métricas medidas (Release R8 vs Release R8 — Mediana de 5 corridas en frío)
 
-Dispositivo de prueba: **Samsung Galaxy A72 (`SM-A725M`, Android 14 / SDK 34)** con `adb shell am start -W` (3 corridas cold start con `am force-stop`, tomando mediana) y perfilado Python en host Linux x86_64 (`python3 -X importtime -c "import app.main"`).
+Dispositivo de prueba: **Samsung Galaxy A72 (`SM-A725M`, Android 14 / SDK 34)**, build `arm64-release` con R8 activo y la misma firma de release (`android/keystore.properties`), `am force-stop ar.carpincho.rockola` antes de cada corrida (25/11/2026).
 
-| Métrica                                                            |           Antes (Baseline)            |                Después (Post-cambios)                | Notas                                                                                                                                                         |
-| :----------------------------------------------------------------- | :-----------------------------------: | :--------------------------------------------------: | :------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `WaitTime` cold start (`am start -W`, mediana 3 corridas)          |     **974 ms** (970 / 878 / 986)      |           **3020 ms** (3036 / 3019 / 3020)           | Subida esperada: `setKeepOnScreenCondition` retiene el splash nativo (~2,5 s) hasta el primer frame útil de Vue en lugar de soltarlo vacío antes del montaje. |
-| Primer contenido útil visible (sin pantalla HTML "Prendiendo...")  | > 5226 ms (tras Uvicorn + `/library`) | **~3020 ms** (al caer el splash, con snapshot local) | Eliminado el salto visual del splash web; la lista/cola del snapshot aparece inmediata marcada como `"Actualizando lista..."`.                                |
-| Tiempo hasta `Uvicorn running` en dispositivo (mediana 3 corridas) |   **5226 ms** (5412 / 5093 / 5226)    |           **6429 ms** (7457 / 6429 / 6375)           | Baseline medido sobre el APK previo instalado (otra firma) vs build `arm64-debug` sin R8 y con contención inicial de hilos entre warmup Python y WebView.     |
-| `python3 -X importtime -c "import app.main"` (host Linux)          |             **337.1 ms**              |                 **283.3 ms** (-16%)                  | `edge_tts` y `aiohttp` diferidos fuera del arranque inicial.                                                                                                  |
+| Métrica (Release R8, mediana de 5 corridas)            |            Antes (Baseline Release R8)             |                  Después (Candidato 1.0 Release R8)                  | Notas                                                                                                                                         |
+| :----------------------------------------------------- | :------------------------------------------------: | :------------------------------------------------------------------: | :-------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WaitTime` cold start (`am start -W`)                  | **1283 ms** (1250 / 1283 / 1291 / 1302 / **1277**) |   **1284 ms** (1290 / 1206 / 1338 / **1284** / 1052 — mín 1052 ms)   | La cifra previa de `3020 ms` provenía de un build `arm64-debug` sin R8. En release R8 el arranque se mantiene estable en el piso del WebView. |
+| `TotalTime` cold start (`am start -W`)                 | **1271 ms** (1244 / 1258 / 1275 / 1284 / **1271**) |          **1267 ms** (1281 / 1168 / 1317 / **1267** / 1042)          | Dentro de la variación natural (~4 ms); sin regresión frente al baseline release.                                                             |
+| Retiro del splash (`RockolaStartup` `splash_released`) |                  No instrumentado                  | **795 ms** (`uiReady=true`, `activityElapsedMs=772 ms` en corrida 5) | Confirmado: el splash sale por `markUiReady()` antes del tope de `1200 ms`, no por timeout.                                                   |
+| `Fully drawn` del sistema (`reportFullyDrawn()`)       |                  No instrumentado                  |           **+1049 ms** (`reason=snapshot` a los `784 ms`)            | Medido nativamente por `ActivityTaskManager` al pintar contenido útil.                                                                        |
+| Tiempo hasta `Uvicorn running` (`python.stderr`)       | **3671 ms** (3392 / **3671** / 3608 / 3904 / 3713) |          **3888 ms** (3888 / 3866 / 3959 / **3888** / 3307)          | Warmup de Python en `MIN_PRIORITY` prioriza el primer frame del WebView (~1 s) antes de levantar el servidor en paralelo.                     |
 
-### Falsos positivos verificados
+_(Desglose completo de corrida 5 en `RockolaStartup`: `app_on_create=0 ms` → `activity_on_create=23 ms` → `index_html_loaded=783 ms` (`jsNowMs=227`) → `vue_mounted=783 ms` (`jsNowMs=480`) → `fully_drawn=784 ms` → `mark_ui_ready_received=784 ms` → `splash_released=795 ms` → `Displayed=+1042 ms` → `Uvicorn=3011 ms`.)_
 
-1. **Ítem 2 (Precarga TTS por tandas y `--max-mb`)**: Ya estaba implementado y cubierto por tests (`app/domain/radio/preload.py` corta por tandas en `_get_cache_size_bytes >= max_bytes`, `scripts/preload_tts_cache.py` expone `--max-mb`, verificado con `pytest tests/test_tts_preload.py` — 9 passed).
-2. **Ítem 15 (Íconos y fuentes sin red)**: `src/assets/fonts/fonts.css` ya empaqueta localmente `material-icons.woff2` con `font-display: block`, `Nunito` y `Noto Color Emoji` sin peticiones a Google Fonts (`grep` sobre `fonts.googleapis`/`fonts.gstatic` dio 0 coincidencias).
-3. **Ítem 14 (parcial — Tailwind `hover:` en táctil)**: Tailwind CSS v4 (`4.3.3`) ya envuelve `hover:` dentro de `@media (hover: hover)` en el bundle CSS compilado.
-4. **Ítem 13 (parcial — `<meta name="color-scheme">`)**: `index.html` ya declaraba `<meta name="color-scheme" content="dark" />`; faltaba `color-scheme: dark` en CSS y migrar `AppTheme` desde `Theme.AppCompat.Light.DarkActionBar`.
+### Limitaciones conocidas
 
-### Checklist manual en dispositivo real (Android 14, 15 y 16)
+1. **Android 15/16 (`dataSync` 6 h/24 h)**: En Android 15+, si la app queda en segundo plano sirviendo a clientes remotos sin reproducir música local durante más de 6 horas acumuladas en 24 horas, el sistema invoca `onTimeout` y detiene el servidor embebido (`FGS_TIMEOUT`).
+2. **Almacenamiento SAF solo lectura**: La edición/guardado de archivos `.ass`/`.lrc` locales desde Android está bloqueada por diseño; requiere editarlos desde escritorio o servidor remoto.
+3. **Sin `ffmpeg` ni `fpcalc` nativos en Android**: El análisis acústico de estado de ánimo (_Más Manija_), la mezcla de cortina radial con `ffmpeg` y las huellas acústicas `fpcalc` se ocultan/degradan elegante (las etiquetas ID3 BPM siguen activas).
+4. **Precarga TTS en segundo plano**: Aún no cuenta con toggle opt-in exclusivo en ajustes Android (corre acotada a 333 MB).
+5. **Verificación `bundletool` en host sin herramienta**: El script `verify_android_apk.py` audita los 74 `.so` del `.aab` correctamente, pero la auditoría estricta de `BundleConfig.pb` (`PAGE_ALIGNMENT_16K`) requiere `bundletool` instalado en el entorno (disponible en CI / con `bundletool` en PATH).
 
-- [ ] Arranque en frío y en caliente: una sola transición continua desde el ícono sin parpadeo blanco ni pantalla HTML web.
-- [ ] Gesto/botón atrás desde cada pestaña, menú contextual, modales (`WeatherLocationModal`, servidor remoto), editor de letras y Modo Fogón; verificar animación predictiva "volver a inicio" al estar en Biblioteca (Android 14+/15/16 con navegación por gestos y botones).
-- [ ] Teclado (IME) en buscador de biblioteca y modales: ningún campo tapado y `.floating-player` oculto mientras el teclado está abierto.
-- [ ] Háptica con "Vibración al tocar" activada y desactivada en Ajustes del sistema.
-- [ ] Controles multimedia en pantalla de bloqueo, notificación, auriculares (toque simple = play/pausa, doble toque = siguiente), Bluetooth y reanudación tras matar la app.
-- [ ] Permiso de notificaciones: aceptar tras elegir carpeta/primera reproducción, denegar y comprobar botón "Ajustes" en Las Perillas.
-- [ ] Rotación, multiventana, teléfono, plegable desplegado y tablet (riel lateral + dos paneles + atajos de teclado `/` y flechas/espacio).
-- [ ] Servicio `dataSync` > 6 h en Android 15 (o simulación con `adb shell cmd activity` / `onTimeout`) verificando apagado limpio sin `ForegroundServiceDidNotStopInTimeException`.
+### Solución de problemas
+
+- **Permiso SAF revocado o tarjeta MicroSD desconectada**: La app muestra `permission_denied` / `storage_unavailable` con acceso directo a reelegir carpeta. Tocá **"Elegir carpeta de música"** en el banner o en _Perillas_ para renovar el `takePersistableUriPermission`.
+- **Android detuvo el servidor en segundo plano (`FGS_TIMEOUT` o ahorro de batería)**: En fabricantes agresivos (Samsung One UI, Xiaomi MIUI, Realme/Oppo), si el sistema mata el proceso con pantalla apagada sin música, abrí _Ajustes del sistema → Aplicaciones → La Rockola del Carpincho → Batería → Sin restricciones_ (y verificá que esté reproduciendo música o con clientes conectados si la pantalla está apagada). Al volver a abrir la app, `ensureLocalAndroidServerAlive` reintenta levantar el servidor local automáticamente.
+- **Aviso de Android System WebView antiguo**: Si ves el diálogo de versión `< 108`, actualizá _Android System WebView_ (o _Google Chrome_ en Android 7–9) desde Play Store para soportar `100dvh`, `content-visibility` y `:has()`.
+- **Botones de volumen no sincronizan en algún dispositivo**: Si un fabricante bloquea `VOLUME_CHANGED_ACTION`, la UI relee el volumen multimedia cada 1 s mientras está visible y al volver a primer plano; en última instancia ajustá desde el slider _"Volumen del reproductor"_ en _Perillas_ o Modo Fogón.
+- **Obtener diagnóstico tras un fallo sin telemetría**: Los últimos errores no capturados (Kotlin, Python y WebView) y la razón de muerte anterior (`ApplicationExitInfo` en Android 11+) quedan guardados localmente en `filesDir/rockola_last_error.log` y `filesDir/rockola_last_exit.log` (visibles vía `RockolaServer.getLastDiagnostics()` o `adb logcat -s RockolaDiagnostics RockolaWebError`).
