@@ -321,7 +321,8 @@ class HostLifecycleCoordinatorTest {
                 isUiVisible = false,
             ),
         )
-        assertFalse(
+        // Con la UI visible pero sin música ni clientes remotos, la Activity ya da prioridad de primer plano: no mantener FGS dataSync
+        assertTrue(
             ServicePowerPolicy.shouldStopForeground(
                 isHostRunning = true,
                 hasRemoteClients = false,
@@ -494,6 +495,30 @@ class HostLifecycleCoordinatorTest {
             android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
             ServicePowerPolicy.foregroundServiceType(isMediaPlaying = false, hasRemoteClients = true),
         )
+        assertFalse(
+            ServicePowerPolicy.shouldUseForeground(
+                isHostRunning = true,
+                isMediaPlaying = false,
+                isRadioSynthesizing = false,
+                hasRemoteClients = false,
+            ),
+        )
+        assertTrue(
+            ServicePowerPolicy.shouldUseForeground(
+                isHostRunning = true,
+                isMediaPlaying = false,
+                isRadioSynthesizing = false,
+                hasRemoteClients = true,
+            ),
+        )
+        assertTrue(
+            ServicePowerPolicy.shouldUseForeground(
+                isHostRunning = true,
+                isMediaPlaying = true,
+                isRadioSynthesizing = false,
+                hasRemoteClients = false,
+            ),
+        )
         assertTrue(
             ServicePowerPolicy.shouldStopAfterRemoteGrace(
                 taskRemoved = true,
@@ -511,9 +536,9 @@ class HostLifecycleCoordinatorTest {
     }
 
     @Test
-    fun `resolveTimeout degrada a mediaPlayback si hay reproduccion activa y detiene si es dataSync sin musica`() {
+    fun `resolveTimeout siempre detiene el servicio limpiamente para cumplir Android 15`() {
         assertEquals(
-            TimeoutResolution.DEGRADE_TO_MEDIA_PLAYBACK,
+            TimeoutResolution.STOP_SERVICE,
             ServicePowerPolicy.resolveTimeout(
                 fgsType = android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
                 isMediaPlaying = true,

@@ -18,7 +18,6 @@ import android.util.Log
  * Resolución ante el callback `Service.onTimeout` introducido en Android 14/15.
  */
 internal enum class TimeoutResolution {
-    DEGRADE_TO_MEDIA_PLAYBACK,
     STOP_SERVICE,
 }
 
@@ -42,36 +41,43 @@ internal object ServicePowerPolicy {
         return !isMediaPlaying && !hasRemoteClients
     }
 
+    fun shouldUseForeground(
+        isHostRunning: Boolean,
+        isMediaPlaying: Boolean,
+        isRadioSynthesizing: Boolean = false,
+        hasRemoteClients: Boolean = false,
+    ): Boolean {
+        return isHostRunning && (isMediaPlaying || isRadioSynthesizing || hasRemoteClients)
+    }
+
     fun shouldStopForeground(
         isHostRunning: Boolean,
         hasRemoteClients: Boolean = false,
-        isUiVisible: Boolean = false,
+        @Suppress("UNUSED_PARAMETER") isUiVisible: Boolean = false,
         isRadioSynthesizing: Boolean = false,
         forceStop: Boolean = false,
     ): Boolean {
         if (forceStop || !isHostRunning) return true
-        if (isUiVisible || isRadioSynthesizing) return false
+        // Si la UI está visible sin reproducción ni clientes remotos, la Activity ya da prioridad de primer plano:
+        // no retenemos un servicio foreground dataSync para no consumir el cupo de 6 h de Android 15.
+        if (isRadioSynthesizing) return false
         return !hasRemoteClients
     }
 
     fun foregroundServiceType(
         isMediaPlaying: Boolean,
-        hasRemoteClients: Boolean,
-        isUiVisible: Boolean = false,
+        @Suppress("UNUSED_PARAMETER") hasRemoteClients: Boolean = false,
+        isRadioSynthesizing: Boolean = false,
     ): Int {
-        return if (!isMediaPlaying && (hasRemoteClients || isUiVisible)) {
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-        } else {
+        return if (isMediaPlaying || isRadioSynthesizing) {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+        } else {
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
         }
     }
 
-    fun resolveTimeout(fgsType: Int, isMediaPlaying: Boolean): TimeoutResolution {
-        return if (fgsType == ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC && isMediaPlaying) {
-            TimeoutResolution.DEGRADE_TO_MEDIA_PLAYBACK
-        } else {
-            TimeoutResolution.STOP_SERVICE
-        }
+    fun resolveTimeout(@Suppress("UNUSED_PARAMETER") fgsType: Int, @Suppress("UNUSED_PARAMETER") isMediaPlaying: Boolean): TimeoutResolution {
+        return TimeoutResolution.STOP_SERVICE
     }
 
     fun shouldStopAfterRemoteGrace(
@@ -566,10 +572,16 @@ class RockolaForegroundService : Service() {
 
         mainHandler.removeCallbacks(remoteIdleCheckRunnable)
         val startedAsForeground = intent?.getBooleanExtra(EXTRA_STARTED_AS_FOREGROUND, false) ?: false
-        if ((startedAsForeground || isUiVisible) && !isInForeground) {
+        val needsForeground = ServicePowerPolicy.shouldUseForeground(
+            isHostRunning = true,
+            isMediaPlaying = isMediaPlaying,
+            isRadioSynthesizing = isRadioSynthesizing(),
+            hasRemoteClients = hasConnectedRemoteClients(),
+        )
+        if (startedAsForeground && !isInForeground) {
             promoteToForeground("La Rockola")
         }
-        if (!isMediaPlaying && !hasConnectedRemoteClients() && !isUiVisible) {
+        if (!needsForeground) {
             demoteFromForeground(keepDismissibleNotification = notificationManager.hasActiveTrack)
         }
 
@@ -767,13 +779,18 @@ class RockolaForegroundService : Service() {
 
     private fun syncForegroundWithUiVisibility(visible: Boolean) {
         if (currentMediaTarget.mode != MediaTargetMode.HOST) return
-        if (visible) {
-            cancelPendingDemote()
-            if (isRunning && !isInForeground) {
-                promoteToForeground("La Rockola")
+        val needsForeground = ServicePowerPolicy.shouldUseForeground(
+            isHostRunning = isRunning,
+            isMediaPlaying = isMediaPlaying,
+            isRadioSynthesizing = isRadioSynthesizing(),
+            hasRemoteClients = hasConnectedRemoteClients(),
+        )
+        if (!needsForeground && isInForeground) {
+            if (visible) {
+                demoteFromForeground(keepDismissibleNotification = notificationManager.hasActiveTrack)
+            } else {
+                scheduleDemoteFromForeground(keepDismissibleNotification = notificationManager.hasActiveTrack)
             }
-        } else if (!isMediaPlaying && !isRadioSynthesizing() && !hasConnectedRemoteClients() && isInForeground) {
-            scheduleDemoteFromForeground(keepDismissibleNotification = notificationManager.hasActiveTrack)
         }
     }
 
@@ -782,7 +799,7 @@ class RockolaForegroundService : Service() {
         serviceType: Int = ServicePowerPolicy.foregroundServiceType(
             isMediaPlaying,
             hasConnectedRemoteClients(),
-            isUiVisible,
+            isRadioSynthesizing(),
         ),
     ) {
         cancelPendingDemote()
@@ -862,30 +879,10 @@ class RockolaForegroundService : Service() {
 
     private fun handleServiceTimeout(startId: Int, fgsType: Int) {
         Log.w("RockolaService", "onTimeout recibido (startId=$startId, fgsType=$fgsType, isMediaPlaying=$isMediaPlaying)")
-        when (ServicePowerPolicy.resolveTimeout(fgsType = fgsType, isMediaPlaying = isMediaPlaying)) {
-            TimeoutResolution.DEGRADE_TO_MEDIA_PLAYBACK -> {
-                val notification = notificationManager.buildNotification("Reproduciendo")
-                try {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        startForeground(
-                            NOTIFICATION_ID,
-                            notification,
-                            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
-                        )
-                        currentForegroundType = ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-                    } else {
-                        startForeground(NOTIFICATION_ID, notification)
-                    }
-                    isInForeground = true
-                } catch (e: Exception) {
-                    Log.w("RockolaService", "No se pudo migrar a mediaPlayback tras onTimeout: ${e.message}")
-                    stopOnTimeout(startId)
-                }
-            }
-            TimeoutResolution.STOP_SERVICE -> {
-                stopOnTimeout(startId)
-            }
-        }
+        // Android 15 retira el estado foreground al invocar onTimeout y exige stopSelf() inmediato.
+        // No se debe promover a mediaPlayback dentro de onTimeout.
+        ServicePowerPolicy.resolveTimeout(fgsType = fgsType, isMediaPlaying = isMediaPlaying)
+        stopOnTimeout(startId)
     }
 
     private fun stopOnTimeout(startId: Int) {
@@ -894,7 +891,13 @@ class RockolaForegroundService : Service() {
             "FGS_TIMEOUT",
             "Android detuvo el servidor en segundo plano porque expiró el límite de sincronización sin música sonando.",
         )
-        stopServerAndService()
+        isActivelyPlaying = false
+        isMediaPlaying = false
+        demoteFromForeground(keepDismissibleNotification = false, forceStop = true)
+        processShutdownExecutor.execute {
+            hostCoordinator.stop(STOP_JOIN_TIMEOUT_MS)
+            syncProcessCoordinatorSnapshot()
+        }
         stopSelf(startId)
     }
 
