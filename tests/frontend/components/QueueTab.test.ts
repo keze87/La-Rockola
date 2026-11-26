@@ -1,6 +1,32 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { computed, ref, type Ref } from 'vue';
 import { mount } from '@vue/test-utils';
 import QueueTab from '@/components/QueueTab.vue';
+
+vi.mock('@vueuse/core', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('@vueuse/core')>();
+	return {
+		...actual,
+		useVirtualList: (list: Ref<any[]>, options: any) => {
+			const currentList = computed(() => list.value.map((data, index) => ({ data, index })));
+			return {
+				list: currentList,
+				scrollTo: vi.fn(),
+				containerProps: {
+					ref: ref(null),
+					onScroll: vi.fn(),
+					style: { overflowY: 'auto' },
+				},
+				wrapperProps: computed(() => ({
+					style: {
+						width: '100%',
+						height: `${list.value.length * (options?.itemHeight || 72)}px`,
+					},
+				})),
+			};
+		},
+	};
+});
 import TrackRow from '@/components/ui/TrackRow.vue';
 import {
 	currentTrackPath,

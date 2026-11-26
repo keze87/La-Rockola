@@ -1,4 +1,4 @@
-import { watch } from 'vue';
+import { computed, watch } from 'vue';
 import { isHostMode, activeRemoteServerUrl } from '../../stores/useServerConnectionStore';
 import { useApi } from '../useApi';
 import { clearSnapshotHydrationFlag, saveBootSnapshot } from './useLocalSnapshot';
@@ -115,8 +115,19 @@ export function useLibrary() {
 		};
 	}
 
+	const queueIndexMap = computed(() => {
+		const map = new Map<string, number>();
+		const q = queueState.value;
+		for (let i = 0; i < q.length; i++) {
+			if (!map.has(q[i])) {
+				map.set(q[i], i);
+			}
+		}
+		return map;
+	});
+
 	function queueIndex(path: string): number {
-		return queueState.value.indexOf(path);
+		return queueIndexMap.value.get(path) ?? -1;
 	}
 
 	async function loadLibrary(forceScan: boolean = false) {

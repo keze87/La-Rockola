@@ -1,4 +1,5 @@
 import { computed, toValue, type MaybeRefOrGetter } from 'vue';
+import { favoritesSet } from '../stores/useLibraryStore';
 import { useCover } from './useCover';
 import { usePlayer } from './usePlayer';
 import type { Track } from '../types';
@@ -19,7 +20,7 @@ export function useTrack(trackOrPath: MaybeRefOrGetter<Track | string>) {
 	const { coverUrl, onCoverError } = useCover(path);
 
 	// Calculamos el estado del tema relativo al estado global del reproductor
-	const isFavorite = computed(() => player.favorites.value.includes(path.value));
+	const isFavorite = computed(() => favoritesSet.value.has(path.value));
 	const isNext = computed(() => player.queueState.value[0] === path.value);
 	const isPaused = computed(() => player.isPaused.value);
 	const isPlaying = computed(() => player.currentTrackPath.value === path.value);

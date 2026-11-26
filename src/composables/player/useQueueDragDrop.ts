@@ -92,11 +92,14 @@ export function useQueueDragDrop(options: UseQueueDragDropOptions) {
 	const unifiedQueue = computed<UnifiedTrackItem[]>(() => {
 		const list: UnifiedTrackItem[] = [];
 		let idx = 0;
+		const histCounts = new Map<string, number>();
 
 		for (let i = 0; i < historyState.value.length; i++) {
 			const path = historyState.value[i];
+			const occ = histCounts.get(path) ?? 0;
+			histCounts.set(path, occ + 1);
 			list.push({
-				id: `hist-${i}-${path}`,
+				id: `hist-${occ}-${path}`,
 				path,
 				status: 'history',
 				index: idx++,
@@ -113,10 +116,13 @@ export function useQueueDragDrop(options: UseQueueDragDropOptions) {
 			});
 		}
 
+		const queueCounts = new Map<string, number>();
 		for (let i = 0; i < queueState.value.length; i++) {
 			const path = queueState.value[i];
+			const occ = queueCounts.get(path) ?? 0;
+			queueCounts.set(path, occ + 1);
 			list.push({
-				id: `queue-${i}-${path}`,
+				id: `queue-${occ}-${path}`,
 				path,
 				status: 'queue',
 				index: idx++,

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 	import { onMounted, ref } from 'vue';
+	import { useVirtualList } from '@vueuse/core';
 	import { isNativeAndroidHost } from '../composables/useAndroidHost';
 	import { isRemoteMode } from '../stores/useServerConnectionStore';
 	import { useQueueDragDrop, type UnifiedTrackItem } from '../composables/player/useQueueDragDrop';
@@ -45,7 +46,6 @@
 	} = usePlaybackControls();
 
 	const newUrl = ref('');
-	const queueSectionRef = ref<HTMLElement | null>(null);
 
 	async function addUrl() {
 		if (!newUrl.value.trim()) return;
@@ -114,6 +114,15 @@
 		},
 	});
 
+	const {
+		list: virtualQueue,
+		containerProps,
+		wrapperProps,
+	} = useVirtualList(unifiedQueue, {
+		itemHeight: 72,
+		overscan: 6,
+	});
+
 	function onTrackClick(item: UnifiedTrackItem) {
 		if (item.status === 'history' && item.historyIndex !== undefined) {
 			jumpToHistory(item.historyIndex);
@@ -136,16 +145,16 @@
 
 	onMounted(() => {
 		const savedTop = restoreTabScroll('queue');
-		if (savedTop > 0 && queueSectionRef.value) {
-			queueSectionRef.value.scrollTop = savedTop;
+		const container = containerProps.ref.value;
+		if (savedTop > 0 && container) {
+			container.scrollTop = savedTop;
 		}
 	});
 </script>
 
 <template>
 	<section
-		ref="queueSectionRef"
-		v-bind="{ 'data-tab-panel': 'queue' }"
+		v-bind="{ ...containerProps, 'data-tab-panel': 'queue' }"
 		class="tab-content @container h-full overflow-y-auto bg-[var(--bg-canvas)]"
 		@scroll.passive="onTabScroll"
 	>
@@ -219,9 +228,9 @@
 		</div>
 
 		<div class="overflow-hidden pt-1">
-			<!-- Lista única unificada de temas -->
-			<TransitionGroup name="list" tag="div" class="relative w-full">
-				<div v-for="(item, rowPos) in unifiedQueue" :key="item.id" class="relative overflow-hidden">
+			<!-- Lista única unificada de temas (virtualizada para colas de 100+ canciones) -->
+			<div v-bind="wrapperProps" class="relative w-full">
+				<div v-for="{ data: item } in virtualQueue" :key="item.id" class="relative h-[72px] overflow-hidden">
 					<!-- Fondo fijo estilo Gmail revelado detrás de la fila al deslizar -->
 					<div
 						v-if="
@@ -296,7 +305,6 @@
 								? 'history-swipe-row bg-[var(--bg-canvas)] transition-opacity [&>*]:opacity-[0.52]'
 								: '',
 							item.status === 'queue' ? 'swipe-row bg-[var(--bg-canvas)]' : '',
-							rowPos >= 12 ? 'deferred-row' : '',
 							trackGridClass,
 						]"
 						:data-history-path="item.status === 'history' ? item.path : undefined"
@@ -471,7 +479,7 @@
 						</template>
 					</TrackRow>
 				</div>
-			</TransitionGroup>
+			</div>
 
 			<!-- Drop zone al final de la lista unificada -->
 			<div

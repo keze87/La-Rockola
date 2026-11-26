@@ -7,6 +7,7 @@ import type { ScanStatus, Track } from '../types';
 
 export const currentTracks = ref<Track[]>([]);
 export const favorites = ref<string[]>([]);
+export const favoritesSet = computed(() => new Set(favorites.value));
 export const isScanning = ref<boolean>(false);
 export const scanStatus = ref<ScanStatus>({
 	is_scanning: false,
