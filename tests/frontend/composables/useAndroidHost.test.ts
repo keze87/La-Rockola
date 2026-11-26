@@ -2,6 +2,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 const { pluginMock, systemBarsMock, state } = vi.hoisted(() => ({
 	pluginMock: {
+		markUiReady: vi.fn().mockResolvedValue({ ready: true }),
+		reportFullyDrawn: vi.fn().mockResolvedValue({ reported: true }),
+		logStartupMark: vi.fn().mockResolvedValue({ logged: true }),
 		startServer: vi.fn(),
 		stopServer: vi.fn(),
 		getStatus: vi.fn(),
@@ -835,5 +838,27 @@ describe('useAndroidHost.ts', () => {
 		expect(hostRes.ok).toBe(true);
 		expect(hostRes.synced).toBe(true);
 		expect(store.serverMode.value).toBe('host');
+	});
+
+	it('forwards startup marks, markUiReady, and reportFullyDrawn only on Android', async () => {
+		const mod = await import('@/composables/useAndroidHost');
+
+		mod.logAndroidStartupMark('vue_mounted', 12);
+		mod.markAndroidUiReady();
+		mod.reportAndroidFullyDrawn('snapshot');
+		expect(pluginMock.logStartupMark).not.toHaveBeenCalled();
+		expect(pluginMock.markUiReady).not.toHaveBeenCalled();
+		expect(pluginMock.reportFullyDrawn).not.toHaveBeenCalled();
+
+		state.isNative = true;
+		state.platform = 'android';
+
+		mod.logAndroidStartupMark('vue_mounted', 42);
+		mod.markAndroidUiReady();
+		mod.reportAndroidFullyDrawn('snapshot');
+
+		expect(pluginMock.logStartupMark).toHaveBeenCalledWith({ stage: 'vue_mounted', jsNowMs: 42 });
+		expect(pluginMock.markUiReady).toHaveBeenCalledWith(expect.objectContaining({ jsNowMs: expect.any(Number) }));
+		expect(pluginMock.reportFullyDrawn).toHaveBeenCalledWith({ reason: 'snapshot' });
 	});
 });

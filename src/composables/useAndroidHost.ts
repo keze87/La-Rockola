@@ -83,7 +83,9 @@ export interface MediaTargetPayload {
 }
 
 export interface RockolaServerPlugin {
-	markUiReady?(): Promise<{ ready: boolean }>;
+	markUiReady?(options?: { jsNowMs?: number }): Promise<{ ready: boolean }>;
+	reportFullyDrawn?(options?: { reason?: string }): Promise<{ reported: boolean }>;
+	logStartupMark?(options: { stage: string; jsNowMs?: number }): Promise<{ logged: boolean }>;
 	setBackHandlerEnabled?(options: { enabled: boolean }): Promise<{ enabled: boolean }>;
 	logWebError?(options: { message: string; source?: string }): Promise<{ logged: boolean }>;
 	getNotificationPermissionStatus?(): Promise<{ status: 'granted' | 'prompt' | 'denied'; granted: boolean }>;
@@ -266,8 +268,26 @@ export function isNativeAndroidHost(): boolean {
 
 export function markAndroidUiReady(): void {
 	if (!isNativeAndroidHost() || typeof RockolaServer.markUiReady !== 'function') return;
-	void RockolaServer.markUiReady().catch(() => {
+	const jsNowMs = typeof performance !== 'undefined' ? performance.now() : undefined;
+	void RockolaServer.markUiReady(jsNowMs !== undefined ? { jsNowMs } : undefined).catch(() => {
 		// El splash nativo tiene tope de seguridad si el plugin todavía no está listo
+	});
+}
+
+export function reportAndroidFullyDrawn(reason = 'ui'): void {
+	if (!isNativeAndroidHost() || typeof RockolaServer.reportFullyDrawn !== 'function') return;
+	void Promise.resolve(RockolaServer.reportFullyDrawn({ reason })).catch(() => {
+		// Sin propagación si el puente nativo todavía no está disponible
+	});
+}
+
+export function logAndroidStartupMark(stage: string, jsNowMs?: number): void {
+	if (!isNativeAndroidHost() || typeof RockolaServer.logStartupMark !== 'function') return;
+	const resolvedMs = jsNowMs ?? (typeof performance !== 'undefined' ? performance.now() : undefined);
+	void Promise.resolve(
+		RockolaServer.logStartupMark({ stage, ...(resolvedMs !== undefined ? { jsNowMs: resolvedMs } : {}) })
+	).catch(() => {
+		// Métrica auxiliar no crítica
 	});
 }
 

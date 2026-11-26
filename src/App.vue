@@ -12,11 +12,11 @@
 		initAndroidServer,
 		isAndroidPipMode,
 		isNativeAndroidHost,
-		markAndroidUiReady,
 		pickAndApplyMusicFolder,
 		prepareContextualNotificationPrompt,
 		refreshAndroidNotificationPermission,
 		requestAndroidNotificationPermission,
+		reportAndroidFullyDrawn,
 		setAndroidBackHandlerEnabled,
 		showNotificationPermissionRationale,
 		subscribeAndroidNativeEvents,
@@ -454,12 +454,20 @@
 		}
 		if (isNativeAndroidHost()) {
 			const snapshotKey = isHostMode.value ? 'host' : `remote:${activeRemoteServerUrl.value}`;
-			hydrateFromBootSnapshot(snapshotKey);
+			const hydratedSnapshot = hydrateFromBootSnapshot(snapshotKey);
 			void consumeAndroidPendingShortcut().then(applyShortcutAction);
-			requestAnimationFrame(() => markAndroidUiReady());
+			if (hydratedSnapshot) {
+				void nextTick(() => reportAndroidFullyDrawn('snapshot'));
+			} else if (showAndroidFolderBanner.value) {
+				void nextTick(() => reportAndroidFullyDrawn('onboarding'));
+			}
 			initAndroidServer().then((ok) => {
 				if (!ok) return;
-				loadLibrary(false);
+				void Promise.resolve(loadLibrary(false)).finally(() => {
+					void nextTick(() =>
+						reportAndroidFullyDrawn(showAndroidFolderBanner.value ? 'onboarding' : 'library')
+					);
+				});
 				connectWebSocket();
 				if (currentTrackPath.value && lyrics.value.length === 0) {
 					void loadLyrics(currentTrackPath.value, true);

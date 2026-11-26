@@ -1,6 +1,7 @@
 package ar.carpincho.rockola
 
 import android.app.Application
+import android.os.SystemClock
 import android.util.Log
 import androidx.appcompat.app.AppCompatDelegate
 import com.chaquo.python.Python
@@ -14,6 +15,15 @@ class RockolaApplication : Application() {
     companion object {
         private val pythonInitLock = Any()
 
+        @Volatile
+        var processStartElapsedMs: Long = 0L
+            private set
+
+        fun elapsedSinceProcessStartMs(): Long {
+            val start = processStartElapsedMs
+            return if (start > 0L) (SystemClock.elapsedRealtime() - start).coerceAtLeast(0L) else 0L
+        }
+
         fun ensurePythonStarted(application: android.content.Context) {
             synchronized(pythonInitLock) {
                 if (!Python.isStarted()) {
@@ -24,6 +34,8 @@ class RockolaApplication : Application() {
     }
 
     override fun onCreate() {
+        processStartElapsedMs = SystemClock.elapsedRealtime()
+        Log.i("RockolaStartup", "stage=app_on_create elapsedMs=0")
         super.onCreate()
         AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
         val prefs = getSharedPreferences(RockolaForegroundService.PREFS_NAME, MODE_PRIVATE)
@@ -42,6 +54,7 @@ class RockolaApplication : Application() {
             "RockolaPythonWarmup",
         ).apply {
             isDaemon = true
+            priority = Thread.MIN_PRIORITY
             start()
         }
     }

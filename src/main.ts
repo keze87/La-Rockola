@@ -6,7 +6,12 @@ import './style.css';
 
 // Componente raíz que maneja el layout y las pestañas
 import App from './App.vue';
-import { isNativeAndroidHost, reportAndroidWebError } from './composables/useAndroidHost';
+import {
+	isNativeAndroidHost,
+	logAndroidStartupMark,
+	markAndroidUiReady,
+	reportAndroidWebError,
+} from './composables/useAndroidHost';
 import { setupServiceWorker } from './pwa/registerSw';
 
 // Creamos y montamos la aplicación de Vue
@@ -31,6 +36,17 @@ if (typeof window !== 'undefined' && isNativeAndroidHost()) {
 }
 
 app.mount('#app');
+
+if (isNativeAndroidHost()) {
+	if (typeof window !== 'undefined' && typeof window.__rockolaIndexLoadedAt === 'number') {
+		logAndroidStartupMark('index_html_loaded', window.__rockolaIndexLoadedAt);
+	}
+	logAndroidStartupMark('vue_mounted');
+	requestAnimationFrame(() => {
+		logAndroidStartupMark('mark_ui_ready_sent');
+		markAndroidUiReady();
+	});
+}
 
 if (Capacitor.isNativePlatform()) {
 	void setupServiceWorker();

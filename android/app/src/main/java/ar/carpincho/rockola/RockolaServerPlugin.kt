@@ -223,8 +223,30 @@ class RockolaServerPlugin : Plugin() {
 
     @PluginMethod
     fun markUiReady(call: PluginCall) {
-        (activity as? MainActivity)?.markUiReady()
+        val jsNowMs = call.getDouble("jsNowMs")
+        (activity as? MainActivity)?.markUiReady(jsNowMs)
         call.resolve(JSObject().apply { put("ready", true) })
+    }
+
+    @PluginMethod
+    fun reportFullyDrawn(call: PluginCall) {
+        val reason = call.getString("reason")?.trim()?.takeIf { it.isNotEmpty() } ?: "ui"
+        (activity as? MainActivity)?.reportFullyDrawnOnce(reason)
+        call.resolve(JSObject().apply { put("reported", true) })
+    }
+
+    @PluginMethod
+    fun logStartupMark(call: PluginCall) {
+        val stage = call.getString("stage")?.trim().orEmpty().take(64)
+        val jsNowMs = call.getDouble("jsNowMs")
+        if (stage.isNotEmpty()) {
+            val jsPart = jsNowMs?.let { " jsNowMs=${it.roundToInt()}" } ?: ""
+            android.util.Log.i(
+                "RockolaStartup",
+                "stage=$stage processElapsedMs=${RockolaApplication.elapsedSinceProcessStartMs()}$jsPart",
+            )
+        }
+        call.resolve(JSObject().apply { put("logged", true) })
     }
 
     @PluginMethod

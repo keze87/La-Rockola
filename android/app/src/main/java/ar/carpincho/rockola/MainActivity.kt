@@ -45,7 +45,7 @@ import kotlin.math.roundToInt
  * Política de retención del splash nativo hasta el primer frame útil de Vue.
  */
 internal object SplashHoldPolicy {
-    const val MAX_HOLD_MS = 2500L
+    const val MAX_HOLD_MS = 1200L
 
     fun shouldKeepOnScreen(uiReady: Boolean, elapsedMs: Long, maxHoldMs: Long = MAX_HOLD_MS): Boolean {
         if (uiReady) return false
@@ -269,13 +269,42 @@ class MainActivity : BridgeActivity() {
 
     private var pendingNotificationPermissionCallback: ((Boolean) -> Unit)? = null
     private val uiReady = AtomicBoolean(false)
+    private val splashReleased = AtomicBoolean(false)
+    private val fullyDrawnReported = AtomicBoolean(false)
     private var splashStartedAtMs: Long = 0L
     private var backCallback: OnBackPressedCallback? = null
     private val backProgressThrottler = BackProgressThrottler()
     private var lastImeBottomCssPx: Int = -1
 
-    fun markUiReady() {
-        uiReady.set(true)
+    fun markUiReady(jsNowMs: Double? = null) {
+        if (uiReady.compareAndSet(false, true)) {
+            val activityElapsed = (SystemClock.elapsedRealtime() - splashStartedAtMs).coerceAtLeast(0L)
+            val procElapsed = RockolaApplication.elapsedSinceProcessStartMs()
+            val jsPart = jsNowMs?.let { " jsNowMs=${it.roundToInt()}" } ?: ""
+            android.util.Log.i(
+                "RockolaStartup",
+                "stage=mark_ui_ready_received activityElapsedMs=$activityElapsed processElapsedMs=$procElapsed$jsPart",
+            )
+        }
+    }
+
+    fun reportFullyDrawnOnce(reason: String = "ui") {
+        if (!fullyDrawnReported.compareAndSet(false, true)) return
+        val procElapsed = RockolaApplication.elapsedSinceProcessStartMs()
+        val activityElapsed = (SystemClock.elapsedRealtime() - splashStartedAtMs).coerceAtLeast(0L)
+        android.util.Log.i(
+            "RockolaStartup",
+            "stage=fully_drawn reason=$reason activityElapsedMs=$activityElapsed processElapsedMs=$procElapsed",
+        )
+        runOnUiThread {
+            if (!isFinishing && !isDestroyed) {
+                try {
+                    reportFullyDrawn()
+                } catch (_: Exception) {
+                    // Algunos dispositivos antiguos o estados transitorios rechazan reportFullyDrawn()
+                }
+            }
+        }
     }
 
     fun setBackHandlerEnabled(enabled: Boolean) {
@@ -287,12 +316,25 @@ class MainActivity : BridgeActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         splashStartedAtMs = SystemClock.elapsedRealtime()
+        android.util.Log.i(
+            "RockolaStartup",
+            "stage=activity_on_create processElapsedMs=${RockolaApplication.elapsedSinceProcessStartMs()}",
+        )
         val splashScreen = installSplashScreen()
         splashScreen.setKeepOnScreenCondition {
-            SplashHoldPolicy.shouldKeepOnScreen(
-                uiReady = uiReady.get(),
-                elapsedMs = SystemClock.elapsedRealtime() - splashStartedAtMs,
+            val ready = uiReady.get()
+            val activityElapsed = SystemClock.elapsedRealtime() - splashStartedAtMs
+            val keep = SplashHoldPolicy.shouldKeepOnScreen(
+                uiReady = ready,
+                elapsedMs = activityElapsed,
             )
+            if (!keep && splashReleased.compareAndSet(false, true)) {
+                android.util.Log.i(
+                    "RockolaStartup",
+                    "stage=splash_released uiReady=$ready activityElapsedMs=$activityElapsed processElapsedMs=${RockolaApplication.elapsedSinceProcessStartMs()}",
+                )
+            }
+            keep
         }
         splashScreen.setOnExitAnimationListener { splashScreenView ->
             if (!ValueAnimator.areAnimatorsEnabled()) {

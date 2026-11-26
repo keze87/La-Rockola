@@ -9,5 +9,6 @@ declare global {
 	interface Window {
 		webkitAudioContext: typeof AudioContext;
 		__rockolaHandleBack?: () => boolean;
+		__rockolaIndexLoadedAt?: number;
 	}
 }
