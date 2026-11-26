@@ -370,11 +370,18 @@
 		switchTab('top');
 	}
 
+	let pendingResumeAfterReady = false;
+
 	function resumeLastFromAndroid(): void {
 		isLyricsEditorOpen.value = false;
 		isFogonMode.value = false;
 		switchTab('queue');
+		if (isNativeAndroidHost() && isHostMode.value && localServerState.value !== 'ready') {
+			pendingResumeAfterReady = true;
+			return;
+		}
 		if (!isPlaying.value && currentTrackPath.value) {
+			pendingResumeAfterReady = false;
 			void pause();
 		}
 	}
@@ -483,8 +490,16 @@
 	});
 
 	watch(localServerState, (nextState) => {
-		if (nextState === 'ready' && currentTrackPath.value && lyrics.value.length === 0) {
-			void loadLyrics(currentTrackPath.value, true);
+		if (nextState === 'ready') {
+			if (pendingResumeAfterReady) {
+				pendingResumeAfterReady = false;
+				if (!isPlaying.value && currentTrackPath.value) {
+					void pause();
+				}
+			}
+			if (currentTrackPath.value && lyrics.value.length === 0) {
+				void loadLyrics(currentTrackPath.value, true);
+			}
 		}
 	});
 

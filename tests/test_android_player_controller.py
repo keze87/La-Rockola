@@ -433,3 +433,39 @@ async def test_play_track_clears_is_playing_radio_announcement_for_normal_songs(
 
 	await orch.play_track("content://music/normal_song.mp3")
 	assert orch.is_playing_radio_announcement is False
+
+
+def test_configure_android_environment_applies_saved_volume_to_native_player(
+	tmp_path: Path, monkeypatch: pytest.MonkeyPatch, isolate_container
+) -> None:
+	"""configure_android_environment debe aplicar settings.volume al reproductor nativo y conservarlo en orch."""
+	from app import android_entry
+	from app.core.config import Settings, save_config
+	from app.infrastructure.mpv import android_controller
+
+	data_dir = tmp_path / "data"
+	dist_dir = tmp_path / "dist"
+	data_dir.mkdir()
+	dist_dir.mkdir()
+	monkeypatch.setenv("ROCKOLA_DATA_DIR", str(data_dir))
+
+	saved = Settings(volume=42, music_dir="", music_dir_configured=False)
+	save_config(data_dir / "rockola_config.json", saved.model_dump())
+
+	native_player = MagicMock()
+	native_player.getPlayerVolumePercent.return_value = 100
+	monkeypatch.setattr(android_controller, "resolve_native_android_player", lambda: native_player)
+
+	android_entry.configure_android_environment(
+		data_dir=str(data_dir),
+		dist_dir=str(dist_dir),
+		music_dir="",
+		port=1833,
+	)
+
+	from app.core.container import get_container
+
+	orch = get_container().orchestrator
+	assert orch is not None
+	assert orch.volume == 42
+	native_player.setVolume.assert_called_once_with(42.0)

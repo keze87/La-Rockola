@@ -210,8 +210,8 @@ def configure_android_environment(
 	native_player = resolve_native_android_player()
 	if native_player is not None:
 		try:
-			if hasattr(native_player, "getPlayerVolumePercent"):
-				orch.volume = int(native_player.getPlayerVolumePercent())
+			if hasattr(native_player, "setVolume"):
+				native_player.setVolume(float(settings.volume))
 		except Exception:
 			pass
 	else:

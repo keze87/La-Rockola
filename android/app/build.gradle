@@ -110,7 +110,12 @@ android {
         }
         releaseSmoke {
             initWith release
-            signingConfig signingConfigs.debug
+            def rc = signingConfigs.release
+            def hasReleaseSigning = rc.storeFile != null && rc.storeFile.exists() &&
+                rc.storePassword && rc.keyAlias && rc.keyPassword
+            signingConfig(hasReleaseSigning ? rc : signingConfigs.debug)
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro', 'proguard-releasesmoke.pro'
+            testProguardFiles 'proguard-androidtest.pro'
             matchingFallbacks = ['release']
         }
     }

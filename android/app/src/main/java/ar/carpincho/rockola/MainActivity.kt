@@ -530,7 +530,8 @@ class MainActivity : BridgeActivity() {
     }
 
     private fun registerImeInsetsObserver() {
-        ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { view, insets ->
+        val contentView = findViewById<View>(android.R.id.content) ?: window.decorView
+        ViewCompat.setOnApplyWindowInsetsListener(contentView) { view, insets ->
             val imeBottomPx = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
             val density = resources.displayMetrics.density.coerceAtLeast(1f)
             val imeCssPx = (imeBottomPx / density).roundToInt().coerceAtLeast(0)
