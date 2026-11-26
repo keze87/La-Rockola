@@ -67,6 +67,7 @@ class MainActivityPolicyTest {
         val withLast = ShortcutPolicy.buildSpecs(lastTrackTitle = "El Viejo - Pappo")
         org.junit.Assert.assertEquals(5, withLast.size)
         org.junit.Assert.assertEquals("resume_last", withLast.first().id)
+        org.junit.Assert.assertEquals(R.drawable.ic_shortcut_resume, withLast.first().iconRes)
         org.junit.Assert.assertTrue(withLast.first().longLabel.contains("El Viejo"))
     }
 

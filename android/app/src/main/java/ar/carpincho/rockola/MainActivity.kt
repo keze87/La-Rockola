@@ -376,8 +376,11 @@ class MainActivity : BridgeActivity() {
         super.onCreate(savedInstanceState)
 
         val prefs = getSharedPreferences(RockolaForegroundService.PREFS_NAME, MODE_PRIVATE)
+        val savedMusicDir = prefs.getString(RockolaForegroundService.KEY_MUSIC_DIR, null)
+            ?.takeIf { it.isNotBlank() }
+            ?: if (BuildConfig.DEBUG) BuildConfig.DEBUG_DEFAULT_MUSIC_DIR.takeIf { it.isNotBlank() } else null
         val shouldOnboard = OnboardingPolicy.shouldShowOnboarding(
-            savedMusicDir = prefs.getString(RockolaForegroundService.KEY_MUSIC_DIR, null),
+            savedMusicDir = savedMusicDir,
             savedTargetMode = prefs.getString(RockolaForegroundService.KEY_TARGET_MODE, "host"),
             savedRemoteUrl = prefs.getString(OnboardingActivity.KEY_REMOTE_URL, null),
             onboardingSkipped = prefs.getBoolean(OnboardingActivity.KEY_ONBOARDING_SKIPPED, false),

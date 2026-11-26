@@ -347,3 +347,15 @@ def test_tts_preload_endpoint_returns_count_and_latest_entries(tmp_path: Path, m
 	assert data["recent"][0]["category"] == "fortuna"
 	assert data["recent"][0]["voice"] == "es-AR-TomasNeural"
 	assert data["recent"][1]["text"] == "Las nueve"
+
+
+def test_should_run_startup_tts_preload_respects_disable_env(monkeypatch: pytest.MonkeyPatch) -> None:
+	"""En builds debug con ROCKOLA_DISABLE_TTS_PRELOAD=1 se omite la precarga automática."""
+	from app.main import should_run_startup_tts_preload
+
+	monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+	monkeypatch.delenv("ROCKOLA_DISABLE_TTS_PRELOAD", raising=False)
+	assert should_run_startup_tts_preload() is True
+
+	monkeypatch.setenv("ROCKOLA_DISABLE_TTS_PRELOAD", "1")
+	assert should_run_startup_tts_preload() is False

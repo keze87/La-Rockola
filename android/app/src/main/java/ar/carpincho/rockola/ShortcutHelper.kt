@@ -30,7 +30,7 @@ internal object ShortcutPolicy {
                     action = MainActivity.ACTION_RESUME_LAST,
                     shortLabel = "Reanudar",
                     longLabel = "Reanudar: $truncated",
-                    iconRes = R.mipmap.ic_launcher,
+                    iconRes = R.drawable.ic_shortcut_resume,
                 ),
             )
         }

@@ -72,6 +72,14 @@ android {
         buildConfig = true
         compose = true
     }
+    def debugDefaultMusicDir = (project.findProperty('ROCKOLA_DEBUG_MUSIC_DIR')?.toString()?.trim()
+        ?: System.getenv('ROCKOLA_DEBUG_MUSIC_DIR')?.trim()
+        ?: '/storage/emulated/0/Music')
+        .replace('\\', '\\\\')
+        .replace('"', '\\"')
+    defaultConfig {
+        buildConfigField "String", "DEBUG_DEFAULT_MUSIC_DIR", "\"${debugDefaultMusicDir}\""
+    }
     signingConfigs {
         release {
             def ksPropsFile = rootProject.file('keystore.properties')

@@ -49,6 +49,13 @@ WSIncomingMessage = Annotated[
 ws_adapter = TypeAdapter(WSIncomingMessage)
 
 
+def should_run_startup_tts_preload() -> bool:
+	"""Indica si el arranque debe lanzar la precarga de edge-tts en segundo plano."""
+	if "PYTEST_CURRENT_TEST" in os.environ:
+		return False
+	return os.environ.get("ROCKOLA_DISABLE_TTS_PRELOAD") != "1"
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
 	"""Gestión del ciclo de vida de la aplicación: arranque y apagado seguro."""
@@ -134,7 +141,7 @@ async def lifespan(app: FastAPI):
 		)
 
 	preload_task: asyncio.Task[dict[str, int]] | None = None
-	if "PYTEST_CURRENT_TEST" not in os.environ:
+	if should_run_startup_tts_preload():
 		from app.infrastructure.binaries.manager import is_android
 
 		android_mode = is_android()

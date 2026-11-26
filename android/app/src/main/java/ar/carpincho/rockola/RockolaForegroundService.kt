@@ -665,7 +665,12 @@ class RockolaForegroundService : Service() {
             val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             val port = if (requestedPort > 0) requestedPort else prefs.getInt(KEY_PORT, DEFAULT_PORT)
             val savedDir = prefs.getString(KEY_MUSIC_DIR, null)?.trim()
-            val musicDir = if (!extraDir.isNullOrEmpty()) extraDir else savedDir
+            val debugDefaultDir = if (BuildConfig.DEBUG) {
+                BuildConfig.DEBUG_DEFAULT_MUSIC_DIR.trim().takeIf { it.isNotEmpty() }
+            } else {
+                null
+            }
+            val musicDir = listOfNotNull(extraDir, savedDir, debugDefaultDir).firstOrNull { it.isNotEmpty() }
 
             prefs.edit().apply {
                 putInt(KEY_PORT, port)

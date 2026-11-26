@@ -285,6 +285,9 @@ class EmbeddedPythonHost(
 
             currentBootStage = "starting_server"
             val py = Python.getInstance()
+            if (BuildConfig.DEBUG) {
+                py.getModule("os").get("environ")?.callAttr("__setitem__", "ROCKOLA_DISABLE_TTS_PRELOAD", "1")
+            }
             val entry = py.getModule("app.android_entry")
 
             val infoObj = entry.callAttr(
