@@ -22,6 +22,7 @@ const { pluginMock, systemBarsMock, state } = vi.hoisted(() => ({
 		enterPipMode: vi.fn(),
 		getMediaVolume: vi.fn(),
 		setMediaVolume: vi.fn(),
+		getUiRuntimeState: vi.fn(),
 		addListener: vi.fn().mockResolvedValue({ remove: vi.fn().mockResolvedValue(undefined) }),
 	},
 	systemBarsMock: {
@@ -860,5 +861,58 @@ describe('useAndroidHost.ts', () => {
 		expect(pluginMock.logStartupMark).toHaveBeenCalledWith({ stage: 'vue_mounted', jsNowMs: 42 });
 		expect(pluginMock.markUiReady).toHaveBeenCalledWith(expect.objectContaining({ jsNowMs: expect.any(Number) }));
 		expect(pluginMock.reportFullyDrawn).toHaveBeenCalledWith({ reason: 'snapshot' });
+	});
+
+	it('replays buffered error/shortcut events emitted before addListener and hydrates current state on subscribe', async () => {
+		const mod = await import('@/composables/useAndroidHost');
+		state.isNative = true;
+		state.platform = 'android';
+
+		// Simula eventos emitidos en nativo antes de que Vue llame a subscribeAndroidNativeEvents
+		const preSubscribeBuffer: Record<string, Array<Record<string, unknown>>> = {
+			nativeCommandError: [{ cmd: 'host_server', code: 'HOST_FAILED', message: 'Puerto ocupado' }],
+			shortcutAction: [{ action: 'ar.carpincho.rockola.ACTION_OPEN_TOPS' }],
+		};
+
+		pluginMock.getUiRuntimeState.mockResolvedValue({
+			pipActive: true,
+			imeBottomCssPx: 312,
+			volumeLevel: 77,
+			volumeMuted: false,
+		});
+		pluginMock.addListener.mockImplementation(
+			async (eventName: string, cb: (d: Record<string, unknown>) => void) => {
+				const pending = preSubscribeBuffer[eventName] ?? [];
+				delete preSubscribeBuffer[eventName];
+				for (const item of pending) {
+					queueMicrotask(() => cb(item));
+				}
+				return { remove: vi.fn().mockResolvedValue(undefined) };
+			}
+		);
+
+		const onVol = vi.fn();
+		const onErr = vi.fn();
+		const onPip = vi.fn();
+		const onIme = vi.fn();
+		const onShortcut = vi.fn();
+
+		const cleanup = mod.subscribeAndroidNativeEvents({
+			onMediaVolumeChanged: onVol,
+			onNativeCommandError: onErr,
+			onPipModeChanged: onPip,
+			onImeInsetsChanged: onIme,
+			onShortcutAction: onShortcut,
+		});
+
+		await new Promise((r) => setTimeout(r, 10));
+
+		expect(onErr).toHaveBeenCalledWith('host_server', 'HOST_FAILED', 'Puerto ocupado');
+		expect(onShortcut).toHaveBeenCalledWith('ar.carpincho.rockola.ACTION_OPEN_TOPS');
+		expect(onPip).toHaveBeenCalledWith(true);
+		expect(onIme).toHaveBeenCalledWith(312);
+		expect(onVol).toHaveBeenCalledWith(77, false);
+
+		cleanup();
 	});
 });

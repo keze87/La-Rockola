@@ -113,6 +113,12 @@ export interface RockolaServerPlugin {
 	enterPipMode(): Promise<{ entered: boolean; reason?: string | null }>;
 	getMediaVolume(): Promise<{ level: number; muted: boolean }>;
 	setMediaVolume(options: { level: number }): Promise<{ level: number; muted: boolean }>;
+	getUiRuntimeState?(): Promise<{
+		pipActive: boolean;
+		imeBottomCssPx: number;
+		volumeLevel: number;
+		volumeMuted: boolean;
+	}>;
 	addListener?(
 		eventName: string,
 		listenerFunc: (data: Record<string, unknown>) => void
@@ -892,6 +898,9 @@ export function subscribeAndroidNativeEvents(handlers: AndroidNativeEventHandler
 
 	let disposed = false;
 	const handles: PluginListenerHandle[] = [];
+	let receivedVolEvent = false;
+	let receivedPipEvent = false;
+	let receivedImeEvent = false;
 
 	const register = (eventName: string, cb: (data: Record<string, unknown>) => void) => {
 		void RockolaServer.addListener?.(eventName, cb)
@@ -910,6 +919,7 @@ export function subscribeAndroidNativeEvents(handlers: AndroidNativeEventHandler
 	if (handlers.onMediaVolumeChanged) {
 		register('mediaVolumeChanged', (data) => {
 			if (typeof data.level === 'number') {
+				receivedVolEvent = true;
 				handlers.onMediaVolumeChanged?.(data.level, Boolean(data.muted));
 			}
 		});
@@ -925,12 +935,14 @@ export function subscribeAndroidNativeEvents(handlers: AndroidNativeEventHandler
 	}
 	if (handlers.onPipModeChanged) {
 		register('pipModeChanged', (data) => {
+			receivedPipEvent = true;
 			handlers.onPipModeChanged?.(Boolean(data.active));
 		});
 	}
 	if (handlers.onImeInsetsChanged) {
 		register('imeInsetsChanged', (data) => {
 			if (typeof data.bottomCssPx === 'number') {
+				receivedImeEvent = true;
 				handlers.onImeInsetsChanged?.(data.bottomCssPx);
 			}
 		});
@@ -948,6 +960,32 @@ export function subscribeAndroidNativeEvents(handlers: AndroidNativeEventHandler
 				handlers.onShortcutAction?.(data.action);
 			}
 		});
+	}
+
+	// Eventos de estado (PiP, IME, volumen): consultamos el estado actual al suscribirnos
+	if (handlers.onPipModeChanged || handlers.onImeInsetsChanged || handlers.onMediaVolumeChanged) {
+		if (typeof RockolaServer.getUiRuntimeState === 'function') {
+			void Promise.resolve(RockolaServer.getUiRuntimeState())
+				.then((state) => {
+					if (disposed || !state) return;
+					if (!receivedPipEvent && typeof state.pipActive === 'boolean') {
+						handlers.onPipModeChanged?.(state.pipActive);
+					}
+					if (!receivedImeEvent && typeof state.imeBottomCssPx === 'number') {
+						handlers.onImeInsetsChanged?.(state.imeBottomCssPx);
+					}
+					if (!receivedVolEvent && typeof state.volumeLevel === 'number') {
+						handlers.onMediaVolumeChanged?.(state.volumeLevel, Boolean(state.volumeMuted));
+					}
+				})
+				.catch(() => {});
+		} else if (handlers.onMediaVolumeChanged) {
+			void getAndroidMediaVolume().then((vol) => {
+				if (!disposed && !receivedVolEvent && vol) {
+					handlers.onMediaVolumeChanged?.(vol.level, vol.muted);
+				}
+			});
+		}
 	}
 
 	return () => {

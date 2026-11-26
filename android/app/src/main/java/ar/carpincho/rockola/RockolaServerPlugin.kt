@@ -60,6 +60,41 @@ internal class VolumeChangeTracker {
 }
 
 /**
+ * Cola acotada por evento para retener eventos críticos emitidos antes de que Vue se suscriba.
+ */
+internal class NativeEventBuffer(private val maxPerEvent: Int = 16) {
+    companion object {
+        val BUFFERED_EVENTS = setOf("nativeCommandError", "shortcutAction")
+
+        fun isBufferedEvent(eventName: String): Boolean = eventName in BUFFERED_EVENTS
+    }
+
+    private val queues = HashMap<String, ArrayDeque<JSObject>>()
+
+    @Synchronized
+    fun enqueue(eventName: String, data: JSObject): Boolean {
+        if (!isBufferedEvent(eventName)) return false
+        val queue = queues.getOrPut(eventName) { ArrayDeque() }
+        while (queue.size >= maxPerEvent) {
+            queue.removeFirst()
+        }
+        queue.addLast(data)
+        return true
+    }
+
+    @Synchronized
+    fun drain(eventName: String): List<JSObject> {
+        val queue = queues.remove(eventName) ?: return emptyList()
+        return queue.toList()
+    }
+
+    @Synchronized
+    fun clear() {
+        queues.clear()
+    }
+}
+
+/**
  * Plugin nativo de Capacitor para controlar el servidor embebido, enrutar eventos
  * multimedia hacia host/remoto y gestionar permisos y ventana PiP.
  */
@@ -72,11 +107,19 @@ class RockolaServerPlugin : Plugin() {
 
         @Volatile
         private var activePluginRef: WeakReference<RockolaServerPlugin>? = null
+        private val pendingEventBuffer = NativeEventBuffer()
 
         fun emitNativeEvent(eventName: String, data: JSObject): Boolean {
-            val plugin = activePluginRef?.get() ?: return false
-            if (!plugin.hasListeners(eventName)) return false
-            val webView = plugin.bridge?.webView ?: return false
+            val plugin = activePluginRef?.get()
+            val webView = plugin?.bridge?.webView
+            if (plugin == null || !plugin.hasListeners(eventName) || webView == null) {
+                return if (NativeEventBuffer.isBufferedEvent(eventName)) {
+                    pendingEventBuffer.enqueue(eventName, data)
+                    true
+                } else {
+                    false
+                }
+            }
             webView.post {
                 plugin.notifyListeners(eventName, data)
             }
@@ -590,6 +633,37 @@ class RockolaServerPlugin : Plugin() {
             val performed = webView.performHapticFeedback(constant)
             call.resolve(JSObject().apply { put("performed", performed) })
         }
+    }
+
+    @PluginMethod(returnType = PluginMethod.RETURN_CALLBACK)
+    override fun addListener(call: PluginCall) {
+        super.addListener(call)
+        val eventName = call.getString("eventName") ?: return
+        if (!NativeEventBuffer.isBufferedEvent(eventName)) return
+        val pending = pendingEventBuffer.drain(eventName)
+        if (pending.isEmpty()) return
+        val webView = bridge?.webView ?: return
+        webView.post {
+            for (payload in pending) {
+                notifyListeners(eventName, payload)
+            }
+        }
+    }
+
+    @PluginMethod
+    fun getUiRuntimeState(call: PluginCall) {
+        val mainActivity = activity as? MainActivity
+        val pipActive = mainActivity?.isCurrentlyInPipMode() ?: false
+        val imeBottomCssPx = mainActivity?.currentImeBottomCssPx ?: 0
+        val (level, muted) = readMediaVolumeState()
+        call.resolve(
+            JSObject().apply {
+                put("pipActive", pipActive)
+                put("imeBottomCssPx", imeBottomCssPx)
+                put("volumeLevel", level)
+                put("volumeMuted", muted)
+            },
+        )
     }
 
     @PluginMethod

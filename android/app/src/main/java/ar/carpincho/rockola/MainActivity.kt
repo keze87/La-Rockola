@@ -151,6 +151,13 @@ class MainActivity : BridgeActivity() {
     var isFogonActive: Boolean = false
         private set
 
+    fun isCurrentlyInPipMode(): Boolean {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode
+    }
+
+    val currentImeBottomCssPx: Int
+        get() = lastImeBottomCssPx.coerceAtLeast(0)
+
     fun setFogonActive(active: Boolean) {
         isFogonActive = active
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
